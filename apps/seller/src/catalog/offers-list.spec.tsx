@@ -257,7 +257,7 @@ describe('seller offers search, filters and sort', () => {
 });
 
 describe('seller offers row actions', () => {
-  it('puts every row action in the Actions menu, and Prices and Stock only for their keys', async () => {
+  it('puts every row action in the Actions menu, and Prices and stock only for their keys', async () => {
     mount(pageOf([row()]), { permissionKeys: ['pricing.price.edit', 'inventory.stock.edit'] });
     expect(screen.getAllByRole('button', { name: /^Actions for/ })).toHaveLength(1);
     fireEvent.click(OPEN('Actions for Aged Basmati Rice'));
@@ -266,9 +266,9 @@ describe('seller offers row actions', () => {
       within(menu)
         .getAllByRole('menuitem')
         .map((item) => item.textContent),
-    ).toEqual(['Open', 'Edit', 'Prices', 'Stock', 'Submit for review…', 'Delete…']);
-    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Prices' }));
-    expect(push).toHaveBeenCalledWith(`/offers/${ID1}/prices`);
+    ).toEqual(['Open', 'Edit', 'Prices and stock', 'Submit for review…', 'Delete…']);
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Prices and stock' }));
+    expect(push).toHaveBeenCalledWith(`/offers/${ID1}#sizes`);
   });
 
   it('offers only what the row names, and no Prices or Stock without their keys', async () => {

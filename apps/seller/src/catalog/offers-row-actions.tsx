@@ -87,12 +87,17 @@ export function useOfferRowActions(
     if (has('edit')) {
       out.push({ id: 'edit', label: t('edit'), onSelect: () => router.push(`${page}/edit`) });
     }
-    // Prices and Stock belong to other modules: shown for the keys that edit them.
-    if (has('open') && permissionKeys.includes(PRICE_EDIT_PERMISSION)) {
-      out.push({ id: 'prices', label: t('prices'), onSelect: () => router.push(`${page}/prices`) });
-    }
-    if (has('open') && permissionKeys.includes(STOCK_EDIT_PERMISSION)) {
-      out.push({ id: 'stock', label: t('stock'), onSelect: () => router.push(`${page}/stock`) });
+    // Prices and stock are on the offer page (its sizes table): shown for a key that edits them.
+    if (
+      has('open') &&
+      (permissionKeys.includes(PRICE_EDIT_PERMISSION) ||
+        permissionKeys.includes(STOCK_EDIT_PERMISSION))
+    ) {
+      out.push({
+        id: 'sizes',
+        label: t('sizes'),
+        onSelect: () => router.push(`${page}#sizes`),
+      });
     }
     if (has('submit')) {
       out.push({

@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-offer-size-low-stock-alert",
+  "area": "seller",
+  "title": "هشدار موجودی کم برای هر سایز در تب Stock",
+  "desc": "طرح نهایی صفحهٔ Offer در تب Stock فیلد «Low-stock alert at» برای هر سایز دارد. امروز آستانهٔ موجودی کم فقط برای کل فروشنده (lowStockThreshold در inventory) یا پیش‌فرض Market است و API نوشتن برای هر سایز ندارد. نیاز: ستون آستانه برای هر StockItem یا سایز در inventory، مسیر نوشتن با همان قاعدهٔ ذخیرهٔ صریح، و نمایش در تب Stock.",
+  "src": "ساخت صفحهٔ Offer، PR ۳a (تب Stock)",
+  "date": "2026-11-25",
+  "trig": "پس از PR ۱۰ صفحهٔ Offer یا درخواست فروشنده‌ها",
+  "prio": "متوسط",
+  "status": "موکول"
+}

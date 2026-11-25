@@ -1,5 +1,6 @@
 import { Banner, Card } from '@mondapac/ui';
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server';
+import type { ReactNode } from 'react';
 import { ShelfPicker, type ShelfChoice } from '../categories/shelf-picker.tsx';
 import { FieldList } from './field-list.tsx';
 import { formatInstant, known, OFFER_STATUSES, readable } from './format.ts';
@@ -16,62 +17,44 @@ const CAUSES = [
   'description-claim-text',
 ];
 
-/** One offer of the seller, read only: its state, why it is off sale and what it needs next. */
+/**
+ * The one page of an offer (Offer page PR 3): its state and what it needs next, "Your offer"
+ * (condition, handling and description), then "Sizes, prices and stock" with its own explicit
+ * Save, then the shelf. Why the offer is off sale comes before the sizes.
+ */
 export async function OfferDetail({
   offer,
   canEdit = false,
-  canViewStock = false,
-  canViewPrices = false,
   csrfToken = '',
   shelves = [],
+  sizes = null,
 }: {
   readonly offer: OfferView;
   readonly canEdit?: boolean;
-  readonly canViewStock?: boolean;
-  readonly canViewPrices?: boolean;
   readonly csrfToken?: string;
   /** The seller's active shelves (categories C9b); the picker shows only when there are some. */
   readonly shelves?: readonly ShelfChoice[];
+  /** The sizes table (prices and stock); null when the seller may see neither. */
+  readonly sizes?: ReactNode;
 }) {
   const t = await getTranslations();
   const marketLocale = await getLocale();
   const zone = await getTimeZone();
   const status = known(offer.status, OFFER_STATUSES);
   const descriptions = Object.entries(offer.description);
-  // The cards after the shelf picker: inside its form when it shows, so its save bar can float.
-  const after = (
-    <>
-      {offer.offSaleCauses.length > 0 ? (
-        <Card title={t('catalog.offer.off-sale')}>
-          <ul className="list-disc ps-5">
-            {offer.offSaleCauses.map((cause) => (
-              <li key={cause}>{t(`catalog.offer.cause.${known(cause, CAUSES)}`)}</li>
-            ))}
-          </ul>
-        </Card>
-      ) : null}
-      {descriptions.length > 0 ? (
-        <Card title={t('catalog.offer.description')}>
-          {descriptions.map(([locale, text]) => (
-            <p key={locale} className="whitespace-pre-line break-words">
-              <span className="me-2 text-sm text-fg-muted">{locale}</span>
-              {text}
-            </p>
+  const offSale =
+    offer.offSaleCauses.length > 0 ? (
+      <Card title={t('catalog.offer.off-sale')}>
+        <ul className="list-disc ps-5">
+          {offer.offSaleCauses.map((cause) => (
+            <li key={cause}>{t(`catalog.offer.cause.${known(cause, CAUSES)}`)}</li>
           ))}
-        </Card>
-      ) : null}
-    </>
-  );
+        </ul>
+      </Card>
+    ) : null;
   return (
     <div className="flex flex-col gap-6">
-      <OfferHeader
-        offer={offer}
-        active="details"
-        canViewPrices={canViewPrices}
-        canViewStock={canViewStock}
-        canEdit={canEdit}
-        t={t}
-      />
+      <OfferHeader offer={offer} canEdit={canEdit} t={t} />
       {status === 'changes-needed' ? (
         <Banner tone="attention">{t('catalog.offer-actions.changes-needed')}</Banner>
       ) : null}
@@ -81,7 +64,7 @@ export async function OfferDetail({
       {canEdit ? (
         <OfferActions offerId={offer.offerId} status={status} csrfToken={csrfToken} />
       ) : null}
-      <Card>
+      <Card title={t('catalog.offer.your-offer')}>
         <FieldList
           rows={[
             { label: t('catalog.offers.col.sku'), value: offer.sellerSku },
@@ -123,19 +106,28 @@ export async function OfferDetail({
             },
           ]}
         />
+        {descriptions.length > 0 ? (
+          <div className="mt-4 flex flex-col gap-1 border-t border-line pt-4">
+            <h3 className="text-sm font-medium">{t('catalog.offer.description')}</h3>
+            {descriptions.map(([locale, text]) => (
+              <p key={locale} className="whitespace-pre-line break-words">
+                <span className="me-2 text-sm text-fg-muted">{locale}</span>
+                {text}
+              </p>
+            ))}
+          </div>
+        ) : null}
       </Card>
+      {offSale}
+      {sizes}
       {canEdit && shelves.length > 0 ? (
         <ShelfPicker
           offerId={offer.offerId}
           version={offer.version}
           shelves={shelves}
           csrfToken={csrfToken}
-        >
-          {after}
-        </ShelfPicker>
-      ) : (
-        after
-      )}
+        />
+      ) : null}
     </div>
   );
 }

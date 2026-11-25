@@ -1549,8 +1549,7 @@
           "for": "Actions for {name}",
           "open": "Open",
           "edit": "Edit",
-          "prices": "Prices",
-          "stock": "Stock",
+          "sizes": "Prices and stock",
           "submit": "Submit for review…",
           "delete": "Delete…",
           "done": {
@@ -1636,10 +1635,8 @@
         "description-claim-text": "The description makes a claim that needs a matching certificate",
         "unknown": "Unknown reason"
       },
-      "tab": {
-        "details": "Details"
-      },
-      "tabs": "Offer sections"
+      "your-offer": "Your offer",
+      "back": "Back to the offer"
     },
     "add": {
       "subtitle": "Your product · {market}",
@@ -2092,8 +2089,7 @@
       }
     },
     "variants-table": {
-      "title": "Prices and stock by variant",
-      "tab": "Variants",
+      "title": "Sizes, prices and stock",
       "variant": "Variant",
       "variant-n": "Variant {number}",
       "select": "Select {variant}",
@@ -3027,6 +3023,44 @@
     "tax": {
       "taxable": "Taxable",
       "gst-free": "GST-free"
+    },
+    "size-details": {
+      "column": "Details",
+      "open": "Details",
+      "close": "Close",
+      "open-for": "Details for {size}",
+      "close-for": "Close details for {size}",
+      "label": "Details for {size}",
+      "heading": "{size} · {code}",
+      "tabs": "Details for {size}",
+      "tab": {
+        "price": "Price",
+        "stock": "Stock"
+      },
+      "price": {
+        "now": "Price now",
+        "none": "No price yet",
+        "since": "Since {since}",
+        "unsaved": "Typed, not saved yet",
+        "held": "Waiting for review",
+        "held-help": "This new price goes on sale after our check.",
+        "special": "Special price",
+        "special-none": "None",
+        "special-running": "{amount}, running, ends {ends}",
+        "special-scheduled": "{amount}, scheduled, ends {ends}",
+        "retired": "This size is no longer sold on the platform.",
+        "special-link": "Set or end a special price"
+      },
+      "stock": {
+        "caption": "Stock of {size} by location",
+        "location": "Location",
+        "in-stock": "In stock",
+        "held": "Held for orders",
+        "lowest": "Lowest you can set",
+        "unsaved": "Typed: {value}, not saved yet",
+        "help": "Change stock in the row above. Held units are in checkouts or orders that are not sent yet, so stock cannot go below them.",
+        "link": "Stock by location"
+      }
     }
   },
   "stock": {
@@ -5621,6 +5655,58 @@
           }
         ]
       },
+      "offers-offerId": {
+        "title": "Offer",
+        "about": "One offer to sell a product: its details, then each size with its price and stock on the same page.",
+        "good": [
+          "Type prices and stock in the size rows. Nothing is saved until you press Save.",
+          "Details opens one size at a time, with a Price tab and a Stock tab. Closing it keeps what you typed.",
+          "Held units are in orders not sent yet, so stock cannot go below them."
+        ],
+        "related": [
+          {
+            "label": "Products",
+            "href": "/products"
+          },
+          {
+            "label": "Stock locations",
+            "href": "/settings/stock-locations"
+          }
+        ]
+      },
+      "offers-offerId-prices": {
+        "title": "Prices",
+        "about": "Set this offer's prices and special prices, size by size.",
+        "good": [
+          "Dates and times are in your store's time zone ({zone}).",
+          "A large price change waits for review. The current price stays until it is approved."
+        ],
+        "related": [
+          {
+            "label": "Products",
+            "href": "/products"
+          },
+          {
+            "label": "Stock locations",
+            "href": "/settings/stock-locations"
+          }
+        ]
+      },
+      "offers-offerId-stock": {
+        "title": "Stock levels",
+        "about": "How many you have of each size in each stock location.",
+        "good": [],
+        "related": [
+          {
+            "label": "Products",
+            "href": "/products"
+          },
+          {
+            "label": "Stock locations",
+            "href": "/settings/stock-locations"
+          }
+        ]
+      },
       "offers-offerId-edit": {
         "title": "Edit offer",
         "about": "Change the details of this offer.",
@@ -5918,77 +6004,6 @@
         "related": []
       }
     },
-    "tabbed": {
-      "t-offers-offerId": {
-        "page": "Offer",
-        "about": "One offer to sell a product: its details, price, stock and variants.",
-        "good": [],
-        "tabs": [
-          {
-            "label": "Details",
-            "text": "One offer: its status, price, stock and variants.",
-            "points": [],
-            "related": [
-              {
-                "label": "Products",
-                "href": "/products"
-              },
-              {
-                "label": "Stock locations",
-                "href": "/settings/stock-locations"
-              }
-            ]
-          },
-          {
-            "label": "Prices",
-            "text": "Set this offer's price, and schedule price changes.",
-            "points": [
-              "Dates and times are in your store's time zone ({zone}).",
-              "A large price change waits for review. The current price stays until it is approved."
-            ],
-            "related": [
-              {
-                "label": "Products",
-                "href": "/products"
-              },
-              {
-                "label": "Stock locations",
-                "href": "/settings/stock-locations"
-              }
-            ]
-          },
-          {
-            "label": "Stock",
-            "text": "How many you have in each stock location.",
-            "points": [],
-            "related": [
-              {
-                "label": "Products",
-                "href": "/products"
-              },
-              {
-                "label": "Stock locations",
-                "href": "/settings/stock-locations"
-              }
-            ]
-          },
-          {
-            "label": "Variants",
-            "text": "The sizes, flavours or colours you sell of this product.",
-            "points": [],
-            "related": [
-              {
-                "label": "Products",
-                "href": "/products"
-              },
-              {
-                "label": "Stock locations",
-                "href": "/settings/stock-locations"
-              }
-            ]
-          }
-        ]
-      }
-    }
+    "tabbed": {}
   }
 }

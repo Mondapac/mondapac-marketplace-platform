@@ -9,6 +9,9 @@ export const HELP_REGISTRY: HelpRegistry = {
     { route: '/orders/[sellerOrderId]/packing-slip', slug: 'orders-sellerOrderId-packing-slip' },
     { route: '/orders/packing-slips', slug: 'orders-packing-slips' },
     { route: '/offers', slug: 'offers' },
+    { route: '/offers/[offerId]', slug: 'offers-offerId' },
+    { route: '/offers/[offerId]/prices', slug: 'offers-offerId-prices' },
+    { route: '/offers/[offerId]/stock', slug: 'offers-offerId-stock' },
     { route: '/offers/[offerId]/edit', slug: 'offers-offerId-edit' },
     { route: '/products', slug: 'products' },
     { route: '/products/new', slug: 'products-new' },
@@ -42,21 +45,5 @@ export const HELP_REGISTRY: HelpRegistry = {
     { route: '/account/security', slug: 'account-security' },
     { route: '/account/sessions', slug: 'account-sessions' },
   ],
-  tabbed: [
-    {
-      slug: 't-offers-offerId',
-      routes: [
-        '/offers/[offerId]',
-        '/offers/[offerId]/prices',
-        '/offers/[offerId]/stock',
-        '/offers/[offerId]/variants',
-      ],
-      tabs: [
-        { label: 'Details', route: '/offers/[offerId]' },
-        { label: 'Prices', route: '/offers/[offerId]/prices' },
-        { label: 'Stock', route: '/offers/[offerId]/stock' },
-        { label: 'Variants', route: '/offers/[offerId]/variants' },
-      ],
-    },
-  ],
+  tabbed: [],
 };
