@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-pricing-cost-acting-as-tests",
+  "area": "seller",
+  "title": "آزمون رد نشست ورود به‌جای فروشنده در مسیرهای هزینه، همراه SEL-08",
+  "desc": "امروز هیچ نشستی نشانهٔ acting-as را نمی‌سازد، پس دروازه چنین بازیگری را با access.denied رد می‌کند و بررسی خود کاربردهای pricing.set-cost و pricing.view-cost (pricing.acting-as-refused، HTTP 403) آزموده نمی‌شود. وقتی برش SEL-08 نشانه را بسازد، باید آزمون‌های واحد و HTTP این رد روی هر دو بازار اضافه شوند (یافتهٔ سجاد Q11، بازبینی PR 1336).",
+  "src": "apps/api/src/modules/pricing/application/use-cases/offer-cost.use-cases.spec.ts (PR 1336)",
+  "date": "2026-11-25",
+  "trig": "همراه برش SEL-08 (ورود به‌جای فروشنده)",
+  "prio": "متوسط",
+  "status": "موکول"
+}
