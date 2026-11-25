@@ -25,7 +25,10 @@ import { Offer, type OfferState } from '../../domain/offer';
 import type { ClaimFacts, OfferTagState, TagClaimQuery } from '../../domain/offer-tag';
 import { CategoryPathsUnavailableError } from '../ports/category-paths.reader';
 import type { CheckClaimText } from '../claim-text/check-claim-text.service';
-import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
+import type { AuditEntry } from '@mondapac/shared-kernel';
+import type { AuditWriter } from '../../../../platform/audit/audit-writer';
+import type { OfferReviewFacts } from '../../domain/offer-review-policy';
+import type { OfferReviewReferral, OfferReviewSettings } from '../ports/offer-review';
 import type { OfferRepository } from '../ports/offer.repository';
 import type { ProductRepository } from '../ports/product.repository';
 import { OwnOfferAddTag } from './own-offer-add-tag.use-case';
@@ -118,6 +121,13 @@ describe.each([
       unavailable?: boolean;
       /** Each read of the Offer after the first answers this version (another write landed). */
       laterVersion?: number;
+      /** The Offer review settings; default risk-based with automatic badges (publishes). */
+      review?: OfferReviewSettings;
+      reviewFacts?: Partial<OfferReviewFacts>;
+      /** The settings read rejects (the real adapter never does; the use case must not publish). */
+      reviewInputsFail?: boolean;
+      /** The referral write throws in the unit. */
+      referralFails?: boolean;
     } = {},
   ) {
     let current: { state: OfferState; tags: readonly OfferTagState[] } | null =
@@ -150,6 +160,15 @@ describe.each([
       return evaluate(context, queries);
     };
     const outbox = new RecordingOutbox();
+    const referrals: OfferReviewReferral[] = [];
+    const audits: AuditEntry[] = [];
+    const audit = {
+      record: (_c: CallContext, entry: AuditEntry) => {
+        if (openUnits === 0) throw new Error('audited outside a unit');
+        audits.push(entry);
+        return Promise.resolve();
+      },
+    } satisfies AuditWriter;
     const facts = initial === null ? null : factsOf(initial.state);
     const claims = new FixedFactsClaimQueryBuilder(options.published === false ? null : facts);
     const offers: OfferRepository = {
@@ -223,7 +242,31 @@ describe.each([
       eligibility,
       allowedTypes: { allowedFor: () => Promise.resolve('all' as const) },
       check,
-      policy: { approvalRequired: () => Promise.resolve(false) } as unknown as CatalogMarketPolicy,
+      reviewInputs: {
+        settings: () =>
+          options.reviewInputsFail === true
+            ? Promise.reject(new Error('settings down'))
+            : Promise.resolve(
+                options.review ?? { mode: 'risk-based', certificateBadges: 'automatic' },
+              ),
+        facts: () =>
+          Promise.resolve({
+            emergencyStop: false,
+            probation: false,
+            fullReview: false,
+            sensitiveCategory: false,
+            ...options.reviewFacts,
+          }),
+      },
+      referrals: {
+        record: (_m, referral) => {
+          if (openUnits === 0) throw new Error('recorded outside a unit');
+          if (options.referralFails === true) throw new Error('insert failed');
+          referrals.push(referral);
+          return Promise.resolve();
+        },
+      },
+      audit,
       outbox,
       claims,
       evaluator,
@@ -237,6 +280,8 @@ describe.each([
       submit,
       saved,
       outbox,
+      referrals,
+      audits,
       evaluator,
       claims,
       offerId: initial?.state.id ?? ids.next<'Offer'>(),
@@ -476,6 +521,93 @@ describe.each([
       expect(r.saved).toHaveLength(1);
       expect(r.current()!.tags).toEqual([expect.objectContaining({ typeCode, status: 'active' })]);
       expect(r.outbox.types).toContain('catalog.offer-tag-added.v1');
+    });
+
+    it('records the review decision and its audit when it publishes at once', async () => {
+      const r = rig({ offer: draft() });
+      await r.submit.execute(contextOf('seller'), { offerId: r.offerId });
+      expect(r.referrals).toEqual([
+        expect.objectContaining({
+          offerId: r.offerId,
+          trigger: 'first-publication',
+          reasons: [],
+          policyVersion: 1,
+          offerVersion: r.current()!.state.version,
+        }),
+      ]);
+      expect(r.audits).toEqual([
+        expect.objectContaining({
+          action: 'catalog.offer.review-referred',
+          after: expect.objectContaining({ outcome: 'published', reasons: [] }) as unknown,
+        }),
+      ]);
+    });
+
+    it('queues the Offer with its reasons when the policy finds any (R1, R2)', async () => {
+      const r = rig({
+        offer: draft(),
+        review: { mode: 'risk-based', certificateBadges: 'review' },
+        reviewFacts: { probation: true },
+      });
+      const outcome = await r.submit.execute(contextOf('seller'), {
+        offerId: r.offerId,
+        requestedTags: [typeCode],
+      });
+      expect(outcome).toEqual({ ok: true, value: { published: false } });
+      expect(r.current()!.state.status).toBe('pending-first-publish');
+      expect(r.referrals[0]!.reasons).toEqual(['probation', 'certificate-badge']);
+      expect(r.audits[0]).toEqual(
+        expect.objectContaining({
+          after: expect.objectContaining({
+            outcome: 'queued',
+            reasons: ['probation', 'certificate-badge'],
+          }) as unknown,
+        }),
+      );
+      expect(r.outbox.types).not.toContain('catalog.offer-published.v1');
+    });
+
+    it.each([
+      ['handling (R3)', { handling: 'FRESH' as const }, ['handling']],
+      ['contact text (R5)', { description: { 'en-AU': 'Call 0412 345 678' } }, ['contact-text']],
+    ])('queues an Offer for %s with only that reason', async (_name, overrides, reasons) => {
+      const r = rig({ offer: offerState({ ...draft(), ...overrides }) });
+      const outcome = await r.submit.execute(contextOf('seller'), { offerId: r.offerId });
+      expect(outcome).toEqual({ ok: true, value: { published: false } });
+      expect(r.current()!.state.status).toBe('pending-first-publish');
+      expect(r.referrals[0]!.reasons).toEqual(reasons);
+      expect(r.outbox.types).not.toContain('catalog.offer-published.v1');
+    });
+
+    it('never publishes when the review inputs fail, and writes nothing', async () => {
+      const r = rig({ offer: draft(), reviewInputsFail: true });
+      await expect(r.submit.execute(contextOf('seller'), { offerId: r.offerId })).rejects.toThrow();
+      expect(r.saved).toHaveLength(0);
+      expect(r.referrals).toHaveLength(0);
+      expect(r.outbox.types).toEqual([]);
+    });
+
+    it('announces nothing when the decision cannot be stored (one unit with the save)', async () => {
+      const r = rig({ offer: draft(), referralFails: true });
+      await expect(r.submit.execute(contextOf('seller'), { offerId: r.offerId })).rejects.toThrow();
+      expect(r.audits).toHaveLength(0);
+      expect(r.outbox.types).toEqual([]);
+    });
+
+    it('queues everything in mode all, and nothing but an emergency stop in mode off', async () => {
+      const all = rig({ offer: draft(), review: { mode: 'all', certificateBadges: 'automatic' } });
+      expect(await all.submit.execute(contextOf('seller'), { offerId: all.offerId })).toEqual({
+        ok: true,
+        value: { published: false },
+      });
+      expect(all.referrals[0]!.reasons).toEqual(['review-all']);
+      const off = rig({
+        offer: draft(),
+        review: { mode: 'off', certificateBadges: 'review' },
+        reviewFacts: { probation: true, emergencyStop: true },
+      });
+      await off.submit.execute(contextOf('seller'), { offerId: off.offerId });
+      expect(off.referrals[0]!.reasons).toEqual(['emergency-stop']);
     });
 
     it('refuses a submit under a paused product, which stays published (Hassan L-583-1)', async () => {

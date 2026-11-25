@@ -431,6 +431,14 @@ import {
 import { FacadeDescriptionWriterSwitches } from './description-writer-switches';
 import { GatewayDescriptionWriterModel } from './gateway-description-writer-model';
 import { RegistryMarketDayCalendar } from './registry-market-day-calendar';
+import {
+  OFFER_REVIEW_INPUTS,
+  OFFER_REVIEW_REFERRAL_STORE,
+  type OfferReviewInputs,
+  type OfferReviewReferralStore,
+} from '../application/ports/offer-review';
+import { FacadeOfferReviewInputs } from './facade-offer-review-inputs';
+import { PrismaOfferReviewReferralStore } from './prisma-offer-review-referral.store';
 
 export const catalogProviders: readonly Provider[] = [
   {
@@ -450,6 +458,18 @@ export const catalogProviders: readonly Provider[] = [
     inject: [SETTINGS_FACADE, SELLERS_FACADE],
     useFactory: (settings: SettingsFacade, sellers: SellersFacade): DescriptionWriterSwitches =>
       new FacadeDescriptionWriterSwitches(settings, sellers),
+  },
+  {
+    provide: OFFER_REVIEW_INPUTS,
+    inject: [SETTINGS_FACADE],
+    useFactory: (settings: SettingsFacade): OfferReviewInputs =>
+      new FacadeOfferReviewInputs(settings),
+  },
+  {
+    provide: OFFER_REVIEW_REFERRAL_STORE,
+    inject: [PrismaService, ID_GENERATOR],
+    useFactory: (prisma: PrismaService, ids: IdGenerator): OfferReviewReferralStore =>
+      new PrismaOfferReviewReferralStore(prisma, ids),
   },
   {
     provide: MARKET_DAY_CALENDAR,

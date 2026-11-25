@@ -28,7 +28,11 @@ export {
   type ListPaging,
   type SettingDefinition,
 } from '../domain/definitions';
-export { SETTINGS_FACADE, type SettingsFacade } from './settings.facade';
+export {
+  SETTINGS_FACADE,
+  type OfferReviewPolicySettings,
+  type SettingsFacade,
+} from './settings.facade';
 export {
   SETTINGS_AI_MANAGE,
   SETTINGS_AI_VIEW,

@@ -65,6 +65,7 @@ import {
 } from '../../platform/authz';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
+import { OFFER_REVIEW_INPUTS, OFFER_REVIEW_REFERRAL_STORE } from './application/ports/offer-review';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { registerEvents } from '../../platform/events/event-catalogue';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
@@ -664,6 +665,8 @@ const PORT = {
   counters: RATE_COUNTER_REPOSITORY,
   counterKeys: RATE_COUNTER_KEYS,
   policy: CATALOG_MARKET_POLICY,
+  reviewInputs: OFFER_REVIEW_INPUTS,
+  referrals: OFFER_REVIEW_REFERRAL_STORE,
   matcher: CLAIM_TEXT_MATCHER,
   check: CheckClaimText,
   save: SaveWorkingCopy,
@@ -2353,7 +2356,9 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       eligibility: true,
       allowedTypes: true,
       check: true,
-      policy: true,
+      reviewInputs: true,
+      referrals: true,
+      audit: true,
       outbox: true,
       claims: true,
       evaluator: true,

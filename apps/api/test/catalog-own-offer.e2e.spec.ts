@@ -12,6 +12,8 @@ import {
   type CatalogMarketPolicy,
 } from '../src/modules/catalog/application/ports/catalog-market-policy';
 import { OFFER_REPOSITORY } from '../src/modules/catalog/application/ports/offer.repository';
+import { OFFER_REVIEW_REFERRAL_STORE } from '../src/modules/catalog/application/ports/offer-review';
+import { AUDIT_WRITER } from '../src/platform/audit/audit-writer';
 import { OFFER_SELL_UNIT_REPOSITORY } from '../src/modules/catalog/application/ports/offer-sell-unit.repository';
 import { OFFER_SELL_UNITS_READER } from '../src/modules/catalog/application/ports/offer-sell-units.reader';
 import { PRODUCT_SELL_UNIT_FACTS_READER } from '../src/modules/catalog/application/ports/product-sell-unit-facts.reader';
@@ -197,7 +199,11 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
           .overrideProvider(CLAIM_EVALUATOR)
           .useValue(evaluator)
           .overrideProvider(ClaimQueryBuilder)
-          .useValue(claimFacts),
+          .useValue(claimFacts)
+          .overrideProvider(OFFER_REVIEW_REFERRAL_STORE)
+          .useValue({ record: () => Promise.resolve() })
+          .overrideProvider(AUDIT_WRITER)
+          .useValue({ record: () => Promise.resolve() }),
     }));
   }
 

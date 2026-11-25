@@ -1758,6 +1758,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       ],
     },
     'catalog.offer_history': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'catalog.offer_review_referrals': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Categories C9a (data design 3.22): only the decision moves on a proposal; only the status,
     // the merge target and the version on a shelf; a shelf's names are written once with it.
     'catalog.category_proposals': {

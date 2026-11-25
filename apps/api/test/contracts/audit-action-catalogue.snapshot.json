@@ -502,6 +502,19 @@
     }
   },
   {
+    "action": "catalog.offer.review-referred",
+    "targetType": "catalog.offer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "outcome": "enumOf(queued|published)",
+      "policyVersion": "integer",
+      "reasons": "listOf(enumOf(emergency-stop|probation|certificate-badge|handling|contact-text|full-review|sensitive-category|review-all), max 8)",
+      "trigger": "enumOf(first-publication)"
+    }
+  },
+  {
     "action": "catalog.missing-details-email.requested",
     "targetType": "catalog.missing-details-email",
     "targetId": "id",

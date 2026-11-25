@@ -20,6 +20,7 @@ import { MarketRegistry } from '../../platform/market-config/market-registry';
 import { ViewAiSettings } from './application/use-cases/view-ai-settings.use-case';
 import { ChangeOfferReviewSettings } from './application/use-cases/change-offer-review-settings.use-case';
 import { ViewOfferReviewSettings } from './application/use-cases/view-offer-review-settings.use-case';
+import { ReadOfferReviewPolicy } from './application/use-cases/read-offer-review-policy.use-case';
 import { ChangeCartModeSetting } from './application/use-cases/change-cart-mode-setting.use-case';
 import { ChangeListPagingSetting } from './application/use-cases/change-list-paging-setting.use-case';
 import { ReadListPaging } from './application/use-cases/read-list-paging.use-case';
@@ -87,6 +88,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ChangeAiSetting,
       ViewOfferReviewSettings,
       ChangeOfferReviewSettings,
+      ReadOfferReviewPolicy,
       ReadAiDescriptionWriter,
       ReadCartMode,
       ViewMonthlyRevenueTargetSetting,
@@ -108,12 +110,18 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     SETTINGS_SYSTEM_CHANGES.reverter(SETTING_SUBJECT_KIND, SETTINGS_REVIEW_AREA, SETTINGS_REVERTER),
     {
       provide: SETTINGS_FACADE,
-      inject: [ReadAiDescriptionWriter, ReadCartMode, ReadMonthlyRevenueTarget],
+      inject: [
+        ReadAiDescriptionWriter,
+        ReadCartMode,
+        ReadMonthlyRevenueTarget,
+        ReadOfferReviewPolicy,
+      ],
       useFactory: (
         read: ReadAiDescriptionWriter,
         cartMode: ReadCartMode,
         target: ReadMonthlyRevenueTarget,
-      ) => new SettingsFacadeImplementation(read, cartMode, target),
+        offerReview: ReadOfferReviewPolicy,
+      ) => new SettingsFacadeImplementation(read, cartMode, target, offerReview),
     },
   ],
   exports: [SETTINGS_FACADE],
