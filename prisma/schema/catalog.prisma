@@ -1068,7 +1068,7 @@ model CatalogOfferPendingChange {
   proposedHandling     String?                      @map("proposed_handling")
   /// Requested certification type codes; empty = none.
   proposedTagTypes     String[]                     @default([]) @map("proposed_tag_types")
-  /// certificate-badge | handling | contact-text | review-all; never empty.
+  /// emergency-stop | certificate-badge | handling | contact-text | review-all; never empty.
   reasons              String[]
   policyVersion        Int                          @map("policy_version")
   /// pending | approved | changes-requested | rejected | withdrawn | superseded.
