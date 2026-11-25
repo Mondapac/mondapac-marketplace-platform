@@ -92,17 +92,21 @@ describe('seller prices of several Offers over HTTP (offer page PR 8)', () => {
 
   const marketOf = (code: string) => testMarketContext(code, PLATFORM_TENANT_ID);
 
-  async function seeded(code: string) {
+  async function seeded(
+    code: string,
+    roleCode = 'seller-owner',
+    sellerState: 'approved' | 'pending' = 'approved',
+  ) {
     await app.get(SeedRoles).execute(testCallContext(marketOf(code), 'system', 'price-0001'), {});
     const marketId = code as AccountState['marketId'];
     const ownerRole = [...fakes.roles.values()].find(
-      (r) => r.marketId === code && r.scope === 'seller' && r.seedCode === 'seller-owner',
+      (r) => r.marketId === code && r.scope === 'seller' && r.seedCode === roleCode,
     )!.id;
     fakes.seedSellerAccess({
       sellerId: SELLER,
       marketId,
       origin: 'self',
-      state: 'approved',
+      state: sellerState,
       stateChangedAt: START,
       reapplyCount: 0,
       registeredAt: START,
@@ -234,6 +238,43 @@ describe('seller prices of several Offers over HTTP (offer page PR 8)', () => {
       });
       expect(none.status).toBe(400);
       expect(anonymous.status).toBe(401);
+    });
+
+    it('leaves out an Offer of another seller, as it leaves out an unknown one', async () => {
+      await boot();
+      await seeded(code);
+      const foreign = id<'Offer'>(0xc0aa);
+      offers.put(marketOf(code), foreign, {
+        sellerId: id<'Seller'>(0xb0aa),
+        productId: PRODUCT,
+        deleted: false,
+        priceableVariantIds: [VARIANT],
+      });
+
+      const answer = await get(code, sessionOf(code), `?offerIds=${foreign},${OFFER}`);
+
+      expect(answer.status).toBe(200);
+      expect(
+        (answer.body as { offers: { offerId: string }[] }).offers.map((o) => o.offerId),
+      ).toEqual([OFFER]);
+    });
+
+    it('refuses a role without pricing.price.view, and a seller not yet approved, with 403', async () => {
+      await boot();
+      await seeded(code, 'customer-service');
+      const noKey = await get(code, sessionOf(code), `?offerIds=${OFFER}`);
+      await app.close();
+
+      await boot();
+      fakes.reset();
+      await seeded(code, 'seller-owner', 'pending');
+      const pending = await get(code, sessionOf(code), `?offerIds=${OFFER}`);
+
+      expect(noKey.status).toBe(403);
+      expect(noKey.headers['cache-control']).toBe('no-store');
+      expect(noKey.body).toEqual({ statusCode: 403, code: 'access.denied' });
+      expect(pending.status).toBe(403);
+      expect(pending.body).toEqual({ statusCode: 403, code: 'access.seller-not-approved' });
     });
   });
 });

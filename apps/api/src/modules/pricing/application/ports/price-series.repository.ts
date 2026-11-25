@@ -130,9 +130,13 @@ export interface PriceSeriesRepository {
   /** Every series of an Offer, retired ones included (the Offer-removed handler, D 6.4). */
   findByOffer(market: MarketContext, offerId: Id<'Offer'>): Promise<readonly PriceSeries[]>;
 
-  /** Every series of several Offers (one read for a page of the seller's Offer list). */
+  /**
+   * Every series of several Offers of one seller (one read for a page of the seller's Offer list).
+   * A series of another seller is left out: a second check beside the use case's ownership check.
+   */
   findByOffers(
     market: MarketContext,
+    sellerId: Id<'Seller'>,
     offerIds: readonly Id<'Offer'>[],
   ): Promise<readonly PriceSeries[]>;
 

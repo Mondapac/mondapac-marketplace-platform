@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { VariantPrice } from '../price/types.ts';
 import type { StockCell } from '../stock/levels-types.ts';
 import {
+  basesAfterSave,
   changeLines,
   inlineOffersOf,
   plansOf,
@@ -66,6 +67,25 @@ describe('inlineOffersOf', () => {
     expect(offers.has(O2)).toBe(false);
     expect(inlineOffersOf(null, null).size).toBe(0);
   });
+
+  it('leaves retired sizes out of the price read, and marks an Offer read without prices', () => {
+    const priced = inlineOffersOf(
+      {
+        currency: 'AUD',
+        offers: [
+          { offerId: O1, variants: [price(V1, '950'), price(V2, '1790', { retired: true })] },
+        ],
+      },
+      null,
+    );
+    const unpriced = inlineOffersOf(null, {
+      offers: [{ offerId: O1, variants: [{ variantId: V1, sources: [cell(V1, S1, 2)] }] }],
+    });
+
+    expect(priced.get(O1)?.rows.map((row) => row.variantId)).toEqual([V1]);
+    expect(priced.get(O1)?.priced).toBe(true);
+    expect(unpriced.get(O1)?.priced).toBe(false);
+  });
 });
 
 describe('rowEditing', () => {
@@ -78,6 +98,7 @@ describe('rowEditing', () => {
       stock: {},
     })),
     sourceIds: Array.from({ length: sources }, (_, i) => `s${i}`),
+    priced: true,
   });
 
   it('edits one size with one location in the row', () => {
@@ -91,6 +112,13 @@ describe('rowEditing', () => {
   });
   it('edits nothing of a retired size', () => {
     expect(rowEditing(offer(1, 1, true))).toEqual({ price: false, stock: false, opens: null });
+  });
+  it('offers no price field when the prices could not be read', () => {
+    expect(rowEditing({ ...offer(1, 1), priced: false })).toEqual({
+      price: false,
+      stock: true,
+      opens: null,
+    });
   });
 });
 
@@ -166,5 +194,22 @@ describe('plans, change lines and drafts', () => {
     const now = withDraft(sent, O2, V2, '9.95');
 
     expect(withoutSaved(now, { [O1]: [V1], [O2]: [V2] }, sent)).toEqual({ [O2]: { [V2]: '9.95' } });
+  });
+
+  it('keeps the read version of a cell still typed, and the answered one of a cell typed again', () => {
+    const bases = {
+      [O1]: { [`price:${V1}`]: 4, [`stock:${V1}:${S1}`]: 2 },
+      [O2]: { [`price:${V2}`]: 7 },
+    };
+    const seen = { [O1]: { [`price:${V1}`]: 5, [`stock:${V1}:${S1}`]: 2 } };
+
+    const left = basesAfterSave(
+      bases,
+      seen,
+      { [O1]: { [V1]: '9.95' }, [O2]: { [V2]: '1.00' } },
+      {},
+    );
+
+    expect(left).toEqual({ [O1]: { [`price:${V1}`]: 5 }, [O2]: { [`price:${V2}`]: 7 } });
   });
 });

@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { err, ok, parseId } from '@mondapac/shared-kernel';
+import { err, ok, parseIdList } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
@@ -84,7 +84,8 @@ export class ViewOffersPrices extends UseCase<
     ) {
       return err({ code: 'access.denied' });
     }
-    const asked = parseOfferIds(input?.offerIds, MAX_LIST_OFFERS);
+    const sellerId = actor.sellerId;
+    const asked = parseIdList<'Offer'>(input?.offerIds, MAX_LIST_OFFERS);
     if (asked === null) {
       return err({ code: 'validation.failed', fields: [{ path: 'offerIds', code: 'format' }] });
     }
@@ -105,6 +106,7 @@ export class ViewOffersPrices extends UseCase<
             ? []
             : await this.deps.series.findByOffers(
                 market,
+                sellerId,
                 own.map((item) => item.offerId),
               ),
         ),
@@ -139,18 +141,4 @@ export class ViewOffersPrices extends UseCase<
     });
     return ok({ currency: this.deps.policies.forMarket(market).currency, offers });
   }
-}
-
-/** Comma-separated Offer ids: 1 to `max`, each a UUID and each once. Null for anything else. */
-export function parseOfferIds(text: unknown, max: number): readonly Id<'Offer'>[] | null {
-  if (typeof text !== 'string' || text.length === 0 || text.length > max * 37) return null;
-  const parts = text.split(',');
-  if (parts.length > max) return null;
-  const ids: Id<'Offer'>[] = [];
-  for (const part of parts) {
-    const id = parseId<'Offer'>(part);
-    if (!id.ok || ids.includes(id.value)) return null;
-    ids.push(id.value);
-  }
-  return ids;
 }

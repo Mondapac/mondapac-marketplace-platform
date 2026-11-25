@@ -3,6 +3,8 @@
 import {
   Badge,
   Button,
+  CARD_TABLE,
+  Icon,
   SaveBar,
   TextField,
   toast,
@@ -36,6 +38,7 @@ import {
   stockTotal,
   withDraft,
   withoutSaved,
+  basesAfterSave,
   type Drafts,
   type InlineOffer,
   type OffersPricesAnswer,
@@ -133,7 +136,22 @@ export function useOffersInline({
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
   const [saving, setSaving] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  // The version each typed cell was read at, kept from its first keystroke: a later read (back on
+  // the page, or after a save) never moves a draft onto a newer version, so a value changed
+  // elsewhere meanwhile is refused as changed, not overwritten. Keys are those of `sendSizeWrites`.
+  const [bases, setBases] = useState<
+    Readonly<Record<string, Readonly<Record<string, number | null>>>>
+  >({});
+  // The drafts as they are now, for the end of a save that awaited while the seller typed on.
+  const priceDraftsRef = useRef(priceDrafts);
+  const stockDraftsRef = useRef(stockDrafts);
+  useEffect(() => {
+    priceDraftsRef.current = priceDrafts;
+    stockDraftsRef.current = stockDrafts;
+  }, [priceDrafts, stockDrafts]);
   const busy = useRef(false);
+  // Only the newest read counts: a slow answer for a page the seller has left is dropped.
+  const readSeq = useRef(0);
   const idsKey = rows.map((row) => row.offerId).join(',');
 
   useEffect(() => {
@@ -147,6 +165,7 @@ export function useOffersInline({
   const read = useCallback(
     async (ids: string) => {
       if (ids === '' || (!access.seePrice && !access.seeStock)) return;
+      const seq = ++readSeq.current;
       const [prices, stock] = await Promise.all([
         access.seePrice
           ? callApi<OffersPricesAnswer>('GET', `pricing/seller/offer-prices?offerIds=${ids}`)
@@ -155,6 +174,7 @@ export function useOffersInline({
           ? callApi<OffersStockAnswer>('GET', `inventory/seller/offer-stock?offerIds=${ids}`)
           : Promise.resolve(null),
       ]);
+      if (seq !== readSeq.current) return;
       if (
         (prices !== null && !prices.ok && prices.failure.status === 401) ||
         (stock !== null && !stock.ok && stock.failure.status === 401)
@@ -243,6 +263,15 @@ export function useOffersInline({
     await Promise.all(reads);
   }
 
+  /** Records the version a cell was read at, the first time it is typed in. */
+  function keepBase(offerId: string, key: string, version: number | null) {
+    setBases((old) =>
+      old[offerId] !== undefined && key in old[offerId]
+        ? old
+        : { ...old, [offerId]: { ...(old[offerId] ?? {}), [key]: version } },
+    );
+  }
+
   async function save() {
     if (busy.current) return;
     const found: Record<string, string> = {};
@@ -261,6 +290,7 @@ export function useOffersInline({
     const sentStocks = stockDrafts;
     const savedPrices: Record<string, string[]> = {};
     const savedStocks: Record<string, string[]> = {};
+    const seenAll: Record<string, Readonly<Record<string, number | null>>> = {};
     let done = 0;
     let stopped = false;
     let waitSeconds: number | null = null;
@@ -271,7 +301,7 @@ export function useOffersInline({
         rows: plan.offer.rows,
         writes: plan.writes,
         currency,
-        versions: {},
+        versions: bases[offerId] ?? {},
         csrfToken,
         guarded,
         messages: {
@@ -290,6 +320,7 @@ export function useOffersInline({
       }
       savedPrices[offerId] = [...sent.savedPrices];
       savedStocks[offerId] = [...sent.savedStocks];
+      seenAll[offerId] = sent.seen;
       done += sent.done;
       if (sent.stopped) {
         stopped = true;
@@ -301,10 +332,24 @@ export function useOffersInline({
     if (done > 0) await read(idsKey);
     busy.current = false;
     setSaving(false);
-    setPriceDrafts((old) => withoutSaved(old, savedPrices, sentPrices));
-    setStockDrafts((old) => withoutSaved(old, savedStocks, sentStocks));
+    const leftPrices = withoutSaved(priceDraftsRef.current, savedPrices, sentPrices);
+    const leftStocks = withoutSaved(stockDraftsRef.current, savedStocks, sentStocks);
+    setPriceDrafts(leftPrices);
+    setStockDrafts(leftStocks);
+    setBases((old) => basesAfterSave(old, seenAll, leftPrices, leftStocks));
     setErrors(found);
     const failed = Object.keys(found).length;
+    // A cell that failed on an Offer of another page shows its message only there: name it here.
+    const elsewhere = [
+      ...new Set(
+        Object.keys(found)
+          .map((key) => key.split('|')[0] ?? '')
+          .filter((offerId) => !rows.some((row) => row.offerId === offerId)),
+      ),
+    ].map((offerId) => names[offerId] ?? offerId);
+    if (elsewhere.length > 0) {
+      toast.warning(t('catalog.offers.inline.failed-elsewhere', { names: elsewhere.join(', ') }));
+    }
     if (waitSeconds !== null) {
       toast.warning(
         t('catalog.variants-table.throttled', {
@@ -314,13 +359,19 @@ export function useOffersInline({
       );
     } else if (done > 0 && failed === 0 && !stopped) {
       toast.success(t('catalog.variants-table.saved', { count: done }));
+    } else if (stopped) {
+      toast.info(
+        done > 0
+          ? t('catalog.offers.inline.stopped', { done })
+          : t('catalog.variants-table.cancelled'),
+      );
     } else if (done > 0) toast.info(t('catalog.variants-table.partial', { done, failed }));
-    else if (stopped) toast.info(t('catalog.variants-table.cancelled'));
   }
 
   function discard() {
     setPriceDrafts({});
     setStockDrafts({});
+    setBases({});
     setErrors({});
   }
 
@@ -355,13 +406,15 @@ export function useOffersInline({
       <Button
         variant="link"
         size="sm"
+        className="h-auto px-0 py-0.5"
         aria-expanded={open}
-        aria-controls={`${row.offerId}-more`}
+        aria-controls={open ? `${row.offerId}-more` : undefined}
         onClick={() => void openSizes(row.offerId)}
       >
         {opens === 'sizes'
           ? t('catalog.offers.inline.sizes', { count: offer.rows.length })
           : t('catalog.offers.inline.locations', { count: offer.sourceIds.length })}
+        <Icon name={open ? 'chevron-up' : 'chevron-down'} className="size-4" />
       </Button>
     );
   }
@@ -376,9 +429,12 @@ export function useOffersInline({
         inputMode="decimal"
         value={priceDrafts[row.offerId]?.[size.variantId] ?? savedPriceText(size, currency)}
         error={errors[errorKey(row.offerId, size.variantId)]}
-        onChange={(event) =>
-          setPriceDrafts((old) => withDraft(old, offer.offerId, size.variantId, event.target.value))
-        }
+        onChange={(event) => {
+          keepBase(offer.offerId, `price:${size.variantId}`, size.price?.seriesVersion ?? null);
+          setPriceDrafts((old) =>
+            withDraft(old, offer.offerId, size.variantId, event.target.value),
+          );
+        }}
       />
     </div>
   );
@@ -400,9 +456,10 @@ export function useOffersInline({
           inputMode="numeric"
           value={stockDrafts[row.offerId]?.[key] ?? savedStockText(size, sourceId)}
           error={errors[errorKey(row.offerId, key)]}
-          onChange={(event) =>
-            setStockDrafts((old) => withDraft(old, offer.offerId, key, event.target.value))
-          }
+          onChange={(event) => {
+            keepBase(offer.offerId, `stock:${key}`, size.stock[sourceId]?.version ?? null);
+            setStockDrafts((old) => withDraft(old, offer.offerId, key, event.target.value));
+          }}
         />
       </div>
     );
@@ -416,7 +473,7 @@ export function useOffersInline({
     if (editing.price) {
       const draft = priceDrafts[row.offerId]?.[size.variantId];
       return (
-        <div className="flex flex-col gap-1">
+        <div className={`flex flex-col gap-1 ${access.editPrice ? 'lg:-mt-2.5' : ''}`}>
           {access.editPrice ? (
             priceField(row, offer, size, t('catalog.offers.inline.price-of', { product: row.name }))
           ) : size.price?.inForce == null ? (
@@ -424,6 +481,11 @@ export function useOffersInline({
           ) : (
             <span className="tabular-nums">{money(size.price.inForce.amount)}</span>
           )}
+          {access.editPrice && draft === undefined && size.price?.inForce == null ? (
+            <span className="text-xs text-fg-muted">
+              {t('catalog.quick-entry.state.needs-price')}
+            </span>
+          ) : null}
           <PriceNotes size={size} money={money} />
           {access.estimate && draft !== undefined ? (
             <DraftEstimate
@@ -462,12 +524,16 @@ export function useOffersInline({
     const editing = rowEditing(offer);
     const size = offer.rows[0] as TableRow;
     if (editing.stock && access.editStock) {
-      return stockField(
-        row,
-        offer,
-        size,
-        offer.sourceIds[0] as string,
-        t('catalog.offers.inline.stock-of', { product: row.name }),
+      return (
+        <div className="lg:-mt-2.5">
+          {stockField(
+            row,
+            offer,
+            size,
+            offer.sourceIds[0] as string,
+            t('catalog.offers.inline.stock-of', { product: row.name }),
+          )}
+        </div>
       );
     }
     const total = stockTotal(offer.rows);
@@ -515,6 +581,9 @@ export function useOffersInline({
 
   const footer = (
     <>
+      {canSave ? (
+        <p className="mt-2 text-sm text-fg-muted">{t('catalog.offers.inline.keys')}</p>
+      ) : null}
       {canSave ? (
         <form
           noValidate
@@ -592,15 +661,18 @@ function DraftEstimate({
   const estimate = estimateFor(state, size.variantId, amount);
   const shown = estimate ?? (amount === null ? null : lastEstimateFor(state, size.variantId));
   if (shown === null) return null;
+  const formatted = formatMinor(shown.youReceiveMinor, currency, locale);
   return (
     <span
       className={`text-xs ${estimate === null ? 'text-fg-muted' : ''}`}
       aria-busy={estimate === null}
       aria-live="polite"
     >
-      {t('catalog.offers.inline.receive', {
-        amount: formatMinor(shown.youReceiveMinor, currency, locale),
-      })}
+      {/* "≈ amount", as in the opened sizes; a screen reader hears the whole phrase. */}
+      <span aria-hidden="true">
+        {t('catalog.variants-table.receive.value', { amount: formatted })}
+      </span>
+      <span className="sr-only">{t('catalog.offers.inline.receive', { amount: formatted })}</span>
       {shown.taxInclusive ? null : ` ${t('catalog.variants-table.receive.before-tax')}`}
     </span>
   );
@@ -645,19 +717,29 @@ function SizesPanel({
   const estimates = useReceiveEstimates(row.offerId, customerPays, showReceive);
   const sourceIds = access.seeStock ? offer.sourceIds : [];
   const many = offer.rows.length > 1;
+  // One labelled line of a size's card below 1024 px; a plain cell from 1024 px.
+  const cardLine = `${CARD_TABLE.labelled} lg:p-2`;
 
   return (
-    <div className="relative overflow-x-auto">
+    // From 1024 px a table; below it each size is a card (size name, status, labelled lines), as
+    // in the list itself.
+    <div className="relative lg:overflow-x-auto">
       <table
-        className="w-full text-start text-sm"
-        onKeyDown={moveOnEnter}
+        className={CARD_TABLE.table}
+        onKeyDown={(event) => {
+          moveOnEnter(event);
+          // The list's own table moves on Enter too: this table's Enter is handled here only.
+          if (event.key === 'Enter') event.stopPropagation();
+        }}
         aria-label={t('catalog.offers.inline.sizes-of', { product: row.name })}
       >
-        <thead className="text-fg-muted">
+        <thead className="text-fg-muted max-lg:sr-only">
           <tr>
-            <th scope="col" className="p-2 font-medium">
-              {many ? t('catalog.variants-table.variant') : t('catalog.offers.inline.offer')}
-            </th>
+            {many ? (
+              <th scope="col" className="p-2 font-medium">
+                {t('catalog.variants-table.variant')}
+              </th>
+            ) : null}
             {access.seePrice ? (
               <th scope="col" className="p-2 font-medium">
                 {t('catalog.variants-table.your-price')}
@@ -682,7 +764,7 @@ function SizesPanel({
             </th>
           </tr>
         </thead>
-        <tbody>
+        <tbody className={CARD_TABLE.body}>
           {offer.rows.map((size, index) => {
             const label = sizeLabel(size, index);
             const retired = size.price?.retired === true;
@@ -699,14 +781,22 @@ function SizesPanel({
             const shown =
               estimate ?? (amount === null ? null : lastEstimateFor(estimates, size.variantId));
             return (
-              <tr key={size.variantId} className="border-t border-line align-top">
-                <th scope="row" className="whitespace-nowrap p-2 font-normal">
-                  {label === '' ? row.name : label}
-                </th>
+              <tr
+                key={size.variantId}
+                className={`${CARD_TABLE.row} lg:align-middle lg:[&>*]:align-middle max-lg:px-0`}
+              >
+                {many ? (
+                  <th
+                    scope="row"
+                    className="whitespace-nowrap p-2 text-start font-medium max-lg:p-0 lg:font-normal"
+                  >
+                    {label}
+                  </th>
+                ) : null}
                 {access.seePrice ? (
-                  <td className="p-2">
+                  <td className={cardLine} data-label={t('catalog.variants-table.your-price')}>
                     <div className="flex flex-col gap-1">
-                      {access.editPrice && !retired ? (
+                      {access.editPrice && offer.priced && !retired ? (
                         priceField(
                           size,
                           t('catalog.quick-entry.price-for', { product: row.name, size: label }),
@@ -721,7 +811,10 @@ function SizesPanel({
                   </td>
                 ) : null}
                 {showReceive ? (
-                  <td className="p-2 tabular-nums">
+                  <td
+                    className={`${cardLine} tabular-nums`}
+                    data-label={t('catalog.variants-table.receive.column')}
+                  >
                     {shown === null ? (
                       <Dash />
                     ) : (
@@ -746,7 +839,15 @@ function SizesPanel({
                   : locations.map((location) => {
                       const cell = size.stock[location.id];
                       return (
-                        <td key={location.id} className="p-2">
+                        <td
+                          key={location.id}
+                          className={cardLine}
+                          data-label={
+                            locations.length > 1
+                              ? t('catalog.quick-entry.stock-at', { location: location.name })
+                              : t('catalog.quick-entry.stock')
+                          }
+                        >
                           {access.editStock && !retired ? (
                             stockField(
                               size,
@@ -765,7 +866,13 @@ function SizesPanel({
                         </td>
                       );
                     })}
-                <td className="p-2">
+                <td
+                  className={
+                    many
+                      ? 'p-2 max-lg:col-start-2 max-lg:row-start-1 max-lg:p-0'
+                      : 'p-2 max-lg:col-span-full max-lg:p-0'
+                  }
+                >
                   <Badge tone={STATUS_TONE[status]}>
                     {t(`catalog.quick-entry.state.${status}`)}
                   </Badge>
@@ -775,7 +882,6 @@ function SizesPanel({
           })}
         </tbody>
       </table>
-      <p className="mt-2 text-sm text-fg-muted">{t('catalog.offers.inline.keys')}</p>
     </div>
   );
 }

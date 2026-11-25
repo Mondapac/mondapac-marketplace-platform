@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
-import { err, ok, parseId } from '@mondapac/shared-kernel';
-import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
+import { err, ok, parseIdList } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { INVENTORY_STOCK_VIEW } from '../../contracts/permissions';
@@ -45,8 +45,8 @@ export interface ViewOffersStockDependencies {
  * acting seller's Offers in one read, each Offer exactly as `inventory.view-offer-stock` answers
  * it (one cell per sell unit and location, with the level, the held quantity and the version the
  * write needs). An asked Offer that is not the seller's, is deleted, retired or unknown is left
- * out, so the answer never tells one from another. One read-only unit, a fixed number of
- * statements whatever the page size, and no write (ADR-0025).
+ * out, so the answer never tells one from another. One read-only unit, three statements (the held
+ * quantities split into one more per 1,000 stock items), and no write (ADR-0025).
  */
 export class ViewOffersStock extends UseCase<
   ViewOffersStockInput,
@@ -74,7 +74,7 @@ export class ViewOffersStock extends UseCase<
   ): Promise<Result<OffersStockView, ViewOffersStockFailure>> {
     const sellerId = sellerOf(context);
     if (sellerId === null) return err({ code: 'access.denied' });
-    const asked = parseOfferIds(input?.offerIds);
+    const asked = parseIdList<'Offer'>(input?.offerIds, MAX_LIST_OFFERS);
     if (asked === null) return validationFailed([{ path: 'offerIds', code: 'format' }]);
 
     const found = await this.deps.offers.sellUnitsOf(context, asked);
@@ -147,20 +147,4 @@ export class ViewOffersStock extends UseCase<
     });
     return ok({ offers });
   }
-}
-
-/** Comma-separated Offer ids: 1 to the most, each a UUID and each once. Null for anything else. */
-function parseOfferIds(text: unknown): readonly Id<'Offer'>[] | null {
-  if (typeof text !== 'string' || text.length === 0 || text.length > MAX_LIST_OFFERS * 37) {
-    return null;
-  }
-  const parts = text.split(',');
-  if (parts.length > MAX_LIST_OFFERS) return null;
-  const ids: Id<'Offer'>[] = [];
-  for (const part of parts) {
-    const id = parseId<'Offer'>(part);
-    if (!id.ok || ids.includes(id.value)) return null;
-    ids.push(id.value);
-  }
-  return ids;
 }

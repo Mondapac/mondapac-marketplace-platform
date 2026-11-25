@@ -1619,7 +1619,6 @@
         "sizes": "{count, plural, one {# size} other {# sizes}}",
         "locations": "{count, plural, one {# location} other {# locations}}",
         "sizes-of": "Sizes of {product}",
-        "offer": "Offer",
         "size-n": "Size {number}",
         "location-n": "Location {number}",
         "held": "In review: {amount}",
@@ -1630,7 +1629,9 @@
         "none": "none",
         "and-more": "{count, plural, one {and # more} other {and # more}}",
         "keys": "Type a price or stock and press Enter to move down. Nothing is saved until you press Save.",
-        "read-failed": "Prices and stock can't be shown right now. Reload the page to try again."
+        "read-failed": "Prices and stock can't be shown right now. Reload the page to try again.",
+        "stopped": "Saved {done}. The confirmation was cancelled, so the rest are kept as drafts.",
+        "failed-elsewhere": "Not saved on another page: {names}. Go back to that page to see why."
       }
     },
     "offer": {

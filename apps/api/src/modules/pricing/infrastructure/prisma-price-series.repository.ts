@@ -653,11 +653,12 @@ export class PrismaPriceSeriesRepository implements PriceSeriesRepository {
 
   async findByOffers(
     market: MarketContext,
+    sellerId: Id<'Seller'>,
     offerIds: readonly Id<'Offer'>[],
   ): Promise<readonly PriceSeries[]> {
     if (offerIds.length === 0) return [];
     const rows = await this.prisma.tx(market).pricingPriceSeries.findMany({
-      where: { marketId: market.marketId, offerId: { in: [...offerIds] } },
+      where: { marketId: market.marketId, sellerId, offerId: { in: [...offerIds] } },
       include: RECORDS_IN_ORDER,
       orderBy: { id: 'asc' },
     });

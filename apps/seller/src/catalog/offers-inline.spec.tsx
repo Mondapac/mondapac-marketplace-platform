@@ -284,7 +284,7 @@ describe('prices and stock in the Offer list', () => {
     expect(screen.queryByRole('columnheader', { name: 'Stock' })).toBeNull();
   });
 
-  it('says so when the prices cannot be read', async () => {
+  it('says so when the prices cannot be read, and offers no price field', async () => {
     serve({
       'pricing/seller/offer-prices': { ok: false, failure: { status: 503, code: 'x' } },
     });
@@ -295,5 +295,95 @@ describe('prices and stock in the Offer list', () => {
         "Prices and stock can't be shown right now. Reload the page to try again.",
       ),
     ).toBeTruthy();
+    // The stock still reads, so its field shows; the price cell is a dash, never an empty field.
+    expect(await screen.findByLabelText('Stock of Beef mince')).toBeTruthy();
+    expect(screen.queryByLabelText('Price of Beef mince')).toBeNull();
+  });
+
+  it('keeps sending the version a cell was typed at, even after a read brings a newer one', async () => {
+    let priceReads = 0;
+    call.mockImplementation(((method: string, path: string) => {
+      if (method === 'PUT' && path.includes('/regular-price')) {
+        return Promise.resolve({
+          ok: false,
+          failure: { status: 409, code: 'pricing.series-version-mismatch' },
+        });
+      }
+      if (method === 'PUT') return Promise.resolve(ok({ status: 'accepted', version: 3 }));
+      if (path.startsWith('pricing/seller/offer-prices')) {
+        priceReads += 1;
+        // Someone else changes the price after the first read: the series moves to version 9.
+        const version = priceReads === 1 ? 4 : 9;
+        return Promise.resolve(
+          ok({
+            ...PRICES,
+            offers: PRICES.offers.map((offer) => ({
+              ...offer,
+              variants: offer.variants.map((v) => ({ ...v, seriesVersion: version })),
+            })),
+          }),
+        );
+      }
+      if (path.startsWith('inventory/seller/offer-stock')) return Promise.resolve(ok(STOCK));
+      return Promise.resolve({ ok: false, failure: { status: 503, code: 'access.unavailable' } });
+    }) as never);
+    mount();
+    fireEvent.change(await screen.findByLabelText('Price of Beef mince'), {
+      target: { value: '16.90' },
+    });
+    fireEvent.change(screen.getByLabelText('Stock of Beef mince'), { target: { value: '60' } });
+
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save 2 changes' }));
+    });
+    // The stock saves, the price is refused; the list is read again (version 9 now).
+    await waitFor(() => expect(priceReads).toBe(2));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save 1 change' })).toBeTruthy());
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save 1 change' }));
+    });
+
+    await waitFor(() => expect(puts()).toHaveLength(3));
+    const prices = puts().filter(([, path]) => path.includes('/regular-price'));
+    expect(prices.map((put) => (put[2] as { expectedVersion: number }).expectedVersion)).toEqual([
+      4, 4,
+    ]);
+  });
+
+  it('counts only the sizes still sold when stock is not shown', async () => {
+    serve({
+      'pricing/seller/offer-prices': ok({
+        currency: 'AUD',
+        offers: [
+          { offerId: O1, variants: [price(V1, '1790')] },
+          { offerId: O2, variants: [price(V2, '1790'), { ...price(V3, '950'), retired: true }] },
+        ],
+      }),
+    });
+    mount(['catalog.offer.view', 'pricing.price.view', 'pricing.price.edit']);
+
+    // One size is left, so it is edited in its row; no "2 sizes" toggle.
+    expect(await screen.findByLabelText('Price of Beef rump steak')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /sizes/ })).toBeNull();
+  });
+
+  it('shows whole units in a Market whose currency has no minor unit (JPY)', async () => {
+    serve({
+      'pricing/seller/offer-prices': ok({
+        currency: 'JPY',
+        offers: [{ offerId: O1, variants: [{ ...price(V1, '1790'), currency: 'JPY' }] }],
+      }),
+    });
+    mount();
+
+    const field = await screen.findByLabelText<HTMLInputElement>('Price of Beef mince');
+    expect(field.value).toBe('1790');
+    fireEvent.change(field, { target: { value: '1690' } });
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save 1 change' }));
+    });
+
+    await waitFor(() => expect(puts()).toHaveLength(1));
+    expect(puts()[0]?.[2]).toEqual({ amount: '1690', currency: 'JPY', expectedVersion: 4 });
   });
 });

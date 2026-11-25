@@ -32,6 +32,8 @@ export interface InlineOffer {
   readonly rows: readonly TableRow[];
   /** The seller's stock locations, in their order; empty when stock is not shown. */
   readonly sourceIds: readonly string[];
+  /** The prices were read: when that read failed, the price cells show a dash, not a field. */
+  readonly priced: boolean;
 }
 
 /**
@@ -50,10 +52,11 @@ export function inlineOffersOf(
   for (const offerId of ids) {
     const priced = priceOf.get(offerId) ?? [];
     const stocked = stockOf.get(offerId);
+    // The stock read lists the sizes still sold; the price read also keeps retired ones.
     const variantIds =
       stocked !== undefined
         ? stocked.map((variant) => variant.variantId)
-        : priced.map((variant) => variant.variantId);
+        : priced.filter((variant) => !variant.retired).map((variant) => variant.variantId);
     const rows: TableRow[] = variantIds.map((variantId) => {
       const cells: readonly StockCell[] =
         stocked?.find((variant) => variant.variantId === variantId)?.sources ?? [];
@@ -65,7 +68,7 @@ export function inlineOffersOf(
       };
     });
     const sourceIds = stocked?.[0]?.sources.map((cell) => cell.sourceId) ?? [];
-    out.set(offerId, { offerId, rows, sourceIds });
+    out.set(offerId, { offerId, rows, sourceIds, priced: prices !== null });
   }
   return out;
 }
@@ -82,7 +85,11 @@ export function rowEditing(offer: InlineOffer): RowEditing {
   const single = offer.rows.length === 1 && offer.rows[0]?.price?.retired !== true;
   const opens =
     offer.rows.length > 1 ? 'sizes' : single && offer.sourceIds.length > 1 ? 'locations' : null;
-  return { price: single, stock: single && offer.sourceIds.length === 1, opens };
+  return {
+    price: single && offer.priced,
+    stock: single && offer.sourceIds.length === 1,
+    opens,
+  };
 }
 
 /** The lowest and the highest regular price in force of the sizes; null when none has one. */
@@ -196,6 +203,37 @@ export function withoutSaved(
       if (left[key] === sent[offerId]?.[key]) delete left[key];
     }
     if (Object.keys(left).length > 0) next[offerId] = left;
+  }
+  return next;
+}
+
+/** The read version of each typed cell, per Offer, keyed as `sendSizeWrites` keys its versions. */
+export type Bases = Readonly<Record<string, Readonly<Record<string, number | null>>>>;
+
+/**
+ * The base versions left after a save: a cell whose draft went keeps none; a cell still typed
+ * keeps its version, or the one its write answered when it was saved and typed again meanwhile.
+ */
+export function basesAfterSave(
+  bases: Bases,
+  seen: Readonly<Record<string, Readonly<Record<string, number | null>>>>,
+  priceDrafts: Drafts,
+  stockDrafts: Drafts,
+): Bases {
+  const next: Record<string, Record<string, number | null>> = {};
+  for (const [offerId, keys] of Object.entries(bases)) {
+    const kept: Record<string, number | null> = {};
+    for (const [key, version] of Object.entries(keys)) {
+      const [kind, cell] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
+      const drafted =
+        kind === 'price'
+          ? priceDrafts[offerId]?.[cell] !== undefined
+          : stockDrafts[offerId]?.[cell] !== undefined;
+      if (!drafted) continue;
+      const answered = seen[offerId];
+      kept[key] = answered !== undefined && key in answered ? (answered[key] ?? null) : version;
+    }
+    if (Object.keys(kept).length > 0) next[offerId] = kept;
   }
   return next;
 }

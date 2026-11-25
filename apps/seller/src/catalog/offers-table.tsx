@@ -11,6 +11,7 @@ import {
 import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import { formatInstant, known, OFFER_STATUSES } from './format.ts';
+import { moveOnEnter } from './grid-keys.ts';
 import { OFFER_TONE } from './offer-tone.ts';
 import type { OfferColumn } from './offers-columns.ts';
 import type { InlineRow } from './offers-inline.tsx';
@@ -111,6 +112,8 @@ export function OffersTable({
             id: 'price',
             header: t('col.price'),
             skeleton: 'number' as const,
+            // A fixed width, so the column does not move when an estimate shows under a field.
+            headClassName: 'lg:w-44',
             cell: (offer: OfferListRow) =>
               inline.priceCell({ offerId: offer.offerId, name: offerName(offer, unnamed) }),
           },
@@ -122,6 +125,7 @@ export function OffersTable({
             id: 'stock',
             header: t('col.stock'),
             skeleton: 'number' as const,
+            headClassName: 'lg:w-32',
             cell: (offer: OfferListRow) =>
               inline.stockCell({ offerId: offer.offerId, name: offerName(offer, unnamed) }),
           },
@@ -170,6 +174,8 @@ export function OffersTable({
         : {
             expanded: (offer: OfferListRow) =>
               inline.expanded({ offerId: offer.offerId, name: offerName(offer, unnamed) }),
+            // Enter moves down a column of price or stock fields, as in the opened sizes.
+            onKeyDown: moveOnEnter,
           })}
       {...(skeletonRows === undefined ? {} : { skeletonRows })}
       minWidthClass="lg:min-w-200"

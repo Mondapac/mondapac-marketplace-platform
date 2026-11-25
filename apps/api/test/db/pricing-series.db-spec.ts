@@ -90,7 +90,7 @@ describe.each(TEST_MARKETS)('pricing price series in market %s (database integra
   const advance = (ms: number) => clock.set(clock.now().add({ milliseconds: ms }));
 
   function created(
-    keys: Partial<Pick<PriceSeriesState, 'offerId' | 'variantId' | 'productId'>> = {},
+    keys: Partial<Pick<PriceSeriesState, 'offerId' | 'variantId' | 'productId' | 'sellerId'>> = {},
   ) {
     return PriceSeries.create({
       id: ids.next<'PriceSeries'>(),
@@ -98,7 +98,7 @@ describe.each(TEST_MARKETS)('pricing price series in market %s (database integra
       offerId: keys.offerId ?? ids.next<'Offer'>(),
       variantId: keys.variantId ?? ids.next<'Variant'>(),
       productId: keys.productId ?? ids.next<'Product'>(),
-      sellerId: ids.next<'Seller'>(),
+      sellerId: keys.sellerId ?? ids.next<'Seller'>(),
       currency: policy.currency,
       now: clock.now(),
     });
@@ -286,20 +286,30 @@ describe.each(TEST_MARKETS)('pricing price series in market %s (database integra
     expect(byVariant.map((s) => s.state.id)).toEqual([b.state.id]);
   });
 
-  it('finds the series of several Offers in one read, only in its own Market (Offer list, PR 8)', async () => {
+  it('finds the series of several Offers of one seller in one read, only in its own Market (Offer list, PR 8)', async () => {
     const productId = ids.next<'Product'>();
+    const sellerId = ids.next<'Seller'>();
     const first = ids.next<'Offer'>();
     const second = ids.next<'Offer'>();
     const left = ids.next<'Offer'>();
-    const a = created({ offerId: first, productId });
-    const b = created({ offerId: second, productId });
-    const c = created({ offerId: left, productId });
-    for (const one of [a, b, c]) await inUnit(() => series.add(market, one), serializable);
+    const foreign = ids.next<'Offer'>();
+    const a = created({ offerId: first, productId, sellerId });
+    const b = created({ offerId: second, productId, sellerId });
+    const c = created({ offerId: left, productId, sellerId });
+    const d = created({ offerId: foreign, productId });
+    for (const one of [a, b, c, d]) await inUnit(() => series.add(market, one), serializable);
 
-    const found = await inUnit(() => series.findByOffers(market, [first, second]));
-    const none = await inUnit(() => series.findByOffers(market, []));
-    const there = await inUnit(() => series.findByOffers(other, [first, second]), undefined, other);
+    const found = await inUnit(() =>
+      series.findByOffers(market, sellerId, [first, second, foreign]),
+    );
+    const none = await inUnit(() => series.findByOffers(market, sellerId, []));
+    const there = await inUnit(
+      () => series.findByOffers(other, sellerId, [first, second]),
+      undefined,
+      other,
+    );
 
+    // Another seller's series is left out even when its Offer is asked for.
     expect(found.map((s) => s.state.id).sort()).toEqual([a.state.id, b.state.id].sort());
     expect(none).toEqual([]);
     expect(there).toEqual([]);

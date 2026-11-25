@@ -17,7 +17,7 @@ export { foldForClaims, hasClaimWord, hasLookAlikeScripts } from './claim-words'
 export { err, ok } from './result';
 export type { Result } from './result';
 
-export { parseId, uuidV7 } from './id';
+export { parseId, parseIdList, uuidV7 } from './id';
 export type { Id, IdGenerator } from './id';
 
 export { Temporal } from './time';

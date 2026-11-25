@@ -30,6 +30,24 @@ export function parseId<K extends string>(
   return ok(text as Id<K>);
 }
 
+/**
+ * A comma-separated list of 1 to `max` ids, each the canonical text of a version 7 UUID and each
+ * once (a query such as `?offerIds=a,b`). Null for anything else, including a repeated query key
+ * (an array) and text longer than `max` ids could be.
+ */
+export function parseIdList<K extends string>(text: unknown, max: number): readonly Id<K>[] | null {
+  if (typeof text !== 'string' || text.length === 0 || text.length > max * 37) return null;
+  const parts = text.split(',');
+  if (parts.length > max) return null;
+  const ids: Id<K>[] = [];
+  for (const part of parts) {
+    const id = parseId<K>(part);
+    if (!id.ok || ids.includes(id.value)) return null;
+    ids.push(id.value);
+  }
+  return ids;
+}
+
 const MAX_UNIX_MS = 2 ** 48 - 1;
 const RANDOM_BYTES = 10;
 

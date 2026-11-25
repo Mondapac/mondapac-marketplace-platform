@@ -54,8 +54,8 @@ export interface OfferStockReader {
   ): Promise<OfferStockSnapshot>;
 
   /**
-   * {@link read} for several Offers of one seller in a fixed number of statements (the Offer
-   * list, Offer page PR 8). Every asked Offer has an entry, with no items where it has none.
+   * {@link read} for several Offers of one seller in three statements, plus one more per
+   * 1,000 stock items for the held quantities (the Offer list, Offer page PR 8). Every asked Offer has an entry, with no items where it has none.
    */
   readMany(
     market: MarketContext,
