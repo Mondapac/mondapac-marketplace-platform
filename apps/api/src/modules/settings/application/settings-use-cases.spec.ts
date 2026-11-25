@@ -31,6 +31,9 @@ import { ChangeListPagingSetting } from './use-cases/change-list-paging-setting.
 import { ReadAiDescriptionWriter } from './use-cases/read-ai-description-writer.use-case';
 import { ReadCartMode } from './use-cases/read-cart-mode.use-case';
 import { ReadListPaging } from './use-cases/read-list-paging.use-case';
+import { ChangeMonthlyRevenueTargetSetting } from './use-cases/change-monthly-revenue-target-setting.use-case';
+import { ReadMonthlyRevenueTarget } from './use-cases/read-monthly-revenue-target.use-case';
+import { ViewMonthlyRevenueTargetSetting } from './use-cases/view-monthly-revenue-target-setting.use-case';
 import { ViewAiSettings } from './use-cases/view-ai-settings.use-case';
 import { ChangeOfferReviewSettings } from './use-cases/change-offer-review-settings.use-case';
 import { ViewOfferReviewSettings } from './use-cases/view-offer-review-settings.use-case';
@@ -347,6 +350,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       const facade = new SettingsFacadeImplementation(
         new ReadAiDescriptionWriter(gate, deps),
         new ReadCartMode(gate, deps),
+        new ReadMonthlyRevenueTarget(gate, deps),
       );
       for (const context of [anonymous, sellerCtx(), adminCtx()]) {
         expect(await facade.cartMode(context)).toBe('multi-store');
@@ -367,6 +371,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         const facade = new SettingsFacadeImplementation(
           new ReadAiDescriptionWriter(gate, deps),
           new ReadCartMode(gate, deps),
+          new ReadMonthlyRevenueTarget(gate, deps),
         );
         expect(await facade.cartMode(anonymous)).toBe('multi-store');
       } finally {
@@ -375,6 +380,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       const throwing = new SettingsFacadeImplementation(
         { execute: () => Promise.reject(new Error('boom')) } as unknown as ReadAiDescriptionWriter,
         { execute: () => Promise.reject(new Error('boom')) } as unknown as ReadCartMode,
+        { execute: () => Promise.reject(new Error('boom')) } as unknown as ReadMonthlyRevenueTarget,
       );
       expect(await throwing.cartMode(anonymous)).toBe('multi-store');
     });
@@ -393,6 +399,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       new SettingsFacadeImplementation(
         new ReadAiDescriptionWriter(gate, deps),
         new ReadCartMode(gate, deps),
+        new ReadMonthlyRevenueTarget(gate, deps),
       );
 
     it('is off on the fast tier before any change, for the admin view and the facade', async () => {
@@ -484,6 +491,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       const throwing = new SettingsFacadeImplementation(
         { execute: () => Promise.reject(new Error('boom')) } as unknown as ReadAiDescriptionWriter,
         { execute: () => Promise.reject(new Error('boom')) } as unknown as ReadCartMode,
+        { execute: () => Promise.reject(new Error('boom')) } as unknown as ReadMonthlyRevenueTarget,
       );
       expect(await throwing.aiDescriptionWriter(sellerCtx())).toEqual({
         enabled: false,
@@ -673,6 +681,118 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       ]);
     });
   });
+
+  describe('monthly revenue target', () => {
+    const currency = markets.get(market.marketId).defaultCurrency;
+    const otherCurrency = currency === 'AUD' ? 'NZD' : 'AUD';
+    const changeTarget = (input: Record<string, unknown>, context = adminCtx()) =>
+      new ChangeMonthlyRevenueTargetSetting(gate, deps, {
+        currencyOf: (m) => markets.get(m.marketId).defaultCurrency,
+      }).execute(context, input);
+    const facade = () =>
+      new SettingsFacadeImplementation(
+        new ReadAiDescriptionWriter(gate, deps),
+        new ReadCartMode(gate, deps),
+        new ReadMonthlyRevenueTarget(gate, deps),
+      );
+
+    it('has no target before any change, then sets it in the Market currency with history and an amount audit row', async () => {
+      const view = await new ViewMonthlyRevenueTargetSetting(gate, deps).execute(adminCtx(), {});
+      expect(view.ok && view.value[0]).toMatchObject({
+        code: 'monthly-revenue-target',
+        value: 'none',
+        version: 0,
+      });
+      expect(await facade().monthlyRevenueTarget(adminCtx())).toEqual({ ok: true, value: null });
+      const set = await changeTarget({
+        target: { amount: '24000000', currency },
+        expectedVersion: 0,
+      });
+      expect(set.ok && set.value).toMatchObject({ value: `${currency}:24000000`, version: 1 });
+      expect(audit.entries).toEqual([
+        expect.objectContaining({
+          action: 'settings.monthly-revenue-target.changed',
+          before: { target: null },
+          after: { target: { amount: 24000000n, currency }, version: 1 },
+        }),
+      ]);
+      expect(await facade().monthlyRevenueTarget(adminCtx())).toEqual({
+        ok: true,
+        value: { amount: 24000000n, currency },
+      });
+      const cleared = await changeTarget({ target: null, expectedVersion: 1 });
+      expect(cleared.ok && cleared.value).toMatchObject({ value: 'none', version: 2 });
+      expect(store.history.map((row) => row.value)).toEqual([`${currency}:24000000`, 'none']);
+      const other = testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default');
+      expect(await store.find(other, 'monthly-revenue-target')).toBeNull();
+    });
+
+    it.each([
+      [{ amount: '0', currency: 'CUR' }, ['target.amount']],
+      [{ amount: '-5', currency: 'CUR' }, ['target.amount']],
+      [{ amount: 100, currency: 'CUR' }, ['target.amount']],
+      [{ amount: '1234567890123456', currency: 'CUR' }, ['target.amount']],
+      [{ amount: '100', currency: 'OTHER' }, ['target.currency']],
+      [{ amount: '100', currency: 'CUR', extra: 1 }, ['target']],
+      ['100', ['target']],
+      [undefined, ['target']],
+    ])('refuses the target %j', async (target, paths) => {
+      const fill = (value: unknown): unknown =>
+        value !== null && typeof value === 'object'
+          ? Object.fromEntries(
+              Object.entries(value).map(([key, item]) => [
+                key,
+                item === 'CUR' ? currency : item === 'OTHER' ? otherCurrency : item,
+              ]),
+            )
+          : value;
+      const out = await changeTarget({ target: fill(target), expectedVersion: 0 });
+      expect(!out.ok && out.error.code).toBe('validation.failed');
+      expect(!out.ok && 'fields' in out.error && out.error.fields.map((f) => f.path)).toEqual(
+        paths,
+      );
+      expect(store.history).toHaveLength(0);
+    });
+
+    it('refuses acting-as and a stale version, and reverts to the target before', async () => {
+      const acting = await changeTarget(
+        { target: { amount: '100', currency }, expectedVersion: 0 },
+        actingAs(adminCtx()),
+      );
+      expect(!acting.ok && acting.error.code).toBe('access.denied');
+      await changeTarget({ target: { amount: '100', currency }, expectedVersion: 0 });
+      const stale = await changeTarget({ target: { amount: '200', currency }, expectedVersion: 0 });
+      expect(!stale.ok && stale.error.code).toBe('settings.conflict');
+      await changeTarget({ target: { amount: '200', currency }, expectedVersion: 1 });
+      const reverted = await new SettingsReverter(deps).revert(adminCtx(), {
+        requestId: id<'SystemRequest'>(0x5e3),
+        subjectRef: 'monthly-revenue-target',
+        before: { value: `${currency}:100` },
+        after: { value: `${currency}:200` },
+      });
+      expect(reverted).toBe('reverted');
+      expect(store.rows.get(`${code}/monthly-revenue-target`)?.value).toBe(`${currency}:100`);
+      expect(audit.entries.at(-1)).toMatchObject({
+        action: 'settings.monthly-revenue-target.changed',
+        before: { target: { amount: 200n, currency } },
+        after: { target: { amount: 100n, currency }, version: 3 },
+      });
+    });
+
+    it('answers unavailable, never "no target", when the store cannot be read', async () => {
+      store.failReads = true;
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      try {
+        expect(await facade().monthlyRevenueTarget(adminCtx())).toEqual({
+          ok: false,
+          error: { code: 'access.unavailable' },
+        });
+      } finally {
+        warn.mockRestore();
+      }
+    });
+  });
+
   describe('the Offer review policy (risk-based Offer approval)', () => {
     const saveOfferReview = (input: Record<string, unknown>, context = adminCtx()) =>
       new ChangeOfferReviewSettings(gate, deps).execute(context, input);

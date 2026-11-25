@@ -1,4 +1,5 @@
-import type { CallContext } from '@mondapac/shared-kernel';
+import type { CallContext, Money, Result } from '@mondapac/shared-kernel';
+import type { AccessDenied } from '../../../platform/authz';
 import type { AiModelTierSetting, CartMode } from '../domain/definitions';
 
 /**
@@ -20,6 +21,13 @@ export interface SettingsFacade {
    * `multi-store`, today's behaviour (ADR-0026 decision 5).
    */
   cartMode(context: CallContext): Promise<CartMode>;
+
+  /**
+   * The Market's monthly revenue target (null: none set), for a caller holding
+   * `settings.monthly-revenue-target.view` (else `access.denied`). A store that cannot be read is
+   * `access.unavailable`, never "no target".
+   */
+  monthlyRevenueTarget(context: CallContext): Promise<Result<Money | null, AccessDenied>>;
 }
 
 export const SETTINGS_FACADE = Symbol('SETTINGS_FACADE');

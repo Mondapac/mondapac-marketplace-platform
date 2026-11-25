@@ -1,4 +1,4 @@
--- Reverses 20261125030000_reviews_market_published_index.
+-- Reverses 20261125040000_reviews_market_published_index.
 SET lock_timeout = '5s';
 SET statement_timeout = '60s';
 

@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-market-target-per-month",
+  "area": "admin",
+  "title": "Market revenue target per month",
+  "desc": "The Market's monthly revenue target is one standing value for every month until an admin changes it; the history keeps earlier ones, but a target cannot be planned per month ahead.",
+  "src": "Dashboards v2 phase 2, monthly targets PR",
+  "date": "2026-11-25",
+  "trig": "The owner wants seasonal targets (different targets for different months)",
+  "prio": "پایین",
+  "status": "موکول"
+}

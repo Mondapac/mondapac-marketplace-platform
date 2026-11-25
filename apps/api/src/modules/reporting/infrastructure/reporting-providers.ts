@@ -18,6 +18,8 @@ import { PrismaFactStore } from './prisma-fact-store';
 import { SELLER_KPI_READER, type SellerKpiReader } from '../application/ports/seller-kpi-reader';
 import { PrismaSellerKpiReader } from './prisma-seller-kpi-reader';
 import { PrismaRollupStore } from './prisma-rollup-store';
+import { SELLER_GOAL_STORE, type SellerGoalStore } from '../application/ports/seller-goal-store';
+import { PrismaSellerGoalStore } from './prisma-seller-goal-store';
 import { RegistryMarketZone } from './registry-market-zone';
 import { LedgerRecorder } from '../application/ledger-recorder';
 import { LEDGER_FACT_STORE, type LedgerFactStore } from '../application/ports/ledger-fact-store';
@@ -56,6 +58,11 @@ export const reportingProviders: readonly FactoryProvider[] = [
     provide: SELLER_KPI_READER,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): SellerKpiReader => new PrismaSellerKpiReader(prisma),
+  },
+  {
+    provide: SELLER_GOAL_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SellerGoalStore => new PrismaSellerGoalStore(prisma),
   },
   {
     provide: MARKET_ZONE,

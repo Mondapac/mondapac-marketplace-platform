@@ -21,6 +21,7 @@ import type {
   OperationsAnswer,
   OrderStatusAnswer,
   MarketplaceReviewsAnswer,
+  MonthlyTargetAnswer,
   OrdersByStateAnswer,
   ShoppingFunnelAnswer,
   ReportingKpiFacade,
@@ -48,6 +49,7 @@ const NOW = Temporal.Instant.from('2026-11-22T01:00:00Z');
 const ORDERS = 'ordering.order.view' as PermissionKey;
 const MONEY = 'commission-payouts.settlement.view' as PermissionKey;
 const REVIEWS = 'reviews.settings.view' as PermissionKey;
+const TARGET = 'settings.monthly-revenue-target.view' as PermissionKey;
 
 const operations = { period: { id: '7d' }, sellersWithOrders: 3 } as unknown as OperationsAnswer;
 const finance = {
@@ -177,6 +179,28 @@ const ordersByState = {
     unknown: { orders: 100, shareBp: 2500 },
   },
 } as unknown as OrdersByStateAnswer;
+
+const monthlyTarget: MonthlyTargetAnswer = {
+  generatedAt: NOW,
+  timezone: 'Australia/Brisbane',
+  currency: 'AUD',
+  refreshedAt: null,
+  figures: {
+    month: '2026-11',
+    lastMonth: '2026-10',
+    daysInMonth: 30,
+    dayOfMonth: 22,
+    daysLeft: 9,
+    monthToDate: 190_560_00n,
+    lastMonthTotal: 221_040_00n,
+    forecast: { status: 'estimate', amount: 248_600_00n },
+    target: 240_000_00n,
+    progressBp: 7940,
+    paceBp: 10358,
+    toGo: 49_440_00n,
+    perDayToGo: 5_493_33n,
+  },
+} as unknown as MonthlyTargetAnswer;
 
 const NA = { value: 0, direction: 'flat', state: 'na' } as const;
 const shoppingFunnel = {
@@ -348,6 +372,10 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
         asked.push('orders-by-state');
         return Promise.resolve(ok(ordersByState));
       },
+      marketplaceMonthlyTarget: () => {
+        asked.push('market-target');
+        return Promise.resolve(ok(monthlyTarget));
+      },
       marketplaceShoppingFunnel: () => {
         asked.push('shopping-funnel');
         return Promise.resolve(ok(shoppingFunnel));
@@ -505,6 +533,81 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     facade.marketplaceReviews = () => Promise.reject(new TypeError('boom'));
     const failed = await build([REVIEWS]).execute(admin, { period: '7d' });
     expect(failed.ok && failed.value.reviews).toEqual({ status: 'error' });
+  });
+
+  it('asks the market target only with the money key and the target key, and maps it for the body', async () => {
+    const both = await build([MONEY, TARGET]).execute(admin, { period: '7d' });
+    expect(asked).toContain('market-target');
+    expect(both.ok && both.value.marketTarget).toEqual({ status: 'ok', value: monthlyTarget });
+    if (!both.ok) throw new Error('expected an answer');
+    expect(adminKpisBody(both.value).marketTarget).toEqual({
+      status: 'ok',
+      kpis: {
+        month: '2026-11',
+        lastMonth: '2026-10',
+        timezone: 'Australia/Brisbane',
+        currency: 'AUD',
+        daysInMonth: 30,
+        dayOfMonth: 22,
+        daysLeft: 9,
+        monthToDate: '19056000',
+        lastMonthTotal: '22104000',
+        forecast: { status: 'estimate', amount: '24860000' },
+        target: '24000000',
+        progressBp: 7940,
+        paceBp: 10358,
+        toGo: '4944000',
+        perDayToGo: '549333',
+        refreshedAt: null,
+      },
+    });
+    const early = {
+      ...both.value,
+      marketTarget: {
+        status: 'ok' as const,
+        value: {
+          ...monthlyTarget,
+          figures: {
+            ...monthlyTarget.figures,
+            target: null,
+            progressBp: null,
+            paceBp: null,
+            toGo: null,
+            perDayToGo: null,
+            forecast: {
+              status: 'not-enough-data' as const,
+              daysElapsed: 1,
+              minimumDays: 3,
+            },
+          },
+        },
+      },
+    };
+    expect(adminKpisBody(early).marketTarget?.kpis).toMatchObject({
+      target: null,
+      paceBp: null,
+      forecast: { status: 'not-enough-data', daysElapsed: 1, minimumDays: 3 },
+    });
+    for (const keys of [[MONEY], [TARGET], [ORDERS, TARGET]] as const) {
+      asked.length = 0;
+      const out = await build(keys).execute(admin, { period: '7d' });
+      expect(out.ok && out.value.marketTarget).toBeNull();
+      expect(asked).not.toContain('market-target');
+    }
+    // A refusal by the owner leaves it out; a failure or a slow read is `error`, alone.
+    facade.marketplaceMonthlyTarget = () => Promise.resolve(err({ code: 'access.denied' }));
+    const refused = await build([MONEY, TARGET]).execute(admin, { period: '7d' });
+    expect(refused.ok && refused.value.marketTarget).toBeNull();
+    facade.marketplaceMonthlyTarget = () => Promise.reject(new TypeError('boom'));
+    const failed = await build([MONEY, TARGET]).execute(admin, { period: '7d' });
+    expect(failed.ok && failed.value.marketTarget).toEqual({ status: 'error' });
+    expect(failed.ok && failed.value.finance?.status).toBe('ok');
+    expect(
+      adminKpisBody({ ...both.value, marketTarget: { status: 'error' } }).marketTarget,
+    ).toEqual({ status: 'error' });
+    facade.marketplaceMonthlyTarget = () => new Promise(() => undefined);
+    const slow = await build([MONEY, TARGET], 5).execute(admin, { period: '7d' });
+    expect(slow.ok && slow.value.marketTarget).toEqual({ status: 'error' });
   });
 
   it('maps the shopping-funnel section: hidden steps stay null, not-enough-data, error, and null without the key', async () => {
