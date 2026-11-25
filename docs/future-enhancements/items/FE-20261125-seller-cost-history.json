@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-seller-cost-history",
+  "area": "seller",
+  "title": "تاریخچهٔ هزینه و سود هر سایز",
+  "desc": "سری هزینه در pricing تاریخچه دارد ولی تب Cost فقط هزینهٔ فعلی و Estimated profit امروز را نشان می‌دهد. نمایش تغییرات هزینه در زمان و سود واقعی فروش‌ها (از گزارش‌ها) ساخته نشده است.",
+  "src": "apps/api/src/modules/pricing/application/use-cases/view-cost.use-case.ts",
+  "date": "2026-11-25",
+  "trig": "وقتی گزارش سود فروشنده طراحی شد",
+  "prio": "پایین",
+  "status": "موکول"
+}

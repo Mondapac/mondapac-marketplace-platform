@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useHelpTab } from '../help/help-context.tsx';
+import { Icon, type IconName } from '../icon/icon.tsx';
 
 export interface TabItem {
   readonly id: string;
@@ -14,6 +15,10 @@ export interface TabItem {
   readonly tone?: 'critical';
   /** The tab's name in the Help text, when it is not its label (a count in the label, say). While this tab is active the Help panel shows that tab's part. */
   readonly help?: string;
+  /** A small icon after the label (a lock on a private tab). Decorative: the label names the tab. */
+  readonly icon?: IconName;
+  /** Words added to the tab's name for screen readers only (", private" beside a lock icon). */
+  readonly srHint?: string;
 }
 
 export interface TabsProps {
@@ -132,9 +137,11 @@ export function Tabs({ label, items, activeId, onSelect, panelId }: TabsProps) {
               aria-controls={panelId}
               tabIndex={active ? 0 : -1}
               onClick={() => onSelect?.(item.id)}
-              className={active ? ACTIVE : IDLE}
+              className={`${active ? ACTIVE : IDLE} gap-1`}
             >
               {item.label}
+              {item.icon === undefined ? null : <Icon name={item.icon} className="size-4" />}
+              {item.srHint === undefined ? null : <span className="sr-only">{item.srHint}</span>}
             </button>
           );
         })}

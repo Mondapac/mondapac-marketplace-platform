@@ -715,6 +715,44 @@ describe('relay allowlist for stock locations', () => {
     });
     expect((await relay(config, refused, bad, upstream)).status).toBe(404);
   });
+  it('relays the private Cost read and write by UUID only, with no query (Offer page PR 7-UI)', async () => {
+    const upstream = upstreamOk();
+    const costs = ['pricing', 'seller', 'offers', ID, 'costs'];
+    const read = await relay(
+      config,
+      new Request(`http://seller.localhost:3001/api/${costs.join('/')}?variantId=${ID}`, {
+        method: 'GET',
+        headers: { host: 'seller.localhost:3001' },
+      }),
+      costs,
+      upstream,
+    );
+    expect(read.status).toBe(200);
+    expect(read.headers.get('cache-control')).toBe('private, no-store');
+    // No query crosses to the Cost read.
+    expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/pricing/seller/offers/${ID}/costs`);
+    const cost = ['pricing', 'seller', 'offers', ID, 'variants', ID, 'cost'];
+    expect((await relay(config, put(cost.join('/')), cost, upstream)).status).toBe(200);
+    const bad = [
+      ['pricing', 'seller', 'offers', 'x', 'variants', ID, 'cost'],
+      ['pricing', 'seller', 'offers', ID, 'variants', 'x', 'cost'],
+      ['pricing', 'seller', 'offers', ID, 'variants', ID, 'cost', 'x'],
+      ['pricing', 'seller', 'offers', ID, 'costs'],
+    ];
+    for (const path of bad) {
+      expect((await relay(config, put(path.join('/')), path, upstream)).status).toBe(404);
+    }
+    for (const path of [
+      ['pricing', 'seller', 'offers', 'x', 'costs'],
+      ['pricing', 'seller', 'offers', ID, 'variants', ID, 'cost'],
+    ]) {
+      const get = new Request(`http://seller.localhost:3001/api/${path.join('/')}`, {
+        method: 'GET',
+        headers: { host: 'seller.localhost:3001' },
+      });
+      expect((await relay(config, get, path, upstream)).status).toBe(404);
+    }
+  });
   it('relays an offer submit (POST) and delete (DELETE) by UUID only', async () => {
     const upstream = upstreamOk();
     const req = (method: string, path: string[]) =>

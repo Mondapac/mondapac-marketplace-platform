@@ -2253,7 +2253,8 @@
         "held": "Special waiting for review",
         "typed": "Special not saved"
       },
-      "saved-review": "{count, plural, one {Saved # change.} other {Saved # changes.}} A large special price waits for review before it starts."
+      "saved-review": "{count, plural, one {Saved # change.} other {Saved # changes.}} A large special price waits for review before it starts.",
+      "explicit-save-costs": "Prices, stock and costs are saved with the button, not automatically."
     },
     "suggestions": {
       "title": "Value suggestions",
@@ -3080,7 +3081,9 @@
       "tabs": "Price and stock of {size}",
       "tab": {
         "price": "Price",
-        "stock": "Stock"
+        "stock": "Stock",
+        "cost": "Cost",
+        "cost-private": ", private"
       },
       "price": {
         "now": "Price now",
@@ -3847,6 +3850,51 @@
       "saved-review": "{count, plural, one {# price saved.} other {# prices saved.}} Some changes wait for review; each variant shows what is pending.",
       "saved-same": "{count, plural, one {# price saved.} other {# prices saved.}} {same, plural, one {# was already the current price.} other {# were already the current prices.}}",
       "all-same": "These are already the current prices."
+    },
+    "cost": {
+      "title": "Cost",
+      "private": "Private. Only people with cost access see this.",
+      "hidden": "Costs are hidden. Show them to record your cost and see your estimated profit.",
+      "show": "Show costs",
+      "hide": "Hide costs",
+      "hide-blocked": "Save or discard your cost changes first.",
+      "retry": "Try again",
+      "field": "Your cost ({currency}, incl. GST)",
+      "field-for": "Your cost ({currency}, incl. GST) for {size}",
+      "none": "No cost recorded",
+      "not-priceable": "This size takes no cost.",
+      "you-receive": "You receive (est.)",
+      "your-cost": "Your cost",
+      "profit": "Estimated profit",
+      "approx": "≈ {amount}",
+      "minus": "− {amount}",
+      "share": "({percent}% of {price})",
+      "loss": "Your cost is more than you receive at this price.",
+      "help": "The cost of one unit to you, GST included. Saved with your other changes. Leave it empty to remove it.",
+      "help-read-only": "Only people who can change prices can change the cost.",
+      "unsaved": "Typed, not saved yet. Saved with your other changes.",
+      "receive": {
+        "hidden": "Your role can’t see what you receive",
+        "none": "Set a price first",
+        "pending": "Working it out…",
+        "unavailable": "Can’t be worked out right now"
+      },
+      "error": {
+        "acting-as": "Costs are private to the seller’s team and aren’t shown while you’re signed in as the seller.",
+        "denied": "You don’t have permission to see or change costs.",
+        "not-eligible": "Your seller account can’t change costs right now.",
+        "not-found": "This offer was not found. Reload the page.",
+        "stale": "The cost changed somewhere else. We reloaded it; check the number and save again.",
+        "retired": "This size no longer takes a cost.",
+        "out-of-range": "This cost is outside the allowed range.",
+        "invalid": "Enter a cost above zero, with up to {decimals, plural, =0 {no decimals} one {# decimal} other {# decimals}} (for example {example}).",
+        "throttled": "Too many requests. Wait a moment and try again.",
+        "csrf": "Your session expired. Reload the page and try again.",
+        "unavailable": "Costs are unavailable right now. Try again later.",
+        "unknown": "Something went wrong. Try again.",
+        "currency": "Your costs are recorded in another currency than this offer’s prices, so they can’t be shown here."
+      },
+      "refresh-failed": "Showing the costs read before your save. Reading them again failed: {reason}"
     }
   },
   "load": {

@@ -67,14 +67,23 @@ export interface SpecialWrite {
   readonly startsAt: string | null;
   readonly endsAt: string;
 }
+/**
+ * A new private Cost of one size (Offer page PR 7-UI), typed in its Cost tab: minor units, GST
+ * included; null clears the recorded Cost.
+ */
+export interface CostWrite {
+  readonly kind: 'cost';
+  readonly variantId: string;
+  readonly amount: string | null;
+}
 /** A write of one table cell: a price or a stock level. */
 export type CellWrite = PriceWrite | StockWrite;
-export type Write = CellWrite | SpecialWrite;
+export type Write = CellWrite | SpecialWrite | CostWrite;
 
 /** A line a save cannot send because its text is not a valid value. */
 export interface Invalid {
   readonly key: string;
-  readonly kind: 'price' | 'stock' | 'special-amount' | 'special-start' | 'special-end';
+  readonly kind: 'price' | 'stock' | 'special-amount' | 'special-start' | 'special-end' | 'cost';
 }
 
 const WHOLE = /^\d{1,7}$/;
@@ -209,4 +218,49 @@ export function orderedWrites(
     (lowersBelow ? first : last).push(special);
   }
   return [...first, ...writes, ...last];
+}
+
+/** The error key of a size's Cost field (Offer page PR 7-UI). */
+export const costKey = (variantId: string): string => `cost:${variantId}`;
+
+/** The Cost field's text as saved: the recorded Cost in major units, or empty. */
+export function savedCostText(
+  saved: { readonly amount: string | null } | undefined,
+  currency: string,
+): string {
+  return saved?.amount == null ? '' : inputOf(saved.amount, currency);
+}
+
+/**
+ * The Cost writes a save sends (Offer page PR 7-UI): a size whose typed Cost differs from the one
+ * recorded. An emptied field clears the Cost; text that is not a positive amount is `invalid` and
+ * nothing is sent for it. A size the Cost read did not answer for (not priceable) and a retired
+ * size are skipped. "9" for a recorded "9.00" is the same Cost: nothing to send.
+ */
+export function costWritesOf(
+  rows: readonly TableRow[],
+  currency: string,
+  drafts: Readonly<Record<string, string>>,
+  saved: Readonly<Record<string, { readonly amount: string | null }>>,
+): { readonly writes: CostWrite[]; readonly invalid: Invalid[] } {
+  const writes: CostWrite[] = [];
+  const invalid: Invalid[] = [];
+  for (const row of rows) {
+    if (row.price?.retired === true) continue;
+    const draft = drafts[row.variantId];
+    const recorded = saved[row.variantId];
+    if (draft === undefined || recorded === undefined) continue;
+    const text = draft.trim();
+    if (text === savedCostText(recorded, currency)) continue;
+    if (text === '') {
+      if (recorded.amount !== null)
+        writes.push({ kind: 'cost', variantId: row.variantId, amount: null });
+      continue;
+    }
+    const amount = minorOf(text, currency);
+    if (amount === null) invalid.push({ key: costKey(row.variantId), kind: 'cost' });
+    else if (amount !== recorded.amount)
+      writes.push({ kind: 'cost', variantId: row.variantId, amount });
+  }
+  return { writes, invalid };
 }
