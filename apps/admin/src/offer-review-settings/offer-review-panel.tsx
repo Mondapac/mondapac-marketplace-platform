@@ -19,6 +19,8 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { SettingsConflictView } from '../settings/conflict-view.tsx';
+import { useSettingsChrome } from '../settings/settings-chrome.ts';
+import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import {
   isNoteFailure,
   ReviewNoteField,
@@ -92,6 +94,9 @@ export function OfferReviewPanel({
   readonly csrfToken: string;
 }) {
   const t = useTranslations();
+  const chrome = useSettingsChrome();
+  // The manage key is protected, so a save may ask for a fresh two-step code first.
+  const guarded = useGuardedCall();
   const [problem, setProblem] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
@@ -156,7 +161,7 @@ export function OfferReviewPanel({
           ? []
           : [{ code, value, expectedVersion: row.version }];
       });
-      const answer = await callApi<{
+      const answer = await guarded<{
         settings: readonly (OfferReviewSetting & { request?: unknown })[];
       }>(
         'PUT',
@@ -173,6 +178,7 @@ export function OfferReviewPanel({
         const rest = latest.settings.filter((row) => !codes.has(row.code));
         return { status: 'saved', saved: { settings: [...rest, ...changed] } };
       }
+      if (isStepUpCancelled(answer)) return { status: 'failed' };
       if (answer.failure.status === 401) window.location.assign('/session-ended');
       else if (isNoteFailure(answer.failure)) setNoteError('rejected');
       else if (offerReviewProblemOf(answer.failure) === 'conflict') return { status: 'conflict' };
@@ -272,27 +278,17 @@ export function OfferReviewPanel({
       }
       onSubmit={canManage ? () => void save() : undefined}
       dirty={canManage && form.dirty}
-      leave={{
-        title: t('settings.leave.title'),
-        message: t('settings.leave.message'),
-        stay: t('settings.leave.stay'),
-        leave: t('settings.leave.leave'),
-      }}
+      dirtyCount={count}
+      leave={chrome.leave}
       saveBar={
         canManage ? (
           <SaveBar
-            count={count}
-            summary={t('settings.bar.summary', { count })}
-            errorCount={live.shown.length}
-            errorsSummary={t('settings.bar.errors', { count: live.shown.length })}
-            saving={form.saving}
-            labels={{
-              region: t('settings.bar.region'),
-              discard: t('settings.bar.discard'),
-              save: t('settings.bar.save'),
-              saving: t('settings.bar.saving'),
-            }}
-            onDiscard={discard}
+            {...chrome.saveBar({
+              count,
+              errorCount: live.shown.length,
+              saving: form.saving,
+              onDiscard: discard,
+            })}
           />
         ) : null
       }

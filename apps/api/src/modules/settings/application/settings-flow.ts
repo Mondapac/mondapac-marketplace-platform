@@ -14,6 +14,7 @@ import {
   SETTING_DEFINITIONS,
   AI_DESCRIPTION_WRITER_CODE,
   AI_DESCRIPTION_WRITER_TIER_CODE,
+  OFFER_REVIEW_CODES,
   type SettingDefinition,
 } from '../domain/definitions';
 import type { RecordedRequest } from '../../system-requests';
@@ -32,6 +33,11 @@ const AI_CODES: ReadonlySet<string> = new Set([
   AI_DESCRIPTION_WRITER_CODE,
   AI_DESCRIPTION_WRITER_TIER_CODE,
 ]);
+/**
+ * Reviewed at high risk too: one change can take every Offer past the admin, badges included
+ * (Hassan, PR #1329).
+ */
+const HIGH_RISK_CODES: ReadonlySet<string> = new Set([...AI_CODES, ...OFFER_REVIEW_CODES]);
 
 // Admin-editable Market settings (ADR-0026). A change is refused in an acting-as session, checks
 // the version the admin saw (a stale edit is refused), writes the value and a history row in one
@@ -49,9 +55,18 @@ function changeEntry(
   version: number,
 ): AuditEntry {
   if (definition.integer !== undefined) {
+    // A stored value outside the definition (a row changed by hand) is audited as the default it
+    // stands for, and logged, so the page can still be saved over it.
+    const before = acceptedValue(definition, was);
+    if (before === null) {
+      logger.error({ msg: 'settings.stored-value-invalid', code: definition.code });
+    }
     return MarketNumberSettingChanged.entry(
       definition.code as (typeof NUMBER_SETTING_TARGET_IDS)[number],
-      { before: { value: Number(was) }, after: { value: Number(next), version } },
+      {
+        before: { value: Number(before ?? definition.defaultValue) },
+        after: { value: Number(next), version },
+      },
     );
   }
   return MarketSettingChanged.entry(definition.code as (typeof SETTING_TARGET_IDS)[number], {
@@ -185,7 +200,15 @@ export async function readSettingValue(
       logReadFailure(context, definition.code, 'unit-failed');
       return definition.safeValue;
     }
-    return read.value?.value ?? definition.defaultValue;
+    const stored = read.value?.value;
+    if (stored === undefined) return definition.defaultValue;
+    // A stored value the definition no longer allows (bounds narrowed, a row changed by hand) is
+    // never passed on: the safe value instead (Hassan, PR #1329).
+    if (acceptedValue(definition, stored) === null) {
+      logReadFailure(context, definition.code, 'stored-value-invalid');
+      return definition.safeValue;
+    }
+    return stored;
   } catch {
     // An unreadable store is not the Market's choice: answer the safe value (ADR-0026 decision 5).
     logReadFailure(context, definition.code, 'store-unreadable');
@@ -275,7 +298,7 @@ async function applyChecked(
     before: { value: was },
     after: { value: next },
     note,
-    ...(AI_CODES.has(definition.code) ? { risk: 'high' as const } : {}),
+    ...(HIGH_RISK_CODES.has(definition.code) ? { risk: 'high' as const } : {}),
   });
   if (!review.ok) return err(review.error);
   return ok({
@@ -344,6 +367,12 @@ export async function changeSettings(
   if (fields.length > 0) return err({ code: 'validation.failed', fields });
   const now = deps.clock.now();
   const reviewPolicy = await settingsReview(deps, context);
+  // Where changes are reviewed, a missing note refuses the page before anything is written (the
+  // review recorder checks it again per change).
+  const note = typeof input.note === 'string' ? input.note.trim() : '';
+  if (reviewPolicy.reviewed && (note.length === 0 || note.length > 500)) {
+    return err({ code: 'validation.failed', fields: [{ path: 'note', code: 'required' }] });
+  }
   return deps.unitOfWork.run<readonly SettingChangeView[], SettingsFailure>(
     context.market,
     async () => {

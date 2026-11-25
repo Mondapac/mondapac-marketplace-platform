@@ -41,8 +41,13 @@ The Offer review page has six settings that belong together.
    is written; a stale one is a conflict and nothing is saved. Each change still gets its own
    history row, audit row and, where area `marketplace` is reviewed, its own review request, so a
    reviewer can reject one of them and its reverter restores that one alone.
-4. **Keys.** `settings.offer-review.view` and `settings.offer-review.manage`, not protected; only
-   the Platform Administrator holds the manage key until the owner gives it to a role. The
+4. **Keys.** `settings.offer-review.view` (not protected; in the Viewer role) and
+   `settings.offer-review.manage`, **protected** (Hassan, PR #1329): one write can let every Offer,
+   badges included, past the admin, so only the Platform Administrator holds it, with the admin
+   second factor, like `settings.ai.manage`. Every change of these six settings opens its review
+   request at high risk where area `marketplace` is reviewed, and a missing note refuses the whole
+   page before anything is written. A stored value the definition no longer allows is read as the
+   safe value and logged. The
    emergency stop (R0), "Trusted from start" and "full review" are not settings here: they are
    separate use cases with their own keys, a required reason and an audit row (later slices).
 5. **No behaviour change in this slice.** Nothing reads the settings yet; `catalog` reads them when

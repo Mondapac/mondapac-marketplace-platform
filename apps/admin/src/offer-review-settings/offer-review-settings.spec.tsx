@@ -6,6 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
+vi.mock('../step-up/step-up.tsx', async () => {
+  const api = await import('../api/client.ts');
+  return {
+    useGuardedCall: () => api.callApi,
+    isStepUpCancelled: (result: { ok: boolean; failure?: { code: string } }) =>
+      !result.ok && result.failure?.code === 'step-up.cancelled',
+  };
+});
 
 import { callApi } from '../api/client.ts';
 import { expectToast } from '../../test/toast-spy.ts';

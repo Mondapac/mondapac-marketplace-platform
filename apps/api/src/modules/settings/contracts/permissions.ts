@@ -60,13 +60,14 @@ export const SETTINGS_OFFER_REVIEW_VIEW = definePermission('settings', {
 
 /**
  * Change the Offer review policy: the mode, the new seller count, the reference price rules, the
- * sampling percent and the badge rule. A key of its own, held by no role but the Platform
- * Administrator until an owner gives it (risk-based Offer approval design, section 8).
+ * sampling percent and the badge rule. Protected (Hassan, PR #1329): one write can switch every
+ * admin check on Offers off, badges included, so only the Platform Administrator holds it, with
+ * the admin second factor, like `settings.ai.manage`.
  */
 export const SETTINGS_OFFER_REVIEW_MANAGE = definePermission('settings', {
   key: 'settings.offer-review.manage',
   scope: 'platform',
-  protected: false,
+  protected: true,
 });
 
 export const SETTINGS_PERMISSIONS = declarePermissions('settings', [

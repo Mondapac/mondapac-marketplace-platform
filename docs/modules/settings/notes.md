@@ -76,5 +76,7 @@ store of ADR-0026).
 - `GET` and `PUT settings/admin/offer-review`; the write takes `changes: [{code, value,
   expectedVersion}]`, each code once, all or nothing (every version checked before any write). Each
   change keeps its own history row, audit row and review request.
-- Keys `settings.offer-review.view` and `.manage`, not protected.
+- Keys `settings.offer-review.view` (Viewer role, seed 37) and `.manage` (protected, second
+  factor). Reviewed at high risk where area `marketplace` is reviewed. A stored value outside the
+  definition is read as the safe value and logged (every setting, not only these).
 - Nothing reads them yet: catalog's referral policy (next slice) reads them through the facade.

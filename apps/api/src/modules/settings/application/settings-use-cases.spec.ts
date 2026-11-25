@@ -22,7 +22,7 @@ import type {
   MarketSettingRepository,
 } from './ports/market-setting.repository';
 import type { SettingsDependencies } from './settings-dependencies';
-import { SETTING_SUBJECT_KIND } from './settings-flow';
+import { readSettingValue, SETTING_SUBJECT_KIND } from './settings-flow';
 import { SettingsReverter } from './settings-reverter';
 import { SettingsFacadeImplementation } from '../presentation/settings.facade';
 import { ChangeAiSetting } from './use-cases/change-ai-setting.use-case';
@@ -769,6 +769,77 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       expect(store.history).toHaveLength(0);
     });
 
+    it('accepts each bound itself, as a number or as decimal text', async () => {
+      const saved = await saveOfferReview({
+        changes: [
+          { code: 'offer-review-probation-offers', value: 0, expectedVersion: 0 },
+          { code: 'offer-review-reference-sellers', value: '20', expectedVersion: 0 },
+          { code: 'offer-review-price-band', value: '200', expectedVersion: 0 },
+          { code: 'offer-review-sampling', value: '100', expectedVersion: 0 },
+        ],
+      });
+      expect(saved.ok && saved.value.map((row) => row.value)).toEqual(['0', '20', '200', '100']);
+      const lower = await saveOfferReview({
+        changes: [
+          { code: 'offer-review-reference-sellers', value: '2', expectedVersion: 1 },
+          { code: 'offer-review-price-band', value: 5, expectedVersion: 1 },
+          { code: 'offer-review-probation-offers', value: '100', expectedVersion: 1 },
+        ],
+      });
+      expect(lower.ok && lower.value.map((row) => row.value)).toEqual(['2', '5', '100']);
+    });
+
+    it('answers each safe value when the store cannot be read or holds a value out of bounds', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      const SAFE = {
+        'offer-review-mode': 'all',
+        'offer-review-probation-offers': '100',
+        'offer-review-reference-sellers': '20',
+        'offer-review-price-band': '5',
+        'offer-review-sampling': '100',
+        'offer-review-certificate-badges': 'review',
+      };
+      try {
+        store.failReads = true;
+        for (const [setting, safe] of Object.entries(SAFE)) {
+          expect(await readSettingValue(deps, adminCtx(), setting)).toBe(safe);
+        }
+        store.failReads = false;
+        // A row changed by hand to a value the definition does not allow is never passed on.
+        store.rows.set(`${market.marketId}/offer-review-price-band`, {
+          code: 'offer-review-price-band',
+          value: '0',
+          version: 1,
+          updatedAt: T0,
+          updatedBy: ADMIN,
+        });
+        expect(await readSettingValue(deps, adminCtx(), 'offer-review-price-band')).toBe('5');
+        expect(await readSettingValue(deps, adminCtx(), 'offer-review-sampling')).toBe('5');
+        expect(warn).toHaveBeenCalledWith(
+          expect.objectContaining({
+            code: 'offer-review-price-band',
+            reason: 'stored-value-invalid',
+          }),
+        );
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it('refuses the whole page without a note where the area is reviewed, and saves nothing', async () => {
+      review.review('marketplace');
+      const refused = await saveOfferReview({
+        changes: [
+          { code: 'offer-review-sampling', value: '6', expectedVersion: 0 },
+          { code: 'offer-review-mode', value: 'all', expectedVersion: 0 },
+        ],
+      });
+      expect(!refused.ok && refused.error.code).toBe('validation.failed');
+      expect(review.opened).toHaveLength(0);
+      expect(!refused.ok && refused.error).toMatchObject({ fields: [{ path: 'note' }] });
+      expect(store.history).toHaveLength(0);
+    });
+
     it('refuses an empty list, a setting named twice, and a list that is not one', async () => {
       const twice = { code: 'offer-review-sampling', value: '6', expectedVersion: 0 };
       for (const changes of [[], [twice, twice], 'offer-review-sampling', undefined]) {
@@ -796,9 +867,9 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         ],
         note: 'Launch sellers are known to the team',
       });
-      expect(review.opened.map((opened) => opened.subjectRef)).toEqual([
-        'offer-review-probation-offers',
-        'offer-review-certificate-badges',
+      expect(review.opened.map((opened) => [opened.subjectRef, opened.risk])).toEqual([
+        ['offer-review-probation-offers', 'high'],
+        ['offer-review-certificate-badges', 'high'],
       ]);
       const outcome = await new SettingsReverter(deps).revert(adminCtx(), {
         requestId: id<'SystemRequest'>(0x5e4),
