@@ -632,7 +632,8 @@ export function VariantsTable({
                 scrollPaddingInlineStart: `${COL.variant + 0.5}rem`,
                 // Clear of the sticky Details column too, when the table has it.
                 scrollPaddingInlineEnd: showDetails ? `${COL.details + 1}rem` : '1rem',
-                paddingInlineEnd: '1rem',
+                // No strip of the column under it shows beside the sticky Details column.
+                paddingInlineEnd: showDetails ? 0 : '1rem',
               }}
               onScroll={updateFade}
             >
@@ -708,7 +709,7 @@ export function VariantsTable({
                     {showDetails ? (
                       <th
                         scope="col"
-                        className="bg-surface p-2 font-medium sm:sticky sm:end-0 sm:z-10"
+                        className="bg-surface p-2 font-medium sm:sticky sm:end-0 sm:z-10 sm:border-s sm:border-line"
                       >
                         <span className="sr-only">{t('catalog.size-details.column')}</span>
                       </th>
@@ -913,7 +914,7 @@ export function VariantsTable({
                           ) : null}
                           {showDetails ? (
                             // Sticky at the end: on a phone Details and Close stay in view.
-                            <td className={`p-2 sm:sticky sm:end-0 sm:z-10 ${bg}`}>
+                            <td className={`p-2 sm:sticky sm:end-0 sm:z-10 sm:border-s sm:border-line ${bg}`}>
                               {detailsButton(row, open, detailsId, 'max-sm:hidden')}
                             </td>
                           ) : null}
