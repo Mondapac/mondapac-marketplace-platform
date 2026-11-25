@@ -51,7 +51,13 @@ export function OnThePlatform({
   const locale = useLocale();
   const router = useRouter();
   const headingId = useId();
-  const [answer, setAnswer] = useState<PlatformSearchAnswer | null>(null);
+  const errorId = useId();
+  // The answer and the text it answers: rows of an older text are shown dimmed and cannot be sold
+  // until the new answer arrives.
+  const [answer, setAnswer] = useState<{
+    readonly text: string;
+    readonly body: PlatformSearchAnswer;
+  } | null>(null);
   const [rows, setRows] = useState<ReadonlyMap<string, Row>>(new Map());
   const [seeAll, setSeeAll] = useState(false);
   const latest = useRef(0);
@@ -59,15 +65,17 @@ export function OnThePlatform({
 
   useEffect(() => {
     const ticket = ++latest.current;
-    setRows(new Map());
+    // A refusal belongs to the search it was shown in; a draft being created keeps its row.
+    setRows((current) => new Map([...current].filter(([, row]) => row.state === 'saving')));
     void callApi<PlatformSearchAnswer>('GET', panelSearchPath(text)).then((result) => {
+      // A later search answers; this one is stale.
       if (ticket !== latest.current) return;
       if (!result.ok && result.failure.status === 401) {
         window.location.assign('/session-ended');
         return;
       }
       // A failed read hides the panel: the list above has its own error and Try again.
-      setAnswer(result.ok ? result.body : null);
+      setAnswer(result.ok ? { text, body: result.body } : null);
     });
   }, [text]);
 
@@ -86,14 +94,14 @@ export function OnThePlatform({
     busy.current = true;
     mark(product.productId, { state: 'saving' });
     const options = await callApi<ProductOptions>('GET', 'catalog/seller/products/options');
-    const condition = options.ok ? defaultCondition(options.body.conditions) : null;
     if (!options.ok && options.failure.status === 401) {
       window.location.assign('/session-ended');
       return;
     }
+    const condition = options.ok ? defaultCondition(options.body.conditions) : null;
     if (condition === null) {
       busy.current = false;
-      mark(product.productId, { state: 'refused', key: 'unknown' });
+      mark(product.productId, { state: 'refused', key: 'settings' });
       return;
     }
     const result = await callApi<Created>(
@@ -114,57 +122,86 @@ export function OnThePlatform({
     mark(product.productId, { state: 'refused', key: createErrorKey(result.failure.code) });
   }
 
-  if (answer === null || answer.notice === 'no-activity' || answer.total === 0) return null;
+  if (answer === null) return null;
+  const found = answer.body;
+  if (found.notice === 'no-activity' || found.total === 0) return null;
+  const stale = answer.text !== text;
   const number = (value: number) => numberFormat(locale, {}).format(value);
-  const shown = answer.items.slice(0, ON_THE_PLATFORM_ROWS);
+  const shown = found.items.slice(0, ON_THE_PLATFORM_ROWS);
   const saving = [...rows.values()].some((row) => row.state === 'saving');
+  const reason = (key: string) =>
+    key === 'settings' ? t('settings-error') : ta(`create-reason.${key}`);
+  const footerLink = 'inline-flex min-h-(--mp-size-control-sm) items-center font-medium';
 
   return (
     <section
       aria-labelledby={headingId}
-      className="mt-6 overflow-hidden rounded-lg border border-line bg-surface"
+      aria-busy={stale}
+      className="mt-6 overflow-hidden rounded-lg border border-info-border bg-surface"
     >
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-line bg-info-bg px-4 py-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-info-border bg-info-bg px-4 py-3">
         <h2 id={headingId} className="text-base font-semibold text-fg">
-          {t('title', { total: number(answer.total) })}
+          {t('title')} <span className="whitespace-nowrap">({number(found.total)})</span>
         </h2>
         <p className="text-sm text-fg-muted">{t('note')}</p>
       </div>
-      <ul className="divide-y divide-line">
+      <ul className={`divide-y divide-line ${stale ? 'opacity-60' : ''}`}>
         {shown.map((product) => {
           const row = rows.get(product.productId);
           const name = product.name ?? product.productCode;
+          const busyRow = row?.state === 'saving';
+          const refused = row?.state === 'refused' ? row.key : null;
+          const sizes = ta('sizes', { count: product.variantCount });
           return (
             <li
               key={product.productId}
-              className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3"
+              className="flex items-center gap-x-4 px-4 py-3 md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
             >
-              <div className="min-w-0 flex-1 basis-60">
+              <div className="min-w-0 flex-1">
                 <p className="font-medium text-fg">
                   {name} <span className="font-normal text-fg-muted">{product.productCode}</span>
                 </p>
-                <p className="text-sm text-fg-muted">
-                  {[
-                    product.brandName,
-                    product.categoryName,
-                    ta('sizes', { count: product.variantCount }),
-                  ]
+                {/* On a phone one line under the name; from md up the brand and category are columns. */}
+                <p className="text-sm text-fg-muted md:hidden">
+                  {[product.brandName, product.categoryName, sizes]
                     .filter((part): part is string => part !== null)
                     .join(' · ')}
                 </p>
-                {row?.state === 'refused' ? (
-                  <p role="alert" className="mt-1 text-sm text-critical-fg">
-                    {t('refused', { reason: ta(`create-reason.${row.key}`) })}
+                <p className="hidden text-sm text-fg-muted md:block">{sizes}</p>
+                {refused === null ? null : (
+                  <p
+                    id={`${errorId}-${product.productId}`}
+                    role="alert"
+                    className="mt-1 text-sm text-critical-fg"
+                  >
+                    {t('refused', { reason: reason(refused) })}
                   </p>
-                ) : null}
+                )}
               </div>
+              <p className="hidden truncate text-sm text-fg md:block">{product.brandName ?? ''}</p>
+              <p className="hidden truncate text-sm text-fg md:block">
+                {product.categoryName ?? ''}
+              </p>
               <Button
                 size="sm"
-                // The busy button keeps focus (loading); the others wait for it.
-                loading={row?.state === 'saving'}
+                className="w-28 shrink-0"
+                // The busy button keeps focus (loading); the others wait for it. A product the
+                // seller turned out to sell already cannot be sold twice.
+                loading={busyRow}
                 loadingLabel={t('saving')}
-                disabled={saving && row?.state !== 'saving'}
-                aria-label={t('sell-label', { name })}
+                disabled={stale || (saving && !busyRow) || refused === 'exists'}
+                aria-label={
+                  busyRow
+                    ? t('saving-label', { name })
+                    : product.brandName === null
+                      ? t('sell-label', { name, code: product.productCode })
+                      : t('sell-label-brand', {
+                          name,
+                          code: product.productCode,
+                          brand: product.brandName,
+                        })
+                }
+                aria-describedby={refused === null ? undefined : `${errorId}-${product.productId}`}
                 onClick={() => void sell(product)}
               >
                 {ta('sell-this')}
@@ -173,15 +210,16 @@ export function OnThePlatform({
           );
         })}
       </ul>
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-line px-4 py-3 text-sm">
-        <p className="text-fg-muted" aria-live="polite">
-          {t('showing', { shown: number(shown.length), total: number(answer.total) })}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-info-border px-4 py-2 text-sm">
+        <p className="text-fg-muted">
+          {t('showing', { shown: number(shown.length), total: number(found.total) })}
         </p>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div className="flex flex-wrap items-center gap-x-3">
           <Button
             variant="link"
             size="sm"
-            className="underline"
+            className="font-medium"
+            disabled={saving}
             aria-haspopup="dialog"
             onClick={() => setSeeAll(true)}
           >
@@ -190,9 +228,18 @@ export function OnThePlatform({
           <span aria-hidden="true" className="hidden text-fg-muted sm:inline">
             ·
           </span>
-          <Link href="/products/new" className="font-medium text-link underline">
-            {t('add-own')}
-          </Link>
+          {saving ? (
+            <span className={`${footerLink} text-fg-muted`} aria-disabled="true">
+              {t('add-own')}
+            </span>
+          ) : (
+            <Link
+              href="/products/new"
+              className={`${footerLink} text-link underline-offset-2 hover:underline`}
+            >
+              {t('add-own')}
+            </Link>
+          )}
         </div>
       </div>
       {seeAll ? (

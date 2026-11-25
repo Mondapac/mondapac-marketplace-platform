@@ -957,31 +957,71 @@ describe('On the platform under the product list', () => {
     notice: null,
     barcodeResults: [],
   };
+  const savedBeef = {
+    id: '0190a000-0000-7000-8000-0000000000s1',
+    listKey: 'seller.catalog.products',
+    name: 'Beef search',
+    visibility: 'personal',
+    payload: { v: 1, view: 'all', q: 'beef', sort: 'updated', direction: 'desc' },
+    ownedByMe: true,
+    canManage: true,
+    createdAt: '2026-11-01T00:00:00.000Z',
+    updatedAt: '2026-11-01T00:00:00.000Z',
+  };
   const panel = () => screen.queryByRole('region', { name: /On the platform/ });
+  const platformCalls = () => call.mock.calls.filter((entry) => entry[1].startsWith(PLATFORM));
+
+  function serveWith(options: { saved?: 'fail' | readonly unknown[]; list?: 'fail' } = {}) {
+    call.mockImplementation((_method, path) => {
+      if (path.startsWith('catalog/seller/saved-filters')) {
+        const saved = options.saved ?? 'fail';
+        return Promise.resolve(
+          saved === 'fail'
+            ? ({ ok: false, failure: { status: 503, code: 'access.unavailable' } } as never)
+            : ({
+                ok: true,
+                status: 200,
+                body: { items: saved, canShare: false, limits: { perOwner: 50, shared: 20 } },
+              } as never),
+        );
+      }
+      if (path.startsWith(PLATFORM)) {
+        return Promise.resolve({ ok: true, status: 200, body: platformAnswer } as never);
+      }
+      if (options.list === 'fail') {
+        return Promise.resolve({
+          ok: false,
+          failure: { status: 503, code: 'access.unavailable' },
+        } as never);
+      }
+      return Promise.resolve({ ok: true, status: 200, body: page([row()]) } as never);
+    });
+  }
 
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
     // @ts-expect-error jsdom has no matchMedia: the list then counts as desktop.
     delete window.matchMedia;
-    call.mockImplementation((_method, path) => {
-      if (path.startsWith('catalog/seller/saved-filters')) {
-        return Promise.resolve({ ok: false, failure: { status: 503, code: 'access.unavailable' } });
-      }
-      const body = path.startsWith(PLATFORM) ? platformAnswer : page([row()]);
-      return Promise.resolve({ ok: true, status: 200, body } as never);
-    });
   });
   afterEach(() => cleanup());
 
   it('shows under the All tab while the search has text, asking without products already sold', async () => {
+    serveWith();
     open('q=beef');
     mount();
     expect(await screen.findByText('Beef brisket 1 kg')).toBeTruthy();
     expect(panel()).toBeTruthy();
-    expect(call.mock.calls.map((entry) => entry[1])).toContain(
+    expect(platformCalls().map((entry) => entry[1])).toEqual([
       `${PLATFORM}?q=beef&notSelling=true`,
-    );
+    ]);
+  });
+
+  it('shows once the saved filters are known, when none of them is open', async () => {
+    serveWith({ saved: [] });
+    open('q=beef');
+    mount();
+    expect(await screen.findByText('Beef brisket 1 kg')).toBeTruthy();
   });
 
   it.each([
@@ -989,14 +1029,35 @@ describe('On the platform under the product list', () => {
     ['another tab', 'view=drafts&q=beef'],
     ['a filter', `q=beef&categoryId=${CATEGORY}`],
   ])('stays hidden with %s', async (_name, search) => {
+    serveWith();
     open(search);
     mount();
     expect(await screen.findByText('Olive oil 1L')).toBeTruthy();
     expect(panel()).toBeNull();
-    expect(call.mock.calls.some((entry) => entry[1].startsWith(PLATFORM))).toBe(false);
+    expect(platformCalls()).toHaveLength(0);
+  });
+
+  it('stays hidden on a saved filter tab, without asking the platform search', async () => {
+    serveWith({ saved: [savedBeef] });
+    open('q=beef');
+    mount();
+    expect(await screen.findByRole('button', { name: 'Beef search' })).toBeTruthy();
+    expect(await screen.findByText('Olive oil 1L')).toBeTruthy();
+    expect(panel()).toBeNull();
+    expect(platformCalls()).toHaveLength(0);
+  });
+
+  it('stays hidden while the list itself has failed', async () => {
+    serveWith({ list: 'fail' });
+    open('q=beef');
+    mount();
+    expect(await screen.findByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(panel()).toBeNull();
+    expect(platformCalls()).toHaveLength(0);
   });
 
   it('stays hidden for a viewer who may not edit', async () => {
+    serveWith();
     open('q=beef');
     mount({ keys: ['catalog.own-product.view'] });
     expect(await screen.findByText('Olive oil 1L')).toBeTruthy();

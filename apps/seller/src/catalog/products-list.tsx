@@ -147,6 +147,8 @@ export function ProductsList({
   // then has the built-in tabs only, and no Save filter or Manage filters).
   const [saved, setSaved] = useState<SavedFiltersAnswer | null>(null);
   const [dialog, setDialog] = useState<'save' | 'manage' | null>(null);
+  // The saved filters were asked once (loaded or not): until then a saved tab cannot be told apart.
+  const [savedSettled, setSavedSettled] = useState(false);
   const latest = useRef(0);
   const storageKey = prefsKey('seller', marketId, accountId, 'products-columns');
   const canEdit = permissionKeys.includes(EDIT_PERMISSION);
@@ -161,6 +163,7 @@ export function ProductsList({
       `catalog/seller/saved-filters?listKey=${LIST_KEY}`,
     );
     if (result.ok) setSaved(result.body);
+    setSavedSettled(true);
   }, []);
 
   useEffect(() => {
@@ -318,9 +321,13 @@ export function ProductsList({
   const sortOrder = t(`sort.${orderKey(query.sort, query.direction)}`);
   const noProducts = counts !== null && counts.all === 0 && !filtered;
   // "On the platform" (Offer page design, section 3): under the list while the All tab has a search
-  // and nothing else; a filter, a saved tab or another tab hides it.
+  // and nothing else; a filter, a saved tab, another tab or a list error hides it. It waits for the
+  // saved filters, so a saved tab never shows it for a moment.
   const showPlatform =
     canEdit &&
+    savedSettled &&
+    answer !== null &&
+    failure === null &&
     query.q !== '' &&
     query.view === 'all' &&
     filterCount(query.filters) === 0 &&

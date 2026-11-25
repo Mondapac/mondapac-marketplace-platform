@@ -1067,11 +1067,14 @@
       "page": "Page {page} of {pages}"
     },
     "onThePlatform": {
-      "title": "On the platform: products you can sell ({total})",
-      "note": "Only your business activities · Not part of the table above",
-      "sell-label": "Sell this: {name}",
-      "saving": "Creating draft",
+      "title": "On the platform: products you can sell",
+      "note": "From your business activities only. Not part of the list above.",
+      "sell-label": "Sell this: {name}, {code}",
+      "sell-label-brand": "Sell this: {name} by {brand}, {code}",
+      "saving": "Creating…",
+      "saving-label": "Creating a draft offer for {name}",
       "refused": "The offer could not be created: {reason}.",
+      "settings-error": "we couldn't get your shop's settings, try again",
       "showing": "Showing {shown} of {total}",
       "see-all": "See all platform products for “{q}”",
       "add-own": "Add your own product"

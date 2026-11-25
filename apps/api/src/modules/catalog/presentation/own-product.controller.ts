@@ -158,6 +158,23 @@ function productListQuery(
   return out;
 }
 
+/**
+ * The query of the platform-product search as the use case takes it: `page` a number, `barcodes`
+ * a list, and `notSelling` a boolean when it is `true` or `false` (any other text is left for the
+ * use case to refuse).
+ */
+export function platformSearchQuery(query: Record<string, unknown>): Record<string, unknown> {
+  const input = productListQuery(query, ['page']);
+  const barcodes = input['barcodes'];
+  if (typeof barcodes === 'string') {
+    input['barcodes'] = barcodes.split(/[\s,;]+/).filter((line) => line !== '');
+  }
+  const notSelling = input['notSelling'];
+  if (notSelling === 'true') input['notSelling'] = true;
+  else if (notSelling === 'false') input['notSelling'] = false;
+  return input;
+}
+
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
 const UNAUTHORIZED = 'session.invalid (the cookie is cleared) or access.unauthenticated';
 const PRODUCT_PARAM = { name: 'productId', description: 'The product. A UUID v7.' };
@@ -407,14 +424,7 @@ export class OwnProductController {
     @Res({ passthrough: true }) response: Response,
     @Query() query: Record<string, unknown>,
   ): Promise<PlatformSearchPage> {
-    const input = productListQuery(query, ['page']);
-    const barcodes = input['barcodes'];
-    if (typeof barcodes === 'string') {
-      input['barcodes'] = barcodes.split(/[\s,;]+/).filter((line) => line !== '');
-    }
-    const notSelling = input['notSelling'];
-    if (notSelling === 'true') input['notSelling'] = true;
-    else if (notSelling === 'false') input['notSelling'] = false;
+    const input = platformSearchQuery(query);
     const result = await this.searchPlatform.execute(context, input);
     const outcome = result.ok
       ? (JSON.parse(JSON.stringify(result.value)) as PlatformSearchPage)
