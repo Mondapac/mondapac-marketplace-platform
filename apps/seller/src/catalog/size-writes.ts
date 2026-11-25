@@ -1,10 +1,17 @@
 import { callApi } from '../api/client.ts';
+import { costProblemOf, type CostWritten } from '../price/cost.ts';
 import { priceProblemOf } from '../price/errors.ts';
 import type { PriceWritten, SpecialWritten } from '../price/types.ts';
 import { levelsProblemOf } from '../stock/levels-errors.ts';
 import type { StockSet } from '../stock/levels-types.ts';
 import { isStepUpCancelled, type GuardedCall } from '../step-up/step-up.tsx';
-import { specialKey, stockKey, type TableRow, type Write } from './variants-table-logic.ts';
+import {
+  costKey,
+  specialKey,
+  stockKey,
+  type TableRow,
+  type Write,
+} from './variants-table-logic.ts';
 
 /** What one save of an offer's price and stock cells did. */
 export interface SizeWritesOutcome {
@@ -24,7 +31,11 @@ export interface SizeWritesOutcome {
   /** The variant ids whose new special price was saved, and those that wait for review. */
   readonly savedSpecials: readonly string[];
   readonly heldSpecials: readonly string[];
-  /** The newest version of each written series (`price:<variant>`, `stock:<key>`). */
+  /** The variant ids whose private Cost was saved (Offer page PR 7-UI). */
+  readonly savedCosts: readonly string[];
+  /** The variant ids whose Cost changed elsewhere since it was read: the caller reads Costs again. */
+  readonly staleCosts: readonly string[];
+  /** The newest version of each written series (`price:<variant>`, `stock:<key>`, `cost:<variant>`). */
   readonly seen: Record<string, number | null>;
 }
 
@@ -33,6 +44,8 @@ export interface SizeWriteMessages {
   readonly throttledCell: string;
   readonly price: (problem: string) => string;
   readonly stock: (problem: string) => string;
+  /** A refused Cost write (Offer page only); never shows the amount. */
+  readonly cost?: (problem: string) => string;
 }
 
 /**
@@ -47,6 +60,7 @@ export async function sendSizeWrites({
   writes,
   currency,
   versions,
+  costVersions = {},
   csrfToken,
   guarded,
   messages,
@@ -57,6 +71,8 @@ export async function sendSizeWrites({
   readonly currency: string;
   /** Versions already seen by earlier saves without a refresh in between. */
   readonly versions: Readonly<Record<string, number | null>>;
+  /** The Cost series version of each size as the Cost read answered, by variant id. */
+  readonly costVersions?: Readonly<Record<string, number | null>>;
   readonly csrfToken: string;
   readonly guarded: GuardedCall;
   readonly messages: SizeWriteMessages;
@@ -67,6 +83,8 @@ export async function sendSizeWrites({
   const savedStocks: string[] = [];
   const savedSpecials: string[] = [];
   const heldSpecials: string[] = [];
+  const savedCosts: string[] = [];
+  const staleCosts: string[] = [];
   let done = 0;
   let stopped = false;
   let waitSeconds: number | null = null;
@@ -80,12 +98,49 @@ export async function sendSizeWrites({
     savedStocks,
     savedSpecials,
     heldSpecials,
+    savedCosts,
+    staleCosts,
     seen,
   });
   for (const write of writes) {
     const row = rows.find((item) => item.variantId === write.variantId);
     if (row === undefined) continue;
-    if (write.kind === 'special') {
+    if (write.kind === 'cost') {
+      // The private Cost (Offer page PR 7-UI): its own series and route, guarded by the same
+      // two-step code as a price. The body carries the amount only; nothing of it is kept here.
+      const key = `cost:${write.variantId}`;
+      const expectedVersion =
+        key in seen ? (seen[key] ?? null) : (costVersions[write.variantId] ?? null);
+      const result = await guarded<CostWritten>(
+        'PUT',
+        `pricing/seller/offers/${offerId}/variants/${write.variantId}/cost`,
+        {
+          cost: write.amount === null ? null : { amount: write.amount, currency },
+          expectedVersion,
+        },
+        csrfToken,
+      );
+      if (isStepUpCancelled(result)) {
+        stopped = true;
+        break;
+      }
+      if (!result.ok) {
+        if (result.failure.status === 401) return outcome(true);
+        if (result.failure.code === 'request.throttled') {
+          waitSeconds = result.failure.details?.retryAfterSeconds ?? 60;
+          found[costKey(write.variantId)] = messages.throttledCell;
+          stopped = true;
+          break;
+        }
+        const problem = costProblemOf(result.failure);
+        if (problem === 'stale') staleCosts.push(write.variantId);
+        found[costKey(write.variantId)] = messages.cost?.(problem) ?? messages.price('unknown');
+        continue;
+      }
+      seen[key] = result.body.seriesVersion;
+      savedCosts.push(write.variantId);
+      done += 1;
+    } else if (write.kind === 'special') {
       // The special shares the size's price series: the version a price write just moved is used.
       const key = `price:${write.variantId}`;
       const expectedVersion =

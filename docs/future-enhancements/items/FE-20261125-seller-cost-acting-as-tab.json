@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-seller-cost-acting-as-tab",
+  "area": "seller",
+  "title": "پنهان کردن تب Cost در نشست Login as Seller",
+  "desc": "API خواندن و نوشتن هزینه را در نشست acting-as رد می‌کند (pricing.acting-as-refused) و تب Cost پس از Show costs پیام توضیحی نشان می‌دهد. صفحه هنوز نمی‌داند نشست acting-as است، پس تب دیده می‌شود. وقتی نشست فروشنده نشانهٔ acting-as را به صفحه داد، تب Cost در آن نشست اصلاً نشان داده نشود (همراه FE-20261125-seller-you-receive-acting-as).",
+  "src": "apps/seller/src/catalog/size-cost.tsx",
+  "date": "2026-11-25",
+  "trig": "وقتی صفحه‌های فروشنده نشانهٔ acting-as را از نشست گرفتند",
+  "prio": "پایین",
+  "status": "موکول"
+}

@@ -19,6 +19,21 @@ const t = createTranslator({ locale: 'en-AU', messages });
 const realFetch = globalThis.fetch;
 globalThis.fetch = (input, init) => {
   const url = input instanceof Request ? input.url : input.toString();
+  // The private Cost (Offer page PR 7-UI): read on "Show costs". Fake amounts; no write is mocked.
+  if (url.endsWith('/costs')) {
+    const body = {
+      offerId: 'o1',
+      currency: 'AUD',
+      variants: [
+        { variantId: 'v1', seriesVersion: null, cost: null },
+        { variantId: 'v2', seriesVersion: 3, cost: { amount: '900', currency: 'AUD' } },
+        { variantId: 'v3', seriesVersion: null, cost: null },
+      ],
+    };
+    return Promise.resolve(
+      new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } }),
+    );
+  }
   if (!url.includes('/receive-estimates')) return realFetch(input, init);
   const lines = decodeURIComponent(url.split('lines=')[1] ?? '')
     .split(',')
@@ -155,6 +170,7 @@ createRoot(document.getElementById('root')!).render(
         units={{ canEdit: true, productScope: 'PLATFORM', sellerSku: 'KED-021' }}
         csrfToken="csrf"
         canEstimate
+        canViewCost
       />
     </div>
   </NextIntlClientProvider>,
