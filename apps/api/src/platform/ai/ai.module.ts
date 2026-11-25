@@ -18,6 +18,7 @@ import { MODEL_PROVIDER } from './model-provider';
 import { AiRouter } from './routing/ai-router';
 import { AiUsage } from './usage/ai-usage';
 import { aiReservationSweeperJob, aiUsageRetentionJob } from './usage/ai-usage-jobs';
+import { AiUsageReport } from './usage/ai-usage-report';
 import { AI_USAGE_STORE, type AiUsageStore } from './usage/ai-usage-store';
 
 /**
@@ -30,8 +31,10 @@ import { AI_USAGE_STORE, type AiUsageStore } from './usage/ai-usage-store';
  * and passes of their own (the checked-in ones have no verified route yet, ADR-0052).
  *
  * The usage and budget store (`platform.ai_*`, design section 10) is bound here only and not
- * exported, so no module reads or changes the AI budget; its two jobs (`platform.ai-reservation-
+ * exported, so no module changes the AI budget; its two jobs (`platform.ai-reservation-
  * sweeper`, `platform.ai-usage-retention`) are registered in both roles and run by the worker.
+ * {@link AiUsageReport} is the one read of it a module gets (G7): its own capability's settled
+ * cost per day and its "cap reached" record, never what is held or a call's detail.
  *
  * `app.module.ts` passes the module that provides and exports `SELLER_AI_SWITCH` (sellers'), as it
  * does for identity's authorisation check, so `platform/` imports no module; a graph without it
@@ -81,8 +84,9 @@ export class AiModule {
           aiUsageRetentionJob(usage),
         ]),
         AiGateway,
+        AiUsageReport,
       ],
-      exports: [AiGateway, CapabilityRegistry],
+      exports: [AiGateway, CapabilityRegistry, AiUsageReport],
     };
   }
 }

@@ -24,7 +24,13 @@ import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
-import { CatalogModule } from '../catalog';
+import { CATALOG_FACADE, CatalogModule, type CatalogFacade } from '../catalog';
+import {
+  COMMISSION_PAYOUTS_FACADE,
+  CommissionPayoutsModule,
+  type CommissionPayoutsFacade,
+} from '../commission-payouts';
+import { TAX_FACADE, TaxModule, type TaxFacade } from '../tax';
 import { ListsModule, registerLists } from '../lists';
 import { SellersModule } from '../sellers';
 import { SettingsModule } from '../settings';
@@ -63,6 +69,10 @@ import { SetRegularPrice } from './application/use-cases/set-regular-price.use-c
 import { SetSpecialPrice } from './application/use-cases/set-special-price.use-case';
 import { WithdrawSpecialPrice } from './application/use-cases/withdraw-special-price.use-case';
 import { ViewTypicalPrices } from './application/use-cases/view-typical-prices.use-case';
+import { ViewReceiveEstimates } from './application/use-cases/view-receive-estimates.use-case';
+import { OWN_COMMISSION_SOURCE } from './application/ports/own-commission';
+import { FacadeOwnCommission } from './infrastructure/facade-own-commission';
+import { SellerReceiveEstimatesController } from './presentation/seller-receive-estimates.controller';
 import { SellerTypicalPricesController } from './presentation/seller-typical-prices.controller';
 import { ViewOfferPrices } from './application/use-cases/view-offer-prices.use-case';
 import { PRICING_PERMISSIONS } from './contracts/permissions';
@@ -105,6 +115,7 @@ const PORT = {
   ids: ID_GENERATOR,
   specials: SPECIALS_IN_FORCE_READER,
   reference: FIRST_PRICE_REFERENCE,
+  ownCommission: OWN_COMMISSION_SOURCE,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -180,13 +191,21 @@ function holdListUseCaseProvider<U>(type: HoldListUseCaseClass<U>): FactoryProvi
  * write answers `pricing.offer-not-found`.
  */
 @Module({
-  imports: [CatalogModule, SellersModule, SettingsModule, ListsModule],
+  imports: [
+    CatalogModule,
+    SellersModule,
+    SettingsModule,
+    ListsModule,
+    CommissionPayoutsModule,
+    TaxModule,
+  ],
   controllers: [
     SellerRegularPriceController,
     SellerSpecialPriceController,
     SellerOfferPricesController,
     SellerOfferCostsController,
     SellerTypicalPricesController,
+    SellerReceiveEstimatesController,
     AdminPriceHoldController,
   ],
   providers: [
@@ -281,6 +300,13 @@ function holdListUseCaseProvider<U>(type: HoldListUseCaseClass<U>): FactoryProvi
       clock: true,
       reference: true,
     }),
+    {
+      provide: OWN_COMMISSION_SOURCE,
+      inject: [COMMISSION_PAYOUTS_FACADE, CATALOG_FACADE, TAX_FACADE],
+      useFactory: (payouts: CommissionPayoutsFacade, catalog: CatalogFacade, tax: TaxFacade) =>
+        new FacadeOwnCommission(payouts, catalog, tax),
+    },
+    useCaseProvider(ViewReceiveEstimates, { offers: true, policies: true, ownCommission: true }),
     useCaseProvider(EffectivePricesQuery, { unitOfWork: true, series: true, clock: true }),
     useCaseProvider(EffectivePricesSystemQuery, { unitOfWork: true, series: true, clock: true }),
     useCaseProvider(DaysAtPriceQuery, { unitOfWork: true, series: true, clock: true }),

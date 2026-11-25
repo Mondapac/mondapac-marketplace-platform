@@ -58,6 +58,8 @@ for (const scheme of ['light', 'dark']) {
         .click();
     }
     if (scenario === 'stock') await page.getByRole('tab', { name: 'Stock' }).click();
+    // "You receive (est.)" is read after a short pause (Offer page PR 4).
+    await page.waitForTimeout(900);
     const over = await page.evaluate(
       () => globalThis.document.documentElement.scrollWidth > globalThis.innerWidth,
     );

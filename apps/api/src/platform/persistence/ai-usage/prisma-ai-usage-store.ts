@@ -6,7 +6,10 @@ import {
   type AiUsageStore,
   type BudgetCounterKey,
   type BudgetLine,
+  type BudgetPeriod,
   type CallRecord,
+  type CapReached,
+  type DayCost,
   type ReservationRecord,
   type UsageDelta,
 } from '../../ai/usage/ai-usage-store';
@@ -320,6 +323,83 @@ export class PrismaAiUsageStore implements AiUsageStore {
       },
     });
     return deleted.count;
+  }
+
+  async costByDay(
+    market: MarketContext,
+    capability: string,
+    from: Temporal.PlainDate,
+    to: Temporal.PlainDate,
+  ): Promise<readonly DayCost[]> {
+    const rows = await this.prisma.tx(market).aiUsageDay.groupBy({
+      by: ['day'],
+      where: {
+        marketId: market.marketId,
+        tenantId: market.tenantId,
+        day: { gte: dateOf(from), lte: dateOf(to) },
+        capability,
+      },
+      _sum: { costMicroUsd: true },
+      orderBy: { day: 'asc' },
+    });
+    return rows.map((row) => ({
+      day: plainDateOf(row.day),
+      costMicroUsd: Number(row._sum.costMicroUsd ?? 0n),
+    }));
+  }
+
+  async markCapReached(
+    market: MarketContext,
+    capability: string,
+    day: Temporal.PlainDate,
+    period: BudgetPeriod,
+    at: Temporal.Instant,
+  ): Promise<boolean> {
+    const key: BudgetCounterKey = {
+      period: 'day',
+      periodStart: day,
+      scope: 'capability',
+      scopeKey: capability,
+    };
+    const tx = this.prisma.tx(market);
+    await tx.aiBudgetCounter.createMany({
+      data: [
+        {
+          marketId: market.marketId,
+          tenantId: market.tenantId,
+          period: key.period,
+          periodStart: dateOf(day),
+          scope: key.scope,
+          scopeKey: key.scopeKey,
+        },
+      ],
+      skipDuplicates: true,
+    });
+    const marked = await tx.aiBudgetCounter.updateMany({
+      where: { ...this.#whereOf(market, key), capReachedAt: null },
+      data: { capReachedAt: timestampOf(at), capReachedPeriod: period },
+    });
+    return marked.count === 1;
+  }
+
+  async lastCapReached(market: MarketContext, capability: string): Promise<CapReached | null> {
+    const last = await this.prisma.tx(market).aiBudgetCounter.findFirst({
+      where: {
+        marketId: market.marketId,
+        tenantId: market.tenantId,
+        period: 'day',
+        scope: 'capability',
+        scopeKey: capability,
+        capReachedAt: { not: null },
+      },
+      orderBy: { capReachedAt: 'desc' },
+      select: { capReachedAt: true, capReachedPeriod: true },
+    });
+    if (last === null) return null;
+    return {
+      at: instantOf(last.capReachedAt!),
+      period: last.capReachedPeriod === 'month' ? 'month' : 'day',
+    };
   }
 
   #whereOf(market: MarketContext, key: BudgetCounterKey) {

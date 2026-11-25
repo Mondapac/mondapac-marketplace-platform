@@ -19,6 +19,7 @@ import {
   type Persistence,
 } from './persistence-support';
 import { testDatabaseUrl } from './test-database';
+import { assistantUsageReport } from './assistant-usage-report';
 
 // The assistant's feedback and insights as the application role, in both Market fixtures: one
 // thumbs per assistant message (the last write wins), the CHECKs and grants, the cascade from a
@@ -62,7 +63,7 @@ describe.each(TEST_MARKETS)(
       conversations = new PrismaConversationRepository(db.service, keys);
       feedback = new PrismaFeedbackRepository(db.service);
       insights = new PrismaInsightsRepository(db.service, keys);
-      spend = new PrismaSpendRepository(db.service);
+      spend = new PrismaSpendRepository(db.service, assistantUsageReport(db.service));
       sql = new Client({ connectionString: testDatabaseUrl() });
       await sql.connect();
     });

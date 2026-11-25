@@ -9,10 +9,34 @@ import type { OfferView } from '../../src/catalog/types.ts';
 import { VariantsTable } from '../../src/catalog/variants-table.tsx';
 import type { TableRow } from '../../src/catalog/variants-table-logic.ts';
 
-// A stand-in for the one-page offer (Offer page PR 3): the header and "Your offer" as the server
+// A stand-in for the one-page offer (Offer page PR 3 and 4): the header and "Your offer" as the server
 // page draws them, then the sizes table with mocked data.
 
 const t = createTranslator({ locale: 'en-AU', messages });
+
+// "You receive (est.)" (Offer page PR 4): the API stand-in, 15% of a GST-free price, rounded half
+// up like the ledger.
+const realFetch = globalThis.fetch;
+globalThis.fetch = (input, init) => {
+  const url = input instanceof Request ? input.url : input.toString();
+  if (!url.includes('/receive-estimates')) return realFetch(input, init);
+  const lines = decodeURIComponent(url.split('lines=')[1] ?? '')
+    .split(',')
+    .map((pair) => {
+      const [variantId, minor] = pair.split(':') as [string, string];
+      const commission = (BigInt(minor) * 15n + 50n) / 100n;
+      return {
+        variantId,
+        priceMinor: minor,
+        commissionMinor: commission.toString(),
+        youReceiveMinor: (BigInt(minor) - commission).toString(),
+      };
+    });
+  const body = { offerId: 'o1', currency: 'AUD', taxInclusive: true, lines };
+  return Promise.resolve(
+    new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } }),
+  );
+};
 const offer: OfferView = {
   offerId: '0190a000-0000-7000-8000-000000000001',
   productId: 'p1',
@@ -130,6 +154,7 @@ createRoot(document.getElementById('root')!).render(
         canEditStock
         units={{ canEdit: true, productScope: 'PLATFORM', sellerSku: 'KED-021' }}
         csrfToken="csrf"
+        canEstimate
       />
     </div>
   </NextIntlClientProvider>,

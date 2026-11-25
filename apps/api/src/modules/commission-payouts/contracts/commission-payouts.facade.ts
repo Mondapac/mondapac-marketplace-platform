@@ -244,7 +244,8 @@ export interface CommissionPayoutsFacade {
    * currency, 0 up to 10^12): its own rate or the Market's, the provisional tax taken out of a
    * tax-inclusive amount, and the ledger's rounding, so a screen shows the number the ledger will
    * post. The seller comes from the session only (an approved seller, never an acting-as session);
-   * nobody else's rate can be asked. Read only. Used by `promotions`' payout preview.
+   * nobody else's rate can be asked. Read only. Used by `promotions`' payout preview and by
+   * `pricing`'s "You receive (est.)" of the seller's Offer page (behind its own seller route).
    */
   ownCommissionOn(
     context: CallContext,

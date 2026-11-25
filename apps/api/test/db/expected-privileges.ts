@@ -1290,6 +1290,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['rating', 'reason', 'updated_at'],
     },
     'assistant.spend_days': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
+    // G7: the daily conversation count that moved out of spend_days; counted up, never deleted.
+    'assistant.conversation_days': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     'assistant.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     // Notifications (support contact): a change is a new version row; none is updated or deleted.
     'notifications.support_contacts': { table: ['INSERT', 'SELECT'], columnUpdate: [] },

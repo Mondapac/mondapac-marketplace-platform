@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-seller-you-receive-acting-as",
+  "area": "seller",
+  "title": "«You receive (est.)» در نشست Login as Seller",
+  "desc": "در نشست Login as Seller (ادمین به‌جای فروشنده) برآورد «You receive» نشان داده نمی‌شود، چون ownCommissionOn در commission-payouts نشست acting-as را رد می‌کند؛ صفحه پیام «can't be worked out right now» نشان می‌دهد. اگر پشتیبانی به دیدن همان عدد نیاز داشت، یک خواندن جدا با دسترسی ادمین و ثبت در audit لازم است.",
+  "src": "apps/api/src/modules/pricing/application/use-cases/view-receive-estimates.use-case.ts",
+  "date": "2026-11-25",
+  "trig": "وقتی پشتیبانی در Login as Seller به عدد You receive نیاز داشت",
+  "prio": "پایین",
+  "status": "موکول"
+}
