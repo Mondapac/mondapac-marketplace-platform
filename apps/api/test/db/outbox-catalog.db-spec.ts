@@ -332,6 +332,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   'ordering.seller_orders_unrecorded_shipments_idx':
     "CREATE INDEX seller_orders_unrecorded_shipments_idx ON ordering.seller_orders USING btree (market_id, shipped_at) WHERE ((inventory_recorded_at IS NULL) AND (fulfilment <> 'to-ship'::text))",
   // Personalization 1d-2: the bought-together rebuild pages confirmed orders by time.
+  // Notifications (offer queue backlog alert): at most one open alert per Market.
+  'notifications.offer_queue_backlog_alerts_one_open_idx':
+    'CREATE UNIQUE INDEX offer_queue_backlog_alerts_one_open_idx ON notifications.offer_queue_backlog_alerts USING btree (market_id) WHERE (cleared_at IS NULL)',
   'ordering.orders_market_id_account_id_confirmed_idx':
     "CREATE INDEX orders_market_id_account_id_confirmed_idx ON ordering.orders USING btree (market_id, account_id) WHERE (status = 'confirmed'::text)",
   'ordering.orders_market_id_confirmed_at_id_idx':
