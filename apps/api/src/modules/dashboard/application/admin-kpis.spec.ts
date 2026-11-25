@@ -21,6 +21,7 @@ import type {
   OperationsAnswer,
   OrderStatusAnswer,
   OrdersByStateAnswer,
+  ShoppingFunnelAnswer,
   ReportingKpiFacade,
   TopCategoriesAnswer,
   TopSellersAnswer,
@@ -175,6 +176,21 @@ const ordersByState = {
   },
 } as unknown as OrdersByStateAnswer;
 
+const NA = { value: 0, direction: 'flat', state: 'na' } as const;
+const shoppingFunnel = {
+  period: finance.period,
+  generatedAt: NOW,
+  funnel: {
+    status: 'available',
+    viewed: { count: 120, rateBp: null, change: NA, rateChange: NA },
+    carted: { count: 30, rateBp: 2500, change: NA, rateChange: NA },
+    checkedOut: { count: 12, rateBp: 4000, change: NA, rateChange: NA },
+    paid: { count: null, rateBp: null, change: NA, rateChange: NA },
+    recordedDays: 6,
+    periodDays: 7,
+  },
+} as unknown as ShoppingFunnelAnswer;
+
 const orderStatus: OrderStatusAnswer = {
   period: finance.period,
   timezone: 'Australia/Brisbane',
@@ -310,6 +326,10 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
         asked.push('orders-by-state');
         return Promise.resolve(ok(ordersByState));
       },
+      marketplaceShoppingFunnel: () => {
+        asked.push('shopping-funnel');
+        return Promise.resolve(ok(shoppingFunnel));
+      },
       marketplaceOperations: (_context, input) => {
         asked.push('operations');
         inputs.push(input);
@@ -370,7 +390,12 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     asked.length = 0;
     const ordersOnly = await build([ORDERS]).execute(admin, { period: '7d' });
     expect(ordersOnly.ok && ordersOnly.value.topSellers).toBeNull();
-    expect(asked.sort()).toEqual(['operations', 'orders-by-state', 'orders-by-status']);
+    expect(asked.sort()).toEqual([
+      'operations',
+      'orders-by-state',
+      'orders-by-status',
+      'shopping-funnel',
+    ]);
     expect(ordersOnly.ok && ordersOnly.value.ordersByState).toEqual({
       status: 'ok',
       value: ordersByState,
@@ -416,6 +441,49 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     const failed = await build([ORDERS]).execute(admin, { period: '7d' });
     expect(failed.ok && failed.value.ordersByState).toEqual({ status: 'error' });
     expect(failed.ok && failed.value.ordersByStatus?.status).toBe('ok');
+  });
+
+  it('maps the shopping-funnel section: hidden steps stay null, not-enough-data, error, and null without the key', async () => {
+    const full = await build([ORDERS]).execute(admin, { period: '7d' });
+    if (!full.ok) throw new Error('expected an answer');
+    const base = { ...full.value, operations: null };
+    expect(adminKpisBody(base).shoppingFunnel).toEqual({
+      status: 'ok',
+      kpis: {
+        status: 'available',
+        viewed: { count: 120, rateBp: null, change: NA, rateChange: NA },
+        carted: { count: 30, rateBp: 2500, change: NA, rateChange: NA },
+        checkedOut: { count: 12, rateBp: 4000, change: NA, rateChange: NA },
+        paid: { count: null, rateBp: null, change: NA, rateChange: NA },
+        recordedDays: 6,
+        periodDays: 7,
+      },
+    });
+    const few = {
+      ...base,
+      shoppingFunnel: {
+        status: 'ok' as const,
+        value: {
+          ...shoppingFunnel,
+          funnel: {
+            status: 'not-enough-data' as const,
+            minimum: 20,
+            recordedDays: 7,
+            periodDays: 7,
+          },
+        },
+      },
+    };
+    expect(adminKpisBody(few).shoppingFunnel).toEqual({
+      status: 'ok',
+      kpis: { status: 'not-enough-data', minimum: 20, recordedDays: 7, periodDays: 7 },
+    });
+    const none = await build([MONEY]).execute(admin, { period: '7d' });
+    expect(none.ok && none.value.shoppingFunnel).toBeNull();
+    facade.marketplaceShoppingFunnel = () => Promise.reject(new TypeError('boom'));
+    const failed = await build([ORDERS]).execute(admin, { period: '7d' });
+    expect(failed.ok && failed.value.shoppingFunnel).toEqual({ status: 'error' });
+    expect(failed.ok && failed.value.ordersByState?.status).toBe('ok');
   });
 
   it('names the top categories from the live tree, null for a category it does not have', async () => {

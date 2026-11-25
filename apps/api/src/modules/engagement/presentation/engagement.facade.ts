@@ -6,7 +6,12 @@ import type { FollowedAmong } from '../application/use-cases/followed-among.use-
 import type { FollowsOfAccount } from '../application/use-cases/follows-of-account.use-case';
 import type { OwnFollowedAmong } from '../application/use-cases/own-followed-among.use-case';
 import type { FollowStore } from '../application/use-cases/follow-store.use-case';
-import type { EngagementFacade, RecentViewsRequest } from '../contracts/engagement.facade';
+import type { CountShoppingFunnel } from '../application/use-cases/count-shopping-funnel.use-case';
+import type {
+  EngagementFacade,
+  RecentViewsRequest,
+  ShoppingFunnelRequest,
+} from '../contracts/engagement.facade';
 
 /** The use cases behind the facade, one per method. */
 export interface EngagementFacadeUseCases {
@@ -17,6 +22,7 @@ export interface EngagementFacadeUseCases {
   readonly ownFollowedAmong: OwnFollowedAmong;
   readonly followsOfAccount: FollowsOfAccount;
   readonly followStore: FollowStore;
+  readonly shoppingFunnel: CountShoppingFunnel;
 }
 
 /**
@@ -57,5 +63,9 @@ export class EngagementFacadeImplementation implements EngagementFacade {
   async followStore(context: CallContext, sellerId: Id<'Seller'>) {
     const result = await this.useCases.followStore.execute(context, { sellerId });
     return result.ok ? { ok: true as const, value: { following: result.value.following } } : result;
+  }
+
+  shoppingFunnel(context: CallContext, request: ShoppingFunnelRequest) {
+    return this.useCases.shoppingFunnel.execute(context, request);
   }
 }

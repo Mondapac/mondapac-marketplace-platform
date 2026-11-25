@@ -421,6 +421,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "allow"
   },
+  { "name": "engagement.count-shopping-funnel", "rule": "system" },
   { "name": "engagement.follow-store", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "engagement.followed-among", "rule": "system" },
   { "name": "engagement.follows-of-account", "rule": "system" },
@@ -759,6 +760,7 @@
   { "name": "ordering.bought-together", "rule": "anonymous" },
   { "name": "ordering.cancel-carrier-after-refund", "rule": "system" },
   { "name": "ordering.cancel-payment", "rule": "system" },
+  { "name": "ordering.checkouts-started", "rule": "system" },
   { "name": "ordering.confirm-payment", "rule": "system" },
   { "name": "ordering.customer-order-accounts", "rule": "system" },
   { "name": "ordering.customer-order-stats", "rule": "system" },
@@ -879,6 +881,7 @@
   { "name": "reporting.reconcile-report-facts", "rule": "system" },
   { "name": "reporting.record-ledger-facts", "rule": "system" },
   { "name": "reporting.record-report-facts", "rule": "system" },
+  { "name": "reporting.snapshot-daily-engagement", "rule": "system" },
   {
     "name": "reporting.view-seller-net-earnings",
     "rule": "permissions",

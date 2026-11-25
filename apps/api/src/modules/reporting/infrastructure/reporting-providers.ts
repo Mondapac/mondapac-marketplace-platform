@@ -24,6 +24,8 @@ import { LEDGER_FACT_STORE, type LedgerFactStore } from '../application/ports/le
 import { LEDGER_KPI_READER, type LedgerKpiReader } from '../application/ports/ledger-kpi-reader';
 import { PrismaLedgerFactStore } from './prisma-ledger-fact-store';
 import { PrismaLedgerKpiReader } from './prisma-ledger-kpi-reader';
+import { ENGAGEMENT_STORE, type EngagementStore } from '../application/ports/engagement-store';
+import { PrismaEngagementStore } from './prisma-engagement-store';
 
 /** Binds the ports of reporting. Only this layer may reach `PrismaService`. */
 export const reportingProviders: readonly FactoryProvider[] = [
@@ -82,5 +84,10 @@ export const reportingProviders: readonly FactoryProvider[] = [
     inject: [LEDGER_FACT_STORE, MARKET_ZONE],
     useFactory: (store: LedgerFactStore, zone: MarketZone): LedgerRecorder =>
       new LedgerRecorder({ store, zone }),
+  },
+  {
+    provide: ENGAGEMENT_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): EngagementStore => new PrismaEngagementStore(prisma),
   },
 ];

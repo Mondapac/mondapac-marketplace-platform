@@ -6,6 +6,7 @@ import type {
   FinanceAnswer,
   FinanceKpis,
   FinanceNet,
+  FunnelStep,
   LedgerReadiness,
   NetRevenue,
   SameDayShare,
@@ -406,6 +407,62 @@ export class OrdersByStateSectionBody {
   @ApiProperty({ required: false, type: OrdersByStateKpiBody }) kpis?: OrdersByStateKpiBody;
 }
 
+export class FunnelStepBody {
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'Customer-days of the period (each day counts distinct customers; one who comes back on ' +
+      'another day counts again). Null: fewer than five, hidden; never show 0.',
+  })
+  count!: number | null;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'This step ÷ the step before, basis points; null for the first step or hidden.',
+  })
+  rateBp!: number | null;
+  @ApiProperty({ type: DeltaBody, description: 'The count against the period before.' })
+  change!: DeltaBody;
+  @ApiProperty({
+    type: DeltaBody,
+    description: 'The rate against the period before, in basis points of difference.',
+  })
+  rateChange!: DeltaBody;
+}
+
+export class ShoppingFunnelKpiBody {
+  @ApiProperty({
+    enum: ['available', 'not-enough-data'],
+    description: '`not-enough-data`: fewer than `minimum` viewers in the period; show no step.',
+  })
+  status!: string;
+  @ApiProperty({ required: false, type: Number, description: 'Only when not-enough-data.' })
+  minimum?: number;
+  @ApiProperty({ required: false, type: FunnelStepBody, description: 'Viewed a product.' })
+  viewed?: FunnelStepBody;
+  @ApiProperty({ required: false, type: FunnelStepBody, description: '... and added to the cart.' })
+  carted?: FunnelStepBody;
+  @ApiProperty({
+    required: false,
+    type: FunnelStepBody,
+    description: '... and placed an order (started checkout).',
+  })
+  checkedOut?: FunnelStepBody;
+  @ApiProperty({ required: false, type: FunnelStepBody, description: '... and paid.' })
+  paid?: FunnelStepBody;
+  @ApiProperty({
+    description: 'Days of the period with a nightly count (today has none until tomorrow).',
+  })
+  recordedDays!: number;
+  @ApiProperty() periodDays!: number;
+}
+
+export class ShoppingFunnelSectionBody {
+  @ApiProperty({ enum: ['ok', 'error'] }) status!: string;
+  @ApiProperty({ required: false, type: ShoppingFunnelKpiBody }) kpis?: ShoppingFunnelKpiBody;
+}
+
 export class TopSellerBody {
   @ApiProperty({ format: 'uuid' }) sellerId!: string;
   @ApiProperty({ nullable: true, type: String, description: 'The public store name.' })
@@ -569,6 +626,12 @@ export class AdminKpisBody {
     description: 'Null without `ordering.order.view`: leave the card out.',
   })
   ordersByState!: OrdersByStateSectionBody | null;
+  @ApiProperty({
+    type: ShoppingFunnelSectionBody,
+    nullable: true,
+    description: 'Null without `ordering.order.view`: leave the card out.',
+  })
+  shoppingFunnel!: ShoppingFunnelSectionBody | null;
   @ApiProperty({
     type: TopSellersSectionBody,
     nullable: true,
@@ -742,6 +805,33 @@ function ordersByStateSection(
   };
 }
 
+function shoppingFunnelSection(
+  section: AdminKpisAnswer['shoppingFunnel'],
+): ShoppingFunnelSectionBody | null {
+  if (section === null) return null;
+  if (section.status === 'error') return { status: 'error' };
+  const { funnel } = section.value;
+  if (funnel.status === 'not-enough-data') return { status: 'ok', kpis: { ...funnel } };
+  const step = (value: FunnelStep): FunnelStepBody => ({
+    count: value.count,
+    rateBp: value.rateBp,
+    change: { ...value.change },
+    rateChange: { ...value.rateChange },
+  });
+  return {
+    status: 'ok',
+    kpis: {
+      status: funnel.status,
+      viewed: step(funnel.viewed),
+      carted: step(funnel.carted),
+      checkedOut: step(funnel.checkedOut),
+      paid: step(funnel.paid),
+      recordedDays: funnel.recordedDays,
+      periodDays: funnel.periodDays,
+    },
+  };
+}
+
 function financeSection(section: AdminKpisAnswer['finance']): FinanceSectionBody | null {
   if (section === null) return null;
   if (section.status === 'error') return { status: 'error' };
@@ -806,6 +896,7 @@ export function adminKpisBody(answer: AdminKpisAnswer): AdminKpisBody {
     answer.finance,
     answer.ordersByStatus,
     answer.ordersByState,
+    answer.shoppingFunnel,
     answer.topSellers,
     answer.topCategories,
   ].find((section) => section !== null && section.status === 'ok');
@@ -820,6 +911,7 @@ export function adminKpisBody(answer: AdminKpisAnswer): AdminKpisBody {
     finance: financeSection(answer.finance),
     ordersByStatus: ordersByStatusSection(answer.ordersByStatus),
     ordersByState: ordersByStateSection(answer.ordersByState),
+    shoppingFunnel: shoppingFunnelSection(answer.shoppingFunnel),
     topSellers: topSellersSection(answer.topSellers),
     topCategories: topCategoriesSection(answer.topCategories),
     health:

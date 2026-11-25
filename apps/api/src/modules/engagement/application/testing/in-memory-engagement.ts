@@ -143,6 +143,27 @@ export class InMemoryBehaviourEvents implements BehaviourEventRepository {
     );
   }
 
+  accountsWith(
+    market: MarketContext,
+    kind: 'product-viewed' | 'added-to-cart',
+    range: { readonly from: Temporal.Instant; readonly to: Temporal.Instant },
+    limit: number,
+  ) {
+    const accounts = new Set<Id<'Account'>>();
+    for (const row of this.rows) {
+      if (
+        row.marketId === market.marketId &&
+        row.subject.kind === 'account' &&
+        row.facts.kind === kind &&
+        row.occurredAt.epochMilliseconds >= range.from.epochMilliseconds &&
+        row.occurredAt.epochMilliseconds < range.to.epochMilliseconds
+      ) {
+        accounts.add(row.subject.accountId);
+      }
+    }
+    return Promise.resolve([...accounts].sort().slice(0, limit));
+  }
+
   deleteForAccount(market: MarketContext, accountId: Id<'Account'>) {
     return Promise.resolve(
       this.remove(

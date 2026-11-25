@@ -72,6 +72,7 @@ export {
 } from './ordering-work-queue.facade';
 export {
   MAX_REPORT_CHANGES,
+  MAX_REPORT_CHECKOUTS,
   MAX_REPORT_FACTS,
   ORDERING_REPORTING_FACADE,
   type OrderingReportingFacade,
@@ -79,6 +80,8 @@ export {
   type RefundReportLine,
   type ReportAmount,
   type ReportChangesPage,
+  type ReportCheckout,
+  type ReportCheckouts,
   type ReportingReadFailure,
   type ReportLine,
   type ReportWindow,

@@ -15,6 +15,7 @@ import type { OrderState } from '../../src/modules/ordering/domain/order';
 import { ConfigOrderingPolicy } from '../../src/modules/ordering/infrastructure/config-ordering-policy';
 import { RefundReportFactsQuery } from '../../src/modules/ordering/application/use-cases/refund-report-facts.use-case';
 import { RefundsSucceededQuery } from '../../src/modules/ordering/application/use-cases/refunds-succeeded.use-case';
+import { CheckoutsStartedQuery } from '../../src/modules/ordering/application/use-cases/checkouts-started.use-case';
 import { SellerOrdersChangedQuery } from '../../src/modules/ordering/application/use-cases/seller-orders-changed.use-case';
 import { SellerOrderReportFactsQuery } from '../../src/modules/ordering/application/use-cases/seller-order-report-facts.use-case';
 import { PrismaReportingChangesReader } from '../../src/modules/ordering/infrastructure/prisma-reporting-changes.reader';
@@ -134,7 +135,11 @@ describe.each(TEST_MARKETS)('ordering reporting reads in market %s (database)', 
   const total = inclusive ? 3300n + 550n : 3300n + 451n + 500n + 75n;
 
   /** A paid order of one seller with one line of three units of 11.00 (or 1100). */
-  const paidOrder = async (sellerId: Id<'Seller'>, accountId = ids.next<'Account'>()) => {
+  const paidOrder = async (
+    sellerId: Id<'Seller'>,
+    accountId = ids.next<'Account'>(),
+    options: { readonly pay?: boolean } = {},
+  ) => {
     const orderId = ids.next<'Order'>();
     const sellerOrderId = ids.next<'SellerOrder'>();
     const lineId = ids.next<'OrderLine'>();
@@ -213,6 +218,7 @@ describe.each(TEST_MARKETS)('ordering reporting reads in market %s (database)', 
       return ok(undefined);
     });
     if (!stored.ok) throw new Error('could not store the order');
+    if (options.pay === false) return { orderId, sellerOrderId, lineId, accountId };
     const confirmed = await new ConfirmPayment(gate, deps).execute(system, {
       orderId,
       paymentIntentId: `pi_${orderId.replaceAll('-', '')}`,
@@ -477,5 +483,44 @@ describe.each(TEST_MARKETS)('ordering reporting reads in market %s (database)', 
       const result = await query.execute(system, request);
       expect(!result.ok && result.error.code).toBe('validation.failed');
     }
+  });
+
+  it('answers each account that placed an order in the window once, paid if one order was (dashboards v2)', async () => {
+    const sellerId = ids.next<'Seller'>();
+    const twice = ids.next<'Account'>();
+    const unpaid = ids.next<'Account'>();
+    // Orders are created at T0 (the order's own time, not the clock's).
+    await paidOrder(sellerId, twice, { pay: false });
+    await paidOrder(sellerId, twice);
+    await paidOrder(sellerId, unpaid, { pay: false });
+    const query = new CheckoutsStartedQuery(gate, changesDeps());
+    const window = { from: T0.subtract({ hours: 1 }), to: T0.add({ hours: 1 }) };
+    const out = await query.execute(system, { window });
+    if (!out.ok) throw new Error(out.error.code);
+    expect(out.value.complete).toBe(true);
+    const mine = out.value.items.filter((row) => [twice, unpaid].includes(row.accountId));
+    expect(mine).toEqual(
+      [
+        { accountId: twice, paid: true },
+        { accountId: unpaid, paid: false },
+      ].sort((a, b) => a.accountId.localeCompare(b.accountId)),
+    );
+    const before = await query.execute(system, {
+      window: { from: T0.subtract({ hours: 2 }), to: T0 },
+    });
+    expect(before.ok && before.value.items.filter((row) => row.accountId === twice)).toEqual([]);
+    const elsewhere = await query.execute(otherSystem(), { window });
+    expect(elsewhere.ok && elsewhere.value.items.filter((row) => row.accountId === twice)).toEqual(
+      [],
+    );
+    for (const bad of [
+      { window: { from: T0, to: T0 } },
+      { window: { from: T0, to: T0.add({ hours: 27 }) } },
+      { window: { from: null, to: T0 } },
+    ]) {
+      const refused = await query.execute(system, bad as never);
+      expect(!refused.ok && refused.error.code).toBe('validation.failed');
+    }
+    expect((await query.execute(admin, { window })).ok).toBe(false);
   });
 });

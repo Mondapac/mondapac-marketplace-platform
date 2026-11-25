@@ -1,7 +1,8 @@
-import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { ReportingChangesReader } from '../application/ports/reporting-changes.reader';
 import type {
+  ReportCheckout,
   ReportChangesPage,
   ReportWindow,
   SellerOrderRef,
@@ -80,5 +81,29 @@ export class PrismaReportingChangesReader implements ReportingChangesReader {
       items: page.map((row) => row.id as Id<'Refund'>),
       next: rows.length > limit ? (page[page.length - 1]?.id ?? null) : null,
     };
+  }
+
+  async checkoutsStarted(
+    market: MarketContext,
+    window: { readonly from: Temporal.Instant; readonly to: Temporal.Instant },
+    limit: number,
+  ): Promise<ReportCheckout[]> {
+    // Every status is named so the (market_id, status, created_at) index serves the window.
+    const rows = await this.prisma.tx(market).orderingOrder.groupBy({
+      by: ['accountId'],
+      where: {
+        marketId: market.marketId,
+        tenantId: market.tenantId,
+        status: { in: ['pending-payment', 'confirmed', 'cancelled'] },
+        createdAt: { gte: toDate(window.from), lt: toDate(window.to) },
+      },
+      _max: { confirmedAt: true },
+      orderBy: { accountId: 'asc' },
+      take: limit,
+    });
+    return rows.map((row) => ({
+      accountId: row.accountId as Id<'Account'>,
+      paid: row._max.confirmedAt !== null,
+    }));
   }
 }

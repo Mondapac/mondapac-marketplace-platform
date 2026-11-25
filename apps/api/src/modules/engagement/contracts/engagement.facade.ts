@@ -1,5 +1,6 @@
 import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
+import type { ShoppingFunnelCounts } from '../domain/shopping-funnel';
 
 /**
  * What the caller must pass besides its `CallContext` to read a subject's recent views: the
@@ -81,7 +82,40 @@ export interface EngagementFacade {
     context: CallContext,
     sellerId: Id<'Seller'>,
   ): Promise<Result<{ readonly following: boolean }, StoreFollowWriteFailure>>;
+
+  /**
+   * The shopping funnel of one window as four counts (dashboards v2, phase 2): signed-in
+   * customers with personalization on who viewed a product, of them those who added to the cart,
+   * of them those of `request.checkouts` who placed an order, and of them those who paid. Guests
+   * are never counted. Rule `system` (reporting's nightly snapshot). Counts only.
+   */
+  shoppingFunnel(
+    context: CallContext,
+    request: ShoppingFunnelRequest,
+  ): Promise<Result<ShoppingFunnelCounts, ShoppingFunnelFailure>>;
 }
+
+/**
+ * What reporting's nightly snapshot asks the shopping funnel of (dashboards v2, phase 2): one
+ * window (a Market day, at most 26 hours) and the accounts that placed an order in it, with
+ * whether one of those orders was paid (ordering's, at most 5,000). The ids are only matched
+ * against engagement's population; they are never stored, returned or logged.
+ */
+export interface ShoppingFunnelRequest {
+  readonly window: { readonly from: Temporal.Instant; readonly to: Temporal.Instant };
+  readonly checkouts: readonly {
+    readonly accountId: Id<'Account'>;
+    readonly paid: boolean;
+  }[];
+}
+
+/** The shopping funnel of a window: distinct accounts, each step within the one before. */
+export type { ShoppingFunnelCounts };
+
+export type ShoppingFunnelFailure =
+  | AccessDenied
+  | { readonly code: 'validation.failed' }
+  | { readonly code: 'engagement.funnel-too-large' };
 
 /** Why a follow through the facade was refused. */
 export type StoreFollowWriteFailure =

@@ -270,3 +270,24 @@ model ReportingDailyLedger {
   @@map("daily_ledger")
   @@schema("reporting")
 }
+
+/// The shopping funnel of one Market day (dashboards v2, phase 2): four counts of distinct signed-in
+/// customers with personalization on, each within the step before (viewed a product, added to the
+/// cart, placed an order, paid), written once by the nightly snapshot soon after the day ends and
+/// never changed, so a customer's later opt-out or erasure leaves it as it was. Aggregate only: no
+/// account, guest, offer or seller column, and no way to tell one person from another. The CHECKs
+/// and the grants (SELECT and INSERT only) are hand-written in the migration.
+model ReportingDailyEngagement {
+  marketId      String   @map("market_id") @db.VarChar(8)
+  tenantId      String   @map("tenant_id")
+  marketDay     DateTime @map("market_day") @db.Date
+  viewedCount   Int      @map("viewed_count")
+  cartedCount   Int      @map("carted_count")
+  checkoutCount Int      @map("checkout_count")
+  paidCount     Int      @map("paid_count")
+  recordedAt    DateTime @map("recorded_at") @db.Timestamptz(6)
+
+  @@id([marketId, marketDay])
+  @@map("daily_engagement")
+  @@schema("reporting")
+}
