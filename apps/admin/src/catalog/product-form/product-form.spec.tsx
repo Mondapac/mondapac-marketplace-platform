@@ -260,9 +260,9 @@ describe('the add page', () => {
   it('opens as the one-page form, empty, and creates nothing', async () => {
     call.mockResolvedValueOnce(ok(OPTIONS));
     mount();
-    // The loading state already shows the "Add product" heading, so wait for the loaded form
-    // (its subtitle) before asserting anything that only the form renders.
-    await screen.findByRole('heading', { level: 1 });
+    // The loading state already shows the "Add product" heading, so a heading wait returns
+    // before the options arrive. Wait for a control only the loaded form renders.
+    await screen.findByLabelText('Product type');
     expect(screen.queryByText('Platform product · Australia')).toBeNull();
     expect(screen.getByRole('heading', { level: 1, name: 'Add product' })).toBeTruthy();
     expect(call).toHaveBeenCalledTimes(1);
