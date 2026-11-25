@@ -210,7 +210,7 @@ count before an activity or link is removed; the proposal form's parent list.
 
 A seller's Offer submit (`own-offer.submit`) no longer reads the Market's `approval-required`
 (that setting now governs product revisions only). The pure policy
-`domain/offer-review-policy.ts` decides, version `OFFER_REVIEW_POLICY_VERSION` (1): it returns the
+`domain/offer-review-policy.ts` decides, version `OFFER_REVIEW_POLICY_VERSION` (2 since slice 2c): it returns the
 reasons that send the Offer to the queue, empty meaning publish at once.
 
 | Reason code          | Rule       | Source today                                                                                                              |
@@ -229,4 +229,43 @@ Mode `off` publishes everything except during an emergency stop. The settings ar
 mode `all` (review everything). In the submit unit the decision is stored in
 `catalog.offer_review_referrals` (insert-only; reasons, policy version, Offer version) and audited
 as `catalog.offer.review-referred`. R4 (price against the reference) runs in pricing (slice 3).
-The rules on edits (R2, R3, R5, R7) come with slice 2c.
+The rules on edits are in the next section (slice 2c).
+
+## Edits of a live Offer (risk-based Offer approval slice 2c)
+
+`offerEditReviewReasons` (policy version 2) judges a seller's edit of a **published** Offer. It
+watches three fields: the description, the handling and a new certification tag. Mode `off` holds
+nothing. Otherwise R2 (a new badge while `certificate-badges` is `review`), R3 (handling other
+than `SEALED_ORIGINAL`) and R5 (contact text in any locale) hold the change; in mode `all` any
+watched change is held (`review-all`), except a handling change back to `SEALED_ORIGINAL`, which
+lowers the risk and is instant in every mode (Hadi, 2026-11-25). R0, R1, R6 and R7 are publication
+rules and do not apply to edits (R7: an Offer has no category; a category change is a product
+revision, VER-02). A settings read failure answers the safe
+settings (mode `all`).
+
+- Green: the edit applies as before, and an `edit` referral with no reason is stored and audited.
+- Red: the fields the policy does not watch (SKU, condition) apply at once; the watched part is
+  stored as one `catalog.offer_pending_changes` row (`pending`, one per Offer), the Offer's
+  version goes up (no `offer_history` row), the referral carries the reasons and the change id,
+  and `catalog.offer-change.held` is audited. The answer is `applied: false` with
+  `pendingChangeId` and `reasons`. A tag add asks certification first, so a type that is not
+  allowed is refused and never queued.
+- While a change waits, another watched edit answers 409 `offer.change-pending` unless the body
+  has `replacePending: true`: the old change is then `superseded` (cause `resubmitted`). Edits of
+  fields that are not watched apply. Deleting the Offer, or an admin withdrawing its product,
+  supersedes it (cause `offer-deleted`).
+- Decisions: the seller withdraws (`POST catalog/seller/offers/:offerId/pending-change/withdraw`);
+  a reviewer with the Offer approve key approves, requests changes or rejects
+  (`POST catalog/admin/offer-changes/:changeId/{approve|request-changes|reject}`; a note of 1 to
+  2000 characters is required for the last two, optional on approve) and lists the waiting changes
+  (`GET catalog/admin/offer-changes`, keyset `afterId`/`limit`). Approve is all or nothing: the
+  description is claim-text checked again, every kept and requested tag is asked fresh, and a
+  refused tag fails the whole approval (`claim.tag-not-allowed`) with the change still waiting.
+  Each decision is one conditional update on `status = 'pending'`, so two deciders cannot both
+  win (`conflict.stale`).
+- Bypass guard: `Offer.edit`, `setHandling` and `addTags` refuse a watched change of a live Offer
+  without a `ReviewClearance`. Only `application/offer-review-clearance.ts` issues one (a policy
+  clearance for an empty reason list, an approval clearance for a change approved in the unit);
+  `test/contracts/catalog-review-clearance.contract.spec.ts` fails when another file forges one.
+- The seller's Offer read carries `pendingChange` (the latest change, or null). No event or
+  notification is sent for a decision yet.

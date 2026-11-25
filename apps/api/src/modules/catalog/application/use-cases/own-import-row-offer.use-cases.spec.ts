@@ -1,3 +1,4 @@
+import { memoryOfferEditReview } from '../../../../../test/support/catalog-offer-edit-review-fakes';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, MarketContext, MarketId, Result } from '@mondapac/shared-kernel';
 import {
@@ -257,6 +258,7 @@ describe.each(['AU', 'ZZ'] as const)('seller import Offer rows in market %s', (c
       const inner = new OwnOfferEdit(
         gate,
         {
+          editReview: memoryOfferEditReview({ ids }).review,
           unitOfWork,
           offers: {
             add: () => Promise.reject(new Error('unused')),

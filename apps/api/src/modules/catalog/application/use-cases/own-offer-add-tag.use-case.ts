@@ -8,7 +8,10 @@ import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_OWN_PRODUCT_EDIT } from '../../contracts/permissions';
 import type { Offer } from '../../domain/offer';
-import { isTagTypeCode, type TagBasis } from '../../domain/offer-tag';
+import { claimQueriesFor, isTagTypeCode, judgeTag, type TagBasis } from '../../domain/offer-tag';
+import type { OfferReviewReason } from '../../domain/offer-review-policy';
+import { isWatched, type OfferEditReview, type WatchedChange } from '../offer-edit-review';
+import { clearanceFromPolicy } from '../offer-review-clearance';
 import type { ClaimEvaluator } from '../ports/claim-evaluator';
 import type { OfferRepository } from '../ports/offer.repository';
 import type { SellerEligibilityReader } from '../ports/seller-eligibility.reader';
@@ -30,13 +33,25 @@ import type { SaveWorkingCopy } from '../working-copy/save-working-copy.service'
 export interface OwnOfferAddTagInput {
   readonly offerId: string;
   readonly typeCode: unknown;
+  /** A held change of a live Offer is set aside and this request is judged alone (slice 2c). */
+  readonly replacePending?: unknown;
 }
 
 export interface OwnOfferAddTagOutput {
   readonly typeCode: string;
-  readonly status: 'active';
-  /** Every answer that shows a tag shows its basis (CERT-24, CERT-44; AC 14). */
-  readonly basis: TagBasis;
+  /** `held` when the review policy held the new badge of a live Offer (slice 2c). */
+  readonly status: 'active' | 'held';
+  /**
+   * Every answer that shows a tag shows its basis (CERT-24, CERT-44; AC 14); null for a held
+   * request, which writes no tag (the approval asks again).
+   */
+  readonly basis: TagBasis | null;
+  /** False when the request is held. */
+  readonly applied: boolean;
+  /** The held change, when `applied` is false. */
+  readonly pendingChangeId?: string;
+  /** The policy's reasons, when `applied` is false. */
+  readonly reasons?: readonly OfferReviewReason[];
 }
 
 export type OwnOfferAddTagFailure =
@@ -45,6 +60,8 @@ export type OwnOfferAddTagFailure =
   | { readonly code: 'access.unavailable' }
   | { readonly code: 'request.throttled'; readonly retryAfterSeconds: number }
   | { readonly code: 'seller.not-eligible' }
+  /** A new badge on a live Offer with a held change open, without `replacePending`. */
+  | { readonly code: 'offer.change-pending' }
   | {
       readonly code: 'validation.failed';
       readonly fields: readonly { readonly path: string; readonly code: string }[];
@@ -60,9 +77,11 @@ export interface OwnOfferAddTagDependencies {
   readonly outbox: OutboxWriter;
   readonly clock: Clock;
   readonly ids: IdGenerator;
+  /** The edit rules of a live Offer (slice 2c). */
+  readonly editReview: OfferEditReview;
 }
 
-const INPUT_KEYS = ['offerId', 'typeCode'] as const;
+const INPUT_KEYS = ['offerId', 'typeCode', 'replacePending'] as const;
 
 /**
  * `own-offer.add-tag` (catalog design 5.2, 5.3, 8.2; CERT-21; AC 7 to 9, 15): a seller adds a
@@ -81,6 +100,15 @@ const INPUT_KEYS = ['offerId', 'typeCode'] as const;
  * allowed and every returned input equals the state being saved. A lost race asks again; after
  * the last attempt `conflict.retry`. A refusal names the type and the reason code;
  * `unavailable` refuses with `claim.check-unavailable` (fail closed).
+ *
+ * Edit rules of a live Offer (slice 2c; ADR-0051): on a `published` Offer a new badge type is a
+ * watched change. With a held change open it is refused (`offer.change-pending`) unless
+ * `replacePending: true`. The claim is asked first (a type not allowed is refused at once, never
+ * queued); then the Market's review settings, read outside any unit (fail closed). No reason
+ * (R2 with `certificateBadges: review`, or mode `all`): the tag is written as above with an `edit`
+ * referral. A reason: no tag row is written; the type code is held as a pending change with its
+ * referral and audit rows, the Offer's version rises once, and the answer is `status: held`,
+ * `applied: false`. The approval asks certification again.
  */
 export class OwnOfferAddTag extends UseCase<
   OwnOfferAddTagInput,
@@ -109,7 +137,7 @@ export class OwnOfferAddTag extends UseCase<
     const result = await this.#add(context, input);
     this.#logger.log({
       msg: 'catalog.own-offer-add-tag',
-      code: result.ok ? 'added' : result.error.code,
+      code: result.ok ? (result.value.applied ? 'added' : 'held') : result.error.code,
       marketId: context.market.marketId,
       correlationId: context.correlationId,
     });
@@ -147,6 +175,10 @@ export class OwnOfferAddTag extends UseCase<
     if (offerId === null || !offerId.ok) return fail('offerId', 'format');
     if (!isTagTypeCode(input.typeCode)) return fail('typeCode', 'format');
     const typeCode = input.typeCode;
+    if (input.replacePending !== undefined && typeof input.replacePending !== 'boolean') {
+      return fail('replacePending', 'type');
+    }
+    const replacePending = input.replacePending === true;
 
     const throttled = await deps.save.reserveSaves(context);
     if (throttled !== null) return err(throttled);
@@ -157,7 +189,7 @@ export class OwnOfferAddTag extends UseCase<
 
     for (let attempt = 0; attempt < MAX_CLAIM_ATTEMPTS; attempt += 1) {
       const outcome = await claimsFailClosed(() =>
-        this.#attempt(context, offerId.value, sellerId, typeCode),
+        this.#attempt(context, offerId.value, sellerId, typeCode, replacePending),
       );
       if (outcome !== RETRY) return outcome;
     }
@@ -169,6 +201,7 @@ export class OwnOfferAddTag extends UseCase<
     offerId: Id<'Offer'>,
     sellerId: Id<'Seller'>,
     typeCode: string,
+    replacePending: boolean,
   ): Promise<Result<OwnOfferAddTagOutput, OwnOfferAddTagFailure> | typeof RETRY> {
     const { actor, market } = context;
     if (actor.kind !== 'authenticated') return err({ code: 'access.denied' });
@@ -180,7 +213,12 @@ export class OwnOfferAddTag extends UseCase<
     };
 
     const guard = await deps.unitOfWork.run<
-      { readonly version: number; readonly prepared: PreparedAsk | 'unavailable' },
+      {
+        readonly version: number;
+        readonly prepared: PreparedAsk | 'unavailable';
+        readonly live: boolean;
+        readonly hasOpenChange: boolean;
+      },
       OwnOfferAddTagFailure
     >(
       market,
@@ -196,11 +234,24 @@ export class OwnOfferAddTag extends UseCase<
         if (facts === null) return err({ code: 'tag.product-not-published' });
         const queries = deps.claims.queries(offer.state, facts, [typeCode]);
         if (queries === null) return err({ code: 'offer.handling-missing' });
-        return ok({ version: offer.state.version, prepared: { facts, queries, productVersion } });
+        const live = offer.state.status === 'published';
+        const open = live ? await deps.editReview.openChange(market, offer.state.id) : null;
+        return ok({
+          version: offer.state.version,
+          prepared: { facts, queries, productVersion },
+          live,
+          hasOpenChange: open !== null,
+        });
       },
       { readOnly: true },
     );
     if (!guard.ok) return guard;
+    // The watched part (slice 2c): a new badge type on a live Offer.
+    const watched: WatchedChange = { addedBadgeTypes: guard.value.live ? [typeCode] : [] };
+    const watchedEdit = isWatched(watched);
+    if (watchedEdit && guard.value.hasOpenChange && !replacePending) {
+      return err({ code: 'offer.change-pending' });
+    }
     const prepared = guard.value.prepared;
     if (prepared === 'unavailable') return err({ code: 'claim.check-unavailable' });
     const hash = hashesOf(prepared);
@@ -208,6 +259,11 @@ export class OwnOfferAddTag extends UseCase<
     // Outside any unit (the facade opens its own); nothing of the answer is kept past this request.
     const asked = await askPrepared(deps.evaluator, context, prepared);
     if (!asked.ok) return err(asked.error);
+
+    // The review policy, outside any unit; any failure holds the change (fail closed).
+    const reasons: readonly OfferReviewReason[] = watchedEdit
+      ? await deps.editReview.reasons(context, watched)
+      : [];
 
     try {
       const written = await deps.unitOfWork.run<
@@ -221,6 +277,43 @@ export class OwnOfferAddTag extends UseCase<
         const facts = await factsInUnit(deps.claims, market, offer.state.productId, prepared);
         if (facts === RETRY) return ok(RETRY);
         if (facts === null) return err({ code: 'tag.product-not-published' });
+        const replaced = watchedEdit ? await deps.editReview.openChange(market, offerId) : null;
+        if (replaced !== null && !replacePending) return err({ code: 'offer.change-pending' });
+        const now = deps.clock.now();
+        if (reasons.length > 0) {
+          // Held: the type must be allowed now (a refusal is never queued), judged by the
+          // domain's own rule against this state; no tag row is written.
+          const expected = claimQueriesFor(offer.state, facts, typeCode);
+          if (expected === null) return err({ code: 'offer.handling-missing' });
+          const judgement = judgeTag(expected, asked.value.get(typeCode));
+          if (judgement.kind === 'stale') return ok(RETRY);
+          if (judgement.kind === 'unavailable') return err({ code: 'claim.check-unavailable' });
+          if (judgement.kind === 'not-allowed') {
+            return err({
+              code: 'claim.tag-not-allowed',
+              tags: [{ typeCode, reason: judgement.reason }],
+            });
+          }
+          offer.markReviewChange();
+          await deps.offers.save(market, offer, { kind: 'seller', accountId: actor.accountId });
+          const pendingChangeId = await deps.editReview.settle(context, {
+            offer,
+            baseVersion: guard.value.version,
+            reasons,
+            change: watched,
+            replaced,
+            now,
+          });
+          if (pendingChangeId === null) throw new Error('add-tag: a held change has no id');
+          return ok({
+            typeCode,
+            status: 'held',
+            basis: null,
+            applied: false,
+            pendingChangeId,
+            reasons,
+          });
+        }
         const added = offer.addTags({
           tags: [{ tagId: deps.ids.next<'OfferTag'>(), typeCode }],
           facts,
@@ -228,18 +321,30 @@ export class OwnOfferAddTag extends UseCase<
           entryPath: 'tag-add',
           actor: sellerTagActor(actor),
           hash,
-          now: deps.clock.now(),
+          now,
+          review: clearanceFromPolicy(reasons) ?? undefined,
         });
         if (!added.ok) {
           return added.error.code === 'claim.inputs-changed'
             ? ok(RETRY)
             : err(tagFailureOf(added.error));
         }
+        if (replaced !== null) offer.markReviewChange();
         await deps.offers.save(market, offer, { kind: 'seller', accountId: actor.accountId });
+        if (watchedEdit) {
+          await deps.editReview.settle(context, {
+            offer,
+            baseVersion: guard.value.version,
+            reasons,
+            change: watched,
+            replaced,
+            now,
+          });
+        }
         await deps.outbox.append(context, offer.pendingEvents);
         const tag = offer.tags.find((t) => t.typeCode === typeCode && t.status === 'active');
         if (tag?.copy == null) throw new Error('add-tag: the added tag has no copy');
-        return ok({ typeCode, status: 'active', basis: tag.copy.basis });
+        return ok({ typeCode, status: 'active', basis: tag.copy.basis, applied: true });
       });
       if (written.ok && written.value === RETRY) return RETRY;
       return written as Result<OwnOfferAddTagOutput, OwnOfferAddTagFailure>;

@@ -1,6 +1,9 @@
 import {
   hasContactText,
+  OFFER_REVIEW_POLICY_VERSION,
+  offerEditReviewReasons,
   offerReviewReasons,
+  type OfferEditReviewInput,
   type OfferReviewFacts,
   type OfferReviewInput,
 } from './offer-review-policy';
@@ -88,6 +91,92 @@ describe('offerReviewReasons (the Offer review policy)', () => {
         input({ mode: 'off', handling: 'FRESH', facts: { ...CLEAR, emergencyStop: true } }),
       ),
     ).toEqual(['emergency-stop']);
+  });
+});
+
+describe('offerEditReviewReasons (the edit rules of a live Offer, slice 2c)', () => {
+  const edit = (overrides: Partial<OfferEditReviewInput> = {}): OfferEditReviewInput => ({
+    mode: 'risk-based',
+    certificateBadges: 'review',
+    addedBadgeTypes: [],
+    ...overrides,
+  });
+
+  it('is version 2 of the policy', () => {
+    expect(OFFER_REVIEW_POLICY_VERSION).toBe(2);
+  });
+
+  it('applies a clean edit at once in risk-based mode', () => {
+    expect(offerEditReviewReasons(edit({ newDescription: { en: 'Now 2 kg' } }))).toEqual([]);
+    expect(offerEditReviewReasons(edit({ newHandling: 'SEALED_ORIGINAL' }))).toEqual([]);
+    expect(offerEditReviewReasons(edit())).toEqual([]);
+  });
+
+  it('holds a new badge type only while badges are reviewed (R2)', () => {
+    expect(offerEditReviewReasons(edit({ addedBadgeTypes: ['halal'] }))).toEqual([
+      'certificate-badge',
+    ]);
+    expect(
+      offerEditReviewReasons(edit({ addedBadgeTypes: ['halal'], certificateBadges: 'automatic' })),
+    ).toEqual([]);
+  });
+
+  it.each(['REPACKED', 'PREPARED', 'FRESH'] as const)('holds handling changed to %s (R3)', (h) => {
+    expect(offerEditReviewReasons(edit({ newHandling: h }))).toEqual(['handling']);
+  });
+
+  it('holds a changed description with contact text in any locale (R5)', () => {
+    expect(
+      offerEditReviewReasons(edit({ newDescription: { en: 'Fine', ar: 'Call 0412 345 678' } })),
+    ).toEqual(['contact-text']);
+  });
+
+  it('names every reason in the queue order', () => {
+    expect(
+      offerEditReviewReasons(
+        edit({
+          addedBadgeTypes: ['halal'],
+          newHandling: 'FRESH',
+          newDescription: { en: 'see kedron.com.au' },
+        }),
+      ),
+    ).toEqual(['certificate-badge', 'handling', 'contact-text']);
+  });
+
+  it('holds every watched change in mode all, with review-all when no rule applies', () => {
+    // Back to sealed original lowers the risk: instant even in mode all (Hadi).
+    expect(offerEditReviewReasons(edit({ mode: 'all', newHandling: 'SEALED_ORIGINAL' }))).toEqual(
+      [],
+    );
+    expect(offerEditReviewReasons(edit({ mode: 'all', newHandling: 'FRESH' }))).toEqual([
+      'handling',
+    ]);
+    expect(
+      offerEditReviewReasons(edit({ mode: 'all', newDescription: { en: 'Clean text' } })),
+    ).toEqual(['review-all']);
+    expect(
+      offerEditReviewReasons(
+        edit({ mode: 'all', certificateBadges: 'automatic', addedBadgeTypes: ['halal'] }),
+      ),
+    ).toEqual(['review-all']);
+    expect(offerEditReviewReasons(edit({ mode: 'all', newHandling: 'FRESH' }))).toEqual([
+      'handling',
+    ]);
+    // Nothing watched changed: nothing to hold, even in mode all.
+    expect(offerEditReviewReasons(edit({ mode: 'all' }))).toEqual([]);
+  });
+
+  it('holds nothing in mode off, whatever the edit', () => {
+    expect(
+      offerEditReviewReasons(
+        edit({
+          mode: 'off',
+          addedBadgeTypes: ['halal'],
+          newHandling: 'FRESH',
+          newDescription: { en: 'Call 0412 345 678' },
+        }),
+      ),
+    ).toEqual([]);
   });
 });
 

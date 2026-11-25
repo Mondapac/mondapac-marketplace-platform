@@ -1,3 +1,4 @@
+import { NO_AUDIT, prismaOfferEditReview } from '../support/catalog-offer-edit-review-fakes';
 import { randomUUID } from 'node:crypto';
 import { Temporal, uuidV7 } from '@mondapac/shared-kernel';
 import type { AuditEntry, CallContext, Id, IdGenerator } from '@mondapac/shared-kernel';
@@ -283,7 +284,10 @@ describe.each(TEST_MARKETS)('catalog product pause in market %s (database integr
     };
     const pause = new AdminProductPause(gate, base);
     const resume = new AdminProductResume(gate, { ...base, claims: claims(), evaluator });
-    const withdraw = new AdminProductWithdraw(gate, base);
+    const withdraw = new AdminProductWithdraw(gate, {
+      ...base,
+      editReview: prismaOfferEditReview(persistence.service, ids, NO_AUDIT),
+    });
     const retire = new PlatformProductRetire(gate, base);
     const reader = new PrismaAdminProductsReader(persistence.service);
     const bulk = new AdminProductsBulk(gate, {
@@ -479,6 +483,7 @@ describe.each(TEST_MARKETS)('catalog product pause in market %s (database integr
       const kept = await offerOn(productId);
       const lost = await offerOn(productId);
       const adding = new OwnOfferAddTag(gate, {
+        editReview: prismaOfferEditReview(persistence.service, ids, NO_AUDIT),
         unitOfWork: persistence.unitOfWork,
         offers: new PrismaOfferRepository(persistence.service, ids),
         eligibility: { isEligible: () => Promise.resolve(true) },
@@ -525,6 +530,7 @@ describe.each(TEST_MARKETS)('catalog product pause in market %s (database integr
       const { productId } = await product('PLATFORM');
       const a = await offerOn(productId);
       const adding = new OwnOfferAddTag(gate, {
+        editReview: prismaOfferEditReview(persistence.service, ids, NO_AUDIT),
         unitOfWork: persistence.unitOfWork,
         offers: new PrismaOfferRepository(persistence.service, ids),
         eligibility: { isEligible: () => Promise.resolve(true) },

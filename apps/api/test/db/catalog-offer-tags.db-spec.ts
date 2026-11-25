@@ -1,9 +1,10 @@
+import { NO_AUDIT, prismaOfferEditReview } from '../support/catalog-offer-edit-review-fakes';
 import { randomUUID } from 'node:crypto';
 import { Temporal, uuidV7 } from '@mondapac/shared-kernel';
 import type { Id, IdGenerator } from '@mondapac/shared-kernel';
 import { Client } from 'pg';
 import { sha256Hex } from '../../src/modules/catalog/application/tags/claim-query-builder';
-import { Offer } from '../../src/modules/catalog/domain/offer';
+import { Offer, type ReviewClearance } from '../../src/modules/catalog/domain/offer';
 import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
 import {
   canonicalClaimInputs,
@@ -46,6 +47,8 @@ import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 // the change_seq trigger, the history-present constraint trigger, the insert-only history, the
 // grants, Market independence, and the Offer repository's round trip of tags and history.
 
+/** A stand-in for the policy clearance the tag-add use case passes on a live Offer (slice 2c). */
+const POLICY = Object.freeze({ basis: 'policy' }) as unknown as ReviewClearance;
 const T0 = '2026-10-17T00:00:00Z';
 const HASH = `sha256:${'a'.repeat(64)}`;
 let sequence = 0;
@@ -525,6 +528,7 @@ describe.each(TEST_MARKETS)('catalog offer tags in market %s (database integrati
         actor,
         hash,
         now,
+        review: POLICY,
       });
       expect(added.ok).toBe(true);
       await run(market, () => offers.save(market, offer, actor));
@@ -572,6 +576,7 @@ describe.each(TEST_MARKETS)('catalog offer tags in market %s (database integrati
         actor,
         hash: first.hash,
         now,
+        review: POLICY,
       });
       await run(market, () => offers.save(market, offer, actor));
       const read = (await run(market, () => offers.findById(market, offer.state.id)))!;
@@ -602,6 +607,7 @@ describe.each(TEST_MARKETS)('catalog offer tags in market %s (database integrati
         actor,
         hash,
         now,
+        review: POLICY,
       });
       await run(market, () => offers.save(market, offer, actor));
       const a = (await run(market, () => offers.findById(market, offer.state.id)))!;
@@ -623,6 +629,7 @@ describe.each(TEST_MARKETS)('catalog offer tags in market %s (database integrati
         actor,
         hash,
         now,
+        review: POLICY,
       });
       await run(market, () => offers.save(market, offer, actor));
       const read = (await run(market, () => offers.findById(market, offer.state.id)))!;
@@ -956,6 +963,7 @@ describe.each(TEST_MARKETS)(
       };
       const ids: IdGenerator = { next: <K extends string>() => uuid7() as Id<K> };
       const addTag = new OwnOfferAddTag(gate, {
+        editReview: prismaOfferEditReview(persistence.service, ids, NO_AUDIT),
         unitOfWork: persistence.unitOfWork,
         offers: new PrismaOfferRepository(persistence.service, ids),
         eligibility: { isEligible: () => Promise.resolve(true) },
@@ -982,7 +990,10 @@ describe.each(TEST_MARKETS)(
 
       const outcome = await addTag.execute(context, { offerId, typeCode });
 
-      expect(outcome).toEqual({ ok: true, value: { typeCode, status: 'active', basis: 'SELLER' } });
+      expect(outcome).toEqual({
+        ok: true,
+        value: { typeCode, status: 'active', basis: 'SELLER', applied: true },
+      });
       expect(evaluator.calls.map((call) => call[0]!.productRevisionId)).toEqual([first, second]);
       const stored = await owner.query(
         `SELECT copy_revision_id FROM catalog.offer_tags WHERE market_id = $1 AND offer_id = $2`,

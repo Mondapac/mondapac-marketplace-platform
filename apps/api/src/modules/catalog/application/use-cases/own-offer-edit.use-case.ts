@@ -5,7 +5,10 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_OWN_PRODUCT_EDIT } from '../../contracts/permissions';
-import type { Offer, OfferRefusal } from '../../domain/offer';
+import { sameDescription, type Offer, type OfferRefusal } from '../../domain/offer';
+import type { OfferReviewReason } from '../../domain/offer-review-policy';
+import { isWatched, type OfferEditReview, type WatchedChange } from '../offer-edit-review';
+import { clearanceFromPolicy } from '../offer-review-clearance';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { ClaimEvaluator } from '../ports/claim-evaluator';
 import type { ClaimQueryBuilder } from '../tags/claim-query-builder';
@@ -35,11 +38,22 @@ export interface OwnOfferEditInput {
   readonly conditionCode: string;
   /** Locale to text; empty is allowed. */
   readonly description: unknown;
+  /** A held change of a live Offer is set aside and this edit is judged alone (slice 2c). */
+  readonly replacePending?: unknown;
 }
 
 export interface OwnOfferEditOutput {
-  /** Field ids that changed; empty when the form matched what was stored (nothing was stored). */
+  /**
+   * Field ids that changed on the Offer; empty when the form matched what was stored (nothing
+   * was stored). A held description is not among them.
+   */
   readonly changedFields: readonly string[];
+  /** False when the review policy held the description of a live Offer (slice 2c). */
+  readonly applied: boolean;
+  /** The held change, when `applied` is false. */
+  readonly pendingChangeId?: string;
+  /** The policy's reasons, when `applied` is false. */
+  readonly reasons?: readonly OfferReviewReason[];
 }
 
 export type OwnOfferEditFailure =
@@ -49,6 +63,8 @@ export type OwnOfferEditFailure =
   | { readonly code: 'seller.not-eligible' }
   | { readonly code: 'offer.not-found' }
   | { readonly code: 'offer.not-editable' }
+  /** A watched edit of a live Offer with a held change open, without `replacePending`. */
+  | { readonly code: 'offer.change-pending' }
   | { readonly code: 'offer.sku-taken' }
   | { readonly code: 'claim.check-unavailable' }
   | { readonly code: 'conflict.retry' }
@@ -71,9 +87,17 @@ export interface OwnOfferEditDependencies {
   readonly evaluator: ClaimEvaluator;
   readonly outbox: OutboxWriter;
   readonly clock: Clock;
+  /** The edit rules of a live Offer (slice 2c). */
+  readonly editReview: OfferEditReview;
 }
 
-const INPUT_KEYS = ['offerId', 'sellerSku', 'conditionCode', 'description'] as const;
+const INPUT_KEYS = [
+  'offerId',
+  'sellerSku',
+  'conditionCode',
+  'description',
+  'replacePending',
+] as const;
 
 /**
  * `own-offer.edit` (catalog design 4.4, 8.2; OFR-01; AC 11, 33): a seller edits the content of
@@ -94,8 +118,17 @@ const INPUT_KEYS = ['offerId', 'sellerSku', 'conditionCode', 'description'] as c
  * `unavailable` answer refuses the edit with `claim.check-unavailable`, fail closed) and stored
  * with its history row and events. A lost race starts again from the read, at most
  * {@link MAX_CLAIM_ATTEMPTS} times, then `conflict.retry`. A `pending-first-publish` or
- * `changes-needed` Offer returns to `draft`; a published Offer stays published with no queue
- * (M-3, AC 33).
+ * `changes-needed` Offer returns to `draft`; a published Offer stays published.
+ *
+ * Edit rules of a live Offer (risk-based Offer approval, slice 2c; ADR-0051): on a `published`
+ * Offer a changed description is a watched change. With a held change open it is refused
+ * (`offer.change-pending`) unless `replacePending: true`, which sets the open change aside
+ * (`resubmitted`) and judges this edit alone; SKU and condition edits always apply. The Market's
+ * review settings are read outside any unit (fail closed: any failure holds). No reason: the edit
+ * applies at once and an `edit` referral with no reason is stored. A reason (R5 contact text, or
+ * mode `all`): in one unit the SKU and condition apply at once, the description is held as a
+ * pending change, the Offer's version rises once, and the referral and audit rows name it; the
+ * answer is `applied: false` with the change id and reasons.
  */
 export class OwnOfferEdit extends UseCase<
   OwnOfferEditInput,
@@ -127,7 +160,7 @@ export class OwnOfferEdit extends UseCase<
     const result = await this.#edit(context, input);
     this.#logger.log({
       msg: 'catalog.own-offer-edit',
-      code: result.ok ? 'edited' : result.error.code,
+      code: result.ok ? (result.value.applied ? 'edited' : 'held') : result.error.code,
       marketId: context.market.marketId,
       correlationId: context.correlationId,
     });
@@ -173,6 +206,7 @@ export class OwnOfferEdit extends UseCase<
       readonly sellerSku: string;
       readonly conditionCode: string;
       readonly description: Record<string, string>;
+      readonly replacePending: boolean;
     },
     sellerId: Id<'Seller'>,
   ): Promise<Result<OwnOfferEditOutput, OwnOfferEditFailure> | typeof RETRY> {
@@ -194,7 +228,11 @@ export class OwnOfferEdit extends UseCase<
           offer.state,
           keptTagTypes(offer),
         );
-        return ok({ offer, prepared });
+        const open =
+          offer.state.status === 'published'
+            ? await deps.editReview.openChange(market, offer.state.id)
+            : null;
+        return ok({ offer, prepared, hasOpenChange: open !== null });
       },
       { readOnly: true },
     );
@@ -204,6 +242,16 @@ export class OwnOfferEdit extends UseCase<
     if (prepared === 'unavailable') return err({ code: 'claim.check-unavailable' });
     const stored = seen.state.description;
     const guardVersion = seen.state.version;
+    // The watched part of this edit (slice 2c): a changed description of a live Offer.
+    const live = seen.state.status === 'published';
+    const watched: WatchedChange = {
+      addedBadgeTypes: [],
+      ...(live && !sameDescription(description, stored) ? { newDescription: description } : {}),
+    };
+    const watchedEdit = live && isWatched(watched);
+    if (watchedEdit && guard.value.hasOpenChange && !form.replacePending) {
+      return err({ code: 'offer.change-pending' });
+    }
 
     // The claim-text control runs outside any unit (it opens its own); a hit refuses the edit.
     const texts = Object.entries(description).filter(
@@ -232,6 +280,12 @@ export class OwnOfferEdit extends UseCase<
     if (!asked.ok) return err(asked.error);
     const hash = hashesOf(prepared);
 
+    // The review policy, outside any unit; any failure holds the change (fail closed).
+    const reasons: readonly OfferReviewReason[] = watchedEdit
+      ? await deps.editReview.reasons(context, watched)
+      : [];
+    const held = reasons.length > 0;
+
     try {
       const written = await deps.unitOfWork.run<
         OwnOfferEditOutput | typeof RETRY,
@@ -243,8 +297,20 @@ export class OwnOfferEdit extends UseCase<
         // change in between means the baseline is stale, so this attempt writes nothing and
         // starts again (Hassan 7b-1 L-1; design 5.2 point 3).
         if (offer.state.version !== guardVersion) return ok(RETRY);
+        // Every change of a held change raised the version, so this read matches the guard's.
+        const replaced = watchedEdit ? await deps.editReview.openChange(market, offerId) : null;
+        if (replaced !== null && !form.replacePending) {
+          return err({ code: 'offer.change-pending' } as const);
+        }
         const now = deps.clock.now();
-        const edited = offer.edit({ sellerSku, conditionCode, description, now });
+        // A held description stays as it is live; SKU and condition apply at once.
+        const edited = offer.edit({
+          sellerSku,
+          conditionCode,
+          description: held ? offer.state.description : description,
+          now,
+          review: clearanceFromPolicy(reasons) ?? undefined,
+        });
         if (!edited.ok) return err(failureOf(edited.error));
         // The facts again, in this unit: a revision published since the ask means asking again.
         const facts = await factsInUnit(deps.claims, market, offer.state.productId, prepared);
@@ -262,13 +328,28 @@ export class OwnOfferEdit extends UseCase<
             ? ok(RETRY)
             : err({ code: 'claim.check-unavailable' } as const);
         }
+        if (held || replaced !== null) offer.markReviewChange();
         const refusal = await deps.offers.save(market, offer, {
           kind: 'seller',
           accountId: actor.accountId,
         });
         if (refusal !== null) return err({ code: refusal } as const);
+        const pendingChangeId = watchedEdit
+          ? await deps.editReview.settle(context, {
+              offer,
+              baseVersion: guardVersion,
+              reasons,
+              change: watched,
+              replaced,
+              now,
+            })
+          : null;
         await deps.outbox.append(context, offer.pendingEvents);
-        return ok({ changedFields: edited.value });
+        return ok(
+          pendingChangeId === null
+            ? { changedFields: edited.value, applied: true }
+            : { changedFields: edited.value, applied: false, pendingChangeId, reasons },
+        );
       });
       if (written.ok && written.value === RETRY) return RETRY;
       return written as Result<OwnOfferEditOutput, OwnOfferEditFailure>;
@@ -299,6 +380,7 @@ export class OwnOfferEdit extends UseCase<
       sellerSku: string;
       conditionCode: string;
       description: Record<string, string>;
+      replacePending: boolean;
     },
     OwnOfferEditFailure
   > {
@@ -312,9 +394,16 @@ export class OwnOfferEdit extends UseCase<
     }
     const offer = typeof input.offerId === 'string' ? parseId<'Offer'>(input.offerId) : null;
     if (offer === null || !offer.ok) return fail('offerId', 'format');
+    if (input.replacePending !== undefined && typeof input.replacePending !== 'boolean') {
+      return fail('replacePending', 'type');
+    }
     const content = parseOfferContent(this.deps.policy, market, input);
     if (!content.ok) return content;
-    return ok({ offerId: offer.value, ...content.value });
+    return ok({
+      offerId: offer.value,
+      ...content.value,
+      replacePending: input.replacePending === true,
+    });
   }
 }
 

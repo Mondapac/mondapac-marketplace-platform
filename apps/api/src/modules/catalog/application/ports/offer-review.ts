@@ -41,12 +41,14 @@ export interface OfferReviewReferral {
   readonly sellerId: Id<'Seller'>;
   /** The Offer's version after the change the decision is about. */
   readonly offerVersion: number;
-  /** `first-publication` today; edits join with the edit rules (R2, R3, R5, R7). */
-  readonly trigger: 'first-publication';
+  /** A seller's submit, or an edit of a live Offer (slice 2c: R2, R3, R5 and mode `all`). */
+  readonly trigger: 'first-publication' | 'edit';
   /** Empty means published at once. */
   readonly reasons: readonly OfferReviewReason[];
   readonly policyVersion: number;
   readonly decidedAt: Temporal.Instant;
+  /** The held change an `edit` referral sent to the queue; absent when the edit applied at once. */
+  readonly pendingChangeId?: Id<'OfferPendingChange'> | null;
 }
 
 /** The insert-only store of referrals (catalog.offer_review_referrals); written in the unit. */

@@ -16,6 +16,12 @@ import {
   type LifecycleRefusal,
   type RETRY_EXHAUSTED,
 } from '../products/product-lifecycle';
+import type { OfferEditReview } from '../offer-edit-review';
+
+export interface AdminProductWithdrawDependencies extends LifecycleDependencies {
+  /** Sets each deleted Offer's held change aside in the same unit (slice 2c). */
+  readonly editReview: Pick<OfferEditReview, 'supersedeOnDelete'>;
+}
 
 export interface AdminProductWithdrawInput {
   readonly productId: unknown;
@@ -41,7 +47,8 @@ export type AdminProductWithdrawFailure =
  * population. In one unit, product row first: the product becomes `withdrawn`, its pending
  * revision is set aside, the pause mark clears, `catalog.product-withdrawn.v1`; then every Offer
  * that is not deleted becomes `deleted` (tags `removed`, `catalog.offer-deleted.v1`, no
- * `evaluateClaims`, ADR-0028 d5); one audit row. Revisions are kept (VER-06).
+ * `evaluateClaims`, ADR-0028 d5) and its held change, if any, is superseded (slice 2c); one audit
+ * row. Revisions are kept (VER-06).
  */
 export class AdminProductWithdraw extends UseCase<
   AdminProductWithdrawInput,
@@ -57,7 +64,7 @@ export class AdminProductWithdraw extends UseCase<
 
   constructor(
     gate: UseCaseGate,
-    private readonly deps: LifecycleDependencies,
+    private readonly deps: AdminProductWithdrawDependencies,
   ) {
     super(gate);
   }
@@ -103,6 +110,7 @@ export class AdminProductWithdraw extends UseCase<
           for (const offer of offers) {
             offer.delete({ now, actor: { kind: 'admin', accountId: admin.accountId } });
             await saveOffer(deps, context, offer, admin.accountId);
+            await deps.editReview.supersedeOnDelete(context, offer.state.id, now);
           }
           await deps.audit.record(
             context,

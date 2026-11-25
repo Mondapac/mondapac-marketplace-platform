@@ -1,3 +1,4 @@
+import { memoryOfferEditReview } from '../../../../../test/support/catalog-offer-edit-review-fakes';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, MarketContext, MarketId, Result } from '@mondapac/shared-kernel';
 import {
@@ -127,6 +128,7 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.set-handling in market %s', (cod
       run: async <T, E>(_m: MarketContext, work: () => Promise<Result<T, E>>) => work(),
     } as unknown as UnitOfWork;
     const useCase = new OwnOfferSetHandling(gate, {
+      editReview: memoryOfferEditReview({ ids }).review,
       unitOfWork,
       offers: {
         add: () => Promise.reject(new Error('unused')),
@@ -162,7 +164,7 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.set-handling in market %s', (cod
       offerId: r.state!.id,
       handling: 'SEALED_ORIGINAL',
     });
-    expect(outcome).toEqual({ ok: true, value: { changedFields: ['handling'] } });
+    expect(outcome).toEqual({ ok: true, value: { changedFields: ['handling'], applied: true } });
     expect(r.saved[0]!.state).toMatchObject({
       handling: 'SEALED_ORIGINAL',
       version: 3,
@@ -192,7 +194,7 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.set-handling in market %s', (cod
       offerId: r.state!.id,
       handling: 'REPACKED',
     });
-    expect(outcome).toEqual({ ok: true, value: { changedFields: [] } });
+    expect(outcome).toEqual({ ok: true, value: { changedFields: [], applied: true } });
     expect(r.saved[0]!.pendingHistory).toBeNull();
     expect(r.saved[0]!.state.version).toBe(2);
   });
@@ -223,7 +225,7 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.set-handling in market %s', (cod
       offerId: offer.id,
       handling: 'PREPARED',
     });
-    expect(outcome).toEqual({ ok: true, value: { changedFields: ['handling'] } });
+    expect(outcome).toEqual({ ok: true, value: { changedFields: ['handling'], applied: true } });
     expect(r.evaluator.calls).toHaveLength(1);
     expect(r.evaluator.calls[0]!.map((q) => q.handling)).toEqual(['PREPARED']);
     expect(r.saved[0]!.state).toMatchObject({ status: 'published', handling: 'PREPARED' });

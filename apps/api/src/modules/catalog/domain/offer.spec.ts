@@ -1,6 +1,17 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketId } from '@mondapac/shared-kernel';
-import { OFF_SALE_CAUSES, Offer, isListed, type OfferState } from './offer';
+import {
+  OFF_SALE_CAUSES,
+  Offer,
+  isListed,
+  offerStateWithHandling,
+  type OfferState,
+  type ReviewClearance,
+} from './offer';
+
+// Test stand-ins for the clearances only application/offer-review-clearance.ts issues.
+const POLICY = Object.freeze({ basis: 'policy' }) as unknown as ReviewClearance;
+const APPROVAL = Object.freeze({ basis: 'approval' }) as unknown as ReviewClearance;
 
 // The Offer aggregate is Market-agnostic: both fixtures run the same rules (a test that only
 // passes for AU is a bug).
@@ -218,6 +229,170 @@ describe.each(MARKETS)('Offer in market %s', (code) => {
       const offer = stored({ handling: 'REPACKED' });
       offer.edit(form({ sellerSku: 'SKU-003' }));
       expect(offer.state).toMatchObject({ sellerId, productId, handling: 'REPACKED' });
+    });
+  });
+
+  describe('the edit rules of a live Offer (slice 2c bypass guard)', () => {
+    const later = T0.add({ hours: 3 });
+    const live = (overrides: Partial<OfferState> = {}) => {
+      const created = create();
+      if (!created.ok) throw new Error(created.error.code);
+      return Offer.restore(
+        {
+          ...created.value.state,
+          status: 'published',
+          listed: true,
+          handling: 'SEALED_ORIGINAL',
+          submittedAt: T0,
+          firstPublishedAt: T0,
+          version: 5,
+          ...overrides,
+        },
+        [],
+      );
+    };
+    const form = (description: Record<string, string>) => ({
+      sellerSku: 'SKU-001',
+      conditionCode: 'new',
+      description,
+      now: later,
+    });
+
+    it('refuses a changed description of a live Offer without a clearance, changing nothing', () => {
+      const offer = live();
+      expect(() => offer.edit(form({ 'en-AU': 'New text' }))).toThrow('review clearance');
+      expect(offer.hasChanges).toBe(false);
+      expect(offer.edit({ ...form({ 'en-AU': 'New text' }), review: POLICY }).ok).toBe(true);
+      expect(offer.state.description).toEqual({ 'en-AU': 'New text' });
+    });
+
+    it('lets a non-watched edit of a live Offer through without a clearance', () => {
+      const offer = live();
+      expect(offer.edit({ ...form({ 'en-AU': 'Fresh and sealed' }), sellerSku: 'SKU-2' })).toEqual({
+        ok: true,
+        value: ['sellerSku'],
+      });
+    });
+
+    it('keeps the draft path free of the guard', () => {
+      const draft = { status: 'draft', listed: false, firstPublishedAt: null } as const;
+      expect(live(draft).edit(form({ 'en-AU': 'Draft text' })).ok).toBe(true);
+      expect(live(draft).setHandling({ handling: 'FRESH', now: later }).ok).toBe(true);
+    });
+
+    it('needs a clearance for handling away from SEALED_ORIGINAL only', () => {
+      expect(() => live().setHandling({ handling: 'REPACKED', now: later })).toThrow(
+        'review clearance',
+      );
+      expect(
+        live({ handling: 'FRESH' }).setHandling({ handling: 'SEALED_ORIGINAL', now: later }),
+      ).toEqual({ ok: true, value: ['handling'] });
+      expect(live().setHandling({ handling: 'REPACKED', now: later, review: POLICY }).ok).toBe(
+        true,
+      );
+    });
+
+    it('needs a clearance to add a tag to a live Offer', () => {
+      const offer = live();
+      expect(() =>
+        offer.addTags({
+          tags: [{ tagId: 't1' as Id<'OfferTag'>, typeCode: 'halal' }],
+          facts: {
+            productId,
+            productRevisionId: 'r1' as Id<'ProductRevision'>,
+            revisionPublished: true,
+            variantIds: [],
+            platformCategoryPaths: [],
+          },
+          decisions: new Map(),
+          entryPath: 'tag-add',
+          actor: { kind: 'seller', accountId: 'a1' as Id<'Account'> },
+          hash: (text) => text,
+          now: later,
+        }),
+      ).toThrow('review clearance');
+    });
+
+    it('refuses a forged clearance object', () => {
+      const forged = { basis: 'anything' } as unknown as ReviewClearance;
+      expect(() => live().edit({ ...form({ 'en-AU': 'New text' }), review: forged })).toThrow(
+        'review clearance',
+      );
+    });
+
+    it('raises the version once when a change is held, however many marks', () => {
+      const offer = live();
+      offer.markReviewChange();
+      offer.markReviewChange();
+      expect(offer.state.version).toBe(6);
+      expect(offer.pendingHistory).toBeNull();
+      expect(offer.hasChanges).toBe(true);
+      // With a non-watched edit in the same unit: still one version up.
+      const edited = live();
+      edited.edit({ ...form({ 'en-AU': 'Fresh and sealed' }), sellerSku: 'SKU-3' });
+      edited.markReviewChange();
+      expect(edited.state.version).toBe(6);
+    });
+
+    it('applies an approved change in one edited row, clearing the attestation off sealed', () => {
+      const offer = live({
+        attestationRecordedAt: T0,
+        attestationAccountId: 'a1' as Id<'Account'>,
+      });
+      expect(() =>
+        offer.applyApprovedChange({
+          description: { 'en-AU': 'Approved' },
+          handling: 'REPACKED',
+          review: POLICY,
+          now: later,
+        }),
+      ).toThrow('approval');
+      expect(
+        offer.applyApprovedChange({
+          description: { 'en-AU': 'Approved' },
+          handling: 'REPACKED',
+          review: APPROVAL,
+          now: later,
+        }),
+      ).toEqual({ ok: true, value: ['description', 'handling', 'attestation'] });
+      expect(offer.state).toMatchObject({
+        description: { 'en-AU': 'Approved' },
+        handling: 'REPACKED',
+        attestationRecordedAt: null,
+        status: 'published',
+        version: 6,
+      });
+      expect(offer.pendingHistory).toEqual({
+        changeKind: 'edited',
+        changedFields: ['description', 'handling', 'attestation'],
+        occurredAt: later,
+      });
+    });
+
+    it('applies nothing for an approved change equal to the live values', () => {
+      const offer = live();
+      expect(
+        offer.applyApprovedChange({
+          description: { 'en-AU': 'Fresh and sealed' },
+          handling: 'SEALED_ORIGINAL',
+          review: APPROVAL,
+          now: later,
+        }),
+      ).toEqual({ ok: true, value: [] });
+      expect(offer.hasChanges).toBe(false);
+    });
+
+    it('previews a handling change as setHandling makes it', () => {
+      const state = live({
+        attestationRecordedAt: T0,
+        attestationAccountId: 'a1' as Id<'Account'>,
+      }).state;
+      expect(offerStateWithHandling(state, 'FRESH')).toMatchObject({
+        handling: 'FRESH',
+        attestationRecordedAt: null,
+        attestationAccountId: null,
+      });
+      expect(offerStateWithHandling(state, 'SEALED_ORIGINAL').attestationRecordedAt).toEqual(T0);
     });
   });
 
@@ -517,7 +692,7 @@ describe.each(MARKETS)('Offer in market %s', (code) => {
           attestationRecordedAt: T0,
           attestationAccountId: other,
         });
-        expect(offer.setHandling({ handling, now: later })).toEqual({
+        expect(offer.setHandling({ handling, now: later, review: POLICY })).toEqual({
           ok: true,
           value: ['handling', 'attestation'],
         });

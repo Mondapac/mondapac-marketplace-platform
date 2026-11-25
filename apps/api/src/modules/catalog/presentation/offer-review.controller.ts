@@ -45,8 +45,25 @@ import {
   ReviewQueueList,
 } from '../application/use-cases/review-queue-list.use-case';
 import { ReviewQueueExport } from '../application/use-cases/review-queue-export.use-case';
+import { AdminOfferChangeApprove } from '../application/use-cases/admin-offer-change-approve.use-case';
+import { AdminOfferChangeReject } from '../application/use-cases/admin-offer-change-reject.use-case';
+import { AdminOfferChangeRequestChanges } from '../application/use-cases/admin-offer-change-request-changes.use-case';
+import { AdminOfferChangesList } from '../application/use-cases/admin-offer-changes-list.use-case';
 import { writeChunks } from './write-chunks';
-import { closedBody, numericQuery, pageQuery, refusalWith } from './http-answers';
+import {
+  closedBody,
+  numericQuery,
+  optionalClosedBody,
+  pageQuery,
+  refusalWith,
+} from './http-answers';
+import {
+  OfferChangeApprovedDto,
+  OfferChangeApproveRequest,
+  OfferChangeDecidedDto,
+  OfferChangeDecisionRequest,
+  OfferChangesListDto,
+} from './offer-change.dto';
 import {
   OfferApproveRequest,
   OfferDecided,
@@ -74,6 +91,10 @@ export const OFFER_REVIEW_STATUS: Readonly<Record<string, number>> = Object.free
   'batch.too-large': 413,
   'access.unavailable': 503,
   'claim.check-unavailable': 503,
+  // Held changes of live Offers (slice 2c).
+  'offer-change.not-found': 404,
+  'offer-change.not-pending': 409,
+  'claim.tag-not-allowed': 422,
 });
 
 /** The boolean filters of the queue arrive as text; any other text reaches the use case and fails. */
@@ -106,6 +127,10 @@ export class OfferReviewController {
     private readonly approveOffer: OfferApprove,
     private readonly requestChanges: OfferRequestChanges,
     private readonly exportQueue: ReviewQueueExport,
+    private readonly listChanges: AdminOfferChangesList,
+    private readonly approveChange: AdminOfferChangeApprove,
+    private readonly requestChangeChanges: AdminOfferChangeRequestChanges,
+    private readonly rejectChange: AdminOfferChangeReject,
   ) {}
 
   @Get('review-queue')
@@ -378,6 +403,178 @@ export class OfferReviewController {
       outcome = result.ok ? {} : refusalWith(OFFER_REVIEW_STATUS, result.error, response, context);
     }
     return this.settle('catalog.offer-request-changes', context, outcome);
+  }
+
+  @Get('offer-changes')
+  @Header('Cache-Control', 'no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'List the held changes of live Offers that wait for a decision',
+    description:
+      'Needs catalog.product.view. Edits of published Offers the review policy held (slice 2c), ' +
+      'oldest submit first, keyset-paged: send `nextAfterId` of the previous page as `afterId`. ' +
+      '`limit` is 1 to 50 (default 25). Each row carries the proposed fields and the reasons.',
+  })
+  @ApiQuery({ name: 'afterId', required: false, description: 'The last change id of the page.' })
+  @ApiQuery({ name: 'limit', required: false, description: '1 to 50, default 25.' })
+  @ApiOkResponse({ type: OfferChangesListDto })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async changes(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Query() query: Record<string, unknown>,
+  ): Promise<OfferChangesListDto> {
+    const result = await this.listChanges.execute(context, pageQuery(query));
+    const outcome = result.ok
+      ? (JSON.parse(JSON.stringify(result.value)) as OfferChangesListDto)
+      : refusalWith(OFFER_REVIEW_STATUS, result.error, response, context);
+    return this.settle('catalog.admin-offer-changes-list', context, outcome);
+  }
+
+  @Post('offer-changes/:changeId/approve')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Approve a held change of a live Offer',
+    description:
+      'Needs catalog.product.approve. The held fields go live in one step, all or nothing: the ' +
+      'description is claim-checked again; the handling is set (an attestation is withdrawn off ' +
+      'SEALED_ORIGINAL); every tag is asked of certification again and every requested type is ' +
+      'asked afresh. One requested type not allowed fails the whole approval ' +
+      '(claim.tag-not-allowed, details.tags) and the change stays pending. The body is optional: ' +
+      'a note to the seller.',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam({ name: 'changeId', format: 'uuid' })
+  @ApiBody({ type: OfferChangeApproveRequest, required: false })
+  @ApiOkResponse({ type: OfferChangeApprovedDto })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'offer-change.not-found' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'offer-change.not-pending, seller.not-eligible, conflict.stale or conflict.retry',
+  })
+  @ApiUnprocessableEntityResponse({
+    type: ApiErrorBody,
+    description: 'claim-text.refused or claim.tag-not-allowed',
+  })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'A body that is not JSON' })
+  @ApiServiceUnavailableResponse({
+    type: ApiErrorBody,
+    description: 'access.unavailable or claim.check-unavailable',
+  })
+  async approveOfferChange(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('changeId') changeId: string,
+    @Body() body: unknown,
+  ): Promise<OfferChangeApprovedDto> {
+    const input = optionalClosedBody(request, body, ['note']);
+    let outcome: OfferChangeApprovedDto | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.approveChange.execute(context, {
+        changeId,
+        ...(Object.hasOwn(input, 'note') ? { note: input.note } : {}),
+      });
+      outcome = result.ok
+        ? { ...result.value, fields: [...result.value.fields] }
+        : refusalWith(OFFER_REVIEW_STATUS, result.error, response, context);
+    }
+    return this.settle('catalog.admin-offer-change-approve', context, outcome);
+  }
+
+  @Post('offer-changes/:changeId/request-changes')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Send a held change of a live Offer back to the seller with a note',
+    description:
+      'Needs catalog.product.approve. The note (1 to 2000 characters) is shown to the seller; ' +
+      'the live Offer stays as it is.',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam({ name: 'changeId', format: 'uuid' })
+  @ApiBody({ type: OfferChangeDecisionRequest })
+  @ApiOkResponse({ type: OfferChangeDecidedDto })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'offer-change.not-found' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'offer-change.not-pending or conflict.stale',
+  })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async requestOfferChangeChanges(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('changeId') changeId: string,
+    @Body() body: unknown,
+  ): Promise<OfferChangeDecidedDto> {
+    const input = closedBody(request, body, ['note']);
+    let outcome: OfferChangeDecidedDto | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.requestChangeChanges.execute(context, {
+        changeId,
+        note: input.note,
+      });
+      outcome = result.ok
+        ? { ...result.value }
+        : refusalWith(OFFER_REVIEW_STATUS, result.error, response, context);
+    }
+    return this.settle('catalog.admin-offer-change-request-changes', context, outcome);
+  }
+
+  @Post('offer-changes/:changeId/reject')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Reject a held change of a live Offer with a note',
+    description:
+      'Needs catalog.product.approve. Terminal. The note (1 to 2000 characters) is shown to the ' +
+      'seller; the live Offer stays as it is.',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam({ name: 'changeId', format: 'uuid' })
+  @ApiBody({ type: OfferChangeDecisionRequest })
+  @ApiOkResponse({ type: OfferChangeDecidedDto })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'offer-change.not-found' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'offer-change.not-pending or conflict.stale',
+  })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async rejectOfferChange(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('changeId') changeId: string,
+    @Body() body: unknown,
+  ): Promise<OfferChangeDecidedDto> {
+    const input = closedBody(request, body, ['note']);
+    let outcome: OfferChangeDecidedDto | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.rejectChange.execute(context, { changeId, note: input.note });
+      outcome = result.ok
+        ? { ...result.value }
+        : refusalWith(OFFER_REVIEW_STATUS, result.error, response, context);
+    }
+    return this.settle('catalog.admin-offer-change-reject', context, outcome);
   }
 
   private settle<T extends object>(
