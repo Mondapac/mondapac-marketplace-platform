@@ -389,3 +389,20 @@ and as an anonymous buyer; the unit and e2e suites wire fakes for these ports, s
 see it. **After the deploy** the index fills from `search.rebuild-index`, which runs at worker
 start and every six hours: restart the worker once (or run the job) so that Offers already
 published are indexed.
+
+## Zero-result notes (dashboards v2, phase 2)
+
+`search.search-products`, when called by the storefront route (`GET /search/products` sets the
+server-only input `noteZeroResult`; the buyer assistant's facade never does), notes a plain text
+search (no category, store, brand, attribute filter or price) whose page 1 shows nothing and no next
+page, after the read, in its own unit: `search.zero_result_queries (market_id, tenant_id,
+bucket_start, query_key)`, primary key `(market_id, bucket_start, query_key)`, insert-once per UTC
+quarter hour. The key is the text folded like engagement's search events (NFC, control characters
+and white-space runs to one space, trimmed, lower case) and is not noted when it is under 2 or over
+50 characters or holds an `@`, `://`, `www.` or five digits or more. No session, account, guest, IP
+address or device is read or stored. A failed note is logged as `search.zero-result-not-noted`
+(Market and correlation id only, never the text) and never changes the answer. Reporting's nightly
+snapshot reads a Market day's texts through `SEARCH_REPORTING_FACADE.zeroResultTexts`
+(`search.zero-result-texts`, rule `system`, at most 2,000, those noted in the most quarter hours
+first). `search.purge-zero-result-queries` (job, every 6 hours) deletes notes older than 35 days. The
+application role has SELECT, INSERT and DELETE, no UPDATE. See `docs/modules/reporting/notes.md`.
