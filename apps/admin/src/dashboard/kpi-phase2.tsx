@@ -657,3 +657,94 @@ export function DiscountCostCard({ source, allowed, period }: CardProps) {
     </Slot>
   );
 }
+
+/**
+ * Reviews published in the last 30 Market days (always 30, whatever period the page shows) against
+ * the 30 before: count, average, the five star counts and the share of 1 and 2 stars. Counts only;
+ * "off" and "not enough data" are said in words, never shown as zeros.
+ */
+export function ReviewsCard({ source, allowed }: CardProps) {
+  const t = useTranslations('dashboard.kpis');
+  const locale = useLocale();
+  const delta = useDelta('30d');
+  const frame = { id: 'dash-reviews', title: t('reviews.title') };
+  return (
+    <Slot source={source} fallback={<CardSkeleton {...frame} height={220} />}>
+      {(result) => {
+        const reviews = part(result, allowed.reviews, (v) => v.reviews);
+        if (reviews.kind === 'hidden') return null;
+        if (reviews.kind === 'failed') return failedCard(frame);
+        const k = reviews.kpis;
+        const window = reviews.value.reviews?.period;
+        const scope = joined(
+          t('reviews.scope'),
+          window === undefined
+            ? null
+            : `${kpiDayLabel(window.current.from, locale)} - ${kpiDayLabel(window.current.to, locale)}`,
+        );
+        const card = (body: ReactNode) => (
+          <DashboardCard
+            {...frame}
+            scope={scope}
+            titleAdornment={<Hint name={frame.title} definition={t('def.reviews')} />}
+          >
+            {body}
+          </DashboardCard>
+        );
+        if (k.status === 'off') {
+          return card(<p className="m-0 text-sm text-fg-secondary">{t('reviews.off')}</p>);
+        }
+        if (
+          k.status === 'not-enough-data' ||
+          k.reviews === undefined ||
+          k.averageTimes100 === undefined ||
+          k.histogram === undefined
+        ) {
+          return card(
+            <ChartEmpty
+              height={160}
+              message={t('reviews.not-enough')}
+              hint={t('reviews.not-enough-hint', { minimum: k.minimum ?? 5 })}
+            />,
+          );
+        }
+        const average = (k.averageTimes100 / 100).toLocaleString(locale, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+        const countChange = delta(k.reviewsChange, 'percent', 'better');
+        const averageChange = delta(k.averageChangeTimes100, 'percent', 'better');
+        const lowChange = delta(k.lowStarShareChange, 'points', 'worse');
+        const total = k.reviews;
+        const items: BarListItem[] = [5, 4, 3, 2, 1].map((stars) => {
+          const count = k.histogram?.[stars - 1] ?? 0;
+          return {
+            id: `stars-${stars}`,
+            label: t('reviews.stars', { stars }),
+            value: count,
+            display: formatCount(count, false, locale),
+          };
+        });
+        return card(
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+              <span className="text-2xl font-semibold tabular-nums text-fg">{average}</span>
+              <span className="text-sm text-fg-secondary">
+                {t('reviews.count', { count: total })}
+              </span>
+              {averageChange === undefined ? null : <StatDelta {...averageChange} />}
+            </div>
+            {countChange === undefined ? null : <StatDelta {...countChange} />}
+            <BarList label={frame.title} items={items} />
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span className="text-sm text-fg-secondary">
+                {t('reviews.low-star', { share: kpiRate(k.lowStarShareBp ?? 0, locale) })}
+              </span>
+              {lowChange === undefined ? null : <StatDelta {...lowChange} />}
+            </div>
+          </div>,
+        );
+      }}
+    </Slot>
+  );
+}

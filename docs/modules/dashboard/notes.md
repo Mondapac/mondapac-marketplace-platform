@@ -331,6 +331,24 @@ accepted, `docs/modules/reporting/notes.md`).
 The seller's "Product funnel" card has no API yet (FE-20261125-dashboards-seller-product-funnel), so
 the seller KPI endpoint is unchanged. The card is built in the phase 2 cards PR.
 
+
+### Reviews of the last 30 days (dashboards v2, phase 2)
+
+`GET dashboard/admin/kpis` gains the section `reviews` (key `reviews.settings.view`, a protected
+platform key, so only the Platform Administrator; null without it, `status: error` when it fails
+or takes over 1.5 s): reporting's `marketplaceReviews`. It is always the last 30 Market days
+(today included) against the 30 before, whatever `period` the page asks for; `period` in the
+section names both ranges. `kpis.status` is `off` while reviews are off in the Market (the default
+until an admin switches them on: the card says so and links to the switch, it is not an error),
+`not-enough-data` below 5 reviews (`minimum`; nothing else is given), else `available` with
+`reviews`, `averageTimes100` (433 is 4.33 stars), `histogram` (reviews of 1 to 5 stars),
+`lowStarShareBp` (1 and 2 stars ÷ reviews; 10000 is all) and the changes against the 30 days
+before (`na` while that period had under 5 reviews). Counts only, read live from the reviews module
+(nothing is stored in reporting): no text, author, product or seller. A review hidden or removed
+later stops counting; one published again counts in the window of its last publication. The card
+is built in the phase 2 cards PR. Reviews waiting in moderation and unanswered reviews are not in
+this section (FE-20261125-dashboards-reviews-moderation-backlog).
+
 ### Zero-result searches (dashboards v2, phase 2)
 
 `GET dashboard/admin/kpis` gains the section `zeroResultSearches` (key `catalog.product.view`, null

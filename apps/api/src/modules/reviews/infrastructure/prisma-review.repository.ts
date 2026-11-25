@@ -1332,6 +1332,35 @@ export class PrismaReviewRepository implements ReviewRepository {
     }
     return out;
   }
+
+  // ---- admin dashboard ----------------------------------------------------------------------
+
+  async countPublishedForMarket(market: MarketContext, windows: readonly ReviewWindow[]) {
+    const tx = this.prisma.tx(market);
+    return Promise.all(
+      windows.map(async (w) => {
+        const rows = await tx.reviewsProductReview.groupBy({
+          by: ['rating'],
+          where: {
+            marketId: market.marketId,
+            status: 'published',
+            publishedAt: { gte: toDate(w.from), lt: toDate(w.to) },
+          },
+          _count: { _all: true },
+        });
+        const histogram: [number, number, number, number, number] = [0, 0, 0, 0, 0];
+        let reviews = 0;
+        let starsSum = 0;
+        for (const row of rows) {
+          if (row.rating < 1 || row.rating > 5) continue;
+          histogram[row.rating - 1] = row._count._all;
+          reviews += row._count._all;
+          starsSum += row.rating * row._count._all;
+        }
+        return { reviews, starsSum, histogram };
+      }),
+    );
+  }
 }
 
 /** The most published reviews of one seller read for the health windows (a few days). */

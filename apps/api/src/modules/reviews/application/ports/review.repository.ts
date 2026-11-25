@@ -558,6 +558,26 @@ export interface ReviewRepository {
     sellerId: Id<'Seller'>,
     windows: readonly ReviewWindow[],
   ): Promise<readonly { readonly reviews: number; readonly starsSum: number }[]>;
+
+  /**
+   * Dashboards v2, phase 2: for each window `[from, to)` (in the order given) how many product
+   * reviews of the whole Market were published in it (`publishedAt`, counted by their status at the
+   * time of the call, like {@link countPublishedForSeller}), how many of each 1 to 5 rating, and
+   * the sum of the ratings. Counts only: no text, author, product or seller. One grouped read per
+   * window, served by the partial index of published reviews by Market and publication time.
+   */
+  countPublishedForMarket(
+    market: MarketContext,
+    windows: readonly ReviewWindow[],
+  ): Promise<readonly MarketReviewCount[]>;
+}
+
+/** What the admin dashboard counts of the reviews published in one window. */
+export interface MarketReviewCount {
+  readonly reviews: number;
+  readonly starsSum: number;
+  /** Reviews of 1, 2, 3, 4 and 5 stars. */
+  readonly histogram: readonly [number, number, number, number, number];
 }
 
 /** A half-open window of instants: `from` included, `to` excluded. */

@@ -22,6 +22,10 @@ import { ENGAGEMENT_FACADE, EngagementModule, type EngagementFacade } from '../e
 import { ENGAGEMENT_SOURCES, type EngagementSources } from './application/ports/engagement-sources';
 import { ENGAGEMENT_STORE, type EngagementStore } from './application/ports/engagement-store';
 import { SnapshotDailyEngagement } from './application/use-cases/snapshot-daily-engagement.use-case';
+import { REVIEW_SOURCES, type ReviewSources } from './application/ports/review-sources';
+import { ViewMarketplaceReviews } from './application/use-cases/view-marketplace-reviews.use-case';
+import { FacadeReviewSources } from './infrastructure/facade-review-sources';
+import { REVIEWS_FACADE, ReviewsModule, type ReviewsFacade } from '../reviews';
 import { ViewMarketplaceShoppingFunnel } from './application/use-cases/view-marketplace-shopping-funnel.use-case';
 import { ViewMarketplaceDiscountCost } from './application/use-cases/view-marketplace-discount-cost.use-case';
 import { DISCOUNT_SOURCES, type DiscountSources } from './application/ports/discount-sources';
@@ -156,6 +160,7 @@ const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
     CommissionPayoutsModule,
     SettingsModule,
     EngagementModule,
+    ReviewsModule,
     SearchModule,
     PromotionsModule,
     CartModule,
@@ -493,6 +498,17 @@ const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
       ) => new ViewMarketplaceAbandonedCarts(gate, { unitOfWork, store, zone, clock }),
     },
     {
+      provide: REVIEW_SOURCES,
+      inject: [REVIEWS_FACADE],
+      useFactory: (reviews: ReviewsFacade): ReviewSources => new FacadeReviewSources(reviews),
+    },
+    {
+      provide: ViewMarketplaceReviews,
+      inject: [USE_CASE_GATE, REVIEW_SOURCES, MARKET_ZONE, CLOCK],
+      useFactory: (gate: UseCaseGate, sources: ReviewSources, zone: MarketZone, clock: Clock) =>
+        new ViewMarketplaceReviews(gate, { sources, zone, clock }),
+    },
+    {
       provide: REPORTING_KPI_FACADE,
       inject: [
         ViewMarketplaceOperationsKpis,
@@ -505,6 +521,7 @@ const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
         ViewMarketplaceOrdersByState,
         ViewMarketplaceMonthlyTarget,
         ViewMarketplaceShoppingFunnel,
+        ViewMarketplaceReviews,
         ViewMarketplaceZeroResultSearches,
         ViewMarketplaceDiscountCost,
         ViewMarketplaceAbandonedCarts,
@@ -522,6 +539,7 @@ const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
         ordersByState: ViewMarketplaceOrdersByState,
         monthlyTarget: ViewMarketplaceMonthlyTarget,
         shoppingFunnel: ViewMarketplaceShoppingFunnel,
+        reviews: ViewMarketplaceReviews,
         zeroResultSearches: ViewMarketplaceZeroResultSearches,
         discountCost: ViewMarketplaceDiscountCost,
         abandonedCarts: ViewMarketplaceAbandonedCarts,
@@ -539,6 +557,7 @@ const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
           ordersByState,
           monthlyTarget,
           shoppingFunnel,
+          reviews,
           zeroResultSearches,
           discountCost,
           abandonedCarts,

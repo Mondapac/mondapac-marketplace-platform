@@ -19,6 +19,7 @@ import {
 } from '../../../certification';
 import type { SearchSupplyFacade } from '../../../search';
 import { ORDERING_ORDER_VIEW } from '../../../ordering';
+import { REVIEWS_SETTINGS_VIEW } from '../../../reviews';
 import { PROMOTIONS_PROMOTION_MANAGE } from '../../../promotions';
 import type { Id } from '@mondapac/shared-kernel';
 import {
@@ -39,6 +40,7 @@ import type {
   MonthlyTargetAnswer,
   OperationsAnswer,
   OrderStatusAnswer,
+  MarketplaceReviewsAnswer,
   OrdersByStateAnswer,
   PeriodId,
   PeriodRefused,
@@ -175,6 +177,11 @@ export interface AdminKpisAnswer {
    * summed); null without `ordering.order.view`.
    */
   readonly shoppingFunnel: KpiSection<ShoppingFunnelAnswer> | null;
+  /**
+   * The reviews published in the last 30 Market days (always 30, whatever the period) against the
+   * 30 before; null without `reviews.settings.view`.
+   */
+  readonly reviews: KpiSection<MarketplaceReviewsAnswer> | null;
   /**
    * The top texts the storefront search found nothing for in the period (each searched by at least
    * ten distinct signed-in customers on a day); null without `catalog.product.view`.
@@ -331,6 +338,7 @@ export class ViewAdminKpis extends UseCase<
       ordersByState,
       marketTarget,
       shoppingFunnel,
+      reviews,
       zeroResultSearches,
       discountCost,
       abandonedCarts,
@@ -363,6 +371,9 @@ export class ViewAdminKpis extends UseCase<
             reporting.marketplaceShoppingFunnel(context, input),
           )
         : null,
+      held.has(REVIEWS_SETTINGS_VIEW.key)
+        ? section('reviews', timeoutMs, () => reporting.marketplaceReviews(context))
+        : null,
       held.has(CATALOG_PRODUCT_VIEW.key)
         ? section('zero-result-searches', timeoutMs, () =>
             reporting.marketplaceZeroResultSearches(context, input),
@@ -388,6 +399,7 @@ export class ViewAdminKpis extends UseCase<
       ordersByState,
       marketTarget,
       shoppingFunnel,
+      reviews,
       zeroResultSearches,
       discountCost,
       abandonedCarts,

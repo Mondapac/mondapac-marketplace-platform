@@ -61,6 +61,7 @@ import {
   DiscountCostCard,
   MarketTargetCard,
   OrdersByStateCard,
+  ReviewsCard,
   ShoppingFunnelCard,
   ZeroResultSearchesCard,
 } from './kpi-phase2.tsx';
@@ -1098,6 +1099,13 @@ export function KpiItems({
           </Cell>
           <Cell wide>
             <DiscountCostCard {...props} />
+          </Cell>
+        </div>
+      </GridItem>
+      <GridItem span={12}>
+        <div className="grid w-full min-w-0 gap-4 md:grid-cols-2 lg:flex">
+          <Cell>
+            <ReviewsCard {...props} />
           </Cell>
         </div>
       </GridItem>

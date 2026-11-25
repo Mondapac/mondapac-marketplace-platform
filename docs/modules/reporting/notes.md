@@ -577,6 +577,17 @@ new/returning card, phase 2 cards PR):
   privacy policy covers aggregate statistics (FE-20261125-legal-privacy-policy-aggregate-statistics).
 
 
+### Reviews card (dashboards v2, phase 2)
+
+`reporting.view-marketplace-reviews` (key `reviews.settings.view`, platform admin only) answers the
+reviews of the last 30 Market days against the 30 before. Reporting stores nothing for it: it works
+the two windows out in the Market's zone (`windowOf`, ADR-0005) and asks reviews'
+`marketReviewCounts` (rule: the same key, platform admin) with the caller's context unchanged;
+only counts come back (`FacadeReviewSources`). Reviews off in the Market is the `off` answer, not
+an error. Below 5 reviews in the period nothing is shown, so a handful cannot be one person's
+review. Hassan: counts only, no account, product or seller reaches reporting; overlapping custom
+ranges do not apply because the window is fixed.
+
 ## Zero-result searches: nightly snapshot (dashboards v2, phase 2)
 
 - Design choice (the simplest safe one): nothing about a person crosses a module. search notes,

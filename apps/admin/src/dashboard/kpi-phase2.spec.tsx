@@ -536,3 +536,62 @@ describe('targetMinorOf', () => {
     expect(targetProblemOf({ status: 0, code: 'network' })).toBe('unavailable');
   });
 });
+
+describe('the reviews card', () => {
+  const window = {
+    current: { from: '2026-10-24', to: '2026-11-22' },
+    previous: { from: '2026-09-24', to: '2026-10-23' },
+  };
+  const available = {
+    status: 'available' as const,
+    reviews: 10,
+    reviewsChange: up(2500),
+    averageTimes100: 360,
+    averageChangeTimes100: { value: 0, direction: 'flat' as const, state: 'na' as const },
+    histogram: [1, 1, 2, 3, 3],
+    lowStarShareBp: 2000,
+    lowStarShareChange: up(100),
+  };
+  const withKpis = (
+    kpis: NonNullable<AdminKpis['reviews']> extends infer S
+      ? S extends { kpis?: infer K }
+        ? K
+        : never
+      : never,
+  ) => answer({ reviews: { status: 'ok', kpis, period: window } });
+  const KEYS = ['reviews.settings.view'];
+
+  it('shows the count, the average, the five star counts and the low-star share', () => {
+    page(withKpis(available), KEYS);
+    const r = region('Reviews');
+    expect(within(r).getByText('3.60')).toBeTruthy();
+    expect(within(r).getByText('10 reviews')).toBeTruthy();
+    expect(within(r).getByText('20% of 1 or 2 stars')).toBeTruthy();
+    expect(within(r).getByText('5★')).toBeTruthy();
+  });
+
+  it('says off and not enough data in words, never as figures', () => {
+    page(withKpis({ status: 'off' }), KEYS);
+    expect(
+      within(region('Reviews')).getByText('Reviews are switched off in this market.'),
+    ).toBeTruthy();
+    cleanup();
+    page(withKpis({ status: 'not-enough-data', minimum: 5 }), KEYS);
+    const r = region('Reviews');
+    expect(
+      within(r).getByText('Fewer than 5 reviews were published in the last 30 days.'),
+    ).toBeTruthy();
+    expect(within(r).queryByText('0')).toBeNull();
+  });
+
+  it('is left out without its key or section, and fails in place', () => {
+    page(answer({ reviews: null }), KEYS);
+    expect(screen.queryByText('Reviews')).toBeNull();
+    cleanup();
+    page(withKpis(available), ['ordering.order.view']);
+    expect(screen.queryByText('Reviews')).toBeNull();
+    cleanup();
+    page(answer({ reviews: { status: 'error' } }), KEYS);
+    expect(within(region('Reviews')).getByRole('alert')).toBeTruthy();
+  });
+});

@@ -23,6 +23,8 @@ export const KPI_TARGET_MANAGE_PERMISSION = 'settings.monthly-revenue-target.man
 export const KPI_CATALOG_PERMISSION = 'catalog.product.view';
 /** With the money key, opens the discount cost (spend is for promotion managers). */
 export const KPI_PROMOTIONS_PERMISSION = 'promotions.promotion.manage';
+/** The key of the reviews card (reviews settings; platform administrator only). */
+export const KPI_REVIEWS_PERMISSION = 'reviews.settings.view';
 /** The keys of the numbers of the supply and health card; any one of them shows the card. */
 export const KPI_HEALTH_PERMISSIONS = [
   'catalog.product.view',
@@ -43,6 +45,8 @@ export interface KpiAllowed {
   readonly searches: boolean;
   /** The discount cost card: the money key and `promotions.promotion.manage`. */
   readonly discounts: boolean;
+  /** The reviews card of the last 30 days: `reviews.settings.view`. */
+  readonly reviews: boolean;
 }
 
 export const allowedOf = (permissionKeys: readonly string[]): KpiAllowed => {
@@ -54,12 +58,13 @@ export const allowedOf = (permissionKeys: readonly string[]): KpiAllowed => {
     target: keys.has(KPI_MONEY_PERMISSION) && keys.has(KPI_TARGET_PERMISSION),
     searches: keys.has(KPI_CATALOG_PERMISSION),
     discounts: keys.has(KPI_MONEY_PERMISSION) && keys.has(KPI_PROMOTIONS_PERMISSION),
+    reviews: keys.has(KPI_REVIEWS_PERMISSION),
   };
 };
 
 /** True when the session may be shown any of the KPI cards (the page then reads them). */
 export const wantsKpis = (allowed: KpiAllowed): boolean =>
-  allowed.money || allowed.orders || allowed.health || allowed.searches;
+  allowed.money || allowed.orders || allowed.health || allowed.searches || allowed.reviews;
 
 export interface KpiDelta {
   /** Basis points: a percentage change, or for a rate the difference in points. */
@@ -406,6 +411,27 @@ export interface AbandonedCartsKpis {
   readonly periodDays: number;
 }
 
+export interface ReviewsKpis {
+  /** `off`: reviews are switched off in the Market (not an error). */
+  readonly status: 'available' | 'not-enough-data' | 'off';
+  readonly minimum?: number;
+  readonly reviews?: number;
+  readonly reviewsChange?: KpiDelta;
+  /** Hundredths of a star: 433 is 4.33. */
+  readonly averageTimes100?: number;
+  readonly averageChangeTimes100?: KpiDelta;
+  /** Reviews of 1, 2, 3, 4 and 5 stars. */
+  readonly histogram?: readonly number[];
+  readonly lowStarShareBp?: number;
+  readonly lowStarShareChange?: KpiDelta;
+}
+
+/** The 30 days a reviews section covers (Market days, both ends included). */
+export interface ReviewsWindow {
+  readonly current: { readonly from: string; readonly to: string };
+  readonly previous: { readonly from: string; readonly to: string };
+}
+
 export interface AdminKpis {
   readonly generatedAt: string;
   readonly periodId: KpiPeriod | 'custom';
@@ -424,6 +450,8 @@ export interface AdminKpis {
   readonly zeroResultSearches?: KpiSection<ZeroResultSearchesKpis> | null;
   readonly discountCost?: KpiSection<DiscountCostKpis> | null;
   readonly abandonedCarts?: KpiSection<AbandonedCartsKpis> | null;
+  /** Always the last 30 Market days, whatever period the page shows. */
+  readonly reviews?: (KpiSection<ReviewsKpis> & { readonly period?: ReviewsWindow }) | null;
   readonly topSellers: KpiSection<TopSellersKpis> | null;
   readonly topCategories: KpiSection<TopCategoriesKpis> | null;
   /** Null when the viewer holds none of the keys of its numbers. */

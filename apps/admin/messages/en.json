@@ -274,6 +274,7 @@
         "health": "Counts right now, except sellers with orders and the dispute rate, which follow the period.",
         "target": "GMV with GST of this calendar month in the Market's time zone, against the Market's monthly revenue target. The forecast is an estimate: the month to date divided by the time passed, times the length of the month. It shows from the 4th. The month does not follow the period above.",
         "funnel": "Signed-in shoppers with personalization on. Each step counts customer-days: each day counts distinct shoppers, and a shopper who comes back on another day counts again. Each step is the shoppers of the step before who went on. A step with fewer than 5 is hidden in each answer, and so is every step after it; it is never shown as 0. Today is counted tomorrow.",
+        "reviews": "Reviews published in the last 30 days, whatever period the page shows, against the 30 days before. The average is of the stars given (1 to 5). Only counts: no text, author or product. A review hidden or removed later stops counting. Nothing is shown below 5 reviews.",
         "carts": "Active carts with items, not turned into a paid order and untouched for 24 hours or more at the end of the latest counted day. A level on that day, not a total of the period. The value is about: items at the price when they were added or last changed.",
         "searches": "Texts shoppers searched that found nothing. Searches are counted on the days a text found nothing at least once, including that day's searches of it that did find something. A text is shown only on days at least 10 signed-in shoppers searched it. Texts are shown exactly as typed, folded to lower case.",
         "by-state": "Seller orders paid in the period, by the state of the delivery address; a pickup counts in the store's state. Cancelled orders are included. Orders placed before delivery states were kept are counted as not recorded, never folded into a state.",
@@ -543,6 +544,17 @@
         "not-enough": "Not enough data yet",
         "not-enough-hint": "A text is shown only on a day at least {minimum} shoppers searched it.",
         "days": "{days, plural, one {# day} other {# days}} · {shoppers} shopper-days"
+      },
+      "reviews": {
+        "title": "Reviews",
+        "scope": "Last 30 days",
+        "average": "{average} average",
+        "count": "{count, plural, one {# review} other {# reviews}}",
+        "low-star": "{share} of 1 or 2 stars",
+        "stars": "{stars}★",
+        "off": "Reviews are switched off in this market.",
+        "not-enough": "Not enough data yet",
+        "not-enough-hint": "Fewer than {minimum} reviews were published in the last 30 days."
       },
       "by-state": {
         "title": "Orders by state",

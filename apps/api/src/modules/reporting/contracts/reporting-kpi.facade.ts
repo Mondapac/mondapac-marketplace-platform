@@ -19,6 +19,7 @@ import type { NetRevenueAnswer } from '../application/use-cases/view-marketplace
 import type { SellerNetEarningsAnswer } from '../application/use-cases/view-seller-net-earnings.use-case';
 import type { OrdersByStateAnswer } from '../application/use-cases/view-marketplace-orders-by-state.use-case';
 import type { ShoppingFunnelAnswer } from '../application/use-cases/view-marketplace-shopping-funnel.use-case';
+import type { MarketplaceReviewsAnswer } from '../application/use-cases/view-marketplace-reviews.use-case';
 import type { ZeroResultSearchesAnswer } from '../application/use-cases/view-marketplace-zero-result-searches.use-case';
 import type { DiscountCostAnswer } from '../application/use-cases/view-marketplace-discount-cost.use-case';
 import type { AbandonedCartsAnswer } from '../application/use-cases/view-marketplace-abandoned-carts.use-case';
@@ -79,11 +80,13 @@ export {
 export type { NetFiguresFailure, NetFiguresInput, NetRevenueAnswer, SellerNetEarningsAnswer };
 export type {
   FinanceNet,
+  MarketplaceReviewsAnswer,
   MonthlyTargetAnswer,
   OrderStatusAnswer,
   OrdersByStateAnswer,
   ShoppingFunnelAnswer,
 };
+export type { MarketReviews } from '../domain/reviews';
 export type { ZeroResultSearchesAnswer };
 export type { ZeroResultQuery, ZeroResultSearches } from '../domain/zero-result-searches';
 export type { FunnelStep, ShoppingFunnel } from '../domain/engagement';
@@ -165,6 +168,15 @@ export interface ReportingKpiFacade {
     context: CallContext,
     input: KpiPeriodInput,
   ): Promise<Result<ShoppingFunnelAnswer, KpiFailure>>;
+
+  /**
+   * The reviews the Market published in the last 30 Market days against the 30 before (dashboards
+   * v2, phase 2), counted live by the reviews module: how many, the average, how many of each
+   * rating and the share of 1 and 2 stars. Always 30 days, whatever period the page shows. `off`
+   * while reviews are off in the Market; `not-enough-data` below 5 reviews. Counts only: key
+   * `reviews.settings.view`, platform admin only.
+   */
+  marketplaceReviews(context: CallContext): Promise<Result<MarketplaceReviewsAnswer, KpiFailure>>;
 
   /**
    * The top ten texts the storefront search found nothing for in the period (dashboards v2, phase
