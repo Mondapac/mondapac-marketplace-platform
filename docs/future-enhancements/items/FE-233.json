@@ -1,0 +1,11 @@
+{
+  "id": "FE-233",
+  "area": "assistant",
+  "title": "درگاه AI: کش پاسخ مرکز راهنما",
+  "desc": "کش فقط برای پاسخ‌های ساخته‌شده از متن مرکز راهنما، جدا برای هر Market؛ بدون گفتگو یا دادهٔ شخصی (R5).",
+  "src": "docs/design/domain/platform-ai.md (بخش ۱۴) و design/ai-gateway/ai-gateway-design-fa.html (بخش ۱۵)",
+  "date": "2026-11-25",
+  "trig": "وقتی هزینهٔ پرسش‌های تکراری زیاد شد",
+  "prio": "پایین",
+  "status": "موکول"
+}

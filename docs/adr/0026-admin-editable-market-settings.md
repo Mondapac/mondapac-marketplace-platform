@@ -74,7 +74,9 @@ committed change at once, and an audited change.
    it is set. The runbook and the R8 pre-switch-on test include it.
 9. **Never a setting.** Anything read by `evaluateClaim` or `ClaimBasisPolicy` (ADR-0012,
    fail-closed); `identity`'s security policy (including "email verification required"); AI
-   provider, model and region (R7); payment and commission values; `HOSTED_MARKETS`. Moving
+   provider, model and region (R7) *(superseded in part by ADR-0053, 2026-11-25: a senior
+   admin chooses AI models among the approved routes of ADR-0052; providers, routes, regions,
+   prices and keys stay out of the panel)*; payment and commission values; `HOSTED_MARKETS`. Moving
    anything off this list needs a superseding ADR and security-tester review; every new
    editable setting needs security-tester review and is otherwise a G2 or mini-review item of
    its owning module. Per-seller settings (SEL-25) stay in `sellers`.

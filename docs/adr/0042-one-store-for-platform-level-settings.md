@@ -40,7 +40,9 @@ boundary checks are module-based, so a store with no owning module does not fit 
    value, and the review its path needs (for example Hassan for anything on a decision path).
    Until then both ways exist side by side.
 7. **Per-seller settings stay in `sellers`** (ADR-0026 decision 9); anything read by
-   `evaluateClaim` or `ClaimBasisPolicy`, identity's security policy, AI provider/model/region,
+   `evaluateClaim` or `ClaimBasisPolicy`, identity's security policy, AI provider/model/region
+   *(superseded in part by ADR-0053, 2026-11-25: AI model choice among the approved routes of
+   ADR-0052 is a setting in this store)*,
    payment and commission values and `HOSTED_MARKETS` are still never settings.
 
 ## Consequences

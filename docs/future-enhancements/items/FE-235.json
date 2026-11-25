@@ -1,0 +1,11 @@
+{
+  "id": "FE-235",
+  "area": "assistant",
+  "title": "طرح دستیار پنل ادمین",
+  "desc": "طرح جدا برای دستیار ادمین روی درگاه؛ بدون ابزار طبق R9.",
+  "src": "docs/design/domain/platform-ai.md (بخش ۱۴) و design/ai-gateway/ai-gateway-design-fa.html (بخش ۱۵)",
+  "date": "2026-11-25",
+  "trig": "تصمیم صاحب پروژه، ۲۵ نوامبر: فعلاً نه؛ تا خودش بگوید",
+  "prio": "پایین",
+  "status": "موکول"
+}
