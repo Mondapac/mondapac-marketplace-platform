@@ -1096,6 +1096,26 @@ describe.each([
         expect(zeroResults.rows).toEqual([]);
       });
 
+      it('skips the store for a text it already noted in the same quarter hour (per process)', async () => {
+        reader.hits = [];
+        const searchProducts = new SearchProducts(gate, deps);
+        await searchProducts.execute(anonymous, { q: 'Barberry', noteZeroResult: true });
+        await searchProducts.execute(anonymous, { q: 'barberry ', noteZeroResult: true });
+        expect(zeroResults.noteCalls).toBe(1);
+        expect(zeroResults.rows).toHaveLength(1);
+      });
+
+      it('tries again after a failed note', async () => {
+        reader.hits = [];
+        zeroResults.failing = true;
+        const searchProducts = new SearchProducts(gate, deps);
+        await searchProducts.execute(anonymous, { q: 'barberry', noteZeroResult: true });
+        zeroResults.failing = false;
+        await searchProducts.execute(anonymous, { q: 'barberry', noteZeroResult: true });
+        expect(zeroResults.noteCalls).toBe(2);
+        expect(zeroResults.rows).toHaveLength(1);
+      });
+
       it('answers the shopper even when the note fails', async () => {
         reader.hits = [];
         zeroResults.failing = true;

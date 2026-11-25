@@ -17,11 +17,14 @@ CREATE TABLE "search"."zero_result_queries" (
 ALTER TABLE "search"."zero_result_queries"
   ADD CONSTRAINT "zero_result_queries_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
   ADD CONSTRAINT "zero_result_queries_tenant_id_check" CHECK ("tenant_id" ~ '^[a-z][a-z0-9-]{1,31}$'),
-  -- The folded text: 2 to 50 characters, no e-mail address. (The application folds the case; no
-  -- lower() CHECK here, as PostgreSQL's and JavaScript's case mappings may differ.)
+  -- The folded text: 2 to 50 characters, no e-mail or web address, the same rules as the
+  -- application (Mojtaba L5, Hassan I1; the digit rule stays in the application). The application
+  -- folds the case; no lower() CHECK here, as PostgreSQL's and JavaScript's case mappings may differ.
   ADD CONSTRAINT "zero_result_queries_query_key_check" CHECK (
     char_length("query_key") BETWEEN 2 AND 50
     AND position('@' IN "query_key") = 0
+    AND position('://' IN "query_key") = 0
+    AND position('www.' IN lower("query_key")) = 0
   ),
   -- A quarter-hour boundary, so a Market day of any zone in use is a whole number of buckets.
   ADD CONSTRAINT "zero_result_queries_bucket_start_check" CHECK (

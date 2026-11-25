@@ -5,8 +5,12 @@ import type { ZeroResultLog } from '../ports/zero-result-log';
 export class MemoryZeroResultLog implements ZeroResultLog {
   rows: { marketId: string; key: string; bucketStart: Temporal.Instant }[] = [];
   failing = false;
+  /** Calls of `note` (the recent-notes cache skips repeats) and of `purgeBefore`. */
+  noteCalls = 0;
+  purgeCalls = 0;
 
   note(market: MarketContext, key: string, bucketStart: Temporal.Instant) {
+    this.noteCalls += 1;
     if (this.failing) return Promise.reject(new Error('down'));
     const seen = this.rows.some(
       (row) =>
@@ -40,14 +44,17 @@ export class MemoryZeroResultLog implements ZeroResultLog {
     );
   }
 
-  purgeBefore(market: MarketContext, before: Temporal.Instant) {
-    const keep = this.rows.filter(
-      (row) =>
-        row.marketId !== market.marketId ||
-        row.bucketStart.epochMilliseconds >= before.epochMilliseconds,
-    );
-    const gone = this.rows.length - keep.length;
-    this.rows = keep;
-    return Promise.resolve(gone);
+  purgeBefore(market: MarketContext, before: Temporal.Instant, limit: number) {
+    const old = this.rows
+      .filter(
+        (row) =>
+          row.marketId === market.marketId &&
+          row.bucketStart.epochMilliseconds < before.epochMilliseconds,
+      )
+      .sort((a, b) => a.bucketStart.epochMilliseconds - b.bucketStart.epochMilliseconds)
+      .slice(0, limit);
+    this.rows = this.rows.filter((row) => !old.includes(row));
+    this.purgeCalls += 1;
+    return Promise.resolve(old.length);
   }
 }

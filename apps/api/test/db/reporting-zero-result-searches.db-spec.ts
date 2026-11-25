@@ -240,6 +240,55 @@ describe.each(TEST_MARKETS)('zero-result searches in market %s (database)', (cod
     expect(left.rows).toEqual([{ query_key: 'recent text' }]);
   });
 
+  it('reads and purges only the rows of its own tenant (Hassan I2, Mojtaba L4)', async () => {
+    const otherTenant = 'other-tenant';
+    const old = Temporal.Instant.from('2026-03-01T00:00:00Z');
+    await owner.query(
+      `INSERT INTO search.zero_result_queries (market_id, tenant_id, bucket_start, query_key)
+       VALUES ($1, $2, $3, 'other tenant text')`,
+      [market.marketId, otherTenant, old.toString()],
+    );
+    const purged = await new PurgeZeroResultQueries(gate, {
+      unitOfWork: db.unitOfWork,
+      zeroResults: log,
+      clock,
+    }).execute(system, {});
+    expect(purged.ok).toBe(true);
+    const kept = await owner.query(
+      `SELECT tenant_id FROM search.zero_result_queries
+        WHERE market_id = $1 AND query_key = 'other tenant text'`,
+      [market.marketId],
+    );
+    expect(kept.rows).toEqual([{ tenant_id: otherTenant }]);
+
+    // Another tenant's search of the same text is not counted with this tenant's.
+    clock.set(noon);
+    await owner.query(
+      `INSERT INTO engagement.behaviour_events
+         (id, market_id, tenant_id, account_id, kind, search_query, occurred_at)
+       VALUES ($1, $2, $3, $4, 'search-performed', 'cumin seeds', $5)`,
+      [ids.next(), market.marketId, otherTenant, ids.next(), noon.toString()],
+    );
+    const mine = ids.next<'Account'>();
+    await search(mine, 'cumin seeds');
+    const pairs = await db.unitOfWork.run(
+      market,
+      async () =>
+        ok(
+          await engagement.events.searchPairs(
+            market,
+            { from: dayStart.toInstant(), to: dayStart.add({ days: 1 }).toInstant() },
+            ['cumin seeds'],
+            100,
+          ),
+        ),
+      { readOnly: true },
+    );
+    expect(pairs.ok && pairs.value).toEqual([
+      expect.objectContaining({ query: 'cumin seeds', accountId: mine }),
+    ]);
+  });
+
   it('lets the application role only read and insert the reporting rows, and holds the minimum', async () => {
     for (const table of ['search_snapshot_days', 'daily_zero_result_searches']) {
       await expect(
@@ -266,15 +315,18 @@ describe.each(TEST_MARKETS)('zero-result searches in market %s (database)', (cod
     await expect(insert('nine people', 9, 9)).rejects.toMatchObject({ code: CHECK });
     await expect(insert('fewer searches', 12, 11)).rejects.toMatchObject({ code: CHECK });
     await expect(insert('x', 10, 10)).rejects.toMatchObject({ code: CHECK });
+    for (const text of ['jane@example.com', 'https://shop.example', 'WWW.example']) {
+      await expect(insert(text, 10, 10)).rejects.toMatchObject({ code: CHECK });
+    }
     const note = (key: string, bucket: string) =>
       owner.query(
         `INSERT INTO search.zero_result_queries (market_id, tenant_id, bucket_start, query_key)
          VALUES ($1, $2, $3, $4)`,
         [market.marketId, market.tenantId, bucket, key],
       );
-    await expect(note('jane@example.com', '2026-06-01T00:00:00Z')).rejects.toMatchObject({
-      code: CHECK,
-    });
+    for (const key of ['jane@example.com', 'ftp://files.example', 'www.example']) {
+      await expect(note(key, '2026-06-01T00:00:00Z')).rejects.toMatchObject({ code: CHECK });
+    }
     await expect(note('off quarter', '2026-06-01T00:07:00Z')).rejects.toMatchObject({
       code: CHECK,
     });

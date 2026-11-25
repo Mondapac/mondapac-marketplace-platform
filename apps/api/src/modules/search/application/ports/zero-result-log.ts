@@ -18,8 +18,11 @@ export interface ZeroResultLog {
     window: { readonly from: Temporal.Instant; readonly to: Temporal.Instant },
     limit: number,
   ): Promise<string[]>;
-  /** Deletes every row of the Market before `before`; answers how many went. */
-  purgeBefore(market: MarketContext, before: Temporal.Instant): Promise<number>;
+  /**
+   * Deletes at most `limit` of the Market's (and tenant's) oldest rows before `before`, in one
+   * statement; answers how many went (fewer than `limit`: nothing older is left).
+   */
+  purgeBefore(market: MarketContext, before: Temporal.Instant, limit: number): Promise<number>;
 }
 
 export const ZERO_RESULT_LOG = Symbol('search.ZeroResultLog');

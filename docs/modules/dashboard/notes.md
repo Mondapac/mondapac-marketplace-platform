@@ -336,8 +336,10 @@ the seller KPI endpoint is unchanged. The card is built in the phase 2 cards PR.
 `GET dashboard/admin/kpis` gains the section `zeroResultSearches` (key `catalog.product.view`, null
 without it, `status: error` when it fails or takes over 1.5 s): reporting's
 `marketplaceZeroResultSearches`, from the nightly rows only. `queries` (at most ten, most searches
-first): `query` (the folded text; render it as plain text, never markup), `searches` (on the days of
-the period it found nothing), `searcherDays` (each kept day's distinct signed-in searchers summed)
+first): `query` (the folded text; render it as a plain text node, never HTML or markup and never a
+link, Hassan I4), `searches` (every search of the text by the counted customers on the days of the
+period it found nothing at least once, including that day's searches that found something, Hassan
+I3), `searcherDays` (each kept day's distinct signed-in searchers summed)
 and `days`; `recordedDays` of `periodDays`. `not-enough-data` (`minimumSearchers: 10`) when no text
 was searched by at least ten distinct customers on one day of the period. The "?" must say that a
 text appears only on days at least ten customers searched it and that searches count on days it

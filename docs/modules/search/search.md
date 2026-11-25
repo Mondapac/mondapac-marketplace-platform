@@ -404,5 +404,13 @@ address or device is read or stored. A failed note is logged as `search.zero-res
 (Market and correlation id only, never the text) and never changes the answer. Reporting's nightly
 snapshot reads a Market day's texts through `SEARCH_REPORTING_FACADE.zeroResultTexts`
 (`search.zero-result-texts`, rule `system`, at most 2,000, those noted in the most quarter hours
-first). `search.purge-zero-result-queries` (job, every 6 hours) deletes notes older than 35 days. The
-application role has SELECT, INSERT and DELETE, no UPDATE. See `docs/modules/reporting/notes.md`.
+first). `search.purge-zero-result-queries` (job, every 6 hours) deletes notes older than 35 days, of
+its own Market and tenant only, in batches of 10,000 rows per statement, each in its own unit (at
+most 100 batches a run; the next run finishes a larger backlog). The
+application role has SELECT, INSERT and DELETE, no UPDATE. The table CHECK refuses an `@`, `://` or
+`www.` in the key and the length rule (the digit rule is the application's). Each process keeps a
+best-effort recent-notes cache (at most 10,000 Market, tenant, quarter hour and text entries, least
+recently used dropped first) and skips the database for a text it already noted in the same quarter
+hour; a failed note is not cached. A text naming a person with four digits or fewer can be kept up
+to 35 days here but reaches the dashboard only when ten distinct customers searched it on one day
+(Hassan L1). See `docs/modules/reporting/notes.md`.

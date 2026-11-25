@@ -95,6 +95,9 @@ describe('keptZeroResultRows: what the snapshot writes of the owners’ answer',
         { query: 'y'.repeat(51), searchers: 10, searches: 10 },
         { query: 'odd counts', searchers: 12, searches: 11 },
         { query: 'sumac', searchers: 10.5, searches: 11 },
+        { query: 'jane@example.com', searchers: 10, searches: 10 },
+        { query: 'https://x.test', searchers: 10, searches: 10 },
+        { query: 'www.example.com', searchers: 10, searches: 10 },
       ]),
     ).toEqual([{ query: 'barberry', searchers: 10, searches: 12 }]);
   });

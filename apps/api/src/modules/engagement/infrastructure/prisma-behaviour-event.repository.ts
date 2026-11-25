@@ -207,6 +207,7 @@ export class PrismaBehaviourEventRepository implements BehaviourEventRepository 
       by: ['searchQuery', 'accountId'],
       where: {
         marketId: market.marketId,
+        tenantId: market.tenantId,
         accountId: { not: null },
         kind: 'search-performed',
         occurredAt: { gte: toDate(range.from), lt: toDate(range.to) },

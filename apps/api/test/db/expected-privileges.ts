@@ -1329,11 +1329,11 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'updated_at',
       ],
     },
-    // Search rating boost (buyer reviews and ratings package 5): the star totals of a product,
-    // copied from reviews by a job; upserted and deleted when a product has no published review.
     // Dashboards v2, phase 2: the folded texts of text searches that found nothing, per quarter
     // hour; inserted once, read by reporting's snapshot and purged after 35 days, never updated.
     'search.zero_result_queries': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    // Search rating boost (buyer reviews and ratings package 5): the star totals of a product,
+    // copied from reviews by a job; upserted and deleted when a product has no published review.
     'search.product_ratings': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['bayes_times_1000', 'boost_ppm', 'rating_count', 'rating_sum', 'synced_at'],

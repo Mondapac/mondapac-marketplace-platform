@@ -510,11 +510,14 @@ export class ZeroResultQueryBody {
   @ApiProperty({
     description:
       'The text as searched, folded (lower case, white space collapsed, at most 50 characters). ' +
-      'Data, never markup: render it as plain text.',
+      'Data, never markup: render it as a plain text node, never HTML and never a link.',
   })
   query!: string;
   @ApiProperty({
-    description: 'Searches of it on the days of the period it found nothing and was kept.',
+    description:
+      'All searches of the text by signed-in customers with personalization on, on each kept day ' +
+      'of the period (a day it found nothing at least once and ten or more customers searched ' +
+      'it), including that day’s searches of it that did find something.',
   })
   searches!: number;
   @ApiProperty({

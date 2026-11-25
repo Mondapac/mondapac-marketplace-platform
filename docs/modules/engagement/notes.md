@@ -204,10 +204,14 @@ accounts with a `search-performed` event of that text, in any case, and their se
 with at least ten distinct accounts (`MIN_SEARCH_SHOPPERS`, a constant of this module) are answered,
 with the two counts; ids are not returned or logged. Guests are never counted. Access path:
 `searchPairs` is one `GROUP BY search_query, account_id` over the day,
-`WHERE market_id = $1 AND account_id IS NOT NULL AND kind = 'search-performed' AND occurred_at in the
+`WHERE market_id = $1 AND tenant_id = $2 AND account_id IS NOT NULL AND kind = 'search-performed' AND occurred_at in the
 window AND LOWER(search_query) IN (LOWER($texts))` (Prisma `mode: 'insensitive'`), served by
 `behaviour_events (market_id, occurred_at)`; at most 100,000 pairs, else
-`engagement.search-too-large`. PIA: the search text now leaves the module in one aggregate form: a
+`engagement.search-too-large` (reporting then skips the day; a day still over the cap when it leaves
+reporting's 28-day look-back is lost, Mojtaba 7). A covering partial index for this read, built when
+one Market passes 2 million events a day or the statement passes 5 s, is
+FE-20261125-engagement-search-pairs-covering-index. The `searches` count is every search of the text
+by these accounts that day, including ones that found something (Hassan I3). PIA: the search text now leaves the module in one aggregate form: a
 text the storefront search found nothing for that at least ten distinct customers searched on one
 day, with counts, written once by reporting (`reporting.daily_zero_result_searches`). This amends
 the line "never leaves the module except to package 1d's own ranking" above; search itself notes

@@ -36,8 +36,12 @@ ALTER TABLE "reporting"."search_snapshot_days"
 ALTER TABLE "reporting"."daily_zero_result_searches"
   ADD CONSTRAINT "daily_zero_result_searches_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
   ADD CONSTRAINT "daily_zero_result_searches_tenant_id_check" CHECK ("tenant_id" ~ '^[a-z][a-z0-9-]{1,31}$'),
+  -- The same text rules as search's note and the application (Mojtaba L5, Hassan I1).
   ADD CONSTRAINT "daily_zero_result_searches_query_text_check" CHECK (
     char_length("query_text") BETWEEN 2 AND 50
+    AND position('@' IN "query_text") = 0
+    AND position('://' IN "query_text") = 0
+    AND position('www.' IN lower("query_text")) = 0
   ),
   -- Hassan's rule: a text searched by fewer than ten distinct customers on the day is never kept.
   ADD CONSTRAINT "daily_zero_result_searches_counts_check" CHECK (

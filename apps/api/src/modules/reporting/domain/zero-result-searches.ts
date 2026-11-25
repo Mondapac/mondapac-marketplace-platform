@@ -30,7 +30,7 @@ export const MAX_ZERO_RESULT_QUERY_LENGTH = 50;
 
 /**
  * The rows the snapshot writes of the owners' answer: lower-case text of 2 to
- * {@link MAX_ZERO_RESULT_QUERY_LENGTH} characters, whole counts with at least
+ * {@link MAX_ZERO_RESULT_QUERY_LENGTH} characters with no `@`, `://` or `www.` (search's rules), whole counts with at least
  * {@link MIN_ZERO_RESULT_SEARCHERS} searchers and no fewer searches than searchers, the first row of
  * a text only. Anything else is dropped, never written (defence in depth; the table's CHECKs agree).
  */
@@ -45,6 +45,9 @@ export function keptZeroResultRows(
       seen.has(row.query) ||
       length < 2 ||
       length > MAX_ZERO_RESULT_QUERY_LENGTH ||
+      row.query.includes('@') ||
+      row.query.includes('://') ||
+      row.query.includes('www.') ||
       row.query !== row.query.toLowerCase() ||
       !Number.isSafeInteger(row.searchers) ||
       !Number.isSafeInteger(row.searches) ||

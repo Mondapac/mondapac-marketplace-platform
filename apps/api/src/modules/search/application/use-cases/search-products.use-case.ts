@@ -28,6 +28,7 @@ import { MAX_FACET_ROWS, type FacetRow, type NumberRow } from '../ports/offer-fa
 import type { FilterDefinition } from '../ports/search-filters';
 import { countScope, type CategoryCount } from '../../domain/scope-counts';
 import type { SearchDependencies } from '../search-dependencies';
+import { RecentNotes } from '../recent-notes';
 
 /**
  * A result of the storefront search: ids, text, categories and the first photo (or null). No
@@ -148,6 +149,9 @@ export type SearchProductsInput = SearchProductsRequest & {
 
 const logger = new Logger('SearchProducts');
 
+/** How many (Market, quarter hour, text) notes one process remembers (Mojtaba L1). */
+export const RECENT_NOTES_CAPACITY = 10_000;
+
 export type SearchProductsFailure =
   SearchValidationFailed | { readonly code: 'search.unavailable' };
 
@@ -185,6 +189,9 @@ export class SearchProducts extends UseCase<
     name: 'search.search-products',
     rule: { kind: 'anonymous' },
   };
+
+  /** Notes written lately by this process: a repeat in the same quarter hour skips the database. */
+  readonly #recentNotes = new RecentNotes(RECENT_NOTES_CAPACITY);
 
   constructor(
     gate: UseCaseGate,
@@ -406,12 +413,17 @@ export class SearchProducts extends UseCase<
     if (key === null) return;
     const { market } = context;
     const bucket = zeroResultBucketOf(this.deps.clock.now());
+    const recent = `${market.marketId}|${market.tenantId}|${bucket.toString()}|${key}`;
+    if (this.#recentNotes.has(recent)) return;
     try {
       const unit = await this.deps.unitOfWork.run(market, async () => {
         await this.deps.zeroResults.note(market, key, bucket);
         return ok(true);
       });
-      if (unit.ok) return;
+      if (unit.ok) {
+        this.#recentNotes.add(recent);
+        return;
+      }
     } catch {
       // Logged below; the shopper still gets the answer.
     }
