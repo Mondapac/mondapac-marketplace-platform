@@ -652,5 +652,9 @@
         "cooldownSeconds": 30
       }
     }
+  },
+  "aiRouting": {
+    "dataResidency": "in-market-region",
+    "regions": ["ap-southeast-2", "ap-southeast-4"]
   }
 }

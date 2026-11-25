@@ -58,15 +58,38 @@ export interface ModelTurn {
   readonly usage: ModelUsage;
 }
 
-/** What a provider adapter needs for one call; built by the gateway from Market configuration. */
+/**
+ * What a provider adapter needs for one call; built by the gateway from the route catalogue row
+ * (route, model, region) and the server key of that route in the Market.
+ */
 export interface ModelCredentials {
   readonly apiKey: string;
   readonly model: string;
+  /** The catalogue row's route kind (`anthropic-api`, `bedrock-mantle`). */
+  readonly route: string;
+  /** The catalogue row's processing region; a regional route is called there only. */
+  readonly region: string | null;
 }
 
 /**
- * One provider's API (an adapter in `platform/ai`). It throws on any failure; the gateway turns
- * that into `unavailable` without its text, which could carry provider details.
+ * How a call failed, as far as the router needs to know (design section 6): it moves to the next
+ * route on `rate-limited`, `server` and `network`, never on `client` (a request the provider
+ * refuses would be refused by the same model on another route).
+ */
+export type ProviderFailure = 'rate-limited' | 'server' | 'network' | 'client';
+
+/** The error an adapter throws; it carries the kind only, never provider text. */
+export class ModelProviderError extends Error {
+  constructor(readonly kind: ProviderFailure) {
+    super(`model provider failed: ${kind}`);
+    this.name = 'ModelProviderError';
+  }
+}
+
+/**
+ * One provider's API (an adapter in `platform/ai`). It throws on any failure, a
+ * {@link ModelProviderError} when it knows the kind; the gateway turns that into a failure reason
+ * without its text, which could carry provider details. Any other error counts as `network`.
  */
 export interface ModelProvider {
   call(

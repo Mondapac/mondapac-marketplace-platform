@@ -175,6 +175,27 @@ export class AiUsage {
   }
 
   /**
+   * The share of the Market's month cap already taken (held and spent), for saver mode (design
+   * section 6), or null when the Market has no month cap. Reads in a read-only unit of its own.
+   * Throws on a store failure; the gateway then keeps the normal order.
+   */
+  async monthShare(market: MarketContext): Promise<number | null> {
+    const day = this.dayOf(market, this.clock.now());
+    const month = this.linesOf(market, { capability: '', sellerId: null, guest: false }, day).find(
+      (line) => line.period === 'month',
+    )!;
+    if (month.capMicroUsd === null) return null;
+    const held = await this.unitOfWork.run(
+      market,
+      async () => ok(await this.store.heldOf(market, [month])),
+      { readOnly: true },
+    );
+    if (!held.ok) throw new Error('month share not read');
+    if (month.capMicroUsd === 0) return 1;
+    return (held.value.get(counterKeyText(month)) ?? 0) / month.capMicroUsd;
+  }
+
+  /**
    * Holds `estimateMicroUsd` on every counter of the scope, all or nothing, and records the
    * reservation with its expiry (`ttl` after now). Answers 'over-budget' when a cap is full.
    * Throws on a store failure; the gateway then calls nothing.
@@ -271,6 +292,7 @@ export class AiUsage {
             sellerId: scope.sellerId,
             calls: 1,
             failures: call.outcome === 'ok' ? 0 : 1,
+            fallbacks: call.attempt > 1 ? 1 : 0,
             refusals: 0,
             inputTokens: call.inputTokens,
             outputTokens: call.outputTokens,
@@ -301,6 +323,7 @@ export class AiUsage {
           sellerId: scope.sellerId,
           calls: 0,
           failures: 0,
+          fallbacks: 0,
           refusals: 1,
           inputTokens: 0,
           outputTokens: 0,

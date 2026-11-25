@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-ai-gateway-shared-breaker",
+  "area": "assistant",
+  "title": "درگاه AI: circuit breaker مشترک بین نمونه‌های API",
+  "desc": "در G3 هر نمونهٔ API خرابی مسیرها را جدا در حافظهٔ خودش می‌شمارد. با چند نمونه، هر کدام جدا یاد می‌گیرد. وضعیت مشترک (مثلاً در Redis) و نمایش آن در صفحهٔ «AI Gateway» پنل ادمین بعداً.",
+  "src": "docs/design/domain/platform-ai.md (بخش ۶ و ۱۱)",
+  "date": "2026-11-25",
+  "trig": "بیش از یک نمونهٔ API یا ساخت صفحهٔ AI Gateway در G5",
+  "prio": "پایین",
+  "status": "موکول"
+}

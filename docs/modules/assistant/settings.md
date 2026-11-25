@@ -46,10 +46,12 @@ The guardrails of plan section 5 (numbers only from server cards, certification 
 `evaluateClaim`, no mutating tool, never payment, refunds, orders, addresses, accounts, discount
 codes or Cost) and the model configuration. Since package 4 that configuration is per Market,
 as `MARKET=value` pairs: `ASSISTANT_MODEL_API_KEY` (a server secret; the admin read shows only
-`set` / `not-set`), `ASSISTANT_MODEL_FAST` / `ASSISTANT_MODEL_BALANCED` (the provider model of
-each tier) and `ASSISTANT_MODEL_PRICE_FAST` / `_BALANCED` (US dollars per million input/output
-tokens, so the spend caps can be counted). Without the key, the model or the price for the chosen
-tier, the storefront read answers `enabled: false` and no message reaches a model.
+`set` / `not-set`) and `ASSISTANT_MODEL_FAST` / `ASSISTANT_MODEL_BALANCED` (the model family of
+each tier, from the AI Gateway's route catalogue). Since AI Gateway G3 prices come from the route
+catalogue (the `ASSISTANT_MODEL_PRICE_*` variables are ignored), and a tier's model is used only
+through a usable route (ADR-0052: verified row, region of the Market, key, evaluation pass;
+docs/design/domain/platform-ai.md section 6). Without a usable route for the chosen tier, the
+storefront read answers `enabled: false` and no message reaches a model.
 
 ## Rollout
 

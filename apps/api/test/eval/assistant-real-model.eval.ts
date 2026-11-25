@@ -15,6 +15,9 @@ import { FakeUnitOfWork } from '../support/pricing-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../support/test-config';
 import { AnthropicMessagesProvider } from '../../src/platform/ai/anthropic-messages.provider';
 import { ModelGateway } from '../../src/platform/ai/model-gateway';
+import { checkedInCatalogue } from '../../src/platform/ai/catalogue';
+import { EvaluationResults } from '../../src/platform/ai/evaluations/evaluation-results';
+import { AiRouter } from '../../src/platform/ai/routing/ai-router';
 import { AiGateway } from '../../src/platform/ai/ai-gateway';
 import { CapabilityRegistry } from '../../src/platform/ai/capability-registry';
 import { ASSISTANT_AI_CAPABILITIES } from '../../src/modules/assistant/contracts/ai-capabilities';
@@ -82,7 +85,8 @@ import { FacadeAssistantTools } from '../../src/modules/assistant/infrastructure
  * conversation.md, "Before the switch is turned on"). It is NOT part of `pnpm verify`: it calls
  * the provider, so it runs only on demand (`pnpm --filter @mondapac/api eval:assistant`) with the
  * same variables the API reads (ASSISTANT_MODEL_API_KEY, ASSISTANT_MODEL_FAST or _BALANCED; the
- * price variables are not needed). Each Market of the test fixtures that has a key and a model is
+ * model must be in the route catalogue, and its route usable but for the evaluation pass: ADR-0052
+ * decision 3). Each Market of the test fixtures that has a key and a model is
  * run; with none, the run fails instead of passing empty.
  *
  * Every case sends the `buyer` text of the evaluation set through the whole turn of SendMessage:
@@ -433,16 +437,13 @@ function configFromEnvironment(): { config: AppConfig; tier: ModelTier; markets:
   const tier = tierName as ModelTier;
   const models = tier === 'fast' ? fast.values : balanced.values;
   const markets = Object.keys(keys.values).filter((market) => Object.hasOwn(models, market));
-  // Prices only feed the spend caps, which this run does not test: zero keeps them out of the way.
-  const zero = Object.fromEntries(
-    markets.map((market) => [market, { inputPicoUsd: 0, outputPicoUsd: 0 }]),
-  );
+  // Prices come from the route catalogue; the budget is counted in memory and not tested here.
   const config = {
     aiKillSwitch: false,
     assistantModels: {
       apiKeys: keys.values,
       models: { fast: fast.values, balanced: balanced.values },
-      prices: { fast: zero, balanced: zero },
+      bedrockApiKeys: {},
     },
   } as unknown as AppConfig;
   return { config, tier, markets };
@@ -454,18 +455,26 @@ describe(`buyer assistant real-model evaluation (${EVALUATION_VERSION})`, () => 
   const { config, tier, markets } = configFromEnvironment();
   const registry = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
   const gate = createUseCaseGate(registry, { check: () => Promise.resolve({ allowed: true }) });
-  const gateway = new ModelGateway(config, new AnthropicMessagesProvider());
+  const catalogue = checkedInCatalogue();
+  const gateway = new ModelGateway(config, new AnthropicMessagesProvider(), catalogue);
   // The real gateway path, with the buyer chat registered; no seller-scoped capability runs here.
   const capabilities = new CapabilityRegistry();
   capabilities.register('assistant', ASSISTANT_AI_CAPABILITIES);
   // The budget is counted in memory: the evaluation has no database.
   const clock = new SystemClock();
+  // An evaluation run (ADR-0052 decision 3, the one exception): a catalogue row without a
+  // recorded pass may be used, when it meets every other condition (no retention and no training
+  // recorded, a region of the Market, a key, not retired). Synthetic data only.
+  const router = new AiRouter(catalogue, new EvaluationResults([]), gateway, registry, clock, {
+    evaluationRun: true,
+  });
   const aiGateway = new AiGateway(
     gateway,
     capabilities,
     { isOn: () => Promise.resolve(false) },
     inMemoryAiUsage(registry, clock).usage,
     clock,
+    router,
   );
   const reportDir = process.env.ASSISTANT_EVAL_REPORT_DIR ?? join(tmpdir(), 'assistant-eval');
 

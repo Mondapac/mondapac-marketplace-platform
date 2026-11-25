@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-ai-gateway-bedrock-price",
+  "area": "assistant",
+  "title": "درگاه AI: قیمت واقعی Bedrock سیدنی در فهرست مسیرها",
+  "desc": "ردیف‌های مسیر Bedrock فعلاً با قیمت فهرست Anthropic شمرده می‌شوند. کاظم قیمت Bedrock در ap-southeast-2 را ثبت کند و ردیف‌ها با PR و بازبینی حسن به‌روز شوند. برآورد رزرو همیشه با گران‌ترین مسیر برنامه است، پس سقف شکسته نمی‌شود.",
+  "src": "apps/api/src/platform/ai/catalogue/bedrock.ts",
+  "date": "2026-11-25",
+  "trig": "پیش از روشن کردن مسیر Bedrock",
+  "prio": "بالا",
+  "status": "موکول"
+}

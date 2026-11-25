@@ -167,6 +167,32 @@ number so the partner team can work in parallel (G6).
   ADR-0052 and Hassan approves it. Customer data goes to shadow only with the owner's written
   approval.
 
+**Built in G3 (code in `apps/api/src/platform/ai/catalogue/`, `evaluations/`, `routing/`).**
+- The route catalogue is one file per route (`anthropic.ts` for Anthropic's own API, `bedrock.ts` for
+  Amazon Bedrock's Messages API endpoint in `ap-southeast-2`); a row holds the exact model id, the
+  model family, the region, Hassan's no-retention and no-training check (`dataTerms`), the list
+  price and the retirement day. No row carries a check yet (ADR-0052 verification log empty), and
+  the Anthropic API rows have no region recorded, so no route is usable and every capability is off
+  until Hassan records a row. Evaluation passes live in `evaluations/results.ts` (empty), bound to
+  capability, provider, family and prompt version; a pass of a family holds on each of its routes.
+- Until G4 a task's priority list is the one family the module's tier names (`ASSISTANT_MODEL_FAST`
+  or `_BALANCED`, now a catalogue family; a name outside the catalogue fails boot). The router
+  expands it to its usable rows, provider route first, at most 3 attempts. Market residency and the
+  saver model are Market configuration `aiRouting` until G4 and INTL-53.
+- An attempt moves to the next route on a timeout, a server error, no answer or a rate limit; never
+  on a provider refusal of the request (`rejected`) or a model refusal. Each attempt reserves before
+  it is sent (call id = reservation id), at the dearest route of the plan, and is recorded with its
+  attempt number; a fallback attempt counts in `ai_usage_days.fallbacks`. With a fallback left, an
+  attempt may take two thirds of the time left; a fallback needs 250 ms left of the run's timeout.
+- The circuit breaker is per API instance, per Market and route: 3 failures in a row set the route
+  aside for 2 minutes, then one trial call (FE-20261125-ai-gateway-shared-breaker).
+- Saver mode reads the Market's month counter (held, which includes spent) against its month cap;
+  the saver model goes first only when it is usable and cheaper than the first model.
+- The second adapter is the same Messages adapter with Bedrock's regional host and a Bedrock API key
+  as a bearer token (`AI_BEDROCK_API_KEY`). The provider-reported region check is deferred
+  (FE-20261125-ai-gateway-region-check); Bedrock prices are first-party list prices until Kazem
+  records Bedrock's (FE-20261125-ai-gateway-bedrock-price).
+
 ## 7. Cost and limits
 - **Unit.** Cost is recorded in US micro-dollars, because providers bill in dollars; the panel also
   shows an approximate amount in the Market's currency.
@@ -395,3 +421,6 @@ the guarded `prisma.tx(market)` client. Each table has an explicit GRANT and `do
 | FE-235 | A design of its own for the admin assistant |
 | FE-20261125-ai-gateway-budget-alerts | Admin notice at 80 % and 100 % of an AI budget cap (G2 counts and refuses only) |
 | FE-20261125-ai-gateway-ops-alerts | Kazem's alerts: error rate, circuit breaker, spend at 80 % |
+| FE-20261125-ai-gateway-region-check | Compare a provider-reported processing region with the route row; a mismatch fails the call and alerts |
+| FE-20261125-ai-gateway-shared-breaker | One circuit-breaker state shared by all API instances, shown on the AI Gateway page |
+| FE-20261125-ai-gateway-bedrock-price | Record the Bedrock Sydney price in the catalogue rows before the route is turned on |
