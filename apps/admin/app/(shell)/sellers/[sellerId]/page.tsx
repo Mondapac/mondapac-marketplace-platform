@@ -35,6 +35,17 @@ import {
   blogAccessPath,
   type BlogAccessRead,
 } from '../../../../src/sellers/blog-access-types.ts';
+import { OfferReviewCard } from '../../../../src/sellers/offer-review-card.tsx';
+import {
+  FLAG_PERMISSIONS,
+  STANDING_VIEW_PERMISSIONS,
+  flagsOf,
+  flagsPath,
+  standingOf,
+  standingPath,
+  type Flags,
+  type Standing,
+} from '../../../../src/offer-review/standing.ts';
 import { CategoryProposalsCard } from '../../../../src/sellers/category-proposals-card.tsx';
 import { DECIDE_PERMISSION as PROPOSAL_DECIDE_PERMISSION } from '../../../../src/categories/proposals/types.ts';
 import { OwnerSecondFactorCard } from '../../../../src/sellers/owner-second-factor-card.tsx';
@@ -103,6 +114,22 @@ async function loadHealth(sellerId: string, canView: boolean): Promise<SellerHea
   const read = await serverGet<SellerHealthRead>(healthPath(sellerId));
   if (read.kind === 'signed-out') redirect('/session-ended');
   return read.kind === 'ok' ? read.body : null;
+}
+
+/** The seller's Offer review flags, or null when the role cannot see them or they cannot be read. */
+async function loadReviewFlags(sellerId: string, canView: boolean): Promise<Flags | null> {
+  if (!canView) return null;
+  const read = await serverGet<unknown>(flagsPath(sellerId));
+  if (read.kind === 'signed-out') redirect('/session-ended');
+  return read.kind === 'ok' ? flagsOf(read.body) : null;
+}
+
+/** The seller's Offer review standing, or null when the role cannot see it or it cannot be read. */
+async function loadStanding(sellerId: string, canView: boolean): Promise<Standing | null> {
+  if (!canView) return null;
+  const read = await serverGet<unknown>(standingPath(sellerId));
+  if (read.kind === 'signed-out') redirect('/session-ended');
+  return read.kind === 'ok' ? standingOf(read.body) : null;
 }
 
 /** The seller's AI switch, or null when it cannot be read (the card then shows no switch). */
@@ -241,17 +268,32 @@ export default async function SellerReviewPage({
       canCheck: permissionKeys.includes(CHECK_PERMISSION),
       csrfToken,
     };
-    const [commission, methods, terms, health, activities, aiAccess, blogAccess, refundLimits] =
-      await Promise.all([
-        loadCommission(sellerId, permissionKeys.includes(SETTLEMENT_VIEW_PERMISSION)),
-        loadMethods(sellerId, permissionKeys.includes(DELIVERY_VIEW_PERMISSION)),
-        loadTerms(sellerId, permissionKeys.includes(TERMS_VIEW_PERMISSION)),
-        loadHealth(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
-        loadActivities(sellerId, permissionKeys),
-        loadAiAccess(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
-        loadBlogAccess(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
-        loadRefundLimits(sellerId, permissionKeys.includes(REFUND_LIMITS_VIEW_PERMISSION)),
-      ]);
+    const [
+      commission,
+      methods,
+      terms,
+      health,
+      activities,
+      aiAccess,
+      blogAccess,
+      refundLimits,
+      reviewFlags,
+      reviewStanding,
+    ] = await Promise.all([
+      loadCommission(sellerId, permissionKeys.includes(SETTLEMENT_VIEW_PERMISSION)),
+      loadMethods(sellerId, permissionKeys.includes(DELIVERY_VIEW_PERMISSION)),
+      loadTerms(sellerId, permissionKeys.includes(TERMS_VIEW_PERMISSION)),
+      loadHealth(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
+      loadActivities(sellerId, permissionKeys),
+      loadAiAccess(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
+      loadBlogAccess(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
+      loadRefundLimits(sellerId, permissionKeys.includes(REFUND_LIMITS_VIEW_PERMISSION)),
+      loadReviewFlags(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
+      loadStanding(
+        sellerId,
+        STANDING_VIEW_PERMISSIONS.every((key) => permissionKeys.includes(key)),
+      ),
+    ]);
     const canViewHolds = permissionKeys.includes(HOLD_VIEW_PERMISSION);
     // List paging (settings): page numbers only when the Market says so; a value that cannot be
     // read (or may not be read) means Previous and next. Read only for the lists that need it.
@@ -286,6 +328,20 @@ export default async function SellerReviewPage({
             initial={health}
             canRecalculate={permissionKeys.includes(HEALTH_RECALCULATE_PERMISSION)}
             csrfToken={csrfToken}
+          />
+        )}
+        {reviewFlags === null && reviewStanding === null ? null : (
+          <OfferReviewCard
+            sellerId={sellerId}
+            csrfToken={csrfToken}
+            standing={reviewStanding}
+            initial={reviewFlags}
+            can={{
+              trusted: permissionKeys.includes(FLAG_PERMISSIONS.trusted),
+              'full-review': permissionKeys.includes(FLAG_PERMISSIONS['full-review']),
+              stop: permissionKeys.includes(FLAG_PERMISSIONS.stop),
+            }}
+            zone={zone}
           />
         )}
         {permissionKeys.includes(SETTINGS_EDIT_PERMISSION) ? (

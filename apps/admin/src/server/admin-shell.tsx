@@ -163,7 +163,10 @@ export async function AdminShell({
                 />
               }
             >
-              <EmergencyStopBanner zone={zone} />
+              <EmergencyStopBanner
+                zone={zone}
+                canViewStops={session.permissionKeys.includes('catalog.product.view')}
+              />
               {children}
               <AdminHelpPanel zone={zone} />
             </AppShell>

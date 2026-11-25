@@ -79,6 +79,10 @@ const files = [
   ...readdirSync(path.join(src, 'lists-settings'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'lists-settings', name)),
+  // The Offer review queue (risk-based Offer approval slice 5): the drawer's decisions and the
+  // reload of one held edit. The flag dialogs build their paths in helpers, so bff.spec.ts checks them.
+  path.join(src, 'offer-review', 'detail.tsx'),
+  path.join(src, 'offer-review', 'queue.tsx'),
   path.join(src, 'step-up', 'step-up.tsx'),
 ];
 const CALL = /(?:callApi|guarded)(?:<[^(]*>)?\(\s*'(GET|PUT|POST|DELETE)',\s*(['`])([^'`]+)\2/g;
@@ -91,13 +95,21 @@ function calls(): { method: string; target: string }[] {
       const template = (match[3] ?? '').split('?')[0]!;
       // `${kind}` is approve or reject; any other placeholder is an id.
       // `${action}` is one of the five buyer-review moderation actions.
-      const variants = template.includes('${kind}')
-        ? ['approve', 'reject'].map((kind) => template.replace('${kind}', kind))
-        : template.includes('${action}')
-          ? ['publish', 'hide', 'restore', 'remove', 'dismiss-reports'].map((action) =>
+      // The Offer review drawer: an edit can also be rejected, a first publication cannot.
+      const variants =
+        template.startsWith('catalog/admin/offer-changes/') && template.includes('${action}')
+          ? ['approve', 'request-changes', 'reject'].map((action) =>
               template.replace('${action}', action),
             )
-          : [template];
+          : template.startsWith('catalog/admin/offers/') && template.includes('${action}')
+            ? ['approve', 'request-changes'].map((action) => template.replace('${action}', action))
+            : template.includes('${kind}')
+              ? ['approve', 'reject'].map((kind) => template.replace('${kind}', kind))
+              : template.includes('${action}')
+                ? ['publish', 'hide', 'restore', 'remove', 'dismiss-reports'].map((action) =>
+                    template.replace('${action}', action),
+                  )
+                : [template];
       for (const variant of variants) {
         found.push({
           method,
@@ -146,6 +158,12 @@ describe('every path the wallet, dispute, review moderation, account deletion, s
         'POST commission-payouts/admin/payout-holds/:id/release',
         'GET commission-payouts/admin/sellers/:id/ledger',
         'POST identity/admin/step-up/verify',
+        'POST catalog/admin/offer-changes/:id/approve',
+        'POST catalog/admin/offer-changes/:id/request-changes',
+        'POST catalog/admin/offer-changes/:id/reject',
+        'POST catalog/admin/offers/:id/approve',
+        'POST catalog/admin/offers/:id/request-changes',
+        'GET catalog/admin/offer-changes/:id',
         'POST ordering/admin/orders/:id/cancel',
         'POST ordering/admin/orders/:id/notes',
         'POST ordering/admin/orders/:id/seller-orders/:id/refunds',

@@ -76,6 +76,8 @@ export const HELP_REGISTRY: HelpRegistry = {
     { route: '/settings/lists', slug: 'settings-lists' },
     { route: '/settings/offer-review', slug: 'settings-offer-review' },
     { route: '/settings/emergency-stop', slug: 'settings-emergency-stop' },
+    { route: '/settings/offer-review/categories', slug: 'settings-offer-review-categories' },
+    { route: '/offer-reviews/[changeId]', slug: 'offer-reviews-changeId' },
     { route: '/settings/delivery', slug: 'settings-delivery' },
     { route: '/settings/fleets', slug: 'settings-fleets' },
     { route: '/settings/tax', slug: 'settings-tax' },
@@ -133,6 +135,11 @@ export const HELP_REGISTRY: HelpRegistry = {
         { label: 'Tags', route: '/catalog/tags' },
         { label: 'Suggestions', route: '/catalog/tags/suggestions' },
       ],
+    },
+    {
+      slug: 't-offer-reviews',
+      routes: ['/offer-reviews'],
+      tabs: [{ label: 'First publications' }, { label: 'Edits' }],
     },
     {
       slug: 't-review',

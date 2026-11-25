@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/en.json';
 import type { AdminSession } from '../../../src/server/session.ts';
 import ReviewQueuePage from './page.tsx';
-import OfferReviewsPage from '../offer-reviews/page.tsx';
 
 // The review queue page: the view gate (no list without catalog.product.view), the list paging
 // setting, the tab the URL names, and the old Offer reviews address.
@@ -103,9 +102,5 @@ describe('review queue page', () => {
     mocks.session.mockResolvedValue({ kind: 'unavailable' });
     render(await ReviewQueuePage(search()));
     expect(screen.getByText(messages.identity.error.unknown)).toBeTruthy();
-  });
-
-  it('sends the old Offer reviews address to the Offers tab', () => {
-    expect(() => OfferReviewsPage()).toThrow('redirect:/review?type=offer');
   });
 });

@@ -2,6 +2,7 @@
 
 import {
   Banner,
+  LinkButton,
   SaveBar,
   SettingInput,
   SettingRow,
@@ -278,6 +279,11 @@ export function OfferReviewPanel({
   return (
     <SettingsPage
       title={t(`${P}.title`)}
+      actions={
+        <LinkButton href="/settings/offer-review/categories" variant="secondary">
+          {t(`${P}.categories-link`)}
+        </LinkButton>
+      }
       lastChanged={{
         text: lastVersion === 0 ? t(`${P}.version-defaults`) : t(`${P}.changed-before`),
       }}

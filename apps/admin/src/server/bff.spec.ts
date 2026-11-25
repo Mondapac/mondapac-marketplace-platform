@@ -3174,7 +3174,7 @@ describe('relay of the wallet and step-up routes', () => {
       readHeaders,
     );
     expect(upstream.mock.calls[0]?.[0]).toBe(
-      `http://api.test/catalog/admin/review-queue?kind=product-revision&sellerId=${id}&firstPublication=false&hasImages=true&page=2&pageSize=25&paging=pages&sort=submitted&direction=desc`,
+      `http://api.test/catalog/admin/review-queue?kind=product-revision&q=oil&sellerId=${id}&firstPublication=false&hasImages=true&page=2&pageSize=25&paging=pages&sort=submitted&direction=desc`,
     );
     const bad = await run(
       'GET',
@@ -3191,7 +3191,7 @@ describe('relay of the wallet and step-up routes', () => {
       readHeaders,
     );
     expect(upstream.mock.calls[0]?.[0]).toBe(
-      `http://api.test/catalog/admin/review-queue/export?format=xlsx&kind=offer-first-publication&sellerId=${id}&firstPublication=true&hasImages=true`,
+      `http://api.test/catalog/admin/review-queue/export?format=xlsx&kind=offer-first-publication&q=oil&sellerId=${id}&firstPublication=true&hasImages=true`,
     );
     const bad = await run(
       'GET',
@@ -5515,5 +5515,103 @@ describe('relay of the dashboard report download', () => {
 
   it('is a read: no other method reaches it', async () => {
     expect((await get('?period=7d&format=csv', 'POST')).url).toBeUndefined();
+  });
+});
+
+describe('relay of the Offer review queue (risk-based Offer approval slice 5)', () => {
+  const id = '0190a000-0000-7000-8000-0000000000d1';
+  const sendOffer = async (method: string, path: string, body = '{}') => {
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      new Request(`http://admin.localhost:3002/api/${path}`, {
+        method,
+        headers: sameOrigin,
+        ...(method === 'GET' ? {} : { body }),
+      }),
+      path.split('?')[0]?.split('/') ?? [],
+      upstream,
+    );
+    return { status: response.status, upstream };
+  };
+
+  it.each([
+    'catalog/admin/offer-changes',
+    'catalog/admin/offer-changes/export',
+    'catalog/admin/offer-review/stops',
+    'catalog/admin/offer-review/category-flags',
+    `catalog/admin/offer-changes/${id}`,
+    `catalog/admin/sellers/${id}/review-standing`,
+    `sellers/admin/${id}/offer-review`,
+  ])('relays GET %s', async (path) => {
+    expect((await sendOffer('GET', path)).status).toBe(200);
+  });
+
+  it.each([
+    ['POST', `catalog/admin/offer-changes/${id}/approve`],
+    ['POST', `catalog/admin/offer-changes/${id}/request-changes`],
+    ['POST', `catalog/admin/offer-changes/${id}/reject`],
+    ['PUT', `sellers/admin/${id}/offer-review/trusted`],
+    ['PUT', `sellers/admin/${id}/offer-review/full-review`],
+    ['PUT', `sellers/admin/${id}/offer-review/stop`],
+    ['PUT', `catalog/admin/categories/${id}/offer-review`],
+    ['PUT', `catalog/admin/categories/${id}/offer-review-stop`],
+  ])('relays %s %s', async (method, path) => {
+    expect((await sendOffer(method, path)).status).toBe(200);
+  });
+
+  it.each([
+    ['PUT', `catalog/admin/offer-changes/${id}/approve`],
+    ['POST', `catalog/admin/offer-changes/${id}/withdraw`],
+    ['POST', 'catalog/admin/offer-changes/nope/approve'],
+    ['POST', 'catalog/admin/offer-changes'],
+    ['POST', `sellers/admin/${id}/offer-review/stop`],
+    ['PUT', `sellers/admin/${id}/offer-review`],
+    ['DELETE', `catalog/admin/categories/${id}/offer-review`],
+  ])('refuses %s %s without calling the API', async (method, path) => {
+    const { status, upstream } = await sendOffer(method, path);
+    expect(status).toBe(404);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('passes the offer-changes list keys in their shapes, and drops the rest', async () => {
+    const from = '2026-11-01T00:00:00Z';
+    const { upstream } = await sendOffer(
+      'GET',
+      `catalog/admin/offer-changes?reasons=handling,review-all&sellerId=${id}&categoryId=${id}&submittedFrom=${from}&submittedTo=${from}&q=oil&page=2&pageSize=25&paging=pages&sort=submitted&direction=desc&x=1`,
+    );
+    const asked = new URL(upstream.mock.calls[0]?.[0] as string).searchParams;
+    expect(Object.fromEntries(asked)).toEqual({
+      reasons: 'handling,review-all',
+      sellerId: id,
+      categoryId: id,
+      submittedFrom: from,
+      submittedTo: from,
+      q: 'oil',
+      page: '2',
+      pageSize: '25',
+      paging: 'pages',
+      sort: 'submitted',
+      direction: 'desc',
+    });
+    const bad = await sendOffer(
+      'GET',
+      'catalog/admin/offer-changes?reasons=halal&sellerId=nope&limit=99&sort=name&direction=up',
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/offer-changes');
+    const keyset = await sendOffer('GET', `catalog/admin/offer-changes?afterId=${id}&limit=50`);
+    expect(keyset.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/offer-changes?afterId=${id}&limit=50`,
+    );
+  });
+
+  it('passes the offer-changes export keys and never the sort or the page', async () => {
+    const { upstream } = await sendOffer(
+      'GET',
+      'catalog/admin/offer-changes/export?format=xlsx&reasons=probation&q=oil&sort=submitted&page=3',
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/catalog/admin/offer-changes/export?format=xlsx&reasons=probation&q=oil',
+    );
   });
 });

@@ -56,6 +56,7 @@ describe('admin nav: Inbox', () => {
       'seller-requests',
       'certificates',
       'review-queue',
+      'offer-reviews',
       'price-holds',
       'system-requests',
     ]);
@@ -94,7 +95,12 @@ describe('admin nav: Blog', () => {
 
 describe('admin nav: Catalogue', () => {
   it('shows Products for catalog.product.view, with the package icon, in the catalogue group', () => {
-    expect(ids(['catalog.product.view'])).toEqual(['home', 'review-queue', 'products']);
+    expect(ids(['catalog.product.view'])).toEqual([
+      'home',
+      'review-queue',
+      'offer-reviews',
+      'products',
+    ]);
     const item = adminNav.items.find((entry) => entry.id === 'products');
     expect(item).toMatchObject({
       icon: 'package',
@@ -181,6 +187,7 @@ describe('admin nav: daily work only', () => {
       'seller-requests',
       'certificates',
       'review-queue',
+      'offer-reviews',
       'price-holds',
       'system-requests',
       'orders',

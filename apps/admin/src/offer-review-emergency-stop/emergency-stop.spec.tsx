@@ -197,4 +197,64 @@ describe('EmergencyStopBanner', () => {
       '/settings/emergency-stop',
     );
   });
+
+  describe('seller and category stops', () => {
+    const answer = (path: string, stops: unknown) =>
+      Promise.resolve(path.endsWith('/stops') ? ok(stops) : ok(OFF));
+
+    it('says how many sellers and categories have a stop, with links to manage them', async () => {
+      call.mockImplementation((_m: string, path: string) =>
+        answer(path, {
+          marketStop: false,
+          stoppedSellers: 2,
+          stoppedCategories: 1,
+          active: true,
+        }),
+      );
+      render(wrap(<EmergencyStopBanner zone="Australia/Brisbane" canViewStops />));
+      const banner = await screen.findByRole('status');
+      expect(banner.textContent).toContain('Offer review stop is on');
+      expect(banner.textContent).toContain('2 sellers and 1 category have the review stop on');
+      expect(screen.getByRole('link', { name: 'Sellers' }).getAttribute('href')).toBe('/sellers');
+      expect(screen.getByRole('link', { name: 'Categories' }).getAttribute('href')).toBe(
+        '/settings/offer-review/categories',
+      );
+      expect(call).toHaveBeenCalledWith('GET', 'catalog/admin/offer-review/stops');
+    });
+
+    it('shows the Market stop and the counts together', async () => {
+      call.mockImplementation((_m: string, path: string) =>
+        Promise.resolve(
+          path.endsWith('/stops')
+            ? ok({ marketStop: true, stoppedSellers: 1, stoppedCategories: 0, active: true })
+            : ok(ON),
+        ),
+      );
+      render(wrap(<EmergencyStopBanner zone="Australia/Brisbane" canViewStops />));
+      await screen.findByText('Emergency stop is on');
+      expect(await screen.findByText(/1 seller has the review stop on/)).toBeTruthy();
+    });
+
+    it('reads no counts without the view permission, and never blocks when the read fails', async () => {
+      call.mockResolvedValue(ok(OFF));
+      const { container, unmount } = render(
+        wrap(<EmergencyStopBanner zone="Australia/Brisbane" />),
+      );
+      await waitFor(() => expect(call).toHaveBeenCalled());
+      expect(call).not.toHaveBeenCalledWith('GET', 'catalog/admin/offer-review/stops');
+      expect(container.textContent).toBe('');
+      unmount();
+      call.mockClear();
+      call.mockImplementation((_m: string, path: string) =>
+        Promise.resolve(
+          path.endsWith('/stops')
+            ? { ok: false as const, failure: { status: 503, code: 'access.unavailable' } }
+            : ok(OFF),
+        ),
+      );
+      const failed = render(wrap(<EmergencyStopBanner zone="Australia/Brisbane" canViewStops />));
+      await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+      expect(failed.container.textContent).toBe('');
+    });
+  });
 });

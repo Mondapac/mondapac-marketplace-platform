@@ -20,11 +20,15 @@ interface BulkAnswer {
   readonly action: string;
   readonly counts: BulkCounts;
   /** One entry per row: what happened and, when it was not decided, a stable reason code. */
-  readonly results?: readonly {
-    readonly id: string;
-    readonly outcome: string;
-    readonly reason?: string;
-  }[];
+  readonly results?: readonly BulkResult[];
+}
+/** One row's result; `name` and `blockers` come with the Offer review queue only. */
+export interface BulkResult {
+  readonly id: string;
+  readonly outcome: string;
+  readonly reason?: string;
+  readonly name?: string | null;
+  readonly blockers?: readonly string[];
 }
 
 /**
@@ -45,6 +49,7 @@ export function BulkDecideDialog({
   extraBody = {},
   toItem = ({ id, version }) => ({ id, version }),
   reasonText,
+  describeSkipped,
   ready = true,
   csrfToken,
   onClose,
@@ -61,6 +66,11 @@ export function BulkDecideDialog({
    * leave that code unexplained. The default help line is told for the rest.
    */
   readonly reasonText?: (reason: string, count: number) => string | null;
+  /**
+   * The line for one row that was not decided (its name and why), or null for none. When it gives
+   * any, the answer lists those rows under "Skipped rows" so the reviewer can open them one by one.
+   */
+  readonly describeSkipped?: (entry: BulkResult) => string | null;
   readonly title: string;
   readonly body: string;
   readonly confirm: string;
@@ -81,6 +91,7 @@ export function BulkDecideDialog({
   const [pending, setPending] = useState(false);
   const [counts, setCounts] = useState<BulkCounts | null>(null);
   const [notes, setNotes] = useState<readonly string[]>([]);
+  const [skipped, setSkipped] = useState<readonly string[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
 
   async function submit() {
@@ -107,6 +118,13 @@ export function BulkDecideDialog({
         reasonText === undefined
           ? []
           : [...reasons].flatMap(([reason, count]) => reasonText(reason, count) ?? []),
+      );
+      setSkipped(
+        describeSkipped === undefined
+          ? []
+          : (result.body.results ?? [])
+              .filter((entry) => entry.outcome !== 'done')
+              .flatMap((entry) => describeSkipped(entry) ?? []),
       );
       setCounts(result.body.counts);
       onFinished();
@@ -182,7 +200,19 @@ export function BulkDecideDialog({
               {note}
             </Banner>
           ))}
-          {counts.skipped > 0 && notes.length === 0 ? (
+          {skipped.length > 0 ? (
+            <section aria-label={t('done.skipped-rows')}>
+              <h3 className="m-0 mb-1 text-sm font-semibold">{t('done.skipped-rows')}</h3>
+              <ul className="m-0 flex list-disc flex-col gap-1 ps-5 text-sm">
+                {skipped.map((line, index) => (
+                  <li key={`${index}-${line}`} className="wrap-anywhere">
+                    {line}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+          {counts.skipped > 0 && notes.length === 0 && skipped.length === 0 ? (
             <p className="text-sm text-fg-muted">{t('done.skipped-help')}</p>
           ) : null}
         </div>
