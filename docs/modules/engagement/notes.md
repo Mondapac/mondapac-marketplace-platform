@@ -180,8 +180,17 @@ for one window of at most 26 hours (a Market day) it counts distinct accounts wi
 `product-viewed` event, of them those with an `added-to-cart` event, of them those of the accounts
 the caller names (ordering's checkouts of the window, at most 5,000) that placed an order, and of
 them those that paid. Guests are never counted. Only the four counts leave the module; the ids read
-(`accountsWith`, one `GROUP BY account_id` per kind on the `(market_id, occurred_at)` index, at most
-100,000 per kind, else `engagement.funnel-too-large`) are not returned or logged. reporting writes
+are not returned or logged. Access path (Mojtaba L3): `accountsWith` is one `GROUP BY account_id`
+per kind over one Market day, `WHERE market_id = $1 AND account_id IS NOT NULL AND kind = $2 AND
+occurred_at >= $3 AND occurred_at < $4`, served by `behaviour_events (market_id, occurred_at)` (the
+day's rows of every kind are read and filtered by kind; at most 100,000 accounts per kind, else
+`engagement.funnel-too-large`). Market scope only, like the other reads of the table. reporting writes
 the counts once per day (`reporting.daily_engagement`), so a later switch-off or erasure deletes the
 behaviour here as before and leaves the day's counts as they were. PIA: the purpose "personalization"
 is extended by aggregate, non-identifying dashboard statistics of the customers who keep it on.
+ordering's checkout account ids (every account that placed an order that day, including accounts
+that switched personalization off or never had it on) are matched in memory against the day's
+behaviour and discarded when the call ends: an account without behaviour of the day adds nothing
+to any count, and none of the ids is stored, logged or returned (Hassan I2). Whether the privacy
+policy's wording covers these aggregate statistics (APP 6) is for the product owner to confirm
+(FE-20261125-legal-privacy-policy-aggregate-statistics).

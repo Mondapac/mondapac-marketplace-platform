@@ -1,6 +1,6 @@
 -- The shopping funnel of each Market day (dashboards v2, phase 2): four counts of distinct signed-in
--- customers with personalization on, written once by reporting's nightly snapshot soon after the day
--- ends. Aggregate only: no account, guest, offer or seller id. Insert-only for the application (no
+-- customers with personalization on, written once by reporting's hourly snapshot job, at least 2 h after
+-- the Market day ends. Aggregate only: no account, guest, offer or seller id. Insert-only for the application (no
 -- UPDATE or DELETE grant), so a customer's later opt-out or erasure never needs to touch it.
 SET lock_timeout = '5s';
 

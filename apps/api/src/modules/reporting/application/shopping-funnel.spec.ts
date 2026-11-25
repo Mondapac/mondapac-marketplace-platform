@@ -133,7 +133,12 @@ describe.each(TEST_MARKETS)('the shopping funnel in market %s', (code) => {
   it('writes each finished Market day of the look-back once, in the Market zone', async () => {
     expect(await snapshot.execute(system, {})).toEqual({
       ok: true,
-      value: { written: SNAPSHOT_LOOKBACK_DAYS - 1, alreadyWritten: 0, failedDays: 0 },
+      value: {
+        written: SNAPSHOT_LOOKBACK_DAYS - 1,
+        alreadyWritten: 0,
+        failedDays: 0,
+        cappedDays: 0,
+      },
     });
     expect(windows.at(-1)).toEqual({ from: startOf('2026-11-23'), to: startOf('2026-11-24') });
     expect(store.ranges[0]).toEqual({ from: '2026-10-28', to: '2026-11-24' });
@@ -141,7 +146,7 @@ describe.each(TEST_MARKETS)('the shopping funnel in market %s', (code) => {
     windows.length = 0;
     expect(await snapshot.execute(system, {})).toEqual({
       ok: true,
-      value: { written: 1, alreadyWritten: 0, failedDays: 0 },
+      value: { written: 1, alreadyWritten: 0, failedDays: 0, cappedDays: 0 },
     });
     expect(windows).toEqual([{ from: startOf('2026-11-24'), to: startOf('2026-11-25') }]);
     expect(store.rows.get(`${code}|2026-11-24`)).toMatchObject({ ...COUNTS, day: '2026-11-24' });
@@ -181,7 +186,12 @@ describe.each(TEST_MARKETS)('the shopping funnel in market %s', (code) => {
       const out = await snapshot.execute(system, {});
       expect(out).toEqual({
         ok: true,
-        value: { written: SNAPSHOT_LOOKBACK_DAYS - 2, alreadyWritten: 0, failedDays: 1 },
+        value: {
+          written: SNAPSHOT_LOOKBACK_DAYS - 2,
+          alreadyWritten: 0,
+          failedDays: 1,
+          cappedDays: 0,
+        },
       });
       expect(warnings.mock.calls.map(([entry]) => entry as unknown)).toEqual([
         {
@@ -196,6 +206,36 @@ describe.each(TEST_MARKETS)('the shopping funnel in market %s', (code) => {
       warnings.mockRestore();
     }
     expect(store.rows.has(`${code}|2026-11-20`)).toBe(false);
+  });
+
+  it('asks a day over an owner cap once per process, and still retries any other failure', async () => {
+    const asked: string[] = [];
+    sources = {
+      funnelOf: (_context, window) => {
+        const day = window.from.toZonedDateTimeISO(tz).toPlainDate().toString();
+        asked.push(day);
+        if (day === '2026-11-20') {
+          return Promise.resolve(err({ code: 'ordering:too-many-checkouts', overCap: true }));
+        }
+        if (day === '2026-11-21')
+          return Promise.resolve(err({ code: 'ordering:access.unavailable' }));
+        return Promise.resolve(ok(COUNTS));
+      },
+    };
+    const warnings = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    try {
+      const first = await snapshot.execute(system, {});
+      expect(first.ok && first.value).toMatchObject({ failedDays: 2, cappedDays: 0 });
+      asked.length = 0;
+      const second = await snapshot.execute(system, {});
+      expect(second).toEqual({
+        ok: true,
+        value: { written: 0, alreadyWritten: 0, failedDays: 1, cappedDays: 1 },
+      });
+      expect(asked).toEqual(['2026-11-21']);
+    } finally {
+      warnings.mockRestore();
+    }
   });
 
   it('runs for the system actor only', async () => {
@@ -282,7 +322,7 @@ describe('the funnel sources adapter', () => {
     );
     expect(await incomplete.funnelOf(system, window)).toEqual({
       ok: false,
-      error: { code: 'ordering:too-many-checkouts' },
+      error: { code: 'ordering:too-many-checkouts', overCap: true },
     });
     const tooLarge = new FacadeEngagementSources(
       { checkoutsStarted: () => Promise.resolve(ok({ items, complete: true })) },
@@ -290,7 +330,7 @@ describe('the funnel sources adapter', () => {
     );
     expect(await tooLarge.funnelOf(system, window)).toEqual({
       ok: false,
-      error: { code: 'engagement:engagement.funnel-too-large' },
+      error: { code: 'engagement:engagement.funnel-too-large', overCap: true },
     });
   });
 });

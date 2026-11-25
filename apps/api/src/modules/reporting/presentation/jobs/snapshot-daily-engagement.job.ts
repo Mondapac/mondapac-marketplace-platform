@@ -8,8 +8,8 @@ export const SNAPSHOT_DAILY_ENGAGEMENT_JOB = 'reporting.snapshot-daily-engagemen
 
 /**
  * `reporting.snapshot-daily-engagement`, hourly (worker role; the scheduler has no wall-clock
- * time): writes each finished Market day's shopping funnel once, about two hours after the day
- * ends in the Market's zone, well before engagement's daily purge could reach that day. The
+ * time): writes each finished Market day's shopping funnel once, at least 2 h after the day ends
+ * in the Market's zone (on the first hourly run after that), well before engagement's daily purge could reach that day. The
  * Market's system-actor context goes unchanged to the use case (rule `system`). Rows are insert
  * once, so a late overlap or a second run is harmless. A day an owner could not count throws
  * after the others are written, so the scheduler logs the run as failed. Logs counts only.

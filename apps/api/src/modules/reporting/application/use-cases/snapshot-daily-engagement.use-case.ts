@@ -24,6 +24,11 @@ export interface SnapshotEngagementCounts {
   readonly alreadyWritten: number;
   /** Days an owner could not count now; tried again next run while inside the look-back. */
   readonly failedDays: number;
+  /**
+   * Days left out because an earlier run of this process found them over an owner's cap (too
+   * many checkouts or accounts): each is tried once per process, not every hour (Mojtaba L1).
+   */
+  readonly cappedDays: number;
 }
 
 const logger = new Logger('SnapshotDailyEngagement');
@@ -36,7 +41,9 @@ const logger = new Logger('SnapshotDailyEngagement');
  * once. The look-back stays inside the 30-day guest retention and far inside the 12-month
  * account retention, so the behaviour of a day is still there when its row is written; a row once
  * written never changes, so a later opt-out, erasure or purge leaves it as it was. A day an owner
- * cannot count now is logged by its day and reason (no id) and tried again next run.
+ * cannot count now is logged by its day and reason (no id) and tried again next run; one over an
+ * owner's cap (too many checkouts or accounts) is tried once per process, since a rescan would
+ * only fail again (the fix at the cap: FE-20261125-reporting-funnel-checkouts-paging).
  */
 export class SnapshotDailyEngagement extends UseCase<
   Record<string, never>,
@@ -47,6 +54,9 @@ export class SnapshotDailyEngagement extends UseCase<
     name: 'reporting.snapshot-daily-engagement',
     rule: { kind: 'system' },
   };
+
+  /** `<market>|<day>` of the days found over an owner's cap; not asked again by this process. */
+  readonly #overCap = new Set<string>();
 
   constructor(
     gate: UseCaseGate,
@@ -73,11 +83,18 @@ export class SnapshotDailyEngagement extends UseCase<
     let written = 0;
     let alreadyWritten = 0;
     let failedDays = 0;
+    let cappedDays = 0;
     for (const day of snapshotDaysDue(now, zone, recorded.value)) {
+      const key = `${market.marketId}|${day}`;
+      if (this.#overCap.has(key)) {
+        cappedDays += 1;
+        continue;
+      }
       // The owners are read before the unit, like the fact reads (their own units).
       const counts = await this.deps.sources.funnelOf(context, dayWindowOf(day, zone));
       if (!counts.ok) {
         failedDays += 1;
+        if (counts.error.overCap === true) this.#overCap.add(key);
         logger.warn({
           msg: 'reporting.engagement-snapshot.day-failed',
           day,
@@ -95,6 +112,6 @@ export class SnapshotDailyEngagement extends UseCase<
       if (unit.value) written += 1;
       else alreadyWritten += 1;
     }
-    return ok({ written, alreadyWritten, failedDays });
+    return ok({ written, alreadyWritten, failedDays, cappedDays });
   }
 }

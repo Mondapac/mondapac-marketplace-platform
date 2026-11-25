@@ -25,12 +25,19 @@ export class FacadeEngagementSources implements EngagementSources {
   ): Promise<Result<FunnelCounts, FunnelUnavailable>> {
     const checkouts = await this.ordering.checkoutsStarted(context, { window });
     if (!checkouts.ok) return err({ code: `ordering:${checkouts.error.code}` });
-    if (!checkouts.value.complete) return err({ code: 'ordering:too-many-checkouts' });
+    if (!checkouts.value.complete) {
+      return err({ code: 'ordering:too-many-checkouts', overCap: true });
+    }
     const counts = await this.engagement.shoppingFunnel(context, {
       window,
       checkouts: checkouts.value.items,
     });
-    if (!counts.ok) return err({ code: `engagement:${counts.error.code}` });
+    if (!counts.ok) {
+      return err({
+        code: `engagement:${counts.error.code}`,
+        ...(counts.error.code === 'engagement.funnel-too-large' ? { overCap: true } : {}),
+      });
+    }
     const { viewed, carted, checkedOut, paid } = counts.value;
     return ok({ viewed, carted, checkedOut, paid });
   }

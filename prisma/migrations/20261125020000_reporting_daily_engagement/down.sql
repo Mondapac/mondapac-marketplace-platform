@@ -1,4 +1,4 @@
--- Reverses 20261125010000_reporting_daily_engagement. The snapshot writes the days of its look-back
+-- Reverses 20261125020000_reporting_daily_engagement. The snapshot writes the days of its look-back
 -- window again once the migration is applied again; older days are lost (the behaviour behind
 -- them may be gone), which is acceptable for derived dashboard data.
 SET lock_timeout = '5s';

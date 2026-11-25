@@ -33,11 +33,11 @@ of all-null rows: no lock is avoided, none is needed): both or neither, only wit
 rollup keys and with no index until the new-and-returning card reads them. No customer or account id
 is stored anywhere in reporting.
 
-`daily_engagement` (migration `20261125010000_reporting_daily_engagement`, dashboards v2 phase 2):
+`daily_engagement` (migration `20261125020000_reporting_daily_engagement`, dashboards v2 phase 2):
 four counts per Market day (`viewed_count`, `carted_count`, `checkout_count`, `paid_count`) of
 distinct signed-in customers with personalization on, each within the step before (CHECK:
-`viewed >= carted >= checkout >= paid >= 0`), and `recorded_at`. Written once by the nightly
-snapshot (`createMany` with skip-duplicates on the primary key) and never changed: the application
+`viewed >= carted >= checkout >= paid >= 0`), and `recorded_at`. Written once by the hourly
+snapshot job, at least 2 h after the Market day ends (`createMany` with skip-duplicates on the primary key), and never changed: the application
 role has SELECT and INSERT only, no UPDATE or DELETE, so a customer's opt-out or erasure never needs
 to touch it. No account, guest, offer or seller column.
 

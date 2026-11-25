@@ -14,6 +14,8 @@ export interface FunnelCounts {
  */
 export interface FunnelUnavailable {
   readonly code: string;
+  /** True when the day is over an owner's cap: asking again cannot succeed (Mojtaba L1). */
+  readonly overCap?: boolean;
 }
 
 /**
