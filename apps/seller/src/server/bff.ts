@@ -530,11 +530,15 @@ function strictQueryRefusal(
 function upstreamQuery(method: string, path: readonly string[], requestUrl: string): string {
   const keys =
     method === 'DELETE'
-      ? Object.entries(DELETE_QUERY_KEYS_WITH_ID).find(([template]) => matches(template, path))?.[1]
+      ? Object.entries(DELETE_QUERY_KEYS_WITH_ID).find(([template]) =>
+          matches(template, path, null),
+        )?.[1]
       : method !== 'GET'
         ? undefined
         : (QUERY_KEYS[path.join('/')] ??
-          Object.entries(QUERY_KEYS_WITH_ID).find(([template]) => matches(template, path))?.[1]);
+          Object.entries(QUERY_KEYS_WITH_ID).find(([template]) =>
+            matches(template, path, null),
+          )?.[1]);
   if (keys === undefined) return '';
   const source = new URL(requestUrl).searchParams;
   const kept = new URLSearchParams();
@@ -554,13 +558,18 @@ const CUSTOMER_CODE = /^[0-9A-Za-z-]{1,12}$/;
 
 const PHOTO_SIZES: ReadonlySet<string> = new Set(['thumb', 'medium', 'large', 'small']);
 
-function matches(template: string, path: readonly string[], marketId?: string): boolean {
+/**
+ * True when `path` fits `template`. `marketId` is the Market of the request's panel host, which a
+ * `:market` part must equal; a caller without a host passes null, and a `:market` part then never
+ * fits (fail closed).
+ */
+function matches(template: string, path: readonly string[], marketId: string | null): boolean {
   const parts = template.split('/');
   return (
     parts.length === path.length &&
     parts.every((part, index) =>
       part === ':market'
-        ? marketId !== undefined && path[index] === marketId
+        ? marketId !== null && path[index] === marketId
         : part === ':id'
           ? UUID.test(path[index] ?? '')
           : part === ':size'
@@ -598,11 +607,26 @@ function bodyLimitFor(method: string, path: readonly string[]): number {
   if (method === 'PUT' && path.join('/') === STORE_PROFILE_SAVE) return MAX_PROFILE_SAVE_BODY_BYTES;
   if (method === 'PUT' && STORE_IMAGE_UPLOADS.has(path.join('/'))) return MAX_PHOTO_BODY_BYTES;
   if (method === 'POST' && path.join('/') === IMPORT_UPLOAD) return MAX_IMPORT_UPLOAD_BODY_BYTES;
-  if (method === 'POST' && (matches(PHOTO_UPLOAD, path) || matches(IMPORT_PHOTO, path))) {
+  if (
+    method === 'POST' &&
+    (matches(PHOTO_UPLOAD, path, null) || matches(IMPORT_PHOTO, path, null))
+  ) {
     return MAX_PHOTO_BODY_BYTES;
   }
   return MAX_BODY_BYTES;
 }
+
+/**
+ * The public photo route (a PLATFORM product's thumbnail): anonymous on the API, so the seller's
+ * session cookie and CSRF token never travel with it (Hassan, PR 1351), and its answer is cached
+ * by this browser only, never by a shared cache on the panel's host.
+ */
+const PUBLIC_IMAGE_PREFIX = ['catalog', 'public-images'] as const;
+const isPublicImage = (path: readonly string[]): boolean =>
+  path[0] === PUBLIC_IMAGE_PREFIX[0] && path[1] === PUBLIC_IMAGE_PREFIX[1];
+const PUBLIC_IMAGE_CACHE = 'private, max-age=300';
+/** What the API sends with a photo (a sandboxing policy); kept on an image answer only. */
+const IMAGE_ANSWER_CSP = 'content-security-policy';
 
 /** Request headers that cross to the API. Everything else is dropped. */
 const FORWARDED_REQUEST_HEADERS = [
@@ -750,6 +774,10 @@ export async function relay(
   let outgoing: Headers;
   try {
     outgoing = upstreamHeaders(request, host, config);
+    if (isPublicImage(path)) {
+      outgoing.delete('cookie');
+      outgoing.delete('x-csrf-token');
+    }
   } catch (error) {
     if (!(error instanceof MissingClientAddressError)) throw error;
     log({ msg: 'panel.relay.client-address-missing', method: request.method, path: target });
@@ -794,7 +822,19 @@ export async function relay(
   // The proxy does not run on the relay (Next would buffer the upload body), so nosniff is set here.
   headers.set('x-content-type-options', 'nosniff');
   // Session answers must never be cached; the API sets no-store itself, this is the default.
-  headers.set('cache-control', upstream.headers.get('cache-control') ?? 'private, no-store');
+  // A served public photo may stay in this browser for the API's five minutes, never in a shared
+  // cache on the panel's host; a refusal keeps the API's no-store.
+  headers.set(
+    'cache-control',
+    isPublicImage(path) && upstream.ok
+      ? PUBLIC_IMAGE_CACHE
+      : (upstream.headers.get('cache-control') ?? 'private, no-store'),
+  );
+  const contentType = upstream.headers.get('content-type') ?? '';
+  const imagePolicy = upstream.headers.get(IMAGE_ANSWER_CSP);
+  if (contentType.startsWith('image/') && imagePolicy !== null) {
+    headers.set(IMAGE_ANSWER_CSP, imagePolicy);
+  }
   for (const cookie of upstream.headers.getSetCookie()) headers.append('set-cookie', cookie);
   return new Response(upstream.status === 204 ? null : await upstream.arrayBuffer(), {
     status: upstream.status,

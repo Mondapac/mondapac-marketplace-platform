@@ -1,3 +1,5 @@
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * The thumbnail address of a product photo, through the panel's relay. A PLATFORM product's photo
  * is a published one, served by the public image route of the panel's own Market (the relay
@@ -13,7 +15,8 @@ export function productThumbSrc(
   },
 ): string | null {
   const { productId, scope, primaryImageId } = product;
-  if (primaryImageId === null) return null;
+  // Only ids of the expected shape go into a path: a bad value can never name another route.
+  if (primaryImageId === null || !UUID.test(productId) || !UUID.test(primaryImageId)) return null;
   if (scope === 'PLATFORM') {
     return `/api/catalog/public-images/${encodeURIComponent(marketId)}/${productId}/${primaryImageId}/thumb`;
   }

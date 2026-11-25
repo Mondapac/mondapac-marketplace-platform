@@ -175,6 +175,12 @@ describe('seller offers list', () => {
       `/api/catalog/public-images/AU/${PLATFORM_PRODUCT}/${IMAGE}/thumb`,
       `/api/catalog/seller/products/${SELLER_PRODUCT}/images/${IMAGE}/thumb`,
     ]);
+    // Decorative: the name beside it says what it is.
+    for (const img of container.querySelectorAll('tbody img')) {
+      expect(img.getAttribute('alt')).toBe('');
+    }
+    // The code under the name, as in Products.
+    expect(within(screen.getAllByRole('row')[2]!).getByText('P00000002')).toBeTruthy();
     // The first row has no photo: the package tile, not an image.
     const rows = screen.getAllByRole('row');
     expect(rows[1]!.querySelector('img')).toBeNull();

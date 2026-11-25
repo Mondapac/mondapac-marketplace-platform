@@ -808,6 +808,82 @@ describe('relay of the platform product thumbnail', () => {
     );
   });
 
+  it('sends no session cookie or CSRF token, keeps the photo out of shared caches and keeps its sandbox', async () => {
+    const upstream = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response('jpeg', {
+          status: 200,
+          headers: {
+            'content-type': 'image/jpeg',
+            'cache-control': 'public, max-age=300, s-maxage=300',
+            'content-security-policy': "default-src 'none'; frame-ancestors 'none'; sandbox",
+          },
+        }),
+      ),
+    );
+    const path = ['catalog', 'public-images', 'AU', PRODUCT, IMAGE, 'thumb'];
+    const request = new Request(`http://seller.localhost:3001/api/${path.join('/')}`, {
+      headers: { host: sameOrigin.host, cookie: 'mp_seller_AU=secret', 'x-csrf-token': 't' },
+    });
+    const response = await relay(config, request, path, upstream);
+    const sent = upstream.mock.calls[0]?.[1]?.headers as Headers;
+    expect(sent.get('cookie')).toBeNull();
+    expect(sent.get('x-csrf-token')).toBeNull();
+    expect(sent.get('x-market-id')).toBe('AU');
+    expect(response.headers.get('cache-control')).toBe('private, max-age=300');
+    expect(response.headers.get('content-security-policy')).toBe(
+      "default-src 'none'; frame-ancestors 'none'; sandbox",
+    );
+
+    // A refusal is never cached.
+    const refused = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response('{"code":"image.not-found"}', {
+          status: 404,
+          headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+        }),
+      ),
+    );
+    const missing = await relay(config, request, path, refused);
+    expect(missing.status).toBe(404);
+    expect(missing.headers.get('cache-control')).toBe('no-store');
+    expect(missing.headers.get('content-security-policy')).toBeNull();
+  });
+
+  it("follows the host's own Market: a second Market's panel reaches only its own photos", async () => {
+    const two: PanelConfig = {
+      ...config,
+      hosts: [
+        ...config.hosts,
+        {
+          origin: 'http://seller.zz.localhost:3001',
+          host: 'seller.zz.localhost:3001',
+          marketId: 'ZZ',
+        },
+      ],
+    };
+    const at = (host: string, market: string) => {
+      const path = ['catalog', 'public-images', market, PRODUCT, IMAGE, 'thumb'];
+      return {
+        path,
+        request: new Request(`http://${host}/api/${path.join('/')}`, { headers: { host } }),
+      };
+    };
+    for (const [host, market, status] of [
+      ['seller.zz.localhost:3001', 'ZZ', 200],
+      ['seller.zz.localhost:3001', 'AU', 404],
+      ['seller.localhost:3001', 'ZZ', 404],
+      // A percent-encoded Market is not the Market (the router decodes nothing for us here).
+      ['seller.localhost:3001', '%41U', 404],
+    ] as const) {
+      const upstream = upstreamOk();
+      const { path, request } = at(host, market);
+      const response = await relay(two, request, path, upstream);
+      expect(response.status, `${host} ${market}`).toBe(status);
+      expect(upstream).toHaveBeenCalledTimes(status === 200 ? 1 : 0);
+    }
+  });
+
   it('refuses another Market, another size, a bad id, a longer path and any other method', async () => {
     const refused: { readonly path: readonly string[]; readonly method?: string }[] = [
       { path: ['catalog', 'public-images', 'NZ', PRODUCT, IMAGE, 'thumb'] },

@@ -79,12 +79,19 @@ export function OffersTable({
           <ListThumb
             src={productThumbSrc(marketId, { productId: offer.productId, ...offer.product })}
           />
-          <a
-            className="min-w-0 break-words font-medium text-link underline"
-            href={`/offers/${offer.offerId}`}
-          >
-            {offerName(offer, unnamed)}
-          </a>
+          <div className="min-w-0">
+            <a
+              className="break-words font-medium text-link underline"
+              href={`/offers/${offer.offerId}`}
+            >
+              {offerName(offer, unnamed)}
+            </a>
+            {/* The code under the name, as in Products: the cell then fills the thumbnail's
+                height, so the name lines up with the other cells (top aligned). */}
+            {offer.product.name === null || offer.product.productCode === null ? null : (
+              <div className="break-words text-xs text-fg-muted">{offer.product.productCode}</div>
+            )}
+          </div>
         </div>
       ),
     },

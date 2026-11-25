@@ -25,4 +25,13 @@ describe('productThumbSrc', () => {
       productThumbSrc('AU', { productId: PRODUCT, scope: null, primaryImageId: IMAGE }),
     ).toBeNull();
   });
+
+  it('gives no address for an id that is not a UUID', () => {
+    expect(
+      productThumbSrc('AU', { productId: '../..', scope: 'PLATFORM', primaryImageId: IMAGE }),
+    ).toBeNull();
+    expect(
+      productThumbSrc('AU', { productId: PRODUCT, scope: 'SELLER', primaryImageId: 'x/../y' }),
+    ).toBeNull();
+  });
 });

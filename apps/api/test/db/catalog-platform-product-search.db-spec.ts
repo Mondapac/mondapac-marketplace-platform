@@ -402,8 +402,13 @@ describe.each(TEST_MARKETS)('platform product search reader in market %s', (code
     const t = tag();
     const c = await category(`${t} cat`);
     const platform = await product({ name: `${t} platform`, categoryIds: [c] });
-    const first = await photo(platform.id, 1);
-    await photo(platform.id, 2);
+    // The taken-down first photo is skipped here too.
+    await photo(platform.id, 1, true);
+    const first = await photo(platform.id, 2);
+    await photo(platform.id, 3);
+    // A paused PLATFORM product: the public route would refuse its photo, so none is given.
+    const paused = await product({ name: `${t} paused`, categoryIds: [c], paused: true });
+    await photo(paused.id, 1);
     const own = await product({ name: `${t} own`, categoryIds: [c], scope: 'SELLER' });
     const ownPhoto = await photo(own.id, 1);
     const bare = await product({ name: `${t} bare`, categoryIds: [c] });
@@ -415,7 +420,7 @@ describe.each(TEST_MARKETS)('platform product search reader in market %s', (code
           ok: true as const,
           value: await ownReader.productLabels(
             market,
-            [platform.id, own.id, bare.id, unpublished.id] as Id<'Product'>[],
+            [platform.id, own.id, bare.id, unpublished.id, paused.id] as Id<'Product'>[],
             'en',
           ),
         }),
@@ -429,6 +434,7 @@ describe.each(TEST_MARKETS)('platform product search reader in market %s', (code
     expect(byId.get(platform.id)).toMatchObject({ scope: 'PLATFORM', primaryImageId: first });
     expect(byId.get(own.id)).toMatchObject({ scope: 'SELLER', primaryImageId: ownPhoto });
     expect(byId.get(bare.id)?.primaryImageId).toBeNull();
+    expect(byId.get(paused.id)).toMatchObject({ scope: 'PLATFORM', primaryImageId: null });
     // No published revision: no name and no thumbnail.
     expect(byId.get(unpublished.id)).toMatchObject({ name: null, primaryImageId: null });
     // The other Market sees none of them.

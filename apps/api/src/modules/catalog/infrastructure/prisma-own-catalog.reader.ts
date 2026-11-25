@@ -260,6 +260,23 @@ function pendingRevisionsWhere(market: MarketContext, filter: RevisionQueueFilte
 }
 
 /**
+ * The thumbnail of a product label: the first clean photo of the published revision. A PLATFORM
+ * product's photo is served only by the public route, which serves a published, unpaused product
+ * only; for any other PLATFORM product there is no thumbnail rather than an id that would 404.
+ */
+function thumbnailOf(row: {
+  readonly scope: string;
+  readonly status: string;
+  readonly pausedAt: Date | null;
+  readonly publishedRevision: { readonly images: readonly { readonly imageId: string }[] } | null;
+}): Id<'ProductImage'> | null {
+  if (row.scope === 'PLATFORM' && (row.status !== 'published' || row.pausedAt !== null)) {
+    return null;
+  }
+  return (row.publishedRevision?.images[0]?.imageId ?? null) as Id<'ProductImage'> | null;
+}
+
+/**
  * {@link OwnCatalogReader} on `catalog.products`, `offers` and `product_working_copies`. Every
  * statement goes through `PrismaService.tx(market)` with `marketId` and the owning seller in
  * `where`; ordering by the UUID v7 id is time order and needs no extra column.
@@ -803,7 +820,11 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
         productCode: true,
         typeCode: true,
         scope: true,
+        status: true,
+        pausedAt: true,
         publishedRevisionId: true,
+        // One small subquery per call; the review queue and the export do not show the photo but
+        // share this read (accepted, Sajad PR 1351).
         publishedRevision: {
           select: {
             images: {
@@ -833,8 +854,7 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
       typeCode: row.typeCode,
       scope: row.scope === 'PLATFORM' ? 'PLATFORM' : 'SELLER',
       name: row.publishedRevisionId === null ? null : (nameOf.get(row.publishedRevisionId) ?? null),
-      primaryImageId: (row.publishedRevision?.images[0]?.imageId ??
-        null) as Id<'ProductImage'> | null,
+      primaryImageId: thumbnailOf(row),
     }));
   }
 
