@@ -23,6 +23,11 @@ import { SETTING_SUBJECT_KIND, SETTINGS_REVIEW_AREA } from './application/settin
 import { SettingsReverter } from './application/settings-reverter';
 import { createSystemChangeRegistrar, SYSTEM_REQUEST_RECORDER } from '../system-requests';
 import { ChangeAiSetting } from './application/use-cases/change-ai-setting.use-case';
+import { ChangeAiGatewayEmergencyStop } from './application/use-cases/change-ai-gateway-emergency-stop.use-case';
+import { ChangeAiGatewayLimits } from './application/use-cases/change-ai-gateway-limits.use-case';
+import { ViewAiGatewaySettings } from './application/use-cases/view-ai-gateway-settings.use-case';
+import { SettingsAiGatewayControls } from './application/ai-gateway-controls-reader';
+import { AI_GATEWAY_CONTROLS } from '../../platform/ai/gateway-controls';
 import { ReadAiDescriptionWriter } from './application/use-cases/read-ai-description-writer.use-case';
 import { ReadCartMode } from './application/use-cases/read-cart-mode.use-case';
 import { ReadOfferQueueBacklogLimits } from './application/use-cases/read-offer-queue-backlog-limits.use-case';
@@ -81,7 +86,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * Settings (admin-editable Market settings, ADR-0026 and ADR-0042): one shared store with a
  * version, an insert-only history and an audit row per change, in the `settings` schema. List
  * paging is its first setting, Cart mode its second, the AI description writer's switch and tier
- * the next two, the Offer review policy (risk-based Offer approval) the next six and the monthly revenue target (an amount) the one after. The settings other modules already keep are not moved here. A change opens a
+ * the next two, the Offer review policy (risk-based Offer approval) the next six, the monthly revenue target (an amount) the one after, and the AI Gateway's emergency stop and caps (G4, read by `platform/ai` through its `AI_GATEWAY_CONTROLS` port). The settings other modules already keep are not moved here. A change opens a
  * review in Admin Inbox › System requests (area marketplace) when the Market reviews that area,
  * and a rejected or withdrawn one is restored by the registered reverter.
  */
@@ -102,6 +107,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ChangeCartModeSetting,
       ViewAiSettings,
       ChangeAiSetting,
+      ViewAiGatewaySettings,
+      ChangeAiGatewayLimits,
+      ChangeAiGatewayEmergencyStop,
       ViewOfferReviewSettings,
       ChangeOfferReviewSettings,
       ChangeOfferReviewEmergencyStop,
@@ -137,6 +145,15 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       useFactory: (...values: unknown[]) => new SettingsReverter(dependenciesOf(values)),
     },
     SETTINGS_SYSTEM_CHANGES.reverter(SETTING_SUBJECT_KIND, SETTINGS_REVIEW_AREA, SETTINGS_REVERTER),
+    // platform/ai's gateway-settings port (G4), bound by AiModule.register.
+    {
+      provide: AI_GATEWAY_CONTROLS,
+      inject: [UNIT_OF_WORK, MARKET_SETTING_REPOSITORY],
+      useFactory: (
+        unitOfWork: SettingsDependencies['unitOfWork'],
+        settings: SettingsDependencies['settings'],
+      ) => new SettingsAiGatewayControls({ unitOfWork, settings }),
+    },
     {
       provide: SETTINGS_FACADE,
       inject: [
@@ -155,6 +172,6 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ) => new SettingsFacadeImplementation(read, cartMode, target, offerReview, backlogLimits),
     },
   ],
-  exports: [SETTINGS_FACADE],
+  exports: [SETTINGS_FACADE, AI_GATEWAY_CONTROLS],
 })
 export class SettingsModule {}

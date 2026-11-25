@@ -2,8 +2,7 @@
 
 **Author:** Mohammad (software-architect), from the owner-approved design
 `design/ai-gateway/ai-gateway-design-fa.html` (version 3, project files), 2026-11-25
-**Status:** Accepted on the owner's decision («ساخت», 25 Nov 2026), with the decisions of section
-13. Reviewed on the design by Mohammad (software-architect), Hassan (security-tester) and Mojtaba
+**Status:** Accepted on the owner's decision («ساخت», 25 Nov 2026), with the decisions of section 13. Reviewed on the design by Mohammad (software-architect), Hassan (security-tester) and Mojtaba
 (database-designer), all "accept with changes", applied. This file is the `platform/ai` design
 document that ADR-0019 decision 6 asks for; it is built in PRs G1 to G7 (section 12).
 **Ground truth:** ADR-0019 (R1 to R15, decisions 3, 6, 7, 9, 10, 12), ADR-0052 (providers,
@@ -16,35 +15,38 @@ ADR-0008 decisions 2 and 6, ADR-0018 decision 4, ADR-0020 decision 2.
 `settings/domain/definitions.ts` (main 26bde02).
 
 ## 1. Where we start
+
 A first gateway exists: `ModelGateway` in `apps/api/src/platform/ai`. Only that folder calls a
 model, and only files on the checked-in allow-list (`apps/api/.dependency-cruiser.cjs`) import it.
 
-| Topic | Today | State | Code |
-|---|---|---|---|
-| One model entry point | Every call goes through `ModelGateway.complete`, with a timeout, never inside a UnitOfWork | Ready | `model-gateway.ts` |
-| Provider-neutral shape | Messages, tools, token usage and stop reason are our own types | Ready | `model-provider.ts` |
-| Provider | One adapter for the Anthropic Messages API, no streaming (on purpose: the whole answer is checked before it is shown) | Partial | `anthropic-messages.provider.ts` |
-| Model choice | Two tiers, `fast` and `balanced`; model id, key and price per Market from `ASSISTANT_MODEL_*`, read at boot only | Partial | `app-config.ts` |
-| Fallback | None: an error means "unavailable" and the host flow completes without AI | Missing | `model-gateway.ts` |
-| Kill switch | `AI_KILL_SWITCH` turns everything off | Ready | `model-gateway.ts` |
-| Capability and seller switches | Each module reads its own: the assistant from its settings, the description writer from `settings` and `sellers` | Partial | `description-writer-switches.ts` |
-| Spend cap | Only the buyer assistant (`assistant.spend_days`); the description writer counts drafts per day only | Partial | `prisma-spend.repository.ts` |
-| Request limits | Per guest and per customer in the buyer assistant, on a PostgreSQL counter | Partial | `subject-message-limits.ts` |
-| Usage record per call | Only an error log (Market, tier, failure kind); no latency, model or cost | Missing | `model-gateway.ts` |
-| Admin settings | Switch and tier per capability; provider and model were never panel settings (until ADR-0053) | Partial | `settings/domain/definitions.ts` |
+| Topic                          | Today                                                                                                                 | State   | Code                             |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------- | ------- | -------------------------------- |
+| One model entry point          | Every call goes through `ModelGateway.complete`, with a timeout, never inside a UnitOfWork                            | Ready   | `model-gateway.ts`               |
+| Provider-neutral shape         | Messages, tools, token usage and stop reason are our own types                                                        | Ready   | `model-provider.ts`              |
+| Provider                       | One adapter for the Anthropic Messages API, no streaming (on purpose: the whole answer is checked before it is shown) | Partial | `anthropic-messages.provider.ts` |
+| Model choice                   | Two tiers, `fast` and `balanced`; model id, key and price per Market from `ASSISTANT_MODEL_*`, read at boot only      | Partial | `app-config.ts`                  |
+| Fallback                       | None: an error means "unavailable" and the host flow completes without AI                                             | Missing | `model-gateway.ts`               |
+| Kill switch                    | `AI_KILL_SWITCH` turns everything off                                                                                 | Ready   | `model-gateway.ts`               |
+| Capability and seller switches | Each module reads its own: the assistant from its settings, the description writer from `settings` and `sellers`      | Partial | `description-writer-switches.ts` |
+| Spend cap                      | Only the buyer assistant (`assistant.spend_days`); the description writer counts drafts per day only                  | Partial | `prisma-spend.repository.ts`     |
+| Request limits                 | Per guest and per customer in the buyer assistant, on a PostgreSQL counter                                            | Partial | `subject-message-limits.ts`      |
+| Usage record per call          | Only an error log (Market, tier, failure kind); no latency, model or cost                                             | Missing | `model-gateway.ts`               |
+| Admin settings                 | Switch and tier per capability; provider and model were never panel settings (until ADR-0053)                         | Partial | `settings/domain/definitions.ts` |
 
 ## 2. Consumers
-| Consumer | State | Task types | Special need |
-|---|---|---|---|
-| Buyer assistant (`assistant`) | Stages 0 and 1 built | chat with READ tools, extract, later vision | High volume, a separate guest pool, a multi-round tool loop (each round is one `run`) |
-| Seller assistant (seller panel) | Designed 25 Nov, waits for «ساخت» | understand an instruction, match a price list | Cap per seller, per-seller switch (SEL-25), tools only under the seller's own session |
-| Admin assistant | No design (FE-235, owner: "not now") | summary, draft text, report explanation | No tools under an admin (R9); the page supplies the input |
-| Description writer (`catalog`, AIS-03) | Built | write | Joins the central caps and usage record |
+
+| Consumer                               | State                                | Task types                                    | Special need                                                                          |
+| -------------------------------------- | ------------------------------------ | --------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Buyer assistant (`assistant`)          | Stages 0 and 1 built                 | chat with READ tools, extract, later vision   | High volume, a separate guest pool, a multi-round tool loop (each round is one `run`) |
+| Seller assistant (seller panel)        | Designed 25 Nov, waits for «ساخت»    | understand an instruction, match a price list | Cap per seller, per-seller switch (SEL-25), tools only under the seller's own session |
+| Admin assistant                        | No design (FE-235, owner: "not now") | summary, draft text, report explanation       | No tools under an admin (R9); the page supplies the input                             |
+| Description writer (`catalog`, AIS-03) | Built                                | write                                         | Joins the central caps and usage record                                               |
 
 The seller panel gets a chat window (ADR-0019 decision 2 as amended on 2026-11-25); the admin
 panel does not.
 
 ## 3. Scope
+
 - **In:** capability registry, switch evaluation, spend caps and limits, routing and fallback, a
   second adapter, usage record and monitoring, the admin pages «AI Models» and «AI Gateway», and
   the slot for the in-house model (Mondapac Intelligence) with shadow mode.
@@ -55,19 +57,20 @@ panel does not.
   completes without AI.
 
 ## 4. Architecture
+
 The gateway is not a separate service. It is `platform/ai` inside `apps/api` and imports no
 module. Where it needs another module's data it declares a port that the module implements.
 
-| Job | Where | Notes |
-|---|---|---|
-| Capability definition | The owning module, in `contracts/` | Each module registers its capabilities at boot (`assistant.buyer-chat`, `catalog.description-writer.seller`, `catalog.description-writer.admin`, ...; one capability per audience). A spec carries task type, audience, seller-scoped or not, input and output token caps, max tool rounds, timeout and prompt version. The gateway validates only; an unknown or duplicate capability fails boot. |
-| Field allow-list and output guard | The owning module | The gateway receives a request the module already built, so it cannot know where a field came from; the claim rule needs `certification` data. A CI test with a fake provider (ADR-0019 decision 9) proves no field outside the allow-list leaves. |
-| Switches | Gateway | Evaluated in this order: kill switch, capability switch for the Market, and the seller's switch through the `sellers` port when the capability is seller-scoped. A seller-scoped capability called without a seller id is refused; the module takes the id from the seller `ActorContext` or the loaded aggregate, never from input. An unregistered capability is off at run time. An acting-as session ("Login as Seller") is always off. Any error means off. |
-| Budget and limits | Gateway | Reserve before the call, settle after it (section 7). |
-| Generic masking of personal data | Gateway | Email, phone and card numbers are masked in every part of the request, tool results included. Second line of defence only: the field allow-list is the control that keeps address, phone and payment data out. |
-| Router and adapters | Gateway | Reads the task type's priority list and calls with a timeout (section 6). |
-| Generic output check | Gateway | Schema check, HTML and links made inert. |
-| Usage record | Gateway | One row per call, never the text (section 10). |
+| Job                               | Where                              | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| --------------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Capability definition             | The owning module, in `contracts/` | Each module registers its capabilities at boot (`assistant.buyer-chat`, `catalog.description-writer.seller`, `catalog.description-writer.admin`, ...; one capability per audience). A spec carries task type, audience, seller-scoped or not, input and output token caps, max tool rounds, timeout and prompt version. The gateway validates only; an unknown or duplicate capability fails boot.                                                               |
+| Field allow-list and output guard | The owning module                  | The gateway receives a request the module already built, so it cannot know where a field came from; the claim rule needs `certification` data. A CI test with a fake provider (ADR-0019 decision 9) proves no field outside the allow-list leaves.                                                                                                                                                                                                               |
+| Switches                          | Gateway                            | Evaluated in this order: kill switch, capability switch for the Market, and the seller's switch through the `sellers` port when the capability is seller-scoped. A seller-scoped capability called without a seller id is refused; the module takes the id from the seller `ActorContext` or the loaded aggregate, never from input. An unregistered capability is off at run time. An acting-as session ("Login as Seller") is always off. Any error means off. |
+| Budget and limits                 | Gateway                            | Reserve before the call, settle after it (section 7).                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Generic masking of personal data  | Gateway                            | Email, phone and card numbers are masked in every part of the request, tool results included. Second line of defence only: the field allow-list is the control that keeps address, phone and payment data out.                                                                                                                                                                                                                                                   |
+| Router and adapters               | Gateway                            | Reads the task type's priority list and calls with a timeout (section 6).                                                                                                                                                                                                                                                                                                                                                                                        |
+| Generic output check              | Gateway                            | Schema check, HTML and links made inert.                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Usage record                      | Gateway                            | One row per call, never the text (section 10).                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 ```
 module (contracts/: CapabilitySpec, field allow-list, guard)
@@ -80,6 +83,7 @@ platform/ai
 ```
 
 ## 5. API contract
+
 **Internal contract.** Modules no longer send a model name, and (after the interim below) no
 model tier; they name the capability. One `run` is one model round: the buyer assistant, which loops over tools, calls `run`
 once per round. Cost comes back on success and failure, because a provider may bill a call that
@@ -88,7 +92,7 @@ ran out of time.
 ```ts
 gateway.status(capability, context: CallContext,
                opts: { tier /* G1 to G4 only */, sellerId?, timeoutMs? })
-  → { on: true } | { on: false, reason: 'kill-switch' | 'off' | 'no-route' | 'over-budget' }
+  → { on: true } | { on: false, reason: 'kill-switch' | 'emergency-stop' | 'off' | 'no-route' | 'over-budget' }
 
 gateway.run(capability, context: CallContext, request: ModelRequest,
             opts: { tier /* G1 to G4 only */, sellerId?, timeoutMs? })
@@ -135,6 +139,7 @@ the model version id and token counts. No text is retained; processing is in the
 number so the partner team can work in parallel (G6).
 
 ## 6. Routing and fallback
+
 - **Priority list per task type.** For each Market and task type (chat, extract, write, vision) an
   ordered list of up to 3 models, which the admin sets in the External models tab (section 8). The
   gateway tries model 1, then 2, then 3 when one is down or slow. An assistant may have its own
@@ -168,6 +173,7 @@ number so the partner team can work in parallel (G6).
   approval.
 
 **Built in G3 (code in `apps/api/src/platform/ai/catalogue/`, `evaluations/`, `routing/`).**
+
 - The route catalogue is one file per route (`anthropic.ts` for Anthropic's own API, `bedrock.ts` for
   Amazon Bedrock's Messages API endpoint in `ap-southeast-2`); a row holds the exact model id, the
   model family, the region, Hassan's no-retention and no-training check (`dataTerms`), the list
@@ -207,6 +213,7 @@ number so the partner team can work in parallel (G6).
   records Bedrock's (FE-20261125-ai-gateway-bedrock-price).
 
 ## 7. Cost and limits
+
 - **Unit.** Cost is recorded in US micro-dollars, because providers bill in dollars; the panel also
   shows an approximate amount in the Market's currency.
 - **Caps.** Daily and monthly per Market, per capability, daily per seller, and a separate guest
@@ -228,21 +235,31 @@ number so the partner team can work in parallel (G6).
   most one more notice is sent per day. (Deferred: FE-20261125-ai-gateway-budget-alerts; G2 counts
   and refuses only, and a full cap switches the capability off without a notice.)
 - **Message limits** stay in the module: the gateway counts model rounds, not user messages.
-- **Cap values until G4.** The Market configuration's optional `aiBudget` section
-  (`marketDayMicroUsd`, `marketMonthMicroUsd`, `capabilityDayMicroUsd`, `sellerDayMicroUsd`,
-  `guestDayMicroUsd`, US micro-dollars). An absent cap is counted but not enforced; AU has none
-  today, so G2 changes nothing a user sees there. The guest pool is the buyer capabilities' calls
-  by anonymous visitors.
+- **Cap values (G4a).** The `settings` module's AI Gateway settings (ADR-0042 store, versioned,
+  audited): `ai-cap-market-day`, `ai-cap-market-month`, `ai-cap-capability-day`, `ai-cap-seller-day`
+  and `ai-cap-guest-day`, each `none` (the default: counted, not enforced) or whole US
+  micro-dollars up to 10^12; 0 allows nothing. The gateway reads them with the emergency stop through
+  the port `AiGatewayControls` (`platform/ai/gateway-controls.ts`, implemented by settings) once per
+  `status` and `run`; a read that fails is off (R8), and a stored value the definition no longer
+  allows is read as 0. The Market configuration's `aiBudget` section is removed; no real Market
+  file had it (only the ZZ test fixture), so no cap is lifted and no data moves (ADR-0042 decision
+  6), and a file that still has it fails at boot. The reader is a port read, not a use case: the
+  gateway calls it for every actor it serves, the system actor of an asynchronous capability
+  included, and no access rule kind of ADR-0018 decision 4 admits every actor (adding one amends
+  that decision); it answers only the caller's Market and never leaves the server. The guest pool is
+  the buyer capabilities' calls by anonymous visitors.
 - **Moving the buyer assistant's cap.** G2 only counts in parallel and moves nothing.
   `assistant.spend_days` moves to the gateway in its own later PR, in steps (section 10).
 
 ## 8. Admin panel: «AI Models» and gateway settings
+
 Under Settings › AI a section **AI Models** with two tabs, plus an **AI Gateway** page for caps and
 monitoring. Per ADR-0042 the settings are defined in the `settings` module, with their permissions
 and API there; the gateway reads them through a port. Choosing a model in the panel conflicts with
 ADR-0026 decision 9 and ADR-0042 decision 7, so ADR-0053 supersedes those points.
 
 **Tab 1: External models.**
+
 - **Add model.** The admin picks a provider from the connected providers, then a model from that
   provider's allow-list. Model ids are never typed, because one key usually reaches several regions
   and preview versions. The allow-list is changed by PR and Hassan approves it with the connection;
@@ -279,6 +296,7 @@ ADR-0026 decision 9 and ADR-0042 decision 7, so ADR-0053 supersedes those points
   model leaves the lists automatically.
 
 **Tab 2: Mondapac Intelligence (in-house model).**
+
 - **Stage per task type:** off, shadow (metrics only), percent, or default. In default the in-house
   model is first in the priority list and external models are its fallback.
 - **Auto rollback.** In percent or default, if the error rate or guard-rejection rate passes the
@@ -297,13 +315,13 @@ thresholds) and Capabilities (state of each capability, linking to its own setti
 emergency stop for all AI of a Market sits on top of this page. Switches that exist today (the
 description writer's, the buyer assistant's) are not rebuilt.
 
-| Set in the panel | Not in the panel |
-|---|---|
+| Set in the panel                                           | Not in the panel                                                                                                                                                                                                                        |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Add a model from the allow-list of the connected providers | The per-provider model allow-list and its price table (by PR). Connecting a new provider: Kazem puts the key in the server's secret manager and Hassan approves the no-retention contract and region; the panel only shows "connected". |
-| Priority list per task type and saver model | API keys |
-| In-house model stage and auto-rollback limits | The in-house endpoint address (by PR only) |
-| Caps, guest share and thresholds | Safety rules, field allow-lists, masking, prompt text and evaluation sets |
-| Emergency stop for one Market | The server-wide `AI_KILL_SWITCH` (Kazem only) |
+| Priority list per task type and saver model                | API keys                                                                                                                                                                                                                                |
+| In-house model stage and auto-rollback limits              | The in-house endpoint address (by PR only)                                                                                                                                                                                              |
+| Caps, guest share and thresholds                           | Safety rules, field allow-lists, masking, prompt text and evaluation sets                                                                                                                                                               |
+| Emergency stop for one Market                              | The server-wide `AI_KILL_SWITCH` (Kazem only)                                                                                                                                                                                           |
 
 - **Permissions:** `settings.ai-models.manage` and `settings.ai-gateway.manage` to change,
   `settings.ai-gateway.view` to see, named per ADR-0042. Each admin changes only their own Market.
@@ -321,11 +339,25 @@ description writer's, the buyer assistant's) are not rebuilt.
   to a previous version. Switching something off never needs confirmation.
 - **Versions and revert.** Each change in the ADR-0042 store has a version and an audit row. A
   revert is a new forward change and passes the same server checks and confirmation.
+- **Built in G4a (limits and emergency stop).** `GET settings/admin/ai-gateway` (key
+  `settings.ai-gateway.view`), `PUT settings/admin/ai-gateway/limits` and `PUT
+settings/admin/ai-gateway/emergency-stop` (protected key `settings.ai-gateway.manage`). Raising or
+  lifting a cap spends the admin step-up `settings.ai-gateway-limits.raise` and switching the stop
+  off spends `settings.ai-gateway-emergency-stop.resume`, in the change's own unit; lowering a cap or
+  switching the stop on spends none (the route carries no `@RequiresStepUp`, the use case decides).
+  The stop always needs a reason, kept on the setting's history row (`note`, migration
+  `20261125220000_settings_history_note`) whether or not the area is reviewed; the audit row holds
+  no free text (ADR-0009). Every change is reviewed at high risk where the marketplace area
+  is reviewed, and a revert (a rejected review) never raises a cap or switches the stop off. While
+  the stop is on, `status` answers `emergency-stop` and `run` answers `off`. The saver threshold
+  moves with the priority lists (G4b); the alert threshold waits for the alerts
+  (FE-20261125-ai-gateway-budget-alerts).
 - **Server checks.** Every rule of the page is checked on the server too: a model without a key,
   without a passed evaluation, with a region that does not meet the Market's requirement or retired
   is refused in a priority list.
 
 ## 9. Security (Hassan)
+
 - **Keys** live in the environment's secret manager, one per provider and Market, plus separate keys
   for the fallback route and the partner endpoint. Never in the database, a log, the panel or the
   browser. Keys are read at boot today, so a key rotation needs a server restart, not a release
@@ -347,17 +379,18 @@ description writer's, the buyer assistant's) are not rebuilt.
 - **Security review** is mandatory for every gateway PR (R15).
 
 ## 10. Data and storage (Mojtaba)
+
 Tables follow the platform-table rule: schema `platform`, prefix `ai_`. Market isolation is in the
 application layer as in the rest of the project: `market_id` leads the key and access goes through
 the guarded `prisma.tx(market)` client. Each table has an explicit GRANT and `down.sql` reverts it.
 
-| Table | Content | Retention |
-|---|---|---|
-| `platform.ai_calls` | One row per call: Market, capability, seller (if any), provider, model, attempt, input and output tokens, unit price used, cost, latency and outcome. No text, customer id, IP or personal key. | 90 days. A scheduled job deletes old rows in batches, like the security-events table. No partitions. |
-| `platform.ai_usage_days` | Daily totals per Market, capability and seller: settled cost, calls, errors, refusals and fallbacks, and latency counts in fixed buckets from which p95 is computed. | 25 months |
-| `platform.ai_budget_counters` | One row per Market, period (day or month, in the Market's zone) and cap scope (Market, capability, seller, guest pool): `held` (settled plus reserved; the reserved cost lives here, not in the day rows) and `spent`. Added in G2 (Mojtaba): a month cap cannot be one conditional UPDATE over day rows. Key `(market_id, period_start, period, scope, scope_key)`, so the retention's `period_start <` is a range on it. | 25 months |
-| `platform.ai_budget_reservations` | Temporary reservation with an expiry; deleted on settle or expiry. | Minutes |
-| Settings | Priority lists, saver model and threshold, caps, guest share, in-house stage, shadow share and rollback limits in the existing store (`settings.market_settings`), versioned with history. Routes are code (ADR-0052). | Versioned |
+| Table                             | Content                                                                                                                                                                                                                                                                                                                                                                                                                    | Retention                                                                                            |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `platform.ai_calls`               | One row per call: Market, capability, seller (if any), provider, model, attempt, input and output tokens, unit price used, cost, latency and outcome. No text, customer id, IP or personal key.                                                                                                                                                                                                                            | 90 days. A scheduled job deletes old rows in batches, like the security-events table. No partitions. |
+| `platform.ai_usage_days`          | Daily totals per Market, capability and seller: settled cost, calls, errors, refusals and fallbacks, and latency counts in fixed buckets from which p95 is computed.                                                                                                                                                                                                                                                       | 25 months                                                                                            |
+| `platform.ai_budget_counters`     | One row per Market, period (day or month, in the Market's zone) and cap scope (Market, capability, seller, guest pool): `held` (settled plus reserved; the reserved cost lives here, not in the day rows) and `spent`. Added in G2 (Mojtaba): a month cap cannot be one conditional UPDATE over day rows. Key `(market_id, period_start, period, scope, scope_key)`, so the retention's `period_start <` is a range on it. | 25 months                                                                                            |
+| `platform.ai_budget_reservations` | Temporary reservation with an expiry; deleted on settle or expiry.                                                                                                                                                                                                                                                                                                                                                         | Minutes                                                                                              |
+| Settings                          | Priority lists, saver model and threshold, caps, guest share, in-house stage, shadow share and rollback limits in the existing store (`settings.market_settings`), versioned with history. Routes are code (ADR-0052).                                                                                                                                                                                                     | Versioned                                                                                            |
 
 - **Atomic reservation.** For each cap (Market day, Market month, capability, seller) a separate
   `UPDATE … WHERE held <= cap - est` on `ai_budget_counters`, all in one short unit in the fixed
@@ -422,6 +455,7 @@ the guarded `prisma.tx(market)` client. Each table has an explicit GRANT and `do
     (FE-20261125-ai-gateway-assistant-cap-to-gateway); step 4 is FE-20261125-ai-gateway-drop-spend-days.
 
 ## 11. Monitoring and audit
+
 - **Metrics:** calls, error rate, p50 and p95 latency, fallbacks and cost, per capability, model and
   Market, from `ai_usage_days`.
 - **Alerts for Kazem:** error rate above 5 % over 10 minutes, a circuit breaker opening, spend at
@@ -432,48 +466,54 @@ the guarded `prisma.tx(market)` client. Each table has an explicit GRANT and `do
   call id (R12). For example the seller assistant records its changes with `source=assistant`.
 
 ## 12. Build plan
-| PR | Scope | Depends on | Reviewers |
-|---|---|---|---|
-| G0 | Docs only: this document, ADR-0052, ADR-0053, the ADR-0019 decision 2 amendment, the future-enhancement rows | — | Ali (CTO), Mohammad, Hassan |
-| G1 | Capability registry, `run` and `status`, the seller-switch port, the generic masker. The buyer assistant and the description writer move to `run` and `status`; no user-visible change. | G0 | Mohammad, Hassan |
-| G2 | Usage and reservation tables, central caps, parallel counting. Cap values come from per-Market configuration `aiBudget` until G4 and are enforced from G2 where set; the assistant's `spend_days` cap is not moved before G7 | G1 | Mojtaba, Hassan |
-| G3 | Router with priority lists, saver mode, circuit breaker, second adapter. Until G4 each task type's list is the single catalogue row today's tier maps to; the `tier` option stays until G4 | G2, ADR-0052 and Hassan's verification of the first route recorded in its catalogue row | Mohammad, Hassan |
-| G4 | «AI Models» and gateway settings in `settings`, with API, permissions, TOTP confirmation, audit and the background evaluation run; capability switches and priority lists move into these settings and the `tier` option goes | G3 | Hassan, Mojtaba |
-| G5 | Admin pages AI Models (external tab, scorecard, playground, change preview) and AI Gateway | G4 | Reza (UI/UX) |
-| G6 | In-house model tab: shadow, percent rollout, auto rollback, HTTP contract | G4, G5 and Hassan's approval | Mohammad, Hassan |
-| G7 | Move `spend_days` in four steps | G2 | Mojtaba |
+
+| PR  | Scope                                                                                                                                                                                                                        | Depends on                                                                              | Reviewers                   |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | --------------------------- |
+| G0  | Docs only: this document, ADR-0052, ADR-0053, the ADR-0019 decision 2 amendment, the future-enhancement rows                                                                                                                 | —                                                                                       | Ali (CTO), Mohammad, Hassan |
+| G1  | Capability registry, `run` and `status`, the seller-switch port, the generic masker. The buyer assistant and the description writer move to `run` and `status`; no user-visible change.                                      | G0                                                                                      | Mohammad, Hassan            |
+| G2  | Usage and reservation tables, central caps, parallel counting. Cap values come from per-Market configuration `aiBudget` until G4 and are enforced from G2 where set; the assistant's `spend_days` cap is not moved before G7 | G1                                                                                      | Mojtaba, Hassan             |
+| G3  | Router with priority lists, saver mode, circuit breaker, second adapter. Until G4 each task type's list is the single catalogue row today's tier maps to; the `tier` option stays until G4                                   | G2, ADR-0052 and Hassan's verification of the first route recorded in its catalogue row | Mohammad, Hassan            |
+| G4a | Caps and the Market's emergency stop in `settings`, read by the gateway through a port; API, protected key, conditional TOTP, audit                                                                                          | G3                                                                                      | Hassan, Mohammad            |
+| G4b | Priority lists per task type, saver model and threshold in `settings`, server checks, router reads them; the `tier` option goes                                                                                              | G4a                                                                                     | Hassan, Mohammad            |
+| G4c | Background evaluation run with its separate budget, and the playground by sample id                                                                                                                                          | G4b                                                                                     | Hassan, Mojtaba             |
+| G4d | Capability switches into these settings, the assistant's cap values into the gateway caps (FE-20261125-ai-gateway-assistant-cap-to-gateway), and the panel's "revert to a previous version" as a forward change with TOTP    | G4b                                                                                     | Hassan, Mojtaba             |
+| G5  | Admin pages AI Models (external tab, scorecard, playground, change preview) and AI Gateway                                                                                                                                   | G4                                                                                      | Reza (UI/UX)                |
+| G6  | In-house model tab: shadow, percent rollout, auto rollback, HTTP contract                                                                                                                                                    | G4, G5 and Hassan's approval                                                            | Mohammad, Hassan            |
+| G7  | Move `spend_days` in four steps                                                                                                                                                                                              | G2                                                                                      | Mojtaba                     |
 
 - G1 and G2 merge before the seller assistant's first PR.
 - G2 to G4 all touch the gateway's main pipeline, so they are built one after another. G5 and G7
   share no files and can be built in two parallel threads.
 
 ## 13. Owner decisions (25 Nov 2026)
-| Question | Decision |
-|---|---|
-| Q1. Fallback model during an outage | The same model through a second hosting route in the Market's region |
-| Q2. Chat window in the seller and admin panels | ADR-0019 decision 2 amended for the seller panel only (ADR-0053 decision 7) |
-| Q3. Model choice in the panel | Section «AI Models» with two tabs, several external models with priorities; recorded in ADR-0053, which supersedes ADR-0026 decision 9 and ADR-0042 decision 7 for AI models |
-| Q4. Who changes gateway settings | Senior admin only |
-| Admin assistant | Not designed now (FE-235) |
-| Models | External models only for now; the in-house model joins later behind the same contract |
-| Login as Seller | The assistant is off in an acting-as session (R3) |
+
+| Question                                       | Decision                                                                                                                                                                     |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Q1. Fallback model during an outage            | The same model through a second hosting route in the Market's region                                                                                                         |
+| Q2. Chat window in the seller and admin panels | ADR-0019 decision 2 amended for the seller panel only (ADR-0053 decision 7)                                                                                                  |
+| Q3. Model choice in the panel                  | Section «AI Models» with two tabs, several external models with priorities; recorded in ADR-0053, which supersedes ADR-0026 decision 9 and ADR-0042 decision 7 for AI models |
+| Q4. Who changes gateway settings               | Senior admin only                                                                                                                                                            |
+| Admin assistant                                | Not designed now (FE-235)                                                                                                                                                    |
+| Models                                         | External models only for now; the in-house model joins later behind the same contract                                                                                        |
+| Login as Seller                                | The assistant is off in an acting-as session (R3)                                                                                                                            |
 
 ## 14. Deferred (future-enhancements register, area `assistant`)
-| Id | Item |
-|---|---|
-| FE-231 | Connect the in-house model behind the gateway, shadow then percent rollout |
-| FE-232 | Sentence-by-sentence streaming, each sentence checked before it is sent |
-| FE-233 | Answer cache, only for answers built from help-centre text alone, per Market |
-| FE-234 | Key reload without a server restart |
-| FE-235 | A design of its own for the admin assistant |
-| FE-20261125-ai-gateway-budget-alerts | Admin notice at 80 % and 100 % of an AI budget cap (G2 counts and refuses only) |
-| FE-20261125-ai-gateway-ops-alerts | Kazem's alerts: error rate, circuit breaker, spend at 80 % |
-| FE-20261125-ai-gateway-region-check | Compare a provider-reported processing region with the route row; a mismatch fails the call and alerts |
-| FE-20261125-ai-gateway-shared-breaker | One circuit-breaker state shared by all API instances, shown on the AI Gateway page |
-| FE-20261125-ai-gateway-bedrock-price | Record the Bedrock Sydney price in the catalogue rows before the route is turned on |
-| FE-20261125-ai-gateway-bedrock-endpoint-check | Confirm the Bedrock Mantle endpoint, model id and key length with AWS before the row gets its check |
-| FE-20261125-ai-gateway-bad-answer-cost | Count a billed 200 answer without content at its worst-case cost, not 0 |
-| FE-20261125-ai-gateway-keep-reservation | Keep a reservation for the next attempt after a zero-cost failure (2 hot-row units less per fallback) |
-| FE-20261125-ai-gateway-saver-model-check | Check a Market's `saverModel` against the catalogue at boot |
-| FE-20261125-ai-gateway-drop-spend-days | G7 step 4: drop `assistant.spend_days` one release after G7b |
-| FE-20261125-ai-gateway-assistant-cap-to-gateway | Move the assistant's day and month cap values into the gateway's caps (with G4) |
+
+| Id                                              | Item                                                                                                   |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| FE-231                                          | Connect the in-house model behind the gateway, shadow then percent rollout                             |
+| FE-232                                          | Sentence-by-sentence streaming, each sentence checked before it is sent                                |
+| FE-233                                          | Answer cache, only for answers built from help-centre text alone, per Market                           |
+| FE-234                                          | Key reload without a server restart                                                                    |
+| FE-235                                          | A design of its own for the admin assistant                                                            |
+| FE-20261125-ai-gateway-budget-alerts            | Admin notice at 80 % and 100 % of an AI budget cap (G2 counts and refuses only)                        |
+| FE-20261125-ai-gateway-ops-alerts               | Kazem's alerts: error rate, circuit breaker, spend at 80 %                                             |
+| FE-20261125-ai-gateway-region-check             | Compare a provider-reported processing region with the route row; a mismatch fails the call and alerts |
+| FE-20261125-ai-gateway-shared-breaker           | One circuit-breaker state shared by all API instances, shown on the AI Gateway page                    |
+| FE-20261125-ai-gateway-bedrock-price            | Record the Bedrock Sydney price in the catalogue rows before the route is turned on                    |
+| FE-20261125-ai-gateway-bedrock-endpoint-check   | Confirm the Bedrock Mantle endpoint, model id and key length with AWS before the row gets its check    |
+| FE-20261125-ai-gateway-bad-answer-cost          | Count a billed 200 answer without content at its worst-case cost, not 0                                |
+| FE-20261125-ai-gateway-keep-reservation         | Keep a reservation for the next attempt after a zero-cost failure (2 hot-row units less per fallback)  |
+| FE-20261125-ai-gateway-saver-model-check        | Check a Market's `saverModel` against the catalogue at boot                                            |
+| FE-20261125-ai-gateway-drop-spend-days          | G7 step 4: drop `assistant.spend_days` one release after G7b                                           |
+| FE-20261125-ai-gateway-assistant-cap-to-gateway | Move the assistant's day and month cap values into the gateway's caps (with G4)                        |

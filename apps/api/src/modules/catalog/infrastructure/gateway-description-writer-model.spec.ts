@@ -23,6 +23,7 @@ import type { ModelProvider, ModelRequest, ModelTurn } from '../../../platform/a
 import { MASKED } from '../../../platform/ai/personal-data-masker';
 import { CATALOG_AI_CAPABILITIES } from '../contracts/ai-capabilities';
 import { guardDraft } from '../domain/description-writer/draft-guard';
+import { TestAiGatewayControls } from '../../../../test/support/ai-gateway-controls';
 import { GatewayDescriptionWriterModel } from './gateway-description-writer-model';
 
 const AU = testMarketContext('AU', 'default');
@@ -95,6 +96,7 @@ describe('GatewayDescriptionWriterModel on the real AiGateway (AIS-03; ADR-0019 
       usage,
       clock,
       testRouter(testRouteCatalogue(), passesFor(CATALOG_AI_CAPABILITIES), models, markets, clock),
+      new TestAiGatewayControls(),
     );
     return new GatewayDescriptionWriterModel(gateway);
   };

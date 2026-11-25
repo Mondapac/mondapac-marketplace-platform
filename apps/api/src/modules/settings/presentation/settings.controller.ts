@@ -19,7 +19,10 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { ChangeAiGatewayEmergencyStop } from '../application/use-cases/change-ai-gateway-emergency-stop.use-case';
+import { ChangeAiGatewayLimits } from '../application/use-cases/change-ai-gateway-limits.use-case';
 import { ChangeAiSetting } from '../application/use-cases/change-ai-setting.use-case';
+import { ViewAiGatewaySettings } from '../application/use-cases/view-ai-gateway-settings.use-case';
 import { ViewAiSettings } from '../application/use-cases/view-ai-settings.use-case';
 import { ChangeOfferReviewSettings } from '../application/use-cases/change-offer-review-settings.use-case';
 import { ViewOfferReviewSettings } from '../application/use-cases/view-offer-review-settings.use-case';
@@ -106,7 +109,128 @@ export class AdminSettingsController {
     private readonly changeTarget: ChangeMonthlyRevenueTargetSetting,
     private readonly viewEmergencyStop: ViewOfferReviewEmergencyStop,
     private readonly changeEmergencyStop: ChangeOfferReviewEmergencyStop,
+    private readonly viewAiGateway: ViewAiGatewaySettings,
+    private readonly changeAiGatewayLimits: ChangeAiGatewayLimits,
+    private readonly changeAiGatewayStop: ChangeAiGatewayEmergencyStop,
   ) {}
+
+  @Get('ai-gateway')
+  @ApiOperation({
+    summary: 'The AI Gateway settings of the Market (admin)',
+    description:
+      'Needs settings.ai-gateway.view. ai-gateway-emergency-stop (off by default) and the caps ' +
+      'ai-cap-market-day, ai-cap-market-month, ai-cap-capability-day, ai-cap-seller-day and ' +
+      'ai-cap-guest-day (none by default, else whole US micro-dollars as decimal text; 0 allows ' +
+      'nothing), each with its version (0 while the default is in force).',
+  })
+  @ApiOkResponse({ type: SettingsListBody })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  async aiGatewaySettings(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.viewAiGateway.execute(context, {});
+    logRoute(
+      this.#logger,
+      'settings.view-ai-gateway-settings-route',
+      context,
+      result.ok ? 'read' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return settingsListBody(result.value);
+  }
+
+  // No @RequiresStepUp on the two AI Gateway writes: only a change that allows more AI spends a
+  // two-step code (design section 8), which the use case decides and spends in its own unit.
+  @Put('ai-gateway/limits')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Change the AI caps of the Market (admin)',
+    description:
+      'Needs the protected settings.ai-gateway.manage; refused in an acting-as session. ' +
+      '`changes` lists each changed cap once with the version the admin saw; a value is `none` ' +
+      'or whole US micro-dollars (0 to 1000000000000). Raising or lifting any cap needs a fresh ' +
+      'two-step proof of this admin (`POST identity/admin/step-up/verify` for ' +
+      'settings.ai-gateway-limits.raise; without it 403 second-factor.required with ' +
+      'details.actionKey); lowering needs none. All or nothing: a stale version is 409 ' +
+      'settings.conflict. Each change is audited and, where reviewed, opens a high-risk review ' +
+      'request; a rejected review never raises a cap. ' +
+      REVIEWED,
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: ChangeOfferReviewRequest })
+  @ApiOkResponse({ type: SettingsChangeListBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: STEP_UP_FORBIDDEN })
+  @ApiConflictResponse({ ...ERROR, description: 'settings.conflict' })
+  async putAiGatewayLimits(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() requestBody: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, requestBody, ['changes', 'note']);
+    if (invalid !== null) throw invalid;
+    const { changes, note } = requestBody as { changes?: unknown; note?: unknown };
+    const result = await this.changeAiGatewayLimits.execute(context, { changes, note });
+    logRoute(
+      this.#logger,
+      'settings.change-ai-gateway-limits-route',
+      context,
+      result.ok ? 'set' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return settingsChangeListBody(result.value);
+  }
+
+  @Put('ai-gateway/emergency-stop')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Switch the AI emergency stop of the Market on or off (admin)',
+    description:
+      'Needs the protected settings.ai-gateway.manage; refused in an acting-as session. A note ' +
+      'is always required. On: every AI capability of the Market is off from the next call, with ' +
+      'no two-step code. Off (AI on again): needs a fresh two-step proof of this admin (`POST ' +
+      'identity/admin/step-up/verify` for settings.ai-gateway-emergency-stop.resume; without it ' +
+      '403 second-factor.required with details.actionKey). Audited and reviewed at high risk ' +
+      'where the area is reviewed; a rejected review never switches it off. A stale version is ' +
+      '409 settings.conflict.',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: ChangeEmergencyStopRequest })
+  @ApiOkResponse({ type: SettingsChangeListBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: STEP_UP_FORBIDDEN })
+  @ApiConflictResponse({ ...ERROR, description: 'settings.conflict' })
+  async putAiGatewayEmergencyStop(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() requestBody: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, requestBody, ['value', 'expectedVersion', 'note']);
+    if (invalid !== null) throw invalid;
+    const { value, expectedVersion, note } = requestBody as Record<string, unknown>;
+    const result = await this.changeAiGatewayStop.execute(context, {
+      value,
+      expectedVersion,
+      note,
+    });
+    logRoute(
+      this.#logger,
+      'settings.change-ai-gateway-emergency-stop-route',
+      context,
+      result.ok ? 'set' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return settingsChangeListBody(result.value);
+  }
 
   @Get('offer-review/emergency-stop')
   @ApiOperation({

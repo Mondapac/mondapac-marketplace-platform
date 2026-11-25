@@ -68,7 +68,7 @@ export class ChangeOfferReviewEmergencyStop extends UseCase<
         ],
         note,
       },
-      SETTINGS_EMERGENCY_STOP_STEP_UP,
+      { action: SETTINGS_EMERGENCY_STOP_STEP_UP },
     );
   }
 }

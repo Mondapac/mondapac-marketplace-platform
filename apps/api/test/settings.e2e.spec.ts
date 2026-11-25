@@ -24,6 +24,9 @@ import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
 import { createTestApp } from './support/test-app';
+import { ViewAiGatewaySettings } from '../src/modules/settings/application/use-cases/view-ai-gateway-settings.use-case';
+import { ChangeAiGatewayLimits } from '../src/modules/settings/application/use-cases/change-ai-gateway-limits.use-case';
+import { ChangeAiGatewayEmergencyStop } from '../src/modules/settings/application/use-cases/change-ai-gateway-emergency-stop.use-case';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
 // The settings routes over HTTP: the real guards and controllers; the use cases are stubs, so this
@@ -114,7 +117,13 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
           .overrideProvider(ViewOfferReviewEmergencyStop)
           .useValue(stub('view-stop'))
           .overrideProvider(ChangeOfferReviewEmergencyStop)
-          .useValue(stub('change-stop')),
+          .useValue(stub('change-stop'))
+          .overrideProvider(ViewAiGatewaySettings)
+          .useValue(stub('view-ai-gateway'))
+          .overrideProvider(ChangeAiGatewayLimits)
+          .useValue(stub('change-ai-limits'))
+          .overrideProvider(ChangeAiGatewayEmergencyStop)
+          .useValue(stub('change-ai-stop')),
     }));
     await app.get(SeedRoles).execute(testCallContext(marketOf(), 'system', 'settings-seed-01'), {});
     const ownerRole = [...fakes.roles.values()].find(
@@ -573,5 +582,54 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
     expect((await call('put', path, 'admin', session, { ...body, note: '' })).status).toBe(400);
     expect(calls.map((c) => c.name)).toEqual(['view-stop', 'change-stop', 'change-stop']);
     expect(calls[1]?.input).toEqual(body);
+  });
+
+  it('reads the AI Gateway settings and saves the caps and the AI stop with closed bodies (G4a)', async () => {
+    await boot();
+    const session = sessionOf('admin', 6);
+    const read = await call('get', '/settings/admin/ai-gateway', 'admin', session);
+    expect(read.status).toBe(200);
+    expect(read.headers['cache-control']).toBe('no-store');
+
+    const limits = '/settings/admin/ai-gateway/limits';
+    const caps = {
+      changes: [{ code: 'ai-cap-market-day', value: '5000000', expectedVersion: 0 }],
+      note: 'Raise for launch',
+    };
+    // The use case decides the step-up (only a raise asks); its refusal maps to 403 with the key.
+    next = err({ code: 'second-factor.required', actionKey: 'settings.ai-gateway-limits.raise' });
+    const noCode = await call('put', limits, 'admin', session, caps);
+    expect(noCode.status).toBe(403);
+    expect(noCode.body).toEqual({
+      statusCode: 403,
+      code: 'second-factor.required',
+      details: { actionKey: 'settings.ai-gateway-limits.raise' },
+    });
+    next = ok([]);
+    expect((await call('put', limits, 'admin', session, caps)).status).toBe(200);
+    next = err({ code: 'settings.conflict' });
+    expect((await call('put', limits, 'admin', session, caps)).status).toBe(409);
+    expect((await call('put', limits, 'admin', session, { ...caps, extra: 1 })).status).toBe(400);
+    expect((await call('put', limits, 'admin', { cookie: session.cookie }, caps)).status).toBe(403);
+
+    const stop = '/settings/admin/ai-gateway/emergency-stop';
+    const body = { value: 'on', expectedVersion: 0, note: 'Leak suspected' };
+    next = ok([]);
+    expect((await call('put', stop, 'admin', session, body)).status).toBe(200);
+    expect((await call('put', stop, 'admin', session, { ...body, code: 'x' })).status).toBe(400);
+    expect((await call('put', stop, 'admin', { cookie: session.cookie }, body)).status).toBe(403);
+    // A seller session never reaches the admin routes.
+    expect(
+      (await call('put', stop, 'seller', sessionOf('seller', 7), body)).status,
+    ).toBeGreaterThanOrEqual(400);
+    expect(calls.map((c) => c.name)).toEqual([
+      'view-ai-gateway',
+      'change-ai-limits',
+      'change-ai-limits',
+      'change-ai-limits',
+      'change-ai-stop',
+    ]);
+    expect(calls[1]?.input).toEqual(caps);
+    expect(calls[4]?.input).toEqual(body);
   });
 });

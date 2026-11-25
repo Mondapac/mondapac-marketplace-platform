@@ -124,6 +124,64 @@ export const OFFER_REVIEW_CODES: readonly string[] = Object.freeze([
   OFFER_REVIEW_BACKLOG_HOURS_CODE,
 ]);
 
+/**
+ * The Market's AI emergency stop (AI Gateway page, docs/design/domain/platform-ai.md section 8):
+ * while `on`, every AI capability of the Market is off. Switching it on never needs the admin's
+ * two-step code; switching it off (AI on again) does. A store that cannot be read is AI off.
+ */
+export const AI_GATEWAY_EMERGENCY_STOP_CODE = 'ai-gateway-emergency-stop';
+export const AI_GATEWAY_EMERGENCY_STOP_VALUES = ['off', 'on'] as const;
+
+/** No cap: the counter is counted and not enforced. */
+export const AI_CAP_NONE = 'none';
+/**
+ * An AI budget cap in US micro-dollars (1 = US$0.000001): a whole number up to 10^12 (US$1
+ * million), the bound the Market configuration's `aiBudget` had before G4. 0 allows nothing.
+ */
+const AI_CAP_VALUE = /^(0|[1-9][0-9]{0,11}|1000000000000)$/;
+
+/** The AI Gateway's caps (the Limits tab, design section 7): the Market's day and month, each
+ * capability's day, each seller's day and the guest pool's day. */
+export const AI_CAP_MARKET_DAY_CODE = 'ai-cap-market-day';
+export const AI_CAP_MARKET_MONTH_CODE = 'ai-cap-market-month';
+export const AI_CAP_CAPABILITY_DAY_CODE = 'ai-cap-capability-day';
+export const AI_CAP_SELLER_DAY_CODE = 'ai-cap-seller-day';
+export const AI_CAP_GUEST_DAY_CODE = 'ai-cap-guest-day';
+
+/** Every AI cap code, as the Limits tab shows and saves them. */
+export const AI_CAP_CODES: readonly string[] = Object.freeze([
+  AI_CAP_MARKET_DAY_CODE,
+  AI_CAP_MARKET_MONTH_CODE,
+  AI_CAP_CAPABILITY_DAY_CODE,
+  AI_CAP_SELLER_DAY_CODE,
+  AI_CAP_GUEST_DAY_CODE,
+]);
+
+/** Every AI Gateway setting code (the AI Gateway page). */
+export const AI_GATEWAY_CODES: readonly string[] = Object.freeze([
+  AI_GATEWAY_EMERGENCY_STOP_CODE,
+  ...AI_CAP_CODES,
+]);
+
+/** A cap's stored value in micro-dollars; null for `none` or anything else. */
+export function capOf(value: string): number | null {
+  return AI_CAP_VALUE.test(value) ? Number(value) : null;
+}
+
+/**
+ * Whether changing an AI Gateway setting from `was` to `next` allows more AI (design section 8): a
+ * cap raised or lifted, or the emergency stop switched off. Such a change needs the admin's fresh
+ * two-step code and is never made by a revert; tightening never needs either. A value the
+ * definition does not allow is taken as the tightest (cap 0, stop on), so leaving it loosens.
+ */
+export function loosensAi(code: string, was: string, next: string): boolean {
+  if (code === AI_GATEWAY_EMERGENCY_STOP_CODE) return was !== 'off' && next === 'off';
+  if (!AI_CAP_CODES.includes(code)) return false;
+  const before = was === AI_CAP_NONE ? Infinity : (capOf(was) ?? 0);
+  const after = next === AI_CAP_NONE ? Infinity : (capOf(next) ?? 0);
+  return after > before;
+}
+
 /** A whole number setting: its value is stored as a decimal text such as "10". */
 export interface IntegerBounds {
   readonly min: number;
@@ -251,6 +309,59 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = Object.freeze([
     integer: { min: 1, max: 720 },
     defaultValue: '24',
     safeValue: '24',
+  },
+  {
+    code: AI_GATEWAY_EMERGENCY_STOP_CODE,
+    label: 'AI emergency stop',
+    values: AI_GATEWAY_EMERGENCY_STOP_VALUES,
+    defaultValue: 'off',
+    // An invalid stored value stops AI (R8); an unreadable store is off at the gateway anyway.
+    safeValue: 'on',
+  },
+  {
+    code: AI_CAP_MARKET_DAY_CODE,
+    label: 'AI cap: Market per day (US micro-dollars)',
+    values: [AI_CAP_NONE],
+    pattern: AI_CAP_VALUE,
+    defaultValue: AI_CAP_NONE,
+    // An invalid stored value is read as 0: nothing allowed (ADR-0019 R8).
+    safeValue: '0',
+  },
+  {
+    code: AI_CAP_MARKET_MONTH_CODE,
+    label: 'AI cap: Market per month (US micro-dollars)',
+    values: [AI_CAP_NONE],
+    pattern: AI_CAP_VALUE,
+    defaultValue: AI_CAP_NONE,
+    // An invalid stored value is read as 0: nothing allowed (ADR-0019 R8).
+    safeValue: '0',
+  },
+  {
+    code: AI_CAP_CAPABILITY_DAY_CODE,
+    label: 'AI cap: each capability per day (US micro-dollars)',
+    values: [AI_CAP_NONE],
+    pattern: AI_CAP_VALUE,
+    defaultValue: AI_CAP_NONE,
+    // An invalid stored value is read as 0: nothing allowed (ADR-0019 R8).
+    safeValue: '0',
+  },
+  {
+    code: AI_CAP_SELLER_DAY_CODE,
+    label: 'AI cap: each seller per day (US micro-dollars)',
+    values: [AI_CAP_NONE],
+    pattern: AI_CAP_VALUE,
+    defaultValue: AI_CAP_NONE,
+    // An invalid stored value is read as 0: nothing allowed (ADR-0019 R8).
+    safeValue: '0',
+  },
+  {
+    code: AI_CAP_GUEST_DAY_CODE,
+    label: 'AI cap: guest share per day (US micro-dollars)',
+    values: [AI_CAP_NONE],
+    pattern: AI_CAP_VALUE,
+    defaultValue: AI_CAP_NONE,
+    // An invalid stored value is read as 0: nothing allowed (ADR-0019 R8).
+    safeValue: '0',
   },
   {
     code: MONTHLY_REVENUE_TARGET_CODE,

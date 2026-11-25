@@ -47,6 +47,10 @@ import {
   TEST_MARKETS,
 } from '../support/test-config';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
+import { ChangeAiGatewayEmergencyStop } from '../../src/modules/settings/application/use-cases/change-ai-gateway-emergency-stop.use-case';
+import { ChangeAiGatewayLimits } from '../../src/modules/settings/application/use-cases/change-ai-gateway-limits.use-case';
+import { SettingsAiGatewayControls } from '../../src/modules/settings/application/ai-gateway-controls-reader';
+import { NO_CAPS } from '../../src/platform/ai/gateway-controls';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
 // The settings store as the application role in both Market fixtures: the tables' own guards (the
@@ -220,6 +224,31 @@ describe.each(TEST_MARKETS)('settings in market %s (database)', (code) => {
       );
       expect(await code_(owner.query('TRUNCATE settings.market_setting_history'))).toBe(RESTRICT);
     });
+
+    it('keeps a history note 1 to 500 trimmed characters, or none (G4a)', async () => {
+      const withNote = (version: number, note: string | null) =>
+        sql.query(
+          `INSERT INTO settings.market_setting_history (market_id, tenant_id, code, version, previous_value, value, changed_at, changed_by_account_id, note) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [
+            market.marketId,
+            'default',
+            'ai-gateway-emergency-stop',
+            version,
+            null,
+            'on',
+            new Date(),
+            ids.next<'Account'>(),
+            note,
+          ],
+        );
+      expect(await code_(withNote(1, ''))).toBe(CHECK);
+      expect(await code_(withNote(1, 'x'.repeat(501)))).toBe(CHECK);
+      expect(await code_(withNote(1, '   '))).toBe(CHECK);
+      expect(await code_(withNote(1, ' Leak suspected'))).toBe(CHECK);
+      expect(await code_(withNote(1, null))).toBe('allowed');
+      expect(await code_(withNote(2, 'x'.repeat(500)))).toBe('allowed');
+      expect(await code_(withNote(3, 'Leak suspected'))).toBe('allowed');
+    });
   });
 
   describe('use cases on the real store', () => {
@@ -247,6 +276,40 @@ describe.each(TEST_MARKETS)('settings in market %s (database)', (code) => {
         previous_value: null,
         value: 'prev-next',
       });
+    });
+
+    it('keeps the AI stop reason on the history row, unreviewed, and the gateway reader sees the stop and caps (G4a)', async () => {
+      const ctx = admin('settings-db-admin-ai');
+      const stopped = await new ChangeAiGatewayEmergencyStop(gate, deps).execute(ctx, {
+        value: 'on',
+        expectedVersion: 0,
+        note: '  Leak suspected  ',
+      });
+      expect(stopped.ok).toBe(true);
+      const capped = await new ChangeAiGatewayLimits(gate, deps).execute(ctx, {
+        changes: [{ code: 'ai-cap-guest-day', value: '250', expectedVersion: 0 }],
+      });
+      expect(capped.ok).toBe(true);
+      const history = await owner.query(
+        `SELECT code, value, note FROM settings.market_setting_history
+          WHERE market_id = $1 AND code IN ('ai-gateway-emergency-stop', 'ai-cap-guest-day')
+          ORDER BY code`,
+        [market.marketId],
+      );
+      expect(history.rows).toEqual([
+        { code: 'ai-cap-guest-day', value: '250', note: null },
+        { code: 'ai-gateway-emergency-stop', value: 'on', note: 'Leak suspected' },
+      ]);
+      const controls = await new SettingsAiGatewayControls(deps).read(seller);
+      expect(controls).toEqual({ stopped: true, caps: { ...NO_CAPS, guestDay: 250 } });
+      expect(
+        await code_(
+          owner.query(
+            `UPDATE settings.market_setting_history SET note = 'Changed' WHERE market_id = $1`,
+            [market.marketId],
+          ),
+        ),
+      ).toBe(RESTRICT);
     });
 
     it('lets only one of two admins who saved from the same version win', async () => {

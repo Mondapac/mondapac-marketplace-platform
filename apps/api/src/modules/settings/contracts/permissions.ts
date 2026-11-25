@@ -98,7 +98,31 @@ export const SETTINGS_OFFER_REVIEW_EMERGENCY_STOP = definePermission('settings',
   protected: true,
 });
 
+/**
+ * See the Market's AI Gateway settings: the emergency stop and the caps (AI Gateway page,
+ * docs/design/domain/platform-ai.md section 8).
+ */
+export const SETTINGS_AI_GATEWAY_VIEW = definePermission('settings', {
+  key: 'settings.ai-gateway.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Change the Market's AI Gateway settings: the caps and the emergency stop. Protected (owner
+ * decision Q4: only a senior admin changes gateway settings): only the Platform Administrator role
+ * holds it unless a senior custom role is given it, with the admin second factor; raising a cap or
+ * switching the stop off also spends a fresh two-step code.
+ */
+export const SETTINGS_AI_GATEWAY_MANAGE = definePermission('settings', {
+  key: 'settings.ai-gateway.manage',
+  scope: 'platform',
+  protected: true,
+});
+
 export const SETTINGS_PERMISSIONS = declarePermissions('settings', [
+  SETTINGS_AI_GATEWAY_MANAGE,
+  SETTINGS_AI_GATEWAY_VIEW,
   SETTINGS_AI_MANAGE,
   SETTINGS_AI_VIEW,
   SETTINGS_CART_MODE_MANAGE,

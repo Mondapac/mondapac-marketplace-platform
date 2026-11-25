@@ -483,20 +483,15 @@ are fixed in the adapter; `environment` picks one. Prices come in the Market's d
 - `timeoutMs`, `maxAttempts`, `backoffMs`, `circuitBreaker.*` (required): as for `realTimeCarrier`.
   A shipment is created once whatever `maxAttempts` says: no idempotency key is documented.
 
-- `aiBudget` (optional section; AI Gateway G2, docs/design/domain/platform-ai.md section 7): the
-  AI budget caps of the Market in US micro-dollars (1 = US$0.000001), each optional:
-  `marketDayMicroUsd`, `marketMonthMicroUsd`, `capabilityDayMicroUsd` (each capability),
-  `sellerDayMicroUsd` (each seller of a seller-scoped capability) and `guestDayMicroUsd` (the
-  guest pool: buyer capabilities called by anonymous visitors). Days and months are the Market's
-  `timezone`. An absent cap is counted but not enforced (AU sets none today); 0 allows nothing.
-  A full cap makes the gateway answer `over-budget` and the host flow completes without AI. Read
-  by `platform/ai` until the gateway settings move to the `settings` module (G4).
+- `aiBudget` was removed in AI Gateway G4: the caps are the `settings` module's AI Gateway settings
+  (`ai-cap-*`, Settings › AI Gateway › Limits; docs/design/domain/platform-ai.md section 7). A
+  Market file that still has the section fails validation.
 
 - `aiRouting` (optional section; AI Gateway G3, docs/design/domain/platform-ai.md section 6,
   ADR-0052 decision 4): `dataResidency` is `in-market-region` (a route is usable only when its
   catalogue row's processing region is in `regions`) or `none` (no condition expressed: AI stays
   off until an ADR records the value). AU is `in-market-region` with Sydney (`ap-southeast-2`) and
   Melbourne (`ap-southeast-4`). `saverModel` (optional) is the model family the gateway tries first
-  once the Market's month spend reaches `saverAtPercent` (default 80) of `aiBudget.
-  marketMonthMicroUsd`; it is used only when cheaper than the model it goes before. Absent section:
+  once the Market's month spend reaches `saverAtPercent` (default 80) of the month cap
+  (`ai-cap-market-month` setting); it is used only when cheaper than the model it goes before. Absent section:
   no route is usable and every AI capability is off. Read by `platform/ai` until G4 and INTL-53.

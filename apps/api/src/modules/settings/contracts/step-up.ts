@@ -5,6 +5,14 @@ export const SETTINGS_EMERGENCY_STOP_STEP_UP = 'settings.offer-review-emergency-
 /** Changing the Offer review policy page (`PUT settings/admin/offer-review`). */
 export const SETTINGS_OFFER_REVIEW_STEP_UP = 'settings.offer-review.change';
 
+/** Raising or lifting an AI cap (`PUT settings/admin/ai-gateway/limits`); lowering needs none. */
+export const SETTINGS_AI_GATEWAY_LIMITS_STEP_UP = 'settings.ai-gateway-limits.raise';
+/**
+ * Switching the Market's AI emergency stop off, AI on again (`PUT
+ * settings/admin/ai-gateway/emergency-stop`); switching it on needs none.
+ */
+export const SETTINGS_AI_GATEWAY_RESUME_STEP_UP = 'settings.ai-gateway-emergency-stop.resume';
+
 /**
  * The step-up actions settings owns (Hassan, PR 2b). Both are admin actions: a platform admin
  * presents a fresh two-step code (`POST identity/admin/step-up/verify`) before the change, and the
@@ -14,4 +22,17 @@ export const SETTINGS_OFFER_REVIEW_STEP_UP = 'settings.offer-review.change';
 export const SETTINGS_STEP_UP_ACTIONS: readonly StepUpActionDeclaration[] = [
   { key: SETTINGS_EMERGENCY_STOP_STEP_UP, defaultRequired: true, locked: true, audience: 'admin' },
   { key: SETTINGS_OFFER_REVIEW_STEP_UP, defaultRequired: true, locked: true, audience: 'admin' },
+  // AI Gateway (design section 8, owner decision): only a change that allows more AI.
+  {
+    key: SETTINGS_AI_GATEWAY_LIMITS_STEP_UP,
+    defaultRequired: true,
+    locked: true,
+    audience: 'admin',
+  },
+  {
+    key: SETTINGS_AI_GATEWAY_RESUME_STEP_UP,
+    defaultRequired: true,
+    locked: true,
+    audience: 'admin',
+  },
 ];

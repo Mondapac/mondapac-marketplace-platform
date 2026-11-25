@@ -3681,9 +3681,22 @@
     }
   },
   {
+    "action": "settings.ai-cap.changed",
+    "targetType": "settings.market-setting",
+    "targetId": "enumOf(ai-cap-market-day|ai-cap-market-month|ai-cap-capability-day|ai-cap-seller-day|ai-cap-guest-day)",
+    "actors": ["authenticated"],
+    "before": {
+      "microUsd": "optional(integer)"
+    },
+    "after": {
+      "microUsd": "optional(integer)",
+      "version": "integer"
+    }
+  },
+  {
     "action": "settings.market-setting.changed",
     "targetType": "settings.market-setting",
-    "targetId": "enumOf(list-paging|cart-mode|ai-description-writer|ai-description-writer-tier|offer-review-mode|offer-review-certificate-badges|offer-review-emergency-stop)",
+    "targetId": "enumOf(list-paging|cart-mode|ai-description-writer|ai-description-writer-tier|offer-review-mode|offer-review-certificate-badges|offer-review-emergency-stop|ai-gateway-emergency-stop)",
     "actors": ["authenticated"],
     "before": {
       "value": "enumOf(pages|prev-next|multi-store|single-store|off|on|fast|balanced|all|risk-based|review|automatic)"

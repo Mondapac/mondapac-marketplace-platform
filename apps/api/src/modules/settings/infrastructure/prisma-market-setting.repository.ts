@@ -85,6 +85,7 @@ export class PrismaMarketSettingRepository implements MarketSettingRepository {
         value: change.value,
         changedAt,
         changedByAccountId: change.changedBy,
+        note: change.note,
       },
     });
     return true;

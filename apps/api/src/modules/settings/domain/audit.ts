@@ -31,6 +31,16 @@ export const SETTING_TARGET_IDS = [
   'offer-review-mode',
   'offer-review-certificate-badges',
   'offer-review-emergency-stop',
+  'ai-gateway-emergency-stop',
+] as const;
+
+/** Every AI cap code (AI Gateway, G4), the target id of its audit row. */
+export const AI_CAP_TARGET_IDS = [
+  'ai-cap-market-day',
+  'ai-cap-market-month',
+  'ai-cap-capability-day',
+  'ai-cap-seller-day',
+  'ai-cap-guest-day',
 ] as const;
 
 /** Every whole number setting code, the target id of its audit row. */
@@ -76,7 +86,21 @@ export const MonthlyRevenueTargetChanged = defineAuditAction({
   after: { target: auditField.optional(auditField.money()), version: auditField.integer() },
 });
 
+/**
+ * An admin changed an AI budget cap of the Market (AI Gateway, design section 11): the cap before
+ * and after in US micro-dollars (absent: no cap) and the new version.
+ */
+export const AiCapChanged = defineAuditAction({
+  action: 'settings.ai-cap.changed',
+  targetType: SETTINGS_TARGET,
+  targetId: auditField.enumOf(AI_CAP_TARGET_IDS),
+  actors: ['authenticated'],
+  before: { microUsd: auditField.optional(auditField.integer()) },
+  after: { microUsd: auditField.optional(auditField.integer()), version: auditField.integer() },
+});
+
 export const SETTINGS_AUDIT_ACTIONS = [
+  AiCapChanged,
   MarketSettingChanged,
   MarketNumberSettingChanged,
   MonthlyRevenueTargetChanged,

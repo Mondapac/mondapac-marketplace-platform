@@ -3,6 +3,8 @@ import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import type { AuditEntry } from '@mondapac/shared-kernel';
 import {
+  AiCapChanged,
+  type AI_CAP_TARGET_IDS,
   MarketNumberSettingChanged,
   MarketSettingChanged,
   MonthlyRevenueTargetChanged,
@@ -11,7 +13,11 @@ import {
 } from '../domain/audit';
 import {
   acceptedValue,
+  AI_CAP_CODES,
+  AI_GATEWAY_CODES,
+  capOf,
   findDefinition,
+  loosensAi,
   MONTHLY_REVENUE_TARGET_CODE,
   SETTING_DEFINITIONS,
   targetOf,
@@ -44,6 +50,7 @@ const AI_CODES: ReadonlySet<string> = new Set([
  */
 const HIGH_RISK_CODES: ReadonlySet<string> = new Set([
   ...AI_CODES,
+  ...AI_GATEWAY_CODES,
   ...OFFER_REVIEW_CODES,
   OFFER_REVIEW_EMERGENCY_STOP_CODE,
 ]);
@@ -72,6 +79,17 @@ function changeEntry(
       after: { target: targetOf(next), version },
     });
   }
+  if (AI_CAP_CODES.includes(definition.code)) {
+    // A stored value outside the definition is enforced as the safe value (0): audit that, and log
+    // it, so a change away from it reads as the loosening it is (Hassan, PR 1362 finding 2).
+    const inForce = acceptedValue(definition, was);
+    if (inForce === null)
+      logger.error({ msg: 'settings.stored-value-invalid', code: definition.code });
+    return AiCapChanged.entry(definition.code as (typeof AI_CAP_TARGET_IDS)[number], {
+      before: { microUsd: capOf(inForce ?? definition.safeValue) },
+      after: { microUsd: capOf(next), version },
+    });
+  }
   if (definition.integer !== undefined) {
     // A stored value outside the definition (a row changed by hand) is audited as the default it
     // stands for, and logged, so the page can still be saved over it.
@@ -91,6 +109,12 @@ function changeEntry(
     before: { value: was as ChoiceValue },
     after: { value: next as ChoiceValue, version },
   });
+}
+
+/** A note as the history keeps it: trimmed, 1 to 500 characters, else none. */
+function noteOf(note: unknown): string | null {
+  const text = typeof note === 'string' ? note.trim() : '';
+  return text.length === 0 || text.length > 500 ? null : text;
 }
 
 export interface FieldIssue {
@@ -314,6 +338,7 @@ async function applyChecked(
     version,
     changedAt: now,
     changedBy: adminId,
+    note: noteOf(note),
   });
   if (!applied) return err({ code: 'settings.conflict' });
   await deps.audit.record(context, changeEntry(definition, was, next, version));
@@ -370,8 +395,11 @@ export async function changeSettings(
   /** The settings the caller's manage key covers; any other code is a validation failure. */
   allowedCodes: readonly string[],
   input: { readonly changes?: unknown; readonly note?: unknown },
-  /** The admin step-up action whose fresh proof the change spends in its unit, if any. */
-  stepUpAction?: string,
+  /**
+   * The admin step-up action whose fresh proof the change spends in its unit, if any; with `when`,
+   * only when one of the changes meets it (the value in force and the value asked for).
+   */
+  stepUp?: StepUpRule,
 ): Promise<Result<readonly SettingChangeView[], SettingsFailure>> {
   const adminId = adminAccountId(context);
   if (adminId === null) return err({ code: 'access.denied' });
@@ -406,13 +434,18 @@ export async function changeSettings(
     context.market,
     async () => {
       // Every version first, so a stale one saves nothing (the unit also rolls back on an error).
-      for (const { definition, seen } of checkedChanges) {
+      let stepUpNeeded = stepUp !== undefined && stepUp.when === undefined;
+      for (const { definition, seen, next } of checkedChanges) {
         const row = await deps.settings.find(context.market, definition.code);
         if ((row?.version ?? 0) !== seen) return err({ code: 'settings.conflict' as const });
+        const was = row?.value ?? definition.defaultValue;
+        if (stepUp?.when?.(definition.code, was, next) === true) {
+          stepUpNeeded = true;
+        }
       }
       // The proof is spent only for a change that would be saved; a refusal commits nothing.
-      if (stepUpAction !== undefined) {
-        const spent = await deps.stepUp.consume(context, stepUpAction);
+      if (stepUp !== undefined && stepUpNeeded) {
+        const spent = await deps.stepUp.consume(context, stepUp.action);
         if (!spent.ok) return err(stepUpFailure(spent.error));
       }
       const views: SettingChangeView[] = [];
@@ -432,6 +465,16 @@ export async function changeSettings(
       return ok(views);
     },
   );
+}
+
+/** The admin step-up a change spends; with `when`, only for the changes it holds for. */
+export interface StepUpRule {
+  readonly action: string;
+  /**
+   * Whether changing `code` from the stored value (`was`) to `next` needs the proof (for example
+   * raising an AI cap, never lowering one). Absent: every change needs it.
+   */
+  readonly when?: (code: string, was: string, next: string) => boolean;
 }
 
 /** identity's refusal of the step-up, as a settings change answers it; anything else stays closed. */
@@ -469,6 +512,9 @@ export async function revertSetting(
   const current = row?.value ?? definition.defaultValue;
   if (current !== request.after.value) return 'changed-since';
   if (definition.code === AI_DESCRIPTION_WRITER_CODE && restore === 'on') return 'not-permitted';
+  // A revert never allows more AI (a cap raised or lifted, the stop switched off): that needs the
+  // AI Gateway key and a fresh two-step code (design section 8); tightening goes ahead.
+  if (loosensAi(definition.code, current, restore)) return 'not-permitted';
   // A reviewer without the stop's own key never switches the emergency stop off (Hassan, PR 2b);
   // restoring it on after a rejected "off" is the safe side and goes ahead.
   if (definition.code === OFFER_REVIEW_EMERGENCY_STOP_CODE && restore === 'off') {
@@ -483,6 +529,7 @@ export async function revertSetting(
     version,
     changedAt: now,
     changedBy: adminId,
+    note: null,
   });
   if (!applied) return 'changed-since';
   await deps.audit.record(context, changeEntry(definition, current, restore, version));
