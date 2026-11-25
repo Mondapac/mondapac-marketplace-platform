@@ -21,7 +21,13 @@ const ID = '0190a000-0000-7000-8000-0000000000a1';
 const offer = (over: Partial<OfferView> = {}): OfferView => ({
   offerId: ID,
   productId: ID,
-  product: { productCode: 'P00000001', typeCode: 'grocery', name: 'Olive oil 1L' },
+  product: {
+    productCode: 'P00000001',
+    typeCode: 'grocery',
+    name: 'Olive oil 1L',
+    scope: 'PLATFORM',
+    primaryImageId: null,
+  },
   sellerSku: 'OIL-1L',
   conditionCode: 'new',
   description: { 'en-AU': 'Cold pressed.' },

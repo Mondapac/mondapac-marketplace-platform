@@ -5,7 +5,13 @@ import type { Temporal } from '@mondapac/shared-kernel';
  * kind is a migration. Sorted, which is also the order in which a unit takes them, so two units
  * never wait on each other in a cycle.
  */
-export const WRITE_RATE_COUNTER_KINDS = ['write.account.day', 'write.account.minute'] as const;
+export const WRITE_RATE_COUNTER_KINDS = [
+  'typical.account.day',
+  'typical.account.minute',
+  'typical.seller.day',
+  'write.account.day',
+  'write.account.minute',
+] as const;
 export type WriteRateCounterKind = (typeof WRITE_RATE_COUNTER_KINDS)[number];
 
 /** One limit: at most `limit` attempts per fixed window that starts at the first one. */
@@ -27,6 +33,26 @@ const DAY = 24 * 60;
 export const PRICE_WRITE_LIMITS: readonly WriteRateLimit[] = Object.freeze([
   { kind: 'write.account.day', limit: 1000, windowMinutes: DAY },
   { kind: 'write.account.minute', limit: 60, windowMinutes: 1 },
+]);
+
+/**
+ * Reads of the typical price range per seller account (offer page PR 9, Hassan): 20 per minute and
+ * 200 per 24 hours. The page asks once per Offer view, so a normal session stays far below; a loop
+ * that probes the range of many Variants does not. Counted for every attempt with a valid input,
+ * before the Offer lookup, in kinds apart from the writes so a read never costs a write.
+ */
+export const TYPICAL_PRICE_LIMITS: readonly WriteRateLimit[] = Object.freeze([
+  { kind: 'typical.account.day', limit: 200, windowMinutes: DAY },
+  { kind: 'typical.account.minute', limit: 20, windowMinutes: 1 },
+]);
+
+/**
+ * The same reads per SELLER, over all its accounts (Hassan, PR 1343 finding 2): inviting staff
+ * accounts must not multiply the allowance. The counter row is keyed by the seller id in the
+ * `actor_account_id` column (a plain uuid, no foreign key, C4); the kinds never meet an account id.
+ */
+export const TYPICAL_PRICE_SELLER_LIMITS: readonly WriteRateLimit[] = Object.freeze([
+  { kind: 'typical.seller.day', limit: 400, windowMinutes: DAY },
 ]);
 
 /** A counter as the reservation unit left it: this attempt is already counted. */

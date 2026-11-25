@@ -1,6 +1,6 @@
 'use client';
 
-import { Button } from '@mondapac/ui';
+import { Button, ListThumb } from '@mondapac/ui';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
@@ -17,6 +17,7 @@ import {
   type PlatformProduct,
   type PlatformSearchAnswer,
 } from './add-offer-dialog.tsx';
+import { productThumbSrc } from './product-thumb.ts';
 import type { ProductOptions } from './types.ts';
 
 /** The rows the panel shows; "See all" opens the full search for the rest. */
@@ -40,10 +41,13 @@ type Row = { readonly state: 'saving' } | { readonly state: 'refused'; readonly 
  */
 export function OnThePlatform({
   text,
+  marketId,
   csrfToken,
 }: {
   /** The Products list's search, as in the address (trimmed, not empty). */
   readonly text: string;
+  /** The panel's Market: the thumbnails are served by its public image route. */
+  readonly marketId: string;
   readonly csrfToken: string;
 }) {
   const t = useTranslations('catalog.onThePlatform');
@@ -157,26 +161,29 @@ export function OnThePlatform({
               key={product.productId}
               className="flex items-center gap-x-4 px-4 py-3 md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
             >
-              <div className="min-w-0 flex-1">
-                <p className="font-medium text-fg">
-                  {name} <span className="font-normal text-fg-muted">{product.productCode}</span>
-                </p>
-                {/* On a phone one line under the name; from md up the brand and category are columns. */}
-                <p className="text-sm text-fg-muted md:hidden">
-                  {[product.brandName, product.categoryName, sizes]
-                    .filter((part): part is string => part !== null)
-                    .join(' · ')}
-                </p>
-                <p className="hidden text-sm text-fg-muted md:block">{sizes}</p>
-                {refused === null ? null : (
-                  <p
-                    id={`${errorId}-${product.productId}`}
-                    role="alert"
-                    className="mt-1 text-sm text-critical-fg"
-                  >
-                    {t('refused', { reason: reason(refused) })}
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <ListThumb src={productThumbSrc(marketId, { ...product, scope: 'PLATFORM' })} />
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-fg">
+                    {name} <span className="font-normal text-fg-muted">{product.productCode}</span>
                   </p>
-                )}
+                  {/* On a phone one line under the name; from md up the brand and category are columns. */}
+                  <p className="text-sm text-fg-muted md:hidden">
+                    {[product.brandName, product.categoryName, sizes]
+                      .filter((part): part is string => part !== null)
+                      .join(' · ')}
+                  </p>
+                  <p className="hidden text-sm text-fg-muted md:block">{sizes}</p>
+                  {refused === null ? null : (
+                    <p
+                      id={`${errorId}-${product.productId}`}
+                      role="alert"
+                      className="mt-1 text-sm text-critical-fg"
+                    >
+                      {t('refused', { reason: reason(refused) })}
+                    </p>
+                  )}
+                </div>
               </div>
               <p className="hidden truncate text-sm text-fg md:block">{product.brandName ?? ''}</p>
               <p className="hidden truncate text-sm text-fg md:block">

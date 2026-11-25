@@ -29,7 +29,13 @@ const row = (
 ): OfferListRow => ({
   offerId: ID1,
   productId: '0190a000-0000-7000-8000-0000000000b1',
-  product: { productCode: 'P00000001', typeCode: 'grocery', name: 'Aged Basmati Rice' },
+  product: {
+    productCode: 'P00000001',
+    typeCode: 'grocery',
+    name: 'Aged Basmati Rice',
+    scope: 'PLATFORM',
+    primaryImageId: null,
+  },
   sellerSku: 'RICE-5KG',
   conditionCode: 'new',
   description: {},
@@ -129,6 +135,56 @@ describe('seller offers list', () => {
     expect(within(rows[2]!).getByText('Yes')).toBeTruthy();
     // The server's page is the first answer: the list asks for nothing more.
     expect(call.mock.calls.filter(([, path]) => !path.startsWith(SAVED_PATH))).toHaveLength(0);
+  });
+
+  it('shows each product thumbnail from the route of its scope, and a package tile without one', () => {
+    const IMAGE = '0190a000-0000-7000-8000-0000000000d1';
+    const PLATFORM_PRODUCT = '0190a000-0000-7000-8000-0000000000b2';
+    const SELLER_PRODUCT = '0190a000-0000-7000-8000-0000000000b3';
+    const { container } = mount(
+      pageOf([
+        row(),
+        row({
+          offerId: 'y',
+          productId: PLATFORM_PRODUCT,
+          product: {
+            productCode: 'P00000002',
+            typeCode: 'grocery',
+            name: 'Medjool dates',
+            scope: 'PLATFORM',
+            primaryImageId: IMAGE,
+          },
+        }),
+        row({
+          offerId: 'z',
+          productId: SELLER_PRODUCT,
+          product: {
+            productCode: 'P00000003',
+            typeCode: 'grocery',
+            name: 'Home spice mix',
+            scope: 'SELLER',
+            primaryImageId: IMAGE,
+          },
+        }),
+      ]),
+    );
+    const sources = [...container.querySelectorAll('tbody img')].map((img) =>
+      img.getAttribute('src'),
+    );
+    expect(sources).toEqual([
+      `/api/catalog/public-images/AU/${PLATFORM_PRODUCT}/${IMAGE}/thumb`,
+      `/api/catalog/seller/products/${SELLER_PRODUCT}/images/${IMAGE}/thumb`,
+    ]);
+    // Decorative: the name beside it says what it is.
+    for (const img of container.querySelectorAll('tbody img')) {
+      expect(img.getAttribute('alt')).toBe('');
+    }
+    // The code under the name, as in Products.
+    expect(within(screen.getAllByRole('row')[2]!).getByText('P00000002')).toBeTruthy();
+    // The first row has no photo: the package tile, not an image.
+    const rows = screen.getAllByRole('row');
+    expect(rows[1]!.querySelector('img')).toBeNull();
+    expect(rows[1]!.querySelector('svg')).not.toBeNull();
   });
 
   it('says so when the seller has no offer at all', () => {

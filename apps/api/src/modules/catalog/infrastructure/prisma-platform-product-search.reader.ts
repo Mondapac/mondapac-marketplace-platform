@@ -196,6 +196,12 @@ export class PrismaPlatformProductSearchReader implements PlatformProductSearchR
               select: { categoryId: true, isPrimary: true },
             },
             variants: { select: { variantId: true } },
+            images: {
+              where: { image: { state: 'clean' } },
+              orderBy: { position: 'asc' },
+              take: 1,
+              select: { imageId: true },
+            },
           },
         },
       },
@@ -255,6 +261,8 @@ export class PrismaPlatformProductSearchReader implements PlatformProductSearchR
           categoryName: categoryId === null ? null : (categoryName.get(categoryId) ?? null),
           variantCount: row.publishedRevision?.variants.length ?? 0,
           alreadySelling: sellingSet.has(row.id),
+          primaryImageId: (row.publishedRevision?.images[0]?.imageId ??
+            null) as Id<'ProductImage'> | null,
         },
       ];
     });

@@ -21,6 +21,7 @@ const product = (over: Partial<PlatformProduct> = {}): PlatformProduct => ({
   categoryName: null,
   variantCount: 1,
   alreadySelling: false,
+  primaryImageId: null,
   ...over,
 });
 const ok = <T,>(body: T) => Promise.resolve({ ok: true as const, status: 200, body });
