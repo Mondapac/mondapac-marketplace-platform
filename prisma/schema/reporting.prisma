@@ -271,6 +271,30 @@ model ReportingDailyLedger {
   @@schema("reporting")
 }
 
+/// A seller's own sales goal for one calendar month of the Market's zone (dashboards v2, phase 2):
+/// sales with GST, the basis of the seller KPI sales, in the Market's currency. Set by the seller
+/// (`reporting.set-seller-monthly-goal`, the session's own seller only), never by reporting's
+/// facts; one row per seller and month, changed in place with a version (a stale edit is refused).
+/// Not derived data: the history backfill never writes it. No row: no goal for that month.
+model ReportingSellerMonthlyGoal {
+  marketId           String   @map("market_id") @db.VarChar(8)
+  tenantId           String   @map("tenant_id")
+  sellerId           String   @map("seller_id") @db.Uuid
+  /// The first day of the goal's calendar month of the Market's zone.
+  month              DateTime @db.Date
+  currency           String   @db.Char(3)
+  /// Minor units, above zero.
+  amount             BigInt
+  /// 1 when first set, +1 for each change.
+  version            Int
+  /// Who set it is in the audit row only: reporting stores no account id.
+  updatedAt          DateTime @map("updated_at") @db.Timestamptz(6)
+
+  @@id([marketId, sellerId, month])
+  @@map("seller_monthly_goals")
+  @@schema("reporting")
+}
+
 /// The shopping funnel of one Market day (dashboards v2, phase 2): four counts of distinct signed-in
 /// customers with personalization on, each within the step before (viewed a product, added to the
 /// cart, placed an order, paid), written once by the hourly snapshot job, at least 2 h after the

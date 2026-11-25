@@ -56,4 +56,28 @@ export const SellerDailyExported = defineAuditAction({
   after: RANGE,
 });
 
-export const REPORTING_AUDIT_ACTIONS = [MarketplaceDailyExported, SellerDailyExported] as const;
+/** The audit target type of a seller's monthly goal; the target id is the seller. */
+export const SELLER_GOAL_TARGET = 'reporting.seller-goal';
+
+/**
+ * A seller's team member set the shop's goal for a month (never in Login as Seller): the
+ * month (the instant its first day starts in the Market's zone), the goal before (null: none) and
+ * after, and the new version.
+ */
+export const SellerMonthlyGoalChanged = defineAuditAction({
+  action: 'reporting.seller-goal.changed',
+  targetType: SELLER_GOAL_TARGET,
+  actors: ['authenticated'],
+  before: { goal: auditField.optional(auditField.money()) },
+  after: {
+    monthStart: auditField.instant(),
+    goal: auditField.money(),
+    version: auditField.integer(),
+  },
+});
+
+export const REPORTING_AUDIT_ACTIONS = [
+  MarketplaceDailyExported,
+  SellerDailyExported,
+  SellerMonthlyGoalChanged,
+] as const;

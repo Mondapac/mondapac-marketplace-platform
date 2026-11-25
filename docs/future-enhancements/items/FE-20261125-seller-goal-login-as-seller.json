@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-seller-goal-login-as-seller",
+  "area": "seller",
+  "title": "Seller goal edits in Login as Seller",
+  "desc": "SetSellerMonthlyGoal refuses an acting-as (Login as Seller) session, fail closed. Allow an admin to set a seller's goal there once SEL-08 fills actingAs with the admin account id, and record that admin on the goal row and audit row.",
+  "src": "Dashboards v2 phase 2, monthly targets PR (Hassan L1)",
+  "date": "2026-11-25",
+  "trig": "SEL-08 Login as Seller ships with actingAs.adminAccountId filled",
+  "prio": "پایین",
+  "status": "موکول"
+}

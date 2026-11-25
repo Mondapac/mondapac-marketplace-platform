@@ -407,6 +407,49 @@ export class OrdersByStateSectionBody {
   @ApiProperty({ required: false, type: OrdersByStateKpiBody }) kpis?: OrdersByStateKpiBody;
 }
 
+export class MarketTargetForecastBody {
+  @ApiProperty({
+    enum: ['estimate', 'not-enough-data'],
+    description:
+      '`estimate`: GMV to date ÷ time elapsed × length of the month; label it an estimate. ' +
+      '`not-enough-data`: fewer than `minimumDays` whole days of the month behind today.',
+  })
+  status!: string;
+  @ApiProperty({ required: false, type: String, description: 'Only with `estimate`.' })
+  amount?: string;
+  @ApiProperty({ required: false, type: Number }) daysElapsed?: number;
+  @ApiProperty({ required: false, type: Number }) minimumDays?: number;
+}
+
+export class MarketTargetKpiBody {
+  @ApiProperty({ example: '2026-11', description: "The calendar month of the Market's zone." })
+  month!: string;
+  @ApiProperty({ example: '2026-10' }) lastMonth!: string;
+  @ApiProperty() timezone!: string;
+  @ApiProperty({ description: 'ISO 4217; every amount is in it.' }) currency!: string;
+  @ApiProperty() daysInMonth!: number;
+  @ApiProperty() dayOfMonth!: number;
+  @ApiProperty({ description: 'Days still to sell in, today included.' }) daysLeft!: number;
+  @ApiProperty({ description: 'GMV with GST of the 1st through now (the KPI GMV), minor units.' })
+  monthToDate!: string;
+  @ApiProperty({ description: 'GMV with GST of the whole month before.' }) lastMonthTotal!: string;
+  @ApiProperty({ type: MarketTargetForecastBody }) forecast!: MarketTargetForecastBody;
+  @ApiProperty({ nullable: true, type: String, description: 'Null while no target is set.' })
+  target!: string | null;
+  @ApiProperty({ nullable: true, type: Number, description: 'GMV to date ÷ target, bp.' })
+  progressBp!: number | null;
+  @ApiProperty({ nullable: true, type: Number, description: 'Forecast ÷ target, bp.' })
+  paceBp!: number | null;
+  @ApiProperty({ nullable: true, type: String }) toGo!: string | null;
+  @ApiProperty({ nullable: true, type: String }) perDayToGo!: string | null;
+  @ApiProperty({ nullable: true, type: String, format: 'date-time' }) refreshedAt!: string | null;
+}
+
+export class MarketTargetSectionBody {
+  @ApiProperty({ enum: ['ok', 'error'] }) status!: string;
+  @ApiProperty({ required: false, type: MarketTargetKpiBody }) kpis?: MarketTargetKpiBody;
+}
+
 export class FunnelStepBody {
   @ApiProperty({
     type: Number,
@@ -680,6 +723,14 @@ export class AdminKpisBody {
   })
   ordersByState!: OrdersByStateSectionBody | null;
   @ApiProperty({
+    type: MarketTargetSectionBody,
+    nullable: true,
+    description:
+      'The current month against the monthly revenue target, whatever the period. Null without ' +
+      '`commission-payouts.settlement.view` and `settings.monthly-revenue-target.view`.',
+  })
+  marketTarget!: MarketTargetSectionBody | null;
+  @ApiProperty({
     type: ShoppingFunnelSectionBody,
     nullable: true,
     description: 'Null without `ordering.order.view`: leave the card out.',
@@ -864,6 +915,46 @@ function ordersByStateSection(
   };
 }
 
+const minorText = (value: bigint | null): string | null =>
+  value === null ? null : value.toString();
+
+function marketTargetSection(
+  section: AdminKpisAnswer['marketTarget'],
+): MarketTargetSectionBody | null {
+  if (section === null) return null;
+  if (section.status === 'error') return { status: 'error' };
+  const { figures, timezone, currency, refreshedAt } = section.value;
+  const { forecast } = figures;
+  return {
+    status: 'ok',
+    kpis: {
+      month: figures.month,
+      lastMonth: figures.lastMonth,
+      timezone,
+      currency,
+      daysInMonth: figures.daysInMonth,
+      dayOfMonth: figures.dayOfMonth,
+      daysLeft: figures.daysLeft,
+      monthToDate: figures.monthToDate.toString(),
+      lastMonthTotal: figures.lastMonthTotal.toString(),
+      forecast:
+        forecast.status === 'estimate'
+          ? { status: forecast.status, amount: forecast.amount.toString() }
+          : {
+              status: forecast.status,
+              daysElapsed: forecast.daysElapsed,
+              minimumDays: forecast.minimumDays,
+            },
+      target: minorText(figures.target),
+      progressBp: figures.progressBp,
+      paceBp: figures.paceBp,
+      toGo: minorText(figures.toGo),
+      perDayToGo: minorText(figures.perDayToGo),
+      refreshedAt: refreshedAt === null ? null : refreshedAt.toString(),
+    },
+  };
+}
+
 function shoppingFunnelSection(
   section: AdminKpisAnswer['shoppingFunnel'],
 ): ShoppingFunnelSectionBody | null {
@@ -995,6 +1086,7 @@ export function adminKpisBody(answer: AdminKpisAnswer): AdminKpisBody {
     finance: financeSection(answer.finance),
     ordersByStatus: ordersByStatusSection(answer.ordersByStatus),
     ordersByState: ordersByStateSection(answer.ordersByState),
+    marketTarget: marketTargetSection(answer.marketTarget),
     shoppingFunnel: shoppingFunnelSection(answer.shoppingFunnel),
     abandonedCarts: abandonedCartsSection(answer.abandonedCarts),
     topSellers: topSellersSection(answer.topSellers),

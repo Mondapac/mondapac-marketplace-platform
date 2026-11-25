@@ -98,7 +98,11 @@ export class AdminDashboardController {
       '`not-enough-data` below 5 carts; key `ordering.order.view`), `finance` (GMV with and without GST, refunded goods, net sales, ' +
       'average order, and `net`: Mondapac net revenue and take rate, null until a week of ' +
       'matching ledger, a partial total never carries an amount; key ' +
-      '`commission-payouts.settlement.view`), and `health` (live listings and out of stock, ' +
+      '`commission-payouts.settlement.view`), `marketTarget` (the current calendar month, ' +
+      'whatever the period: GMV with GST to date, the whole month before, the month-end ' +
+      'forecast, an estimate, `not-enough-data` on the first three days, and the pace against ' +
+      'the monthly revenue target; keys `commission-payouts.settlement.view` and ' +
+      '`settings.monthly-revenue-target.view`), and `health` (live listings and out of stock, ' +
       'certificates expiring in 30 Market days, payout holds, dispute rate; each under its ' +
       "owner's key). A section the admin holds no key for is null. One that fails or takes over " +
       '1.5 s is `status: error` and the others still answer. Days are ' +

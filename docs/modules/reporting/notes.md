@@ -45,6 +45,11 @@ day then conflict with a 40001 the platform retries, instead of one missing the 
 Seller days are rebuilt in a fixed order (day, then seller). Growth and retention:
 `docs/design/data/reporting.md`.
 
+Not everything here is rebuildable any more (Mojtaba M1, dashboards v2 phase 2):
+`seller_monthly_goals` holds the sellers' own goals, authored data no backfill can bring back. Any
+future reset or rebuild runbook of reporting must leave that table out, and it stays in backup and
+point-in-time recovery scope like every module's own data.
+
 Early warning (Mojtaba, 24 Nov 2026): units of DIFFERENT sellers and days can also meet. When the
 reporting db-specs shared one database and ran in parallel, their SERIALIZABLE units failed with
 40001 at random (3 of 3 local runs of the five reporting files): on near-empty tables the predicate

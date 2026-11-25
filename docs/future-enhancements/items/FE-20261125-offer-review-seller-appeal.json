@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-offer-review-seller-appeal",
+  "area": "seller",
+  "title": "اعتراض فروشنده به تصمیم بازبینی Offer",
+  "desc": "فروشنده‌ای که با «Changes needed» یا بیرون رفتن Offer از فروش موافق نیست، یک بار با توضیح اعتراض کند و ادمین دیگری (نه تصمیم‌گیرندهٔ اول) آن را ببیند؛ نتیجه در Audit.",
+  "src": "design/catalog/offer-approval/offer-approval-design-fa.html (تصمیم john ۲۵ نوامبر)",
+  "date": "2026-11-25",
+  "trig": "بعد از ساخت تأیید Offer بر اساس ریسک و چند هفته داده",
+  "prio": "متوسط",
+  "status": "موکول"
+}

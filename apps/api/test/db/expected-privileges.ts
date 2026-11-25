@@ -959,6 +959,11 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // Dashboards v2, phase 1, PR 4: ledger facts are insert-only; the rollup is delete and insert.
     'reporting.ledger_entries': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'reporting.daily_ledger': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    // Dashboards v2, phase 2: a seller's own monthly goal, changed in place, never deleted.
+    'reporting.seller_monthly_goals': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['amount', 'currency', 'updated_at', 'version'],
+    },
     // Dashboards v2, phase 2: the shopping funnel of a Market day is written once by the nightly
     // snapshot and never changed (a customer's later opt-out never needs to touch it).
     'reporting.daily_engagement': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
