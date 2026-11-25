@@ -86,6 +86,11 @@ describe('assessBacklog', () => {
     expect(assessBacklog({ count: 51, oldestAt: old }, LIMITS, now, SYDNEY).reason).toBe('both');
   });
 
+  it('judges a queue with no oldest time by its size alone', () => {
+    expect(assessBacklog({ count: 51, oldestAt: null }, LIMITS, now, SYDNEY).reason).toBe('size');
+    expect(assessBacklog({ count: 5, oldestAt: null }, LIMITS, now, SYDNEY).reason).toBeNull();
+  });
+
   it('does not count a weekend as waiting time', () => {
     // Submitted Friday 2026-11-27 17:00 Sydney, checked Monday 2026-11-30 09:00: 7 h + 9 h = 16 h.
     expect(

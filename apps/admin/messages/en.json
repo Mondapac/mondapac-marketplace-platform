@@ -9314,7 +9314,7 @@
       "seller-refund-limit-reached": "{limit, select, count {A seller reached the <strong>refund count limit</strong>} amount {A seller reached the <strong>refund amount limit</strong>} unset {A seller tried to refund with <strong>no refund limit set</strong>} other {A seller reached a <strong>refund limit</strong>}}",
       "system-request-overdue": "<strong>SR-{number}</strong> has waited {ageDays, plural, one {# day} other {# days}} for review",
       "assistant-spend-cap-reached": "{cap, select, daily {The shopping assistant reached its <strong>daily spend cap</strong> and is switched off until tomorrow} monthly {The shopping assistant reached its <strong>monthly spend cap</strong> and is switched off until next month} other {The shopping assistant reached a <strong>spend cap</strong> and is switched off}}",
-      "offer-queue-backlog": "{reason, select, age {The <strong>Offer review queue</strong> is behind: the oldest Offer has waited {hours, plural, one {# business hour} other {# business hours}}} size {The <strong>Offer review queue</strong> is behind: {count, plural, one {# Offer is} other {# Offers are}} waiting} both {The <strong>Offer review queue</strong> is behind: {count, plural, one {# Offer is} other {# Offers are}} waiting and the oldest has waited {hours, plural, one {# business hour} other {# business hours}}} other {The <strong>Offer review queue</strong> is behind}}"
+      "offer-queue-backlog": "{reason, select, age {The <strong>Offer review queue</strong> is behind: the oldest Offer has waited {hours, plural, one {# business hour} other {# business hours}}} size {The <strong>Offer review queue</strong> is behind: {count, plural, one {# Offer is} other {# Offers are}} waiting} both {The <strong>Offer review queue</strong> is behind: {count, plural, one {# Offer is} other {# Offers are}} waiting, the oldest for {hours, plural, one {# business hour} other {# business hours}}} other {The <strong>Offer review queue</strong> is behind. Open the queue to check}}"
     },
     "category": {
       "certificates": "Certificates",
@@ -18257,7 +18257,7 @@
       "sampling": "Checks after going live",
       "backlog": "Queue alert"
     },
-    "backlog-intro": "When the Offer review queue falls behind, the admins who review Offers get a notification once for each time it happens. It is sent again only after the queue has been back within both limits.",
+    "backlog-intro": "Admins who review Offers are notified when the queue falls behind. You get one notice each time. A new one is sent only after the queue has been back within both of the numbers below.",
     "offer-review-mode": {
       "label": "Review mode",
       "help": "Risk-based: offers that pass the automatic checks go live at once; only risky ones wait for an admin. Every offer: all new offers wait for an admin. No review: offers go live without an admin. Every offer applies if this setting can't be read.",
@@ -18288,12 +18288,12 @@
       "help": "A first price more than this percent above or below the reference waits in the price queue. From {min} to {max}."
     },
     "offer-review-backlog-count": {
-      "label": "Offers waiting that raise an alert",
+      "label": "Offers waiting before an alert",
       "help": "An alert is raised when more Offers than this wait for review. From {min} to {max}."
     },
     "offer-review-backlog-hours": {
-      "label": "Business hours before an alert",
-      "help": "An alert is raised when the oldest Offer has waited more than this many business hours (Monday to Friday, Market time). From {min} to {max}."
+      "label": "Oldest Offer wait before an alert (business hours)",
+      "help": "An alert is raised when the oldest Offer has waited more than this many hours. Business hours are Monday to Friday, Market time. From {min} to {max}."
     },
     "offer-review-sampling": {
       "label": "Offers checked after going live (%)",

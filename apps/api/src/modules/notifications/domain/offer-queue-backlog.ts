@@ -17,7 +17,10 @@ export interface OfferQueueState {
   readonly oldestAt: Temporal.Instant | null;
 }
 
-/** The most day segments one wait is walked through (a wait longer than this is long past any limit). */
+/**
+ * The most day segments one wait is walked through. A wait longer than this is far past any limit
+ * (the hours setting is at most 720 = 30 days); raise this with that bound.
+ */
 const MAX_SEGMENTS = 800;
 
 /**
@@ -65,6 +68,7 @@ export function assessBacklog(
   now: Temporal.Instant,
   zone: string,
 ): BacklogAssessment {
+  // A queue with Offers but no oldest time (the owner keeps none) is judged on its size alone.
   const waited =
     queue.count === 0 || queue.oldestAt === null
       ? 0

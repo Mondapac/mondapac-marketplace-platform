@@ -30,10 +30,10 @@ export interface SettingsFacade {
   cartMode(context: CallContext): Promise<CartMode>;
 
   /**
-   * The limits of the Offer review queue backlog alert, for the system actor of a worker job. Never
-   * an error: a store that cannot be read answers the definitions' safe values.
+   * The limits of the Offer review queue backlog alert, for the system actor of a worker job. Null
+   * when the store cannot be read or a refusal or throw happens: the alert then acts on no guess.
    */
-  offerQueueBacklogLimits(context: CallContext): Promise<OfferQueueBacklogLimits>;
+  offerQueueBacklogLimits(context: CallContext): Promise<OfferQueueBacklogLimits | null>;
 }
 
 export const SETTINGS_FACADE = Symbol('SETTINGS_FACADE');

@@ -1,4 +1,4 @@
-import type { MarketContext, Temporal } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { OfferQueueBacklogRepository } from '../application/ports/offer-queue-backlog.repository';
 import type { OfferQueueBacklogReason } from '../domain/offer-queue-backlog';
@@ -15,6 +15,7 @@ export class PrismaOfferQueueBacklogRepository implements OfferQueueBacklogRepos
 
   async raise(
     market: MarketContext,
+    id: Id<'OfferQueueBacklogAlert'>,
     at: Temporal.Instant,
     reason: OfferQueueBacklogReason,
     queueSize: number,
@@ -23,6 +24,7 @@ export class PrismaOfferQueueBacklogRepository implements OfferQueueBacklogRepos
       data: [
         {
           marketId: market.marketId,
+          id,
           tenantId: market.tenantId,
           raisedAt: date(at),
           reason,

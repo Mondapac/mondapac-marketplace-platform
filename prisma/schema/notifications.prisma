@@ -112,6 +112,8 @@ model NotificationsCartReminder {
 /// index and the grants are hand-written in the migration.
 model NotificationsOfferQueueBacklogAlert {
   marketId  String    @map("market_id") @db.VarChar(8)
+  /// A UUIDv7.
+  id        String    @db.Uuid
   tenantId  String    @map("tenant_id")
   raisedAt  DateTime  @map("raised_at") @db.Timestamptz(6)
   /// `age`, `size` or `both` (CHECK).
@@ -121,7 +123,7 @@ model NotificationsOfferQueueBacklogAlert {
   /// Null while open.
   clearedAt DateTime? @map("cleared_at") @db.Timestamptz(6)
 
-  @@id([marketId, raisedAt])
+  @@id([marketId, id])
   @@map("offer_queue_backlog_alerts")
   @@schema("notifications")
 }

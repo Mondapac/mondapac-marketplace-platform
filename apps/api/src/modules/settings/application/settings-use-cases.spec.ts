@@ -823,8 +823,17 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       ]) {
         expect((await saveOfferReview({ changes: [bad] })).ok).toBe(false);
       }
-      // An admin is not the system actor: the use case refuses it and the facade answers launch limits.
-      expect(await facade.offerQueueBacklogLimits(adminCtx())).toEqual({ count: 50, hours: 24 });
+      // An admin is not the system actor: the use case refuses it and the facade answers nothing.
+      expect(await facade.offerQueueBacklogLimits(adminCtx())).toBeNull();
+      // An unreadable store answers nothing (the alert acts on no guess), not the safe values.
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      try {
+        store.failReads = true;
+        expect(await facade.offerQueueBacklogLimits(system)).toBeNull();
+        store.failReads = false;
+      } finally {
+        warn.mockRestore();
+      }
     });
 
     it('answers each safe value when the store cannot be read or holds a value out of bounds', async () => {

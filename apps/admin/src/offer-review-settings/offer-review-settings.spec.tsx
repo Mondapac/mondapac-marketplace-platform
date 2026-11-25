@@ -94,9 +94,9 @@ describe('OfferReviewPanel', () => {
       body: { settings: [{ ...row('offer-review-backlog-hours', '48', 1), request: null }] },
     });
     mount();
-    expect(field('Offers waiting that raise an alert').value).toBe('50');
-    expect(field('Business hours before an alert').value).toBe('24');
-    type('Business hours before an alert', '48');
+    expect(field('Offers waiting before an alert').value).toBe('50');
+    expect(field('Oldest Offer wait before an alert (business hours)').value).toBe('24');
+    type('Oldest Offer wait before an alert (business hours)', '48');
     save();
     await expectToast('Saved.', 'success');
     expect(call.mock.calls[0]?.[2]).toEqual({
@@ -106,7 +106,7 @@ describe('OfferReviewPanel', () => {
 
   it('keeps a queue alert limit outside its bounds on the page', async () => {
     mount();
-    type('Offers waiting that raise an alert', '0');
+    type('Offers waiting before an alert', '0');
     save();
     expect(await screen.findAllByText('Enter a whole number from 1 to 10000.')).not.toHaveLength(0);
     expect(call).not.toHaveBeenCalled();

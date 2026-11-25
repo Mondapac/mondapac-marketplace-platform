@@ -38,8 +38,8 @@ export class SettingsFacadeImplementation implements SettingsFacade {
       const answer = await this.readBacklogLimits.execute(context, {});
       if (answer.ok) return answer.value;
     } catch {
-      // The launch limits below.
+      // Null below.
     }
-    return { count: 50, hours: 24 };
+    return null;
   }
 }

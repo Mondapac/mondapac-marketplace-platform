@@ -74,6 +74,8 @@ export class RaiseOfferQueueBacklogAlert extends UseCase<
       return err({ code: 'backlog.unavailable' });
     }
     const limits = await deps.settings.offerQueueBacklogLimits(context);
+    // Without the Market's own limits nothing is raised or cleared (no guess, no duplicate alert).
+    if (limits === null) return err({ code: 'backlog.unavailable' });
     const assessment = assessBacklog(
       queue.value,
       limits,
@@ -91,7 +93,13 @@ export class RaiseOfferQueueBacklogAlert extends UseCase<
             rearmed: await deps.backlog.clear(market, now),
           });
         }
-        const raised = await deps.backlog.raise(market, now, assessment.reason, queue.value.count);
+        const raised = await deps.backlog.raise(
+          market,
+          deps.ids.next<'OfferQueueBacklogAlert'>(),
+          now,
+          assessment.reason,
+          queue.value.count,
+        );
         if (!raised) return ok({ code: 'backlog.already-alerted' as const });
         await deps.notices.add(market, [
           {

@@ -194,7 +194,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = Object.freeze([
     values: [],
     integer: { min: 1, max: 10000 },
     defaultValue: '50',
-    // An unreadable store raises no alert of its own: the job skips the run (never this value).
+    // Not used for the alert: its strict read answers nothing for an unreadable store.
     safeValue: '50',
   },
   {

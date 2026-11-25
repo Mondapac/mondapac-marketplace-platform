@@ -1,4 +1,4 @@
-import type { MarketContext, Temporal } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { OfferQueueBacklogReason } from '../../domain/offer-queue-backlog';
 
 /**
@@ -13,6 +13,7 @@ export interface OfferQueueBacklogRepository {
    */
   raise(
     market: MarketContext,
+    id: Id<'OfferQueueBacklogAlert'>,
     at: Temporal.Instant,
     reason: OfferQueueBacklogReason,
     queueSize: number,

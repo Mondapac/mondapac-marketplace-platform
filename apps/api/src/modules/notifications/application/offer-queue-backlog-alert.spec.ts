@@ -52,6 +52,7 @@ class MemoryBacklog implements OfferQueueBacklogRepository {
   cleared = 0;
   raise(
     market: MarketContext,
+    _id: unknown,
     at: Temporal.Instant,
     reason: OfferQueueBacklogReason,
     size: number,
@@ -83,7 +84,7 @@ describe.each([['AU'], ['ZZ']] as const)('Offer queue backlog alert in market %s
     OfferReviewQueueSnapshot,
     { code: 'access.unavailable' | 'access.denied' }
   >;
-  let limits: OfferQueueBacklogLimits;
+  let limits: OfferQueueBacklogLimits | null;
   let nextId: number;
 
   const build = () =>
@@ -223,6 +224,17 @@ describe.each([['AU'], ['ZZ']] as const)('Offer queue backlog alert in market %s
     queue = () => ok({ count: 90, oldestAt: hoursAgo(40) });
     await build().execute(system, {});
     queue = () => err({ code: 'access.unavailable' });
+    expect(await build().execute(system, {})).toEqual(err({ code: 'backlog.unavailable' }));
+    expect(backlog.open.has(market.marketId)).toBe(true);
+    expect(notices.rows).toHaveLength(1);
+  });
+
+  it('raises and clears nothing when the Market limits cannot be read', async () => {
+    queue = () => ok({ count: 90, oldestAt: hoursAgo(40) });
+    await build().execute(system, {});
+    limits = null;
+    // A queue that would be within the (unknown) limits must not close the open alert.
+    queue = () => ok({ count: 1, oldestAt: hoursAgo(1) });
     expect(await build().execute(system, {})).toEqual(err({ code: 'backlog.unavailable' }));
     expect(backlog.open.has(market.marketId)).toBe(true);
     expect(notices.rows).toHaveLength(1);
