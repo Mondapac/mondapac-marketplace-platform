@@ -66,6 +66,9 @@ const COMMERCE = new RegExp(
   'iu',
 );
 
+// The gateway's mask (platform/ai, "[masked]"), after inert rendering took the brackets away.
+const MASKED_WORD = /\bmasked\b/iu;
+
 // Inert rendering (R9): no markup, links, images, addresses or invisible characters survive.
 const MARKDOWN_IMAGE = /!\[[^\]]*\]\([^)]*\)/g;
 const MARKDOWN_LINK = /\[([^\]]*)\]\([^)]*\)/g;
@@ -131,6 +134,9 @@ export function sentenceVerdict(sentence: string, facts: string): LeftOutReason 
   // (also the assistant's reply guard); text it cannot read is dropped, as a claim is.
   if (hasClaimWord(sentence) || hasLookAlikeScripts(sentence)) return 'certification';
   const plain = foldForClaims(sentence);
+  // The gateway masks personal data in the request as "[masked]"; a sentence that echoes the mark
+  // (its brackets are already gone here) is never useful and goes whole.
+  if (MASKED_WORD.test(plain)) return 'other';
   if (HEALTH.test(plain)) return 'other';
   if (COMMERCE.test(plain) || COMMERCE.test(sentence)) return 'other';
   if (!numbersAreGiven(plain, facts)) return 'other';

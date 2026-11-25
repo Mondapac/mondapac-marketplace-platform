@@ -1,5 +1,10 @@
 import type { CapabilitySpec } from '../../../platform/ai/capability';
-import { MAX_MODEL_ROUNDS, MAX_OUTPUT_TOKENS, MODEL_TIMEOUT_MS } from '../domain/conversation';
+import {
+  MAX_INPUT_TOKENS,
+  MAX_MODEL_ROUNDS,
+  MAX_OUTPUT_TOKENS,
+  MODEL_TIMEOUT_MS,
+} from '../domain/conversation';
 import { PROMPT_VERSION } from '../domain/instructions';
 
 /**
@@ -15,7 +20,7 @@ export const ASSISTANT_AI_CAPABILITIES: readonly CapabilitySpec[] = [
     audience: 'buyer',
     task: 'chat',
     sellerScoped: false,
-    maxInputTokens: 60_000,
+    maxInputTokens: MAX_INPUT_TOKENS,
     maxOutputTokens: MAX_OUTPUT_TOKENS,
     maxToolRounds: MAX_MODEL_ROUNDS,
     timeoutMs: MODEL_TIMEOUT_MS,

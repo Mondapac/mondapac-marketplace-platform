@@ -124,7 +124,11 @@ export class AiGateway {
     @Inject(SELLER_AI_SWITCH) private readonly sellerSwitch: SellerAiSwitch,
   ) {}
 
-  /** Whether the capability may be offered to this caller now; reads nothing but switches. */
+  /**
+   * Whether the capability may be offered to this caller now; reads nothing but switches. Safe
+   * inside a UnitOfWork until G2 (it opens no transaction and calls no model); from G2 it reads the
+   * budget, and is then called outside one like `run`.
+   */
   async status(
     capability: string,
     context: CallContext,
@@ -152,6 +156,22 @@ export class AiGateway {
     } catch {
       return { ok: false, reason: 'off', costMicroUsd: 0 };
     }
+    try {
+      return await this.#call(capability, spec, context, request, options);
+    } catch {
+      // Never throws: an unexpected error after the evaluation is an unavailable model.
+      this.#logger.warn({ msg: 'ai.run.failed', capability, failure: 'error' });
+      return { ok: false, reason: 'unavailable', costMicroUsd: 0 };
+    }
+  }
+
+  async #call(
+    capability: string,
+    spec: CapabilitySpec,
+    context: CallContext,
+    request: ModelRequest,
+    options: GatewayOptions,
+  ): Promise<GatewayRun> {
     const { marketId } = context.market;
     const sent = maskRequest({
       ...request,

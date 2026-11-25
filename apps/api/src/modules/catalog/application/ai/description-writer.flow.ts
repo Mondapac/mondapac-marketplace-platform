@@ -9,7 +9,9 @@ import {
   type DraftSentence,
 } from '../../domain/description-writer/draft-guard';
 import {
+  WRITER_MAX_OUTPUT_TOKENS,
   WRITER_PROMPT_VERSION,
+  WRITER_TIMEOUT_MS,
   writerFacts,
   writerInput,
   writerInstructions,
@@ -36,10 +38,6 @@ import type {
 import type { RateCounterKeys } from '../ports/rate-counter-keys';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
 
-/** A provider that has not answered by then is cut (the modal shows "We couldn't write a draft."). */
-export const WRITER_TIMEOUT_MS = 25_000;
-/** Enough for about 150 words and a margin; the guard cuts the kept text at its own bound. */
-export const WRITER_MAX_OUTPUT_TOKENS = 700;
 
 export interface DescriptionWriterDependencies {
   readonly unitOfWork: UnitOfWork;

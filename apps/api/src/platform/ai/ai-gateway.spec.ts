@@ -176,6 +176,20 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
         sellerId: SELLER,
       }),
     ).toEqual({ on: false, reason: 'off' });
+    expect(
+      await gatewayOf().run('alpha.seller-writer', actingAs as never, REQUEST, {
+        tier: 'fast',
+        sellerId: SELLER,
+      }),
+    ).toEqual({ ok: false, reason: 'off', costMicroUsd: 0 });
+    expect(provider.requests).toHaveLength(0);
+  });
+
+  it('turns an unexpected error after the evaluation into unavailable (never throws)', async () => {
+    jest.spyOn(ModelGateway.prototype, 'complete').mockRejectedValue(new Error('bug'));
+    expect(
+      await gatewayOf().run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
+    ).toEqual({ ok: false, reason: 'unavailable', costMicroUsd: 0 });
   });
 
   it("is off when the seller's switch is off or cannot answer (an error is off)", async () => {
@@ -232,6 +246,10 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
     });
     expect(run).toMatchObject({ ok: false, reason: 'timeout' });
     expect(run.costMicroUsd).toBeGreaterThan(500 * 5);
+    // One log line per failed call, with the capability (the model layer logs none).
+    expect(jest.mocked(Logger.prototype.warn).mock.calls).toEqual([
+      [{ msg: 'ai.run.failed', capability: 'alpha.admin-writer', marketId: 'AU', failure: 'timeout' }],
+    ]);
   });
 
   it('turns a provider failure into unavailable at no cost', async () => {

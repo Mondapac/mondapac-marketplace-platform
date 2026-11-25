@@ -1,18 +1,23 @@
 import type { CapabilitySpec } from '../../../platform/ai/capability';
-import { WRITER_PROMPT_VERSION } from '../domain/description-writer/writer-prompt';
+import {
+  WRITER_MAX_INPUT_TOKENS,
+  WRITER_MAX_OUTPUT_TOKENS,
+  WRITER_PROMPT_VERSION,
+  WRITER_TIMEOUT_MS,
+} from '../domain/description-writer/writer-prompt';
 
 /**
  * catalog's AI capabilities (docs/design/domain/platform-ai.md section 4), registered with the
  * gateway at boot. The description writer (AIS-03) is two capabilities, one per audience: a seller
  * writes for their own product under their own switch (SEL-25), an admin writes platform content.
- * One call, no tools (R4, R9); the caps match the writer's own limits.
+ * One call, no tools (R4, R9); the caps are the writer's own limits.
  */
 const WRITER = {
   task: 'write',
-  maxInputTokens: 8_000,
-  maxOutputTokens: 700,
+  maxInputTokens: WRITER_MAX_INPUT_TOKENS,
+  maxOutputTokens: WRITER_MAX_OUTPUT_TOKENS,
   maxToolRounds: 0,
-  timeoutMs: 25_000,
+  timeoutMs: WRITER_TIMEOUT_MS,
   promptVersion: WRITER_PROMPT_VERSION,
 } as const;
 

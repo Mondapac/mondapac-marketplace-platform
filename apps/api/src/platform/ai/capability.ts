@@ -20,10 +20,14 @@ export interface CapabilitySpec {
   readonly task: CapabilityTask;
   /** Seller-scoped: a call names a seller and the seller's own switch (SEL-25) is evaluated. */
   readonly sellerScoped: boolean;
+  /** Enforced from G2 (counted before the call); declared and validated now. */
   readonly maxInputTokens: number;
   /** A request asking for more output is cut to this. */
   readonly maxOutputTokens: number;
-  /** Model rounds one user turn may take; each round is one `run` (0: no tools). */
+  /**
+   * Model rounds one user turn may take; each round is one `run` (0: no tools). Enforced from G2
+   * (the gateway counts rounds per turn); until then the owning module keeps its own cap.
+   */
   readonly maxToolRounds: number;
   /** The longest one `run` may take; a caller may only shorten it. */
   readonly timeoutMs: number;
