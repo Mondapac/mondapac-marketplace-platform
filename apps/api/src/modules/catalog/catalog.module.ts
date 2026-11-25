@@ -223,6 +223,7 @@ import { OFFER_PRIMARY_CATEGORIES_READER } from './application/ports/offer-prima
 import { PENDING_PRODUCT_REVISIONS_READER } from './application/ports/pending-product-revisions.reader';
 import { OfferTaxCategoriesQuery } from './application/use-cases/offer-tax-categories.use-case';
 import { OfferPrimaryCategoriesQuery } from './application/use-cases/offer-primary-categories.use-case';
+import { ReadOfferReviewQueue } from './application/use-cases/read-offer-review-queue.use-case';
 import { PendingProductRevisionsQuery } from './application/use-cases/pending-product-revisions.use-case';
 import { PRODUCT_LINKING_READER } from './application/ports/product-linking.reader';
 import { ProductsForLinkingQuery } from './application/use-cases/products-for-linking.use-case';
@@ -1138,6 +1139,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       CountPendingRevisions,
       CountBrandMerges,
       CountCategoryProposals,
+      ReadOfferReviewQueue,
     ].map((type) => ({
       provide: type,
       inject: [USE_CASE_GATE, UNIT_OF_WORK, CATALOG_WORK_QUEUE_COUNT_READER],
@@ -1155,6 +1157,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
         CountPendingRevisions,
         CountBrandMerges,
         CountCategoryProposals,
+        ReadOfferReviewQueue,
       ],
       useFactory: (
         claimsWithoutCertificate: CountClaimsWithoutCertificate,
@@ -1162,6 +1165,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
         pendingRevisions: CountPendingRevisions,
         brandMerges: CountBrandMerges,
         categoryProposals: CountCategoryProposals,
+        offerReviewQueue: ReadOfferReviewQueue,
       ) =>
         new CatalogWorkQueueFacadeImplementation(
           claimsWithoutCertificate,
@@ -1169,6 +1173,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
           pendingRevisions,
           brandMerges,
           categoryProposals,
+          offerReviewQueue,
         ),
     },
     PersistenceModule.outboxWriterFor('catalog'),

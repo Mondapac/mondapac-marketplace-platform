@@ -11,6 +11,8 @@ export {
   CART_MODE_VALUES,
   LIST_PAGING_CODE,
   LIST_PAGING_VALUES,
+  OFFER_REVIEW_BACKLOG_COUNT_CODE,
+  OFFER_REVIEW_BACKLOG_HOURS_CODE,
   OFFER_REVIEW_BADGES_CODE,
   OFFER_REVIEW_BADGES_VALUES,
   OFFER_REVIEW_CODES,
@@ -27,7 +29,11 @@ export {
   type ListPaging,
   type SettingDefinition,
 } from '../domain/definitions';
-export { SETTINGS_FACADE, type SettingsFacade } from './settings.facade';
+export {
+  SETTINGS_FACADE,
+  type OfferQueueBacklogLimits,
+  type SettingsFacade,
+} from './settings.facade';
 export {
   SETTINGS_AI_MANAGE,
   SETTINGS_AI_VIEW,

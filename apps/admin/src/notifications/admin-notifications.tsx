@@ -17,6 +17,7 @@ import {
   ASSISTANT_SPEND_CAP_REACHED,
   CERTIFICATE_SUBMITTED,
   DELIVERY_FALLBACK_OVER_CAP,
+  OFFER_QUEUE_BACKLOG,
   PLATFORM_IMPORT_FINISHED,
   PRICE_HOLD_OPENED,
   PRODUCT_REVISION_SUBMITTED,
@@ -47,6 +48,7 @@ const LOOK: Readonly<
   [REVIEW_REPORTED]: { icon: 'star', tone: 'attention', category: 'reviews' },
   [SELLER_REFUND_LIMIT_REACHED]: { icon: 'wallet', tone: 'attention', category: 'refunds' },
   [ASSISTANT_SPEND_CAP_REACHED]: { icon: 'wallet', tone: 'attention', category: 'assistant' },
+  [OFFER_QUEUE_BACKLOG]: { icon: 'alert-circle', tone: 'attention', category: 'offer-queue' },
 };
 const OVERDUE_LOOK = {
   icon: 'alert-circle',
@@ -67,6 +69,7 @@ function hrefOf(notice: AdminNotice): string | null {
     return `/sellers/${notice.params.sellerId}`;
   }
   if (notice.kind === PRICE_HOLD_OPENED) return '/price-holds';
+  if (notice.kind === OFFER_QUEUE_BACKLOG) return '/review?type=offer';
   if (notice.kind === REVIEW_HELD || notice.kind === REVIEW_REPORTED) return '/reviews';
   if (
     notice.kind === SELLER_REFUND_LIMIT_REACHED &&
@@ -163,6 +166,13 @@ export function AdminNotifications({ csrfToken }: { readonly csrfToken: string }
         return t.rich('kind.assistant-spend-cap-reached', {
           strong,
           cap: notice.params.cap ?? 'other',
+        });
+      case OFFER_QUEUE_BACKLOG:
+        return t.rich('kind.offer-queue-backlog', {
+          strong,
+          reason: notice.params.reason ?? 'other',
+          count: notice.params.count ?? 0,
+          hours: notice.params.hours ?? 0,
         });
       default:
         if (SYSTEM_REQUEST_OVERDUE_KINDS.has(notice.kind)) {

@@ -3450,7 +3450,7 @@
   {
     "action": "settings.market-setting.number-changed",
     "targetType": "settings.market-setting",
-    "targetId": "enumOf(offer-review-probation-offers|offer-review-reference-sellers|offer-review-price-band|offer-review-sampling)",
+    "targetId": "enumOf(offer-review-probation-offers|offer-review-reference-sellers|offer-review-price-band|offer-review-sampling|offer-review-backlog-count|offer-review-backlog-hours)",
     "actors": ["authenticated"],
     "before": {
       "value": "integer"

@@ -1,5 +1,6 @@
 import { parseId } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
+import { OFFER_QUEUE_BACKLOG_REASONS } from './offer-queue-backlog';
 
 // In-app notices (in-app notifications package 1). A notice says what happened, as a kind and a
 // few ids or counts; the panel renders the text in its own language and builds the link to the
@@ -243,6 +244,14 @@ export const ADMIN_SYSTEM_REQUEST_OVERDUE_KINDS = {
 export type AdminSystemRequestOverdueKind =
   (typeof ADMIN_SYSTEM_REQUEST_OVERDUE_KINDS)[SystemRequestArea];
 
+/**
+ * The Offer review queue is past a limit (risk-based Offer approval, slice 8): the oldest Offer has
+ * waited more than the set business hours, or more Offers wait than the set size. One notice for
+ * each crossing of a limit. The notice holds the reason, the queue size and the oldest wait in
+ * business hours only: no Offer, product or seller.
+ */
+export const ADMIN_OFFER_QUEUE_BACKLOG = 'admin.offer-queue-backlog';
+
 export const PLATFORM_IMPORT_OUTCOMES = ['completed', 'stopped'] as const;
 export const CERTIFICATE_SUBMISSIONS = ['initial', 'resubmission', 'renewal'] as const;
 export const SELLER_FILE_KINDS = ['onboarding', 'identity-change'] as const;
@@ -293,6 +302,7 @@ export type AdminNoticeKind =
   | typeof ADMIN_REVIEW_HELD
   | typeof ADMIN_REVIEW_REPORTED
   | typeof ADMIN_ASSISTANT_SPEND_CAP_REACHED
+  | typeof ADMIN_OFFER_QUEUE_BACKLOG
   | AdminSystemRequestOverdueKind;
 export const ADMIN_NOTICE_KINDS: readonly AdminNoticeKind[] = [
   ADMIN_SELLER_CERTIFICATE_SUBMITTED,
@@ -306,6 +316,7 @@ export const ADMIN_NOTICE_KINDS: readonly AdminNoticeKind[] = [
   ADMIN_REVIEW_HELD,
   ADMIN_REVIEW_REPORTED,
   ADMIN_ASSISTANT_SPEND_CAP_REACHED,
+  ADMIN_OFFER_QUEUE_BACKLOG,
   ...SYSTEM_REQUEST_AREAS.map((area) => ADMIN_SYSTEM_REQUEST_OVERDUE_KINDS[area]),
 ];
 
@@ -414,6 +425,11 @@ const PARAM_SHAPES: Readonly<
   },
   [ADMIN_SELLER_REFUND_LIMIT_REACHED]: { ids: ['sellerId'], enums: { limit: REFUND_LIMIT_KINDS } },
   [ADMIN_ASSISTANT_SPEND_CAP_REACHED]: { ids: [], enums: { cap: ASSISTANT_SPEND_CAPS } },
+  [ADMIN_OFFER_QUEUE_BACKLOG]: {
+    ids: [],
+    enums: { reason: OFFER_QUEUE_BACKLOG_REASONS },
+    counts: ['count', 'hours'],
+  },
 };
 
 /**

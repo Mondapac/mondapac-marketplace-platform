@@ -80,3 +80,13 @@ store of ADR-0026).
   factor). Reviewed at high risk where area `marketplace` is reviewed. A stored value outside the
   definition is read as the safe value and logged (every setting, not only these).
 - Nothing reads them yet: catalog's referral policy (next slice) reads them through the facade.
+
+## Offer review queue alert limits (risk-based Offer approval, slice 8)
+
+- Two more whole-number settings on the same page (Settings › Catalogue › Offer review, section
+  "Queue alert"): `offer-review-backlog-count` (50, 1 to 10000) and `offer-review-backlog-hours`
+  (24, 1 to 720, business hours). Both are strict ("more than"). Safe value on an unreadable store:
+  the launch value (the alert job skips a run it cannot read the queue for, so a safe value never
+  raises an alert of its own).
+- `SettingsFacade.offerQueueBacklogLimits(context)` hands both to notifications' worker job; rule
+  `system` (use case `settings.read-offer-queue-backlog-limits`).

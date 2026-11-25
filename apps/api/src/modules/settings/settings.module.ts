@@ -13,6 +13,7 @@ import { createSystemChangeRegistrar, SYSTEM_REQUEST_RECORDER } from '../system-
 import { ChangeAiSetting } from './application/use-cases/change-ai-setting.use-case';
 import { ReadAiDescriptionWriter } from './application/use-cases/read-ai-description-writer.use-case';
 import { ReadCartMode } from './application/use-cases/read-cart-mode.use-case';
+import { ReadOfferQueueBacklogLimits } from './application/use-cases/read-offer-queue-backlog-limits.use-case';
 import { ViewAiSettings } from './application/use-cases/view-ai-settings.use-case';
 import { ChangeOfferReviewSettings } from './application/use-cases/change-offer-review-settings.use-case';
 import { ViewOfferReviewSettings } from './application/use-cases/view-offer-review-settings.use-case';
@@ -85,6 +86,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ChangeOfferReviewSettings,
       ReadAiDescriptionWriter,
       ReadCartMode,
+      ReadOfferQueueBacklogLimits,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
       provide: SETTINGS_REVERTER,
@@ -94,9 +96,12 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     SETTINGS_SYSTEM_CHANGES.reverter(SETTING_SUBJECT_KIND, SETTINGS_REVIEW_AREA, SETTINGS_REVERTER),
     {
       provide: SETTINGS_FACADE,
-      inject: [ReadAiDescriptionWriter, ReadCartMode],
-      useFactory: (read: ReadAiDescriptionWriter, cartMode: ReadCartMode) =>
-        new SettingsFacadeImplementation(read, cartMode),
+      inject: [ReadAiDescriptionWriter, ReadCartMode, ReadOfferQueueBacklogLimits],
+      useFactory: (
+        read: ReadAiDescriptionWriter,
+        cartMode: ReadCartMode,
+        backlogLimits: ReadOfferQueueBacklogLimits,
+      ) => new SettingsFacadeImplementation(read, cartMode, backlogLimits),
     },
   ],
   exports: [SETTINGS_FACADE],

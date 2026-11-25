@@ -41,6 +41,8 @@ const defaults = (reviewed = false): OfferReviewAnswer => ({
     row('offer-review-price-band', '50', 0, reviewed),
     row('offer-review-sampling', '5', 0, reviewed),
     row('offer-review-certificate-badges', 'review', 0, reviewed),
+    row('offer-review-backlog-count', '50', 0, reviewed),
+    row('offer-review-backlog-hours', '24', 0, reviewed),
   ],
 });
 const mount = (initial = defaults(), canManage = true) =>
@@ -83,6 +85,31 @@ describe('OfferReviewPanel', () => {
     expect(field('Price band around the reference (%)').value).toBe('50');
     expect(screen.getByText('Not changed yet. The launch values are in force.')).toBeTruthy();
     expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+  });
+
+  it('shows the queue alert limits and saves a changed one with its version', async () => {
+    call.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: { settings: [{ ...row('offer-review-backlog-hours', '48', 1), request: null }] },
+    });
+    mount();
+    expect(field('Offers waiting that raise an alert').value).toBe('50');
+    expect(field('Business hours before an alert').value).toBe('24');
+    type('Business hours before an alert', '48');
+    save();
+    await expectToast('Saved.', 'success');
+    expect(call.mock.calls[0]?.[2]).toEqual({
+      changes: [{ code: 'offer-review-backlog-hours', value: '48', expectedVersion: 0 }],
+    });
+  });
+
+  it('keeps a queue alert limit outside its bounds on the page', async () => {
+    mount();
+    type('Offers waiting that raise an alert', '0');
+    save();
+    expect(await screen.findAllByText('Enter a whole number from 1 to 10000.')).not.toHaveLength(0);
+    expect(call).not.toHaveBeenCalled();
   });
 
   it('is read-only without the manage key', () => {

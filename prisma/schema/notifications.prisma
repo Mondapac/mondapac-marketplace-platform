@@ -104,3 +104,24 @@ model NotificationsCartReminder {
   @@map("cart_reminders")
   @@schema("notifications")
 }
+
+/// One crossing of a limit of the Offer review queue (risk-based Offer approval, slice 8): the
+/// alert raised when the queue passed its size or age limit, open until the queue was back within
+/// both. A partial unique index (hand-written in the migration) lets one open alert exist per
+/// Market, so overlapping job runs raise it once. Holds no Offer, seller or person. The CHECKs, the
+/// index and the grants are hand-written in the migration.
+model NotificationsOfferQueueBacklogAlert {
+  marketId  String    @map("market_id") @db.VarChar(8)
+  tenantId  String    @map("tenant_id")
+  raisedAt  DateTime  @map("raised_at") @db.Timestamptz(6)
+  /// `age`, `size` or `both` (CHECK).
+  reason    String
+  /// Offers waiting when it was raised.
+  queueSize Int       @map("queue_size")
+  /// Null while open.
+  clearedAt DateTime? @map("cleared_at") @db.Timestamptz(6)
+
+  @@id([marketId, raisedAt])
+  @@map("offer_queue_backlog_alerts")
+  @@schema("notifications")
+}

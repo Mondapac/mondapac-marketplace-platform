@@ -1,6 +1,7 @@
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { ReadAiDescriptionWriter } from '../application/use-cases/read-ai-description-writer.use-case';
 import type { ReadCartMode } from '../application/use-cases/read-cart-mode.use-case';
+import type { ReadOfferQueueBacklogLimits } from '../application/use-cases/read-offer-queue-backlog-limits.use-case';
 import type { SettingsFacade } from '../contracts/settings.facade';
 
 /** {@link SettingsFacade} on the settings use cases; a refusal or a throw is off (or
@@ -9,6 +10,7 @@ export class SettingsFacadeImplementation implements SettingsFacade {
   constructor(
     private readonly readAiDescriptionWriter: ReadAiDescriptionWriter,
     private readonly readCartMode: ReadCartMode,
+    private readonly readBacklogLimits: ReadOfferQueueBacklogLimits,
   ) {}
 
   async aiDescriptionWriter(context: CallContext) {
@@ -29,5 +31,15 @@ export class SettingsFacadeImplementation implements SettingsFacade {
       // The safe value below.
     }
     return 'multi-store' as const;
+  }
+
+  async offerQueueBacklogLimits(context: CallContext) {
+    try {
+      const answer = await this.readBacklogLimits.execute(context, {});
+      if (answer.ok) return answer.value;
+    } catch {
+      // The launch limits below.
+    }
+    return { count: 50, hours: 24 };
   }
 }

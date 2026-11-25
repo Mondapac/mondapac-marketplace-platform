@@ -82,6 +82,8 @@ export class SettingChangeEntry {
       'offer-review-price-band',
       'offer-review-sampling',
       'offer-review-certificate-badges',
+      'offer-review-backlog-count',
+      'offer-review-backlog-hours',
     ],
   })
   code!: string;
@@ -89,7 +91,7 @@ export class SettingChangeEntry {
     description:
       'A choice (mode: all, risk-based or off; badges: review or automatic) or a whole number ' +
       'as decimal text within the setting bounds (probation 0-100, reference sellers 2-20, ' +
-      'price band 5-200, sampling 0-100).',
+      'price band 5-200, sampling 0-100, queue alert size 1-10000, queue alert hours 1-720).',
   })
   value!: string;
   @ApiProperty({ description: 'The version the admin saw; a stale edit is refused (409).' })

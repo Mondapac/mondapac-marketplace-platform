@@ -15,7 +15,8 @@ import { PersistenceModule } from '../../platform/persistence/persistence.module
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../platform/unit-of-work/unit-of-work';
 import { CART_REMINDER_FACADE, CartModule } from '../cart';
-import { CATALOG_FACADE, CatalogModule } from '../catalog';
+import { CATALOG_FACADE, CATALOG_WORK_QUEUE_FACADE, CatalogModule } from '../catalog';
+import { SETTINGS_FACADE, SettingsModule } from '../settings';
 import { changeTrailProvider, IDENTITY_FACADE, IdentityModule } from '../identity';
 import { CHANGE_TRAIL } from '../../platform/audit/change-trail';
 import { LEGAL_FACADE, LegalModule } from '../legal';
@@ -29,6 +30,7 @@ import {
   type CartReminderRepository,
 } from './application/ports/cart-reminder.repository';
 import { IN_APP_NOTICE_REPOSITORY } from './application/ports/in-app-notice.repository';
+import { OFFER_QUEUE_BACKLOG_REPOSITORY } from './application/ports/offer-queue-backlog.repository';
 import { NOTIFICATIONS_POLICY } from './application/ports/notifications-policy';
 import { SUPPORT_CONTACT_REPOSITORY } from './application/ports/support-contact.repository';
 import { UNSUBSCRIBE_TOKENS } from './application/ports/unsubscribe-tokens';
@@ -36,6 +38,10 @@ import { CountOwnUnreadNotices } from './application/use-cases/count-own-unread-
 import { ListOwnNotices } from './application/use-cases/list-own-notices.use-case';
 import { MarkOwnNoticesRead } from './application/use-cases/mark-own-notices-read.use-case';
 import { PurgeExpiredNotices } from './application/use-cases/purge-expired-notices.use-case';
+import {
+  RaiseOfferQueueBacklogAlert,
+  type OfferQueueBacklogDependencies,
+} from './application/use-cases/raise-offer-queue-backlog-alert.use-case';
 import { RecordAdminReviewNotice } from './application/use-cases/record-admin-review-notice.use-case';
 import { RecordSellerNotice } from './application/use-cases/record-seller-notice.use-case';
 import { RecordSellerOrderNotices } from './application/use-cases/record-seller-order-notices.use-case';
@@ -65,6 +71,7 @@ import { NOTIFICATIONS_AUDIT_ACTIONS } from './domain/audit';
 import { notificationsProviders } from './infrastructure/notifications-providers';
 import { AdminNoticesController } from './presentation/admin-notices.controller';
 import { purgeExpiredNoticesJob } from './presentation/jobs/purge-expired-notices.job';
+import { raiseOfferQueueBacklogAlertJob } from './presentation/jobs/raise-offer-queue-backlog-alert.job';
 import { sendCartRemindersJob } from './presentation/jobs/send-cart-reminders.job';
 import { SellerNoticesController } from './presentation/seller-notices.controller';
 import { systemRequestNoticeSubscriptions } from './presentation/subscribers/system-request-notice.subscriptions';
@@ -202,6 +209,31 @@ function inAppNoticeProvider<U>(
   };
 }
 
+const OFFER_QUEUE_BACKLOG_PORTS: readonly [keyof OfferQueueBacklogDependencies, InjectionToken][] =
+  [
+    ['unitOfWork', UNIT_OF_WORK],
+    ['notices', IN_APP_NOTICE_REPOSITORY],
+    ['backlog', OFFER_QUEUE_BACKLOG_REPOSITORY],
+    ['catalogQueue', CATALOG_WORK_QUEUE_FACADE],
+    ['settings', SETTINGS_FACADE],
+    ['policy', NOTIFICATIONS_POLICY],
+    ['ids', ID_GENERATOR],
+    ['clock', CLOCK],
+  ];
+
+/** The Offer queue backlog alert (risk-based Offer approval, slice 8). */
+const offerQueueBacklogProvider: FactoryProvider<RaiseOfferQueueBacklogAlert> = {
+  provide: RaiseOfferQueueBacklogAlert,
+  inject: [USE_CASE_GATE, ...OFFER_QUEUE_BACKLOG_PORTS.map(([, token]) => token)],
+  useFactory: (gate: UseCaseGate, ...values: unknown[]) =>
+    new RaiseOfferQueueBacklogAlert(
+      gate,
+      Object.fromEntries(
+        OFFER_QUEUE_BACKLOG_PORTS.map(([name], index) => [name, values[index]]),
+      ) as unknown as OfferQueueBacklogDependencies,
+    ),
+};
+
 /**
  * Notifications (speed mode). So far one setting: the Market's support email address, seeded from
  * Market configuration and changeable by the platform admin; mail and the sign-in screens read it
@@ -215,7 +247,7 @@ function inAppNoticeProvider<U>(
  * email (the job `notifications.cart-reminders`, a marketing mail at about 4 and 24 hours idle).
  */
 @Module({
-  imports: [OrderingModule, CatalogModule, IdentityModule, LegalModule, CartModule],
+  imports: [OrderingModule, CatalogModule, IdentityModule, LegalModule, CartModule, SettingsModule],
   controllers: [
     AdminNoticesController,
     AdminSupportContactController,
@@ -244,6 +276,7 @@ function inAppNoticeProvider<U>(
     marketingProvider(ViewUnsubscribeLink),
     marketingProvider(UnsubscribeMarketingEmail),
     cartReminderProvider,
+    offerQueueBacklogProvider,
     ...[
       RecordSellerOrderNotices,
       RecordAdminReviewNotice,
@@ -311,10 +344,15 @@ function inAppNoticeProvider<U>(
     ),
     registerJobsFrom(
       'notifications',
-      [PurgeExpiredNotices, SendCartReminders],
-      (purge: PurgeExpiredNotices, cartReminders: SendCartReminders) => [
+      [PurgeExpiredNotices, SendCartReminders, RaiseOfferQueueBacklogAlert],
+      (
+        purge: PurgeExpiredNotices,
+        cartReminders: SendCartReminders,
+        backlogAlert: RaiseOfferQueueBacklogAlert,
+      ) => [
         purgeExpiredNoticesJob(purge),
         sendCartRemindersJob(cartReminders),
+        raiseOfferQueueBacklogAlertJob(backlogAlert),
       ],
     ),
     {

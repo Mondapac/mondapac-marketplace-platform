@@ -167,6 +167,7 @@
   { "name": "catalog.published-offer-ids", "rule": "system" },
   { "name": "catalog.published-product", "rule": "anonymous" },
   { "name": "catalog.published-product-images", "rule": "anonymous" },
+  { "name": "catalog.read-offer-review-queue", "rule": "system" },
   { "name": "catalog.reconcile-tags", "rule": "system" },
   { "name": "catalog.reevaluate-from-certification", "rule": "system" },
   { "name": "catalog.reevaluate-tags", "rule": "system" },
@@ -742,6 +743,7 @@
     "whenSellerNotApproved": "deny"
   },
   { "name": "notifications.purge-expired-notices", "rule": "system" },
+  { "name": "notifications.raise-offer-queue-backlog-alert", "rule": "system" },
   { "name": "notifications.record-admin-review-notice", "rule": "system" },
   { "name": "notifications.record-seller-notice", "rule": "system" },
   { "name": "notifications.record-seller-order-notices", "rule": "system" },
@@ -1061,6 +1063,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "allow"
   },
+  { "name": "settings.read-offer-queue-backlog-limits", "rule": "system" },
   { "name": "shipping.book-carrier-delivery", "rule": "system" },
   { "name": "shipping.cancel-carrier-delivery", "rule": "system" },
   { "name": "shipping.carrier-shipment", "rule": "system" },

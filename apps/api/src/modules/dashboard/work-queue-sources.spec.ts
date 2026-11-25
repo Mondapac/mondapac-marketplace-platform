@@ -57,6 +57,8 @@ describe('the bound work-queue sources', () => {
       pendingRevisions: record('catalog.pendingRevisions'),
       brandMerges: record('catalog.brandMerges'),
       categoryProposals: record('catalog.categoryProposals'),
+      // The system alert's read, not a dashboard queue.
+      offerReviewQueue: () => Promise.reject(new Error('not a queue')),
     },
     pricing: { priceHolds: record('pricing.priceHolds') },
     sellers: {
