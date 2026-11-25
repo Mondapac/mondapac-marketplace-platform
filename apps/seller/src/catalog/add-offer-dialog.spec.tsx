@@ -131,6 +131,48 @@ describe('Add offer dialog', () => {
     expect(call.mock.calls.filter(([method]) => method === 'POST')).toHaveLength(2);
   });
 
+  it('keeps the dialog open and names what was refused when some drafts fail', async () => {
+    const two = product({ productId: 'x2', productCode: 'P-2' });
+    call.mockImplementation((method, path, body) => {
+      if (method === 'POST') {
+        return (body as { productId: string }).productId === 'x2'
+          ? Promise.resolve({
+              ok: false as const,
+              failure: { status: 409, code: 'offer.sku-taken' },
+            })
+          : ok({ offerId: 'o1' });
+      }
+      return path.includes('options') ? ok({ conditions: ['new'] }) : ok(answer([product(), two]));
+    });
+    const navigate = open();
+    fireEvent.click((await screen.findAllByLabelText(/Beef mince/))[0]!);
+    fireEvent.click((await screen.findAllByLabelText(/Beef mince/))[1]!);
+    const sell = await screen.findByRole('button', { name: 'Sell these (2)' });
+    await waitFor(() => expect((sell as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(sell);
+    expect(await screen.findByText(/you already use this product code/)).toBeTruthy();
+    expect(navigate).not.toHaveBeenCalled();
+    expect(await screen.findByText('Open the 1 draft that was created')).toBeTruthy();
+    expect(screen.getByText('1 product selected')).toBeTruthy();
+  });
+
+  it('offers a retry when the shop settings cannot be read', async () => {
+    let optionCalls = 0;
+    call.mockImplementation((_m, path) => {
+      if (path.includes('options')) {
+        optionCalls += 1;
+        return optionCalls === 1
+          ? Promise.resolve({ ok: false as const, failure: { status: 503, code: 'x' } })
+          : ok({ conditions: ['new'] });
+      }
+      return ok(answer([product()]));
+    });
+    open();
+    fireEvent.click(await screen.findByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(optionCalls).toBe(2));
+    expect(screen.queryByText(/couldn't get your shop's settings/)).toBeNull();
+  });
+
   it('picks the products found by a pasted barcode list', async () => {
     call.mockImplementation((_method, path) => {
       if (path.includes('options')) return ok({ conditions: ['new'] });

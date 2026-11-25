@@ -67,6 +67,28 @@ export function defaultCondition(conditions: readonly string[]): string | null {
   return conditions.includes('new') ? 'new' : (conditions[0] ?? null);
 }
 
+/** The message key of a refused create: the codes a seller can act on, else a general one. */
+export function createErrorKey(code: string): string {
+  switch (code) {
+    case 'offer.sku-taken':
+      return 'sku-taken';
+    case 'offer.exists-for-product':
+      return 'exists';
+    case 'type.not-allowed':
+      return 'type-not-allowed';
+    case 'setting.sell-from-catalogue-off':
+      return 'off';
+    case 'seller.not-eligible':
+      return 'not-eligible';
+    case 'request.throttled':
+      return 'throttled';
+    case 'product.not-found':
+      return 'not-found';
+    default:
+      return 'unknown';
+  }
+}
+
 interface Created {
   readonly offerId: string;
 }
@@ -101,8 +123,12 @@ export function AddOfferDialog({
   const [pasted, setPasted] = useState('');
   const [barcodeResults, setBarcodeResults] = useState<readonly BarcodeResult[] | null>(null);
   const [saving, setSaving] = useState(false);
-  const [problems, setProblems] = useState<readonly string[]>([]);
+  const [problems, setProblems] = useState<
+    readonly { productId: string; name: string; key: string }[]
+  >([]);
+  const [madeDrafts, setMadeDrafts] = useState(0);
   const [condition, setCondition] = useState<string | null>(null);
+  const [conditionFailed, setConditionFailed] = useState(false);
   const requestId = useRef(0);
   const busy = useRef(false);
   // The first read of an opened dialog does not wait for a pause in typing.
@@ -124,13 +150,21 @@ export function AddOfferDialog({
     return result.body;
   }, []);
 
-  // Opening reads the Market's conditions once (the default of a new draft Offer).
+  // Opening reads the Market's conditions once (the default of a new draft Offer); a failed read
+  // can be tried again.
+  const loadCondition = useCallback(async () => {
+    setConditionFailed(false);
+    const result = await callApi<ProductOptions>('GET', 'catalog/seller/products/options');
+    if (result.ok) {
+      const chosen = defaultCondition(result.body.conditions);
+      if (chosen === null) setConditionFailed(true);
+      else setCondition(chosen);
+    } else if (result.failure.status === 401) window.location.assign('/session-ended');
+    else setConditionFailed(true);
+  }, []);
   useEffect(() => {
-    if (!open || condition !== null) return;
-    void callApi<ProductOptions>('GET', 'catalog/seller/products/options').then((result) => {
-      if (result.ok) setCondition(defaultCondition(result.body.conditions));
-    });
-  }, [open, condition]);
+    if (open && condition === null) void loadCondition();
+  }, [open, condition, loadCondition]);
 
   // The search follows the text after a short pause, and the page; closed, nothing is read.
   useEffect(() => {
@@ -179,8 +213,8 @@ export function AddOfferDialog({
     busy.current = true;
     setSaving(true);
     setProblems([]);
-    const created: string[] = [];
-    const refused: string[] = [];
+    const created: { productId: string; offerId: string }[] = [];
+    const refused: { productId: string; name: string; key: string }[] = [];
     for (const product of picked.values()) {
       const result = await callApi<Created>(
         'POST',
@@ -194,30 +228,33 @@ export function AddOfferDialog({
         },
         csrfToken,
       );
-      if (result.ok) created.push(result.body.offerId);
+      if (result.ok) created.push({ productId: product.productId, offerId: result.body.offerId });
       else if (result.failure.status === 401) {
         window.location.assign('/session-ended');
         return;
-      } else refused.push(`${product.name ?? product.productCode}: ${result.failure.code}`);
+      } else {
+        refused.push({
+          productId: product.productId,
+          name: product.name ?? product.productCode,
+          key: createErrorKey(result.failure.code),
+        });
+      }
     }
     busy.current = false;
     setSaving(false);
-    if (refused.length > 0) {
-      setProblems(refused);
-      // What was created leaves the picks; the rest stays to try again.
-      setPicked((current) => {
-        const next = new Map(current);
-        for (const [id, product] of current) {
-          if (!refused.some((line) => line.startsWith(`${product.name ?? product.productCode}:`))) {
-            next.delete(id);
-          }
-        }
-        return next;
-      });
-      if (created.length === 0) return;
+    if (refused.length === 0) {
+      if (created.length === 1) navigate(`/offers/${created[0]?.offerId ?? ''}`);
+      else navigate('/offers?view=drafts');
+      return;
     }
-    if (created.length === 1 && refused.length === 0) navigate(`/offers/${created[0]}`);
-    else navigate('/offers?view=drafts');
+    // The dialog stays open: what was created leaves the picks, what was refused stays to be seen.
+    setProblems(refused);
+    setMadeDrafts((before) => before + created.length);
+    setPicked((current) => {
+      const next = new Map(current);
+      for (const { productId } of created) next.delete(productId);
+      return next;
+    });
   }
 
   const count = picked.size;
@@ -232,11 +269,13 @@ export function AddOfferDialog({
       open={open}
       title={t('title')}
       size="form"
-      onClose={onClose}
+      onClose={() => {
+        if (!saving) onClose();
+      }}
       actionsNote={note}
       actions={
         <>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" disabled={saving} onClick={onClose}>
             {t('cancel')}
           </Button>
           <Button
@@ -302,26 +341,58 @@ export function AddOfferDialog({
             )}
           </div>
         ) : null}
-        {failed ? <Banner tone="critical">{t('error')}</Banner> : null}
+        {conditionFailed ? (
+          <Banner tone="critical">
+            <p>{t('condition-error')}</p>
+            <Button variant="link" onClick={() => void loadCondition()}>
+              {t('try-again')}
+            </Button>
+          </Banner>
+        ) : null}
+        {failed ? (
+          <Banner tone="critical">
+            <p>{t('error')}</p>
+            <Button
+              variant="link"
+              onClick={() => {
+                setFailed(false);
+                void read(text, page, []).then((body) => {
+                  if (body !== null) setAnswer(body);
+                });
+              }}
+            >
+              {t('try-again')}
+            </Button>
+          </Banner>
+        ) : null}
         {problems.length === 0 ? null : (
           <Banner tone="critical">
             <p>{t('create-error')}</p>
             <ul className="mt-1 list-disc ps-5 text-sm">
               {problems.map((line) => (
-                <li key={line}>{line}</li>
+                <li key={line.productId}>{`${line.name}: ${t(`create-reason.${line.key}`)}`}</li>
               ))}
             </ul>
+            {madeDrafts > 0 ? (
+              <Button variant="link" onClick={() => navigate('/offers?view=drafts')}>
+                {t('open-drafts', { count: madeDrafts })}
+              </Button>
+            ) : null}
           </Banner>
         )}
         {answer?.notice === 'no-activity' ? <Banner tone="info">{t('no-activity')}</Banner> : null}
-        {loading && answer === null ? <Spinner /> : null}
+        {loading && answer === null ? (
+          <div role="status" aria-label={t('loading')}>
+            <Spinner />
+          </div>
+        ) : null}
         {answer !== null && answer.notice !== 'no-activity' ? (
           answer.items.length === 0 ? (
             <p className="text-sm text-fg-muted">
               {text.trim() === '' ? t('empty') : t('no-match')}
             </p>
           ) : (
-            <ul className="flex flex-col divide-y divide-border" aria-busy={loading}>
+            <ul className="flex flex-col divide-y divide-line" aria-busy={loading}>
               {answer.items.map((product) => (
                 <li key={product.productId} className="py-1">
                   <CheckboxRow
@@ -360,7 +431,14 @@ export function AddOfferDialog({
             </Button>
           </div>
         ) : null}
-        {count > 0 ? <p className="text-sm text-fg-muted">{t('picked', { count })}</p> : null}
+        {count > 0 ? (
+          <div className="flex items-center gap-3 text-sm text-fg-muted">
+            <p>{t('picked', { count })}</p>
+            <Button variant="link" size="sm" onClick={() => setPicked(new Map())}>
+              {t('clear')}
+            </Button>
+          </div>
+        ) : null}
       </div>
     </Dialog>
   );

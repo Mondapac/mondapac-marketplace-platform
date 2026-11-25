@@ -138,8 +138,14 @@ describe.each(['AU', 'ZZ'] as const)('own-product.platform-search in market %s',
 
   it('refuses unknown keys, long text and a bad page', async () => {
     const { useCase } = rig();
-    for (const input of [{ x: 1 }, { q: 'a'.repeat(101) }, { page: 0 }, { barcodes: 'x' }]) {
-      const result = await useCase.execute(contextOf('seller'), input as never);
+    for (const input of [
+      { x: 1 },
+      { q: 'a'.repeat(101) },
+      { page: 0 },
+      { barcodes: 'x' },
+      { q: 'a\u0001' },
+    ] as Record<string, unknown>[]) {
+      const result = await useCase.execute(contextOf('seller'), input);
       expect(!result.ok && result.error.code).toBe('validation.failed');
     }
   });

@@ -1048,6 +1048,20 @@
       "no-activity": "Your shop has no business activity yet, so there are no products to offer. Ask us to add one.",
       "error": "We couldn't search the catalogue. Try again.",
       "create-error": "These offers could not be created:",
+      "create-reason": {
+        "sku-taken": "you already use this product code as a SKU",
+        "exists": "you already sell this product",
+        "type-not-allowed": "your shop can't sell this type of product",
+        "off": "selling from the catalogue is switched off",
+        "not-eligible": "your shop can't sell yet",
+        "throttled": "too many requests, try again in a minute",
+        "not-found": "this product is no longer available",
+        "unknown": "something went wrong, try again"
+      },
+      "open-drafts": "{count, plural, one {Open the # draft that was created} other {Open the # drafts that were created}}",
+      "condition-error": "We couldn't get your shop's settings, so drafts can't be created yet.",
+      "try-again": "Try again",
+      "clear": "Clear",
       "previous": "Previous",
       "next": "Next",
       "page": "Page {page} of {pages}"

@@ -155,6 +155,14 @@ export class OwnPlatformProductSearch extends UseCase<
   }
 }
 
+function hasControlCharacter(text: string): boolean {
+  for (const char of text) {
+    const code = char.codePointAt(0) ?? 0;
+    if (code < 0x20 || code === 0x7f) return true;
+  }
+  return false;
+}
+
 interface ParsedSearch {
   readonly text: string | null;
   readonly page: number;
@@ -171,8 +179,7 @@ function parse(input: OwnPlatformProductSearchInput): Result<ParsedSearch, Valid
     if (typeof input.q !== 'string') return invalid('q', 'type');
     const trimmed = input.q.trim();
     if (trimmed.length > PLATFORM_SEARCH_MAX_LENGTH) return invalid('q', 'too-long');
-    // eslint-disable-next-line no-control-regex
-    if (/[\u0000-\u001f\u007f]/.test(trimmed)) return invalid('q', 'invalid');
+    if (hasControlCharacter(trimmed)) return invalid('q', 'invalid');
     text = trimmed === '' ? null : trimmed;
   }
   let page = 1;
