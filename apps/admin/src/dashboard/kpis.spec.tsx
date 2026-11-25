@@ -705,6 +705,11 @@ describe('drill-down links to the Orders list', () => {
     if (select !== null) fireEvent.change(select, { target: { value: 'refunded' } });
     else fireEvent.click(within(chart).getByRole('radio', { name: 'Refunded' }));
     expect(chart.querySelector('svg a[data-point-link]')).toBeNull();
+    // No day link in the table either, and the tooltip offers none.
+    fireEvent.keyDown(chart.querySelector('svg[data-chart="line"]')!, { key: 'ArrowRight' });
+    expect(chart.querySelector('[data-tooltip-link]')).toBeNull();
+    fireEvent.click(within(chart).getByRole('button', { name: 'View as table' }));
+    expect(within(chart).queryByRole('link', { name: /View orders placed on/ })).toBeNull();
   });
 });
 

@@ -333,7 +333,8 @@
         "measure-failed": "{measure} could not be loaded.",
         "empty-current": "No sales in this period.",
         "open-day": "View orders placed on {day}",
-        "open-point": "Press Enter to view the orders placed on this day."
+        "open-point": "Press Enter to view the orders placed on this day.",
+        "open-point-link": "View orders ›"
       },
       "categories": {
         "title": "Sales by category",

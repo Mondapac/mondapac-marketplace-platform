@@ -154,6 +154,7 @@ export function RevenueChartCard({
               viewAsChart: t('chart.chart'),
               dateColumn: t('chart.date'),
               openPoint: t('chart.open-point'),
+              openPointLink: t('chart.open-point-link'),
             }}
           />
         )}

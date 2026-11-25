@@ -184,10 +184,16 @@ export function ShareBar({
                     >
                       {s.label}
                     </span>
-                    <span className="min-w-20 text-end font-medium text-fg tabular-nums">
+                    <span
+                      id={`${tableId}-v${i}`}
+                      className="min-w-20 text-end font-medium text-fg tabular-nums"
+                    >
                       {formatValue(s.value)}
                     </span>
-                    <span className="w-14 text-end text-fg-muted tabular-nums">
+                    <span
+                      id={`${tableId}-s${i}`}
+                      className="w-14 text-end text-fg-muted tabular-nums"
+                    >
                       {formatShare(s.share)}
                     </span>
                   </>
@@ -198,13 +204,27 @@ export function ShareBar({
                   onBlur: () => setActive(null),
                 };
                 return link === undefined ? (
-                  <li key={s.id} data-legend={s.id} tabIndex={0} {...focus} className={row}>
+                  // Beside links the plain rows are no tab stops (their figures are in the text).
+                  <li
+                    key={s.id}
+                    data-legend={s.id}
+                    tabIndex={links.size > 0 ? undefined : 0}
+                    {...focus}
+                    className={row}
+                  >
                     {cells}
                   </li>
                 ) : (
                   // The row is the link: the same grid, so the layout does not move.
                   <li key={s.id} data-legend={s.id}>
-                    <a href={link.href} aria-label={link.label} {...focus} className={row}>
+                    <a
+                      href={link.href}
+                      aria-label={link.label}
+                      // The name is the action; the figures are read as its description.
+                      aria-describedby={`${tableId}-v${i} ${tableId}-s${i}`}
+                      {...focus}
+                      className={`${row} min-h-11 lg:min-h-0`}
+                    >
                       {cells}
                     </a>
                   </li>

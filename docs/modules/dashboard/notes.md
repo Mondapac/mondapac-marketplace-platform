@@ -481,7 +481,11 @@ How it is built: `ShareBar` (packages/ui) takes `href` and `linkLabel` per part;
 row is an `<a>` with the same grid, so the layout does not move. `LineAreaChart` takes `href` and
 `linkLabel` per point: a transparent column per day is a link for a pointer (out of the tab order,
 so a long range adds no tab stops), Enter on the focused chart follows the active day's link (the
-live text says so), and in "View as table" each day is a focusable link. Names: "View orders:
+live text says so; Enter with no day chosen first reads the last day), and in "View as table" each
+day is a focusable link. The tooltip of a linked day shows "View orders ›". On touch the first tap
+only shows the day; a second tap on it, or the tooltip's link, follows. A linked legend row is at
+least 44 px high on a phone, and its value and share are its description for a screen reader; next
+to links, the plain rows are no tab stops. Names: "View orders:
 Delivered, placed 16 Nov - 22 Nov" and "View orders placed on 21 Nov". The names hold no count on
 purpose: the KPI counts seller orders by their paid Market day, the list shows orders by their
 placed day on the admin's clock, so the list is the closest match, not the same number
