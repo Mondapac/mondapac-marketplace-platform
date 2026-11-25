@@ -6,6 +6,7 @@ import { AdminDashboard } from '../../src/dashboard/dashboard.tsx';
 import { validateRange, type KpiSelection } from '../../src/dashboard/kpi-range.ts';
 import type {
   AdminKpis,
+  KpiDelta,
   KpiResult,
   MarketTargetKpis,
   SameDayShare,
@@ -192,7 +193,12 @@ const health = {
   disputeRate: { status: 'ok' as const, disputes: 7, paidSellerOrders: 2412, rateBp: 29 },
 };
 // Dashboards v2, phase 2 sections (the cards PR).
-const fstep = (count: number | null, rateBp: number | null, change = ok, rateChange = ok) => ({
+const fstep = (
+  count: number | null,
+  rateBp: number | null,
+  change: KpiDelta = ok,
+  rateChange: KpiDelta = ok,
+) => ({
   count,
   rateBp,
   change,

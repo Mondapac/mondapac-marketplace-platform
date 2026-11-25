@@ -1,6 +1,16 @@
 'use client';
 
-import { Badge, Banner, Button, ChartEmpty, Dialog, Gauge, TextField, toast } from '@mondapac/ui';
+import {
+  Badge,
+  Banner,
+  Button,
+  ChartEmpty,
+  ChartError,
+  Dialog,
+  Gauge,
+  TextField,
+  toast,
+} from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
@@ -37,7 +47,7 @@ export function goalProblemOf(failure: ApiFailure): string {
 }
 
 const percent = (bp: number, locale: string): string =>
-  new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 0 }).format(bp / 10000);
+  new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 1 }).format(bp / 10000);
 
 const monthName = (month: string, locale: string): string => {
   const date = new Date(`${month}-01T00:00:00Z`);
@@ -65,7 +75,7 @@ function Tile({
   readonly children: ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 flex-col gap-0.5 rounded-md border border-line bg-muted p-3">
+    <div className="flex min-w-0 flex-col items-start gap-0.5 rounded-md border border-line bg-muted p-3">
       <span className={MUTED}>{label}</span>
       {children}
       {hint === undefined ? null : <span className={MUTED}>{hint}</span>}
@@ -183,7 +193,7 @@ function GoalDialog({
         <TextField
           name="goal"
           label={t('field', { month: monthName(goal.month, locale), currency: goal.currency })}
-          help={t('field-help')}
+          help={t('field-help', { month: monthName(goal.month, locale), currency: goal.currency })}
           inputMode="decimal"
           autoComplete="off"
           dir="ltr"
@@ -197,22 +207,60 @@ function GoalDialog({
   );
 }
 
+/** "Set goal" or "Edit goal" in the card header (key `reporting.seller-goal.manage`). */
+export function SellerGoalEditButton({
+  goal,
+  csrfToken,
+}: {
+  readonly goal: SellerGoalFigures;
+  readonly csrfToken: string;
+}) {
+  const t = useTranslations('dashboard.kpi.goal');
+  const [editing, setEditing] = useState(false);
+  return (
+    <>
+      <Button
+        variant="secondary"
+        size="sm"
+        className="min-h-11 min-w-11 lg:min-h-0 lg:min-w-0"
+        onClick={() => setEditing(true)}
+      >
+        {goal.target === null ? t('set') : t('edit')}
+      </Button>
+      {editing ? (
+        <GoalDialog goal={goal} open csrfToken={csrfToken} onClose={() => setEditing(false)} />
+      ) : null}
+    </>
+  );
+}
+
+/** The in-place error of the card, with a secondary "Try again" that reads the page again. */
+export function SellerGoalError() {
+  const t = useTranslations('dashboard');
+  const router = useRouter();
+  return (
+    <ChartError
+      height={120}
+      message={t('error.card')}
+      retryLabel={t('kpi.goal.retry')}
+      onRetry={() => router.refresh()}
+    />
+  );
+}
+
 /**
- * The month to date against the seller's goal. `canManage` shows the Set or Edit button (the key
- * `reporting.seller-goal.manage`); without it the card is read-only.
+ * The month to date against the seller's goal. `canManage` only changes the hint of the empty
+ * state; the Set or Edit button sits in the card header ({@link SellerGoalEditButton}).
  */
 export function SellerGoalBody({
   goal,
   canManage,
-  csrfToken,
 }: {
   readonly goal: SellerGoalFigures;
   readonly canManage: boolean;
-  readonly csrfToken: string;
 }) {
   const t = useTranslations('dashboard.kpi.goal');
   const locale = useLocale();
-  const [editing, setEditing] = useState(false);
   const money = (amount: string) => formatMinor(amount, goal.currency, locale);
   const lastMonth = monthName(goal.lastMonth, locale);
   const forecast =
@@ -224,7 +272,7 @@ export function SellerGoalBody({
           last: money(goal.lastMonthTotal),
         })
       : t('forecast-not-enough', {
-          days: goal.forecast.minimumDays,
+          day: goal.forecast.minimumDays + 1,
           month: lastMonth,
           last: money(goal.lastMonthTotal),
         });
@@ -243,18 +291,25 @@ export function SellerGoalBody({
           max={100}
           display={percent(goal.progressBp, locale)}
           caption={t('of-goal')}
-          formatValue={(n) => `${Math.round(n)}%`}
+          // The text alternative says the same figure as the centre (n is a percentage).
+          formatValue={(n) => percent(Math.round(n * 100), locale)}
           emptyLabel={t('none')}
         />
       )}
-      <div className="flex flex-wrap items-center gap-2">
-        {goal.paceBp === null ? null : (
-          <Badge tone={goal.paceBp >= 10000 ? 'success' : 'info'}>
-            {t('pace', { rate: percent(goal.paceBp, locale) })}
-          </Badge>
-        )}
-        <Badge tone="neutral">{t('estimate')}</Badge>
-      </div>
+      {goal.paceBp === null && goal.forecast.status !== 'estimate' ? null : (
+        <div className="flex flex-wrap items-center gap-2">
+          {goal.paceBp === null ? null : (
+            <Badge tone={goal.paceBp >= 10000 ? 'success' : 'info'}>
+              {t(goal.paceBp >= 10000 ? 'pace' : 'behind', {
+                rate: percent(goal.paceBp, locale),
+              })}
+            </Badge>
+          )}
+          {goal.forecast.status === 'estimate' ? (
+            <Badge tone="neutral">{t('estimate')}</Badge>
+          ) : null}
+        </div>
+      )}
       <p className="m-0 text-sm text-fg-secondary">{forecast}</p>
       <div className="grid grid-cols-2 gap-3">
         <Tile label={t('goal')}>
@@ -279,21 +334,6 @@ export function SellerGoalBody({
           <span className={FIGURE}>{money(goal.monthToDate)}</span>
         </Tile>
       </div>
-      {canManage ? (
-        <div>
-          <Button variant="secondary" onClick={() => setEditing(true)}>
-            {goal.target === null ? t('set') : t('edit')}
-          </Button>
-          {editing ? (
-            <GoalDialog
-              goal={goal}
-              open={editing}
-              csrfToken={csrfToken}
-              onClose={() => setEditing(false)}
-            />
-          ) : null}
-        </div>
-      ) : null}
     </div>
   );
 }

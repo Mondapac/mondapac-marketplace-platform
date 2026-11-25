@@ -1020,12 +1020,18 @@ export function KpiItems({
               editToken={keys.has(KPI_TARGET_MANAGE_PERMISSION) ? csrfToken : undefined}
             />
           </Cell>
-          <Cell>
-            <ShoppingFunnelCard {...props} />
-          </Cell>
-          <Cell wide>
-            <AbandonedCartsCard {...props} />
-          </Cell>
+          {/* Abandoned carts sits under the funnel, as in the design: one column, two cards. The
+              column hides itself while both are absent, like a Cell. */}
+          <div className="hidden min-w-0 lg:flex-1 has-[>div>div:not(:empty)]:flex">
+            <div className="flex w-full min-w-0 flex-col gap-4">
+              <div className="flex min-w-0 flex-1 empty:hidden">
+                <ShoppingFunnelCard {...props} />
+              </div>
+              <div className="flex min-w-0 empty:hidden">
+                <AbandonedCartsCard {...props} />
+              </div>
+            </div>
+          </div>
         </div>
       </GridItem>
       <GridItem span={12}>

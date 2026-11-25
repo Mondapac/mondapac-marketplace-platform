@@ -5,7 +5,6 @@ import {
   DashboardCard,
   DefinitionHint,
   Gauge,
-  KpiCard,
   StatDelta,
   formatCount,
   type BarListItem,
@@ -22,22 +21,14 @@ import {
   kpiMonthName,
   kpiRate,
 } from './kpi-format.ts';
-import {
-  CardSkeleton,
-  Skeleton,
-  Slot,
-  part,
-  useDelta,
-  useRange,
-  useStalled,
-  type CardProps,
-} from './kpi-parts.tsx';
+import { CardSkeleton, Slot, part, useDelta, useRange, type CardProps } from './kpi-parts.tsx';
 import type {
   DiscountKindCost,
   FunnelStepKpi,
   MarketTargetKpis,
   ShoppingFunnelKpis,
 } from './kpi-types.ts';
+import { RetryError } from './retry-error.tsx';
 import { TargetEditButton } from './target-editor.tsx';
 
 // The dashboards v2 phase 2 cards of the admin dashboard: the month against the Market's target,
@@ -58,7 +49,7 @@ function Tile({
   readonly hint?: string | undefined;
 }) {
   return (
-    <div className="flex min-w-0 flex-col gap-0.5 rounded-md border border-line bg-muted p-3">
+    <div className="flex min-w-0 flex-col items-start gap-0.5 rounded-md border border-line bg-muted p-3">
       <span className={MUTED}>{label}</span>
       {children}
       {hint === undefined ? null : <span className={MUTED}>{hint}</span>}
@@ -77,6 +68,13 @@ function useCoverage() {
   return (recorded: number, days: number): string | null =>
     recorded < days ? t('coverage', { recorded, days }) : null;
 }
+
+/** A card whose section failed: the error in place, with a secondary "Try again". */
+const failedCard = (frame: { readonly id: string; readonly title: string }) => (
+  <DashboardCard {...frame}>
+    <RetryError />
+  </DashboardCard>
+);
 
 const joined = (...parts: readonly (string | null)[]): string =>
   parts.filter((text): text is string => text !== null && text !== '').join(' · ');
@@ -103,14 +101,14 @@ function TargetBody({
           last: money(k.lastMonthTotal),
         })
       : t('forecast-not-enough', {
-          days: k.forecast.minimumDays,
+          day: k.forecast.minimumDays + 1,
           month: lastMonth,
           last: money(k.lastMonthTotal),
         });
   const pace =
     k.paceBp === null ? null : (
       <Badge tone={k.paceBp >= 10000 ? 'success' : 'info'}>
-        {t('pace', { rate: kpiRate(k.paceBp, locale) })}
+        {t(k.paceBp >= 10000 ? 'pace' : 'behind', { rate: kpiRate(k.paceBp, locale) })}
       </Badge>
     );
   return (
@@ -128,14 +126,17 @@ function TargetBody({
           max={100}
           display={kpiRate(k.progressBp, locale)}
           caption={t('of-target')}
-          formatValue={(n) => `${Math.round(n)}%`}
+          // The text alternative says the same figure as the centre (n is a percentage).
+          formatValue={(n) => kpiRate(Math.round(n * 100), locale)}
           emptyLabel={t('none')}
         />
       )}
-      <div className="flex flex-wrap items-center gap-2">
-        {pace}
-        <Badge tone="neutral">{t('estimate')}</Badge>
-      </div>
+      {pace === null && k.forecast.status !== 'estimate' ? null : (
+        <div className="flex flex-wrap items-center gap-2">
+          {pace}
+          {k.forecast.status === 'estimate' ? <Badge tone="neutral">{t('estimate')}</Badge> : null}
+        </div>
+      )}
       <p className="m-0 text-sm text-fg-secondary">{forecast}</p>
       <div className="grid grid-cols-2 gap-3">
         <Tile label={t('target')}>
@@ -178,14 +179,13 @@ export function MarketTargetCard({
 }) {
   const t = useTranslations('dashboard.kpis');
   const locale = useLocale();
-  const stalled = useStalled();
   const frame = { id: 'dash-market-target', title: t('target.title') };
   return (
     <Slot source={source} fallback={<CardSkeleton {...frame} height={220} />}>
       {(result) => {
         const target = part(result, allowed.target, (v) => v.marketTarget);
         if (target.kind === 'hidden') return null;
-        if (target.kind === 'failed') return <DashboardCard {...frame} error={stalled} />;
+        if (target.kind === 'failed') return failedCard(frame);
         const k = target.kpis;
         return (
           <DashboardCard
@@ -313,7 +313,6 @@ function FunnelBody({
 /** Viewed, carted, checked out and paid, as customer-days of the period. */
 export function ShoppingFunnelCard({ source, allowed, period }: CardProps) {
   const t = useTranslations('dashboard.kpis');
-  const stalled = useStalled();
   const range = useRange();
   const coverage = useCoverage();
   const frame = { id: 'dash-shopping-funnel', title: t('funnel.title') };
@@ -322,7 +321,7 @@ export function ShoppingFunnelCard({ source, allowed, period }: CardProps) {
       {(result) => {
         const funnel = part(result, allowed.orders, (v) => v.shoppingFunnel);
         if (funnel.kind === 'hidden') return null;
-        if (funnel.kind === 'failed') return <DashboardCard {...frame} error={stalled} />;
+        if (funnel.kind === 'failed') return failedCard(frame);
         const k = funnel.kpis;
         return (
           <DashboardCard
@@ -342,39 +341,45 @@ export function ShoppingFunnelCard({ source, allowed, period }: CardProps) {
   );
 }
 
-/** Carts untouched for a day or more on the latest snapshot day of the period: a level, not a sum. */
+/**
+ * Carts untouched for a day or more on the latest snapshot day of the period: a level, not a sum.
+ * A compact card under the funnel (the same card structure as its neighbours).
+ */
 export function AbandonedCartsCard({ source, allowed, period }: CardProps) {
   const t = useTranslations('dashboard.kpis');
   const locale = useLocale();
-  const stalled = useStalled();
   const delta = useDelta(period);
-  const label = t('carts.title');
-  const base = {
-    icon: 'inbox' as const,
-    tile: 'slate' as const,
-    label,
-    definition: t('def.carts'),
-    definitionLabel: t('def.what', { name: label }),
-  };
+  const frame = { id: 'dash-abandoned-carts', title: t('carts.title') };
   return (
-    <Slot source={source} fallback={<Skeleton icon="inbox" label={label} />}>
+    <Slot source={source} fallback={<CardSkeleton {...frame} height={72} />}>
       {(result) => {
         const carts = part(result, allowed.orders, (v) => v.abandonedCarts);
         if (carts.kind === 'hidden') return null;
-        if (carts.kind === 'failed')
-          return <KpiCard {...base} scope={t('carts.scope')} error={stalled} />;
+        const card = (scope: string, body: ReactNode) => (
+          <DashboardCard
+            {...frame}
+            scope={scope}
+            titleAdornment={<Hint name={frame.title} definition={t('def.carts')} />}
+          >
+            {body}
+          </DashboardCard>
+        );
+        if (carts.kind === 'failed') {
+          return (
+            <DashboardCard {...frame}>
+              <RetryError height={72} />
+            </DashboardCard>
+          );
+        }
         const k = carts.kpis;
         if (k.status === 'not-enough-data' || k.carts === undefined) {
-          return (
-            <KpiCard
-              {...base}
-              scope={t('carts.scope')}
-              note={
-                k.recordedDays === 0
-                  ? t('carts.no-snapshot')
-                  : t('carts.not-enough', { minimum: k.minimum ?? 5 })
-              }
-            />
+          return card(
+            t('carts.scope'),
+            <p className="m-0 text-sm text-fg-secondary">
+              {k.recordedDays === 0
+                ? t('carts.no-snapshot')
+                : t('carts.not-enough', { minimum: k.minimum ?? 5 })}
+            </p>,
           );
         }
         const value =
@@ -382,18 +387,17 @@ export function AbandonedCartsCard({ source, allowed, period }: CardProps) {
             ? t('carts.value-mixed')
             : t('carts.value', { amount: kpiMoney(k.approximateValue, locale) });
         const change = delta(k.change, 'percent', 'worse');
-        return (
-          <KpiCard
-            {...base}
-            value={formatCount(k.carts, false, locale)}
-            scope={joined(
-              k.asOfDay === undefined
-                ? t('carts.scope')
-                : t('carts.as-of', { day: kpiDayLabel(k.asOfDay, locale) }),
-              value,
-            )}
-            {...(change === undefined ? {} : { delta: change })}
-          />
+        return card(
+          k.asOfDay === undefined
+            ? t('carts.scope')
+            : t('carts.as-of', { day: kpiDayLabel(k.asOfDay, locale) }),
+          <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+            <span className="text-2xl font-semibold tabular-nums text-fg">
+              {formatCount(k.carts, false, locale)}
+            </span>
+            <span className="text-sm text-fg-secondary">{value}</span>
+            {change === undefined ? null : <StatDelta {...change} />}
+          </div>,
         );
       }}
     </Slot>
@@ -408,7 +412,6 @@ export function AbandonedCartsCard({ source, allowed, period }: CardProps) {
 export function ZeroResultSearchesCard({ source, allowed }: CardProps) {
   const t = useTranslations('dashboard.kpis');
   const locale = useLocale();
-  const stalled = useStalled();
   const range = useRange();
   const coverage = useCoverage();
   const frame = { id: 'dash-zero-results', title: t('searches.title') };
@@ -417,7 +420,7 @@ export function ZeroResultSearchesCard({ source, allowed }: CardProps) {
       {(result) => {
         const searches = part(result, allowed.searches, (v) => v.zeroResultSearches);
         if (searches.kind === 'hidden') return null;
-        if (searches.kind === 'failed') return <DashboardCard {...frame} error={stalled} />;
+        if (searches.kind === 'failed') return failedCard(frame);
         const k = searches.kpis;
         const queries = k.queries ?? [];
         const body =
@@ -477,7 +480,6 @@ export function ZeroResultSearchesCard({ source, allowed }: CardProps) {
 export function OrdersByStateCard({ source, allowed }: CardProps) {
   const t = useTranslations('dashboard.kpis');
   const locale = useLocale();
-  const stalled = useStalled();
   const range = useRange();
   const frame = { id: 'dash-orders-by-state', title: t('by-state.title') };
   return (
@@ -485,7 +487,7 @@ export function OrdersByStateCard({ source, allowed }: CardProps) {
       {(result) => {
         const states = part(result, allowed.orders, (v) => v.ordersByState);
         if (states.kind === 'hidden') return null;
-        if (states.kind === 'failed') return <DashboardCard {...frame} error={stalled} />;
+        if (states.kind === 'failed') return failedCard(frame);
         const k = states.kpis;
         const scope = joined(t('by-state.scope'), range(states.value));
         const item = (id: string, label: string, orders: number, shareBp: number): BarListItem => ({
@@ -549,7 +551,11 @@ function KindRow({ row }: { readonly row: DiscountKindCost }) {
       </span>
       <span className="flex shrink-0 flex-col items-end gap-0.5">
         <span className="text-sm font-semibold tabular-nums text-fg">
-          {row.amount === null ? '-' : kpiMoney(row.amount, locale)}
+          {row.amount === null ? (
+            <span className="font-medium text-fg-secondary">{t('held')}</span>
+          ) : (
+            kpiMoney(row.amount, locale)
+          )}
         </span>
         {row.shareBp === null ? null : (
           <span className={MUTED}>{kpiRate(row.shareBp, locale)}</span>
@@ -563,7 +569,6 @@ function KindRow({ row }: { readonly row: DiscountKindCost }) {
 export function DiscountCostCard({ source, allowed, period }: CardProps) {
   const t = useTranslations('dashboard.kpis');
   const locale = useLocale();
-  const stalled = useStalled();
   const range = useRange();
   const delta = useDelta(period);
   const frame = { id: 'dash-discount-cost', title: t('discounts.title') };
@@ -572,7 +577,7 @@ export function DiscountCostCard({ source, allowed, period }: CardProps) {
       {(result) => {
         const cost = part(result, allowed.discounts, (v) => v.discountCost);
         if (cost.kind === 'hidden') return null;
-        if (cost.kind === 'failed') return <DashboardCard {...frame} error={stalled} />;
+        if (cost.kind === 'failed') return failedCard(frame);
         const k = cost.kpis;
         const scope = joined(t('discounts.scope'), range(cost.value));
         const card = (body: ReactNode) => (

@@ -5,6 +5,7 @@ import {
   ChartSkeleton,
   DashboardCard,
   DashboardSlot,
+  DefinitionHint,
   EmptyState,
   GridItem,
   InsightCard,
@@ -31,7 +32,7 @@ import { formatMinor } from '../../price/money.ts';
 import type { Widget } from '../types.ts';
 import type { SellerKpiSources } from './load.ts';
 import { SalesChartCard, type ChartDay } from './sales-chart-card.tsx';
-import { SellerGoalBody } from './seller-goal.tsx';
+import { SellerGoalBody, SellerGoalEditButton, SellerGoalError } from './seller-goal.tsx';
 import type { SellerKpis, SellerNetEarnings, ShownPeriod } from './types.ts';
 import { deltasOf, MIN_BASE_ORDERS } from './view.ts';
 
@@ -388,7 +389,6 @@ function SellerGoalCard({
 }) {
   const t = useTranslations('dashboard.kpi');
   const locale = useLocale();
-  const stalled = useStalled();
   const frame = { id: 'dash-kpi-goal', title: t('goal.title') };
   return (
     <DashboardSlot
@@ -402,27 +402,37 @@ function SellerGoalCard({
     >
       {(widget) => {
         if (widget === null) return null;
-        if (widget.kind === 'error') return <DashboardCard {...frame} error={stalled} />;
+        const failed = (
+          <DashboardCard {...frame}>
+            <SellerGoalError />
+          </DashboardCard>
+        );
+        if (widget.kind === 'error') return failed;
         const section = widget.value.sellerGoal;
         if (section === null || section === undefined) return null;
-        if (section.status === 'error') return <DashboardCard {...frame} error={stalled} />;
+        if (section.status === 'error') return failed;
         const figures = section.goal;
+        const canManage = goal?.canManage === true;
         return (
-          <InsightCard
+          <DashboardCard
             {...frame}
             scope={t('goal.scope', { month: monthOf(figures.month, locale) })}
-            definition={t('def.goal')}
-            definitionLabel={t('def.what', { name: t('goal.title') })}
-            viewAsTable={t('chart.table')}
-            viewAsChart={t('chart.chart')}
-            chart={
-              <SellerGoalBody
-                goal={figures}
-                canManage={goal?.canManage ?? false}
-                csrfToken={goal?.csrfToken ?? ''}
+            titleAdornment={
+              <DefinitionHint
+                label={t('def.what', { name: t('goal.title') })}
+                definition={t('def.goal')}
               />
             }
-          />
+            {...(canManage
+              ? {
+                  headerRight: (
+                    <SellerGoalEditButton goal={figures} csrfToken={goal?.csrfToken ?? ''} />
+                  ),
+                }
+              : {})}
+          >
+            <SellerGoalBody goal={figures} canManage={canManage} />
+          </DashboardCard>
         );
       }}
     </DashboardSlot>

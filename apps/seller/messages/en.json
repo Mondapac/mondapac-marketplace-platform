@@ -351,7 +351,7 @@
         "pace": "On pace for {rate}",
         "estimate": "Estimate",
         "forecast": "Forecast {amount} by {day} · {month} was {last}",
-        "forecast-not-enough": "Not enough data for a forecast yet: it shows once {days} whole days of the month have passed · {month} was {last}",
+        "forecast-not-enough": "Forecast from day {day} · {month} was {last}",
         "none": "No goal set for this month",
         "none-hint": "Set a sales goal to see your progress and pace.",
         "none-hint-read": "The store owner can set a goal for this month.",
@@ -364,7 +364,7 @@
         "set-title": "Set your monthly goal",
         "edit-title": "Edit your monthly goal",
         "field": "Sales goal for {month} ({currency}, incl. GST)",
-        "field-help": "Your goal is private to your store and changes nothing else.",
+        "field-help": "Applies to {month} only, in {currency}. Your goal is private to your store and changes nothing else.",
         "cancel": "Cancel",
         "save": "Save goal",
         "saved": "Goal for {month} saved.",
@@ -379,7 +379,9 @@
           "throttled": "Too many tries. Wait a moment and try again.",
           "unavailable": "The goal could not be saved just now. Try again.",
           "unknown": "The goal could not be saved. Try again."
-        }
+        },
+        "behind": "Behind pace: {rate}",
+        "retry": "Try again"
       }
     }
   },

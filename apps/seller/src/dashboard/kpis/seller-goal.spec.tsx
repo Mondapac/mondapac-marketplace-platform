@@ -118,8 +118,14 @@ describe('the Monthly goal card', () => {
     expect(within(c).getByText('Estimate')).toBeTruthy();
     expect(within(c).getByText(/7 days left · \$5,360\.00 to go · \$765\.71 a day/)).toBeTruthy();
     expect(within(c).getByText(/Your own goal · November to date/)).toBeTruthy();
-    expect(within(c).getByRole('img', { name: /Monthly goal: 80% of goal/ })).toBeTruthy();
+    expect(within(c).getByRole('img', { name: /Monthly goal: 80\.2% of goal/ })).toBeTruthy();
     expect(within(c).getByRole('button', { name: 'What is Monthly goal?' })).toBeTruthy();
+  });
+
+  it('says "Behind pace" in words below 100%', () => {
+    page(sources({ kind: 'ok', value: kpis({ status: 'ok', goal: { ...goal, paceBp: 8800 } }) }));
+    expect(within(card()).getByText('Behind pace: 88%')).toBeTruthy();
+    expect(within(card()).queryByText(/On pace/)).toBeNull();
   });
 
   it('is left out when the API leaves the section out', () => {
@@ -132,8 +138,11 @@ describe('the Monthly goal card', () => {
 
   it('says a failed section failed in place', () => {
     page(sources({ kind: 'ok', value: kpis({ status: 'error' }) }));
-    expect(within(card()).getByRole('alert').textContent).toContain('could not be loaded');
+    const alert = within(card()).getByRole('alert');
+    expect(alert.textContent).toContain('could not be loaded');
     expect(within(card()).queryByText(/\$/)).toBeNull();
+    fireEvent.click(within(alert).getByRole('button', { name: 'Try again' }));
+    expect(refresh).toHaveBeenCalled();
   });
 
   it('shows a skeleton while the read streams', () => {
@@ -164,7 +173,8 @@ describe('the Monthly goal card', () => {
     );
     const c = card();
     expect(within(c).getByText('No goal set for this month')).toBeTruthy();
-    expect(within(c).getByText(/Not enough data for a forecast yet/)).toBeTruthy();
+    expect(within(c).getByText(/Forecast from day 4 · October was/)).toBeTruthy();
+    expect(within(c).queryByText('Estimate')).toBeNull();
     expect(within(c).getByRole('button', { name: 'Set goal' })).toBeTruthy();
     expect(within(c).queryByText('On pace for', { exact: false })).toBeNull();
   });
@@ -190,6 +200,7 @@ describe('the goal form', () => {
     fireEvent.click(within(card()).getByRole('button', { name: 'Edit goal' }));
     const field = screen.getByLabelText<HTMLInputElement>(/Sales goal for November \(AUD/);
     expect(field.value).toBe('27000.00');
+    expect(screen.getByText(/Applies to November only, in AUD/)).toBeTruthy();
     fireEvent.change(field, { target: { value: '30000.50' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save goal' }));
     await waitFor(() => expect(refresh).toHaveBeenCalled());

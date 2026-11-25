@@ -2,7 +2,7 @@
 import { DashboardGrid } from '@mondapac/ui';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 import {
   kpiMajor,
@@ -21,6 +21,9 @@ import type {
   OrdersByStatusKpis,
 } from './kpi-types.ts';
 import { KpiItems } from './kpis.tsx';
+
+// A failed phase 2 card offers "Try again" (router.refresh).
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 afterEach(cleanup);
 
@@ -315,8 +318,7 @@ describe('the admin KPI cards', () => {
 
   it('shows an error in every card when the whole read failed', () => {
     page({ kind: 'error' });
-    // The four headline cards and Abandoned carts (phase 2), each with its own error.
-    expect(document.querySelectorAll('[data-kpi-card] [role="alert"]')).toHaveLength(5);
+    expect(document.querySelectorAll('[data-kpi-card] [role="alert"]')).toHaveLength(4);
     expect(screen.getAllByRole('alert').length).toBeGreaterThan(4);
     expect(screen.queryByText(/\$/)).toBeNull();
   });

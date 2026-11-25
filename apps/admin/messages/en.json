@@ -467,7 +467,7 @@
         "pace": "On pace for {rate}",
         "estimate": "Estimate",
         "forecast": "Forecast {amount} by {day} · {month} was {last}",
-        "forecast-not-enough": "Not enough data for a forecast yet: it shows once {days} whole days of the month have passed · {month} was {last}",
+        "forecast-not-enough": "Forecast from day {day} · {month} was {last}",
         "none": "No monthly target is set",
         "none-hint": "An admin with the right to manage it can set one in Settings.",
         "none-hint-edit": "Set one with Edit.",
@@ -481,7 +481,7 @@
           "load-failed": "The target could not be loaded.",
           "retry": "Try again",
           "field": "Target GMV per month ({currency}, incl. GST)",
-          "field-help": "One target for every calendar month of the Market until it is changed. It changes nothing else.",
+          "field-help": "Applies to every calendar month of the Market until changed, in {currency}. It changes nothing else.",
           "cancel": "Cancel",
           "clear": "Remove target",
           "save": "Save target",
@@ -498,7 +498,8 @@
             "unavailable": "The target could not be saved just now. Try again.",
             "unknown": "The target could not be saved. Try again."
           }
-        }
+        },
+        "behind": "Behind pace: {rate}"
       },
       "funnel": {
         "title": "Shopping funnel",
@@ -567,8 +568,10 @@
         "released-held": "Discounts given back by refunded or cancelled orders: fewer than 5 orders, not shown.",
         "empty": "No discounted orders in this period.",
         "not-enough": "Not enough data yet",
-        "not-enough-hint": "Shown once {minimum} or more orders used a discount; {orders} so far."
-      }
+        "not-enough-hint": "Shown once {minimum} or more orders used a discount; {orders} so far.",
+        "held": "Held back"
+      },
+      "retry": "Try again"
     }
   },
   "work-queue": {

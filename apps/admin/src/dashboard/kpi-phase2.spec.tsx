@@ -200,9 +200,10 @@ describe('the phase 2 admin cards', () => {
     expect(within(f).queryByText('0')).toBeNull();
     expect(within(f).getByText(/29 of 30 days counted so far/)).toBeTruthy();
 
-    const c = screen.getByText('Abandoned carts').closest('[data-kpi-card]') as HTMLElement;
+    const c = region('Abandoned carts');
     expect(within(c).getByText('708')).toBeTruthy();
-    expect(within(c).getByText(/Untouched 24h\+ as of 21 Nov · about \$41,260\.00/)).toBeTruthy();
+    expect(within(c).getByText('Untouched 24h+ as of 21 Nov')).toBeTruthy();
+    expect(within(c).getByText('about $41,260.00')).toBeTruthy();
 
     const s = region('Searches with no results');
     expect(within(s).getByText('barberry')).toBeTruthy();
@@ -216,7 +217,20 @@ describe('the phase 2 admin cards', () => {
     const d = region('Discount cost');
     expect(within(d).getByText('$18,400.00')).toBeTruthy();
     expect(within(d).getByText('Fewer than 5 uses')).toBeTruthy();
+    expect(within(d).getByText('Held back')).toBeTruthy();
     expect(within(d).getByText(/12 orders refunded or cancelled gave back \$480\.00/)).toBeTruthy();
+  });
+
+  it('say "Behind pace" in words below 100%, not by colour only', () => {
+    page(
+      answer({
+        ...ALL_SECTIONS,
+        marketTarget: { status: 'ok', kpis: { ...target, paceBp: 9120 } },
+      }),
+    );
+    const t = region('Monthly target');
+    expect(within(t).getByText('Behind pace: 91.2%')).toBeTruthy();
+    expect(within(t).queryByText(/On pace/)).toBeNull();
   });
 
   it('give each card a "?" that opens its definition', () => {
@@ -295,14 +309,17 @@ describe('the phase 2 admin cards', () => {
     for (const name of [
       'Monthly target',
       'Shopping funnel',
+      'Abandoned carts',
       'Searches with no results',
       'Orders by state',
       'Discount cost',
     ]) {
-      expect(within(region(name)).getByRole('alert').textContent).toContain('could not be loaded');
+      const alert = within(region(name)).getByRole('alert');
+      expect(alert.textContent).toContain('could not be loaded');
+      // A secondary way out: read the page again.
+      fireEvent.click(within(alert).getByRole('button', { name: 'Try again' }));
     }
-    const c = screen.getByText('Abandoned carts').closest('[data-kpi-card]') as HTMLElement;
-    expect(within(c).getByRole('alert')).toBeTruthy();
+    expect(refresh).toHaveBeenCalledTimes(6);
     expect(screen.queryByText(/\$/)).toBeNull();
   });
 
@@ -340,7 +357,9 @@ describe('the phase 2 admin cards', () => {
     );
     const t = region('Monthly target');
     expect(within(t).getByText('No monthly target is set')).toBeTruthy();
-    expect(within(t).getByText(/Not enough data for a forecast yet/)).toBeTruthy();
+    expect(within(t).getByText(/Forecast from day 4 · October was/)).toBeTruthy();
+    // No pace and no forecast: no "Estimate" badge.
+    expect(within(t).queryByText('Estimate')).toBeNull();
     expect(within(region('Shopping funnel')).getByText('Not enough data yet')).toBeTruthy();
     expect(
       within(region('Searches with no results')).getByText('Not enough data yet'),
@@ -449,6 +468,9 @@ describe('the monthly target editor', () => {
     fireEvent.click(within(region('Monthly target')).getByRole('button', { name: 'Edit' }));
     const field = await screen.findByLabelText<HTMLInputElement>(/Target GMV per month \(AUD/);
     expect(field.value).toBe('240000.00');
+    expect(
+      screen.getByText(/Applies to every calendar month of the Market until changed, in AUD/),
+    ).toBeTruthy();
     fireEvent.change(field, { target: { value: '250000.50' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save target' }));
     await waitFor(() => expect(refresh).toHaveBeenCalled());
@@ -495,6 +517,11 @@ describe('targetMinorOf', () => {
   it('reads an amount in the currency, exactly', () => {
     expect(targetMinorOf('240000', 'AUD')).toBe('24000000');
     expect(targetMinorOf('240,000.5', 'AUD')).toBe('24000050');
+    expect(targetMinorOf('240,000.50', 'AUD')).toBe('24000050');
+    // A comma only separates thousands: a decimal comma is refused, never read as 24,000,050.
+    expect(targetMinorOf('240000,50', 'AUD')).toBeNull();
+    expect(targetMinorOf('24,00,000', 'AUD')).toBeNull();
+    expect(targetMinorOf(',240', 'AUD')).toBeNull();
     expect(targetMinorOf('5000', 'JPY')).toBe('5000');
     expect(targetMinorOf('1.5', 'JPY')).toBeNull();
     expect(targetMinorOf('0', 'AUD')).toBeNull();

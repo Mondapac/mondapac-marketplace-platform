@@ -61,7 +61,11 @@ export function targetMinorOf(text: string, currency: string): string | null {
   } catch {
     return null;
   }
-  const match = /^(\d{1,15})(?:\.(\d+))?$/.exec(text.trim().replaceAll(',', ''));
+  const typed = text.trim();
+  // A comma only as a thousands separator ("240,000.50"); "240000,50" is refused, never read as
+  // 24,000,050.
+  if (!/^\d+(\.\d+)?$/.test(typed) && !/^\d{1,3}(,\d{3})*(\.\d+)?$/.test(typed)) return null;
+  const match = /^(\d{1,15})(?:\.(\d+))?$/.exec(typed.replaceAll(',', ''));
   if (match === null) return null;
   const fraction = match[2] ?? '';
   if (fraction.length > exponent) return null;
@@ -87,7 +91,12 @@ export function TargetEditButton({
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
+      <Button
+        variant="secondary"
+        size="sm"
+        className="min-h-11 min-w-11 lg:min-h-0 lg:min-w-0"
+        onClick={() => setOpen(true)}
+      >
         {t('edit')}
       </Button>
       {open ? (
@@ -260,7 +269,7 @@ function TargetDialog({
             <TextField
               name="target"
               label={t('field', { currency })}
-              help={t('field-help')}
+              help={t('field-help', { currency })}
               inputMode="decimal"
               autoComplete="off"
               dir="ltr"
