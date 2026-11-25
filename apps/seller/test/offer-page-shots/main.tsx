@@ -16,7 +16,13 @@ const t = createTranslator({ locale: 'en-AU', messages });
 const offer: OfferView = {
   offerId: '0190a000-0000-7000-8000-000000000001',
   productId: 'p1',
-  product: { productCode: 'P00000412', typeCode: 'meat', name: 'Beef rump steak' },
+  product: {
+    productCode: 'P00000412',
+    typeCode: 'meat',
+    name: 'Beef rump steak',
+    scope: 'PLATFORM',
+    primaryImageId: null,
+  },
   sellerSku: 'KED-021',
   conditionCode: 'new',
   description: { 'en-AU': 'Aged 28 days, cut to order.' },
