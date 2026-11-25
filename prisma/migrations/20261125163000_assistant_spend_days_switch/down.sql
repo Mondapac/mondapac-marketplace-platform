@@ -7,6 +7,10 @@ SET statement_timeout = '60s';
 -- in its new homes is copied back into spend_days, each column the larger of the two, and the
 -- auto-off record kept when spend_days has one. Running it again changes nothing more. The spend is
 -- the buyer chat's day counter (`spent`), as this release read it.
+--
+-- Rollback order: roll the app back to the G7a release first, then run this file. G7a pods write
+-- to both stores and this copy takes the larger value, so nothing written in between is lost;
+-- running this file first would miss what G7b pods write meanwhile (Mojtaba, PR 1356 note B).
 INSERT INTO "assistant"."spend_days"
   ("market_id", "day", "tenant_id", "spend_micro_usd", "input_tokens", "output_tokens",
    "conversations", "auto_off_cap", "auto_off_at")

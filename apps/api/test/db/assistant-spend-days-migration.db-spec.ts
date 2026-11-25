@@ -340,4 +340,21 @@ describe('assistant spend_days expand migration (database integration, AI Gatewa
     expect(await read()).toEqual([{ spend: '800', conversations: 6, cap: 'monthly' }]);
     await owner.query(readFileSync(join(MIGRATIONS, SWITCH, 'migration.sql'), 'utf8'));
   });
+
+  it('the G7b down then up adds no sweeper estimate twice (Mojtaba, PR 1356 note A)', async () => {
+    // The sweeper booked an unsettled estimate on a day before the first gateway day: the
+    // capability day counter's spent is above the usage day's cost.
+    await owner.query(
+      `UPDATE platform.ai_budget_counters
+          SET held_micro_usd = held_micro_usd + 300, spent_micro_usd = spent_micro_usd + 300
+        WHERE market_id = $1 AND period = 'day' AND period_start = '2026-11-20'
+          AND scope = 'capability' AND scope_key = $2`,
+      [first, CAPABILITY],
+    );
+    const before = { usage: await usageDays(), counters: await counters() };
+    await owner.query(readFileSync(join(MIGRATIONS, SWITCH, 'down.sql'), 'utf8'));
+    await owner.query(readFileSync(join(MIGRATIONS, SWITCH, 'migration.sql'), 'utf8'));
+    expect(await usageDays()).toEqual(before.usage);
+    expect(await counters()).toEqual(before.counters);
+  });
 });

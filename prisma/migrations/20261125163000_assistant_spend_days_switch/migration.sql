@@ -36,7 +36,11 @@ WITH "first_day" AS (
   GROUP BY "market_id"
 ), "delta" AS (
   SELECT s."market_id", s."tenant_id", s."day",
-         GREATEST(0, s."spend_micro_usd" - COALESCE(u."cost_micro_usd", 0)) AS "cost",
+         -- Compared with the larger of the usage cost and the counter's spent (which holds the
+         -- sweeper's estimates), the number this release reads, so a down then up cycle adds
+         -- nothing twice (Mojtaba, PR 1356 re-review note A).
+         GREATEST(0, s."spend_micro_usd"
+           - GREATEST(COALESCE(u."cost_micro_usd", 0), COALESCE(c."spent_micro_usd", 0))) AS "cost",
          GREATEST(0, s."input_tokens" - COALESCE(u."input_tokens", 0)) AS "input_tokens",
          GREATEST(0, s."output_tokens" - COALESCE(u."output_tokens", 0)) AS "output_tokens"
   FROM "assistant"."spend_days" s
@@ -44,6 +48,9 @@ WITH "first_day" AS (
   LEFT JOIN "platform"."ai_usage_days" u
     ON u."market_id" = s."market_id" AND u."day" = s."day"
    AND u."capability" = 'assistant.buyer-chat' AND u."seller_id" IS NULL
+  LEFT JOIN "platform"."ai_budget_counters" c
+    ON c."market_id" = s."market_id" AND c."period_start" = s."day" AND c."period" = 'day'
+   AND c."scope" = 'capability' AND c."scope_key" = 'assistant.buyer-chat'
   WHERE f."day" IS NULL OR s."day" <= f."day"
 ), "days" AS (
   INSERT INTO "platform"."ai_usage_days"
