@@ -158,6 +158,23 @@ function productListQuery(
   return out;
 }
 
+/**
+ * The query of the platform-product search as the use case takes it: `page` a number, `barcodes`
+ * a list, and `notSelling` a boolean when it is `true` or `false` (any other text is left for the
+ * use case to refuse).
+ */
+export function platformSearchQuery(query: Record<string, unknown>): Record<string, unknown> {
+  const input = productListQuery(query, ['page']);
+  const barcodes = input['barcodes'];
+  if (typeof barcodes === 'string') {
+    input['barcodes'] = barcodes.split(/[\s,;]+/).filter((line) => line !== '');
+  }
+  const notSelling = input['notSelling'];
+  if (notSelling === 'true') input['notSelling'] = true;
+  else if (notSelling === 'false') input['notSelling'] = false;
+  return input;
+}
+
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
 const UNAUTHORIZED = 'session.invalid (the cookie is cleared) or access.unauthenticated';
 const PRODUCT_PARAM = { name: 'productId', description: 'The product. A UUID v7.' };
@@ -387,11 +404,16 @@ export class OwnProductController {
   @ApiOperation({
     summary: 'Search the platform products the seller may sell',
     description:
-      "Needs catalog.own-product.edit. Published PLATFORM products inside the categories of the seller's business activities only (notice no-activity when they allow none). `q` matches the name, product code, brand, category name or a barcode (GTIN); empty lists every product in scope. `barcodes` is a comma-separated list of up to 200 barcodes answered one line each in barcodeResults (found, already-selling, not-allowed, not-found, invalid). A product the seller already sells has alreadySelling=true. 25 per page.",
+      "Needs catalog.own-product.edit. Published PLATFORM products inside the categories of the seller's business activities only (notice no-activity when they allow none). `q` matches the name, product code, brand, category name or a barcode (GTIN); empty lists every product in scope. `barcodes` is a comma-separated list of up to 200 barcodes answered one line each in barcodeResults (found, already-selling, not-allowed, not-found, invalid). A product the seller already sells has alreadySelling=true; notSelling=true leaves such products out of the items and the total. 25 per page.",
   })
   @ApiQuery({ name: 'q', required: false, description: 'Up to 100 characters.' })
   @ApiQuery({ name: 'barcodes', required: false, description: 'Comma-separated, up to 200.' })
   @ApiQuery({ name: 'page', required: false, description: '1 to 200, default 1.' })
+  @ApiQuery({
+    name: 'notSelling',
+    required: false,
+    description: 'true leaves out (and does not count) products the seller already sells.',
+  })
   @ApiOkResponse({ type: PlatformSearchPage })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -402,11 +424,7 @@ export class OwnProductController {
     @Res({ passthrough: true }) response: Response,
     @Query() query: Record<string, unknown>,
   ): Promise<PlatformSearchPage> {
-    const input = productListQuery(query, ['page']);
-    const barcodes = input['barcodes'];
-    if (typeof barcodes === 'string') {
-      input['barcodes'] = barcodes.split(/[\s,;]+/).filter((line) => line !== '');
-    }
+    const input = platformSearchQuery(query);
     const result = await this.searchPlatform.execute(context, input);
     const outcome = result.ok
       ? (JSON.parse(JSON.stringify(result.value)) as PlatformSearchPage)

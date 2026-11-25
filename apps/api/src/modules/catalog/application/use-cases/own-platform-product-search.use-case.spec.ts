@@ -104,6 +104,13 @@ describe.each(['AU', 'ZZ'] as const)('own-product.platform-search in market %s',
     expect(runs[0]).toEqual({ readOnly: true });
   });
 
+  it('passes notSelling to the reader, false when not asked', async () => {
+    const { useCase, queries } = rig();
+    await useCase.execute(contextOf('seller'), { q: 'beef', notSelling: true });
+    await useCase.execute(contextOf('seller'), { q: 'beef' });
+    expect(queries.map((query) => query.notSelling)).toEqual([true, false]);
+  });
+
   it('turns a typed barcode into its 14-digit form', async () => {
     const { useCase, queries } = rig();
     await useCase.execute(contextOf('seller'), { q: EAN });
@@ -144,6 +151,7 @@ describe.each(['AU', 'ZZ'] as const)('own-product.platform-search in market %s',
       { page: 0 },
       { barcodes: 'x' },
       { q: 'a\u0001' },
+      { notSelling: 'yes' },
     ] as Record<string, unknown>[]) {
       const result = await useCase.execute(contextOf('seller'), input);
       expect(!result.ok && result.error.code).toBe('validation.failed');
