@@ -128,3 +128,19 @@ export function longDay(day: string, locale: string): string {
     timeZone: 'UTC',
   }).format(date);
 }
+
+/** Minor units as a string in the given currency (a figure of the month target or goal). */
+export const kpiMinor = (amountMinor: string, currency: string, locale: string): string =>
+  kpiMoney({ amountMinor, currency }, locale);
+
+/** "November" for a calendar month (`YYYY-MM`); the text itself when it is not one. */
+export function kpiMonthName(month: string, locale: string): string {
+  const date = new Date(`${month}-01T00:00:00Z`);
+  if (!/^[0-9]{4}-[0-9]{2}$/.test(month) || Number.isNaN(date.getTime())) return month;
+  return dateFormat(locale, { month: 'long', timeZone: 'UTC' }).format(date);
+}
+
+/** "30 Nov" for a day of a calendar month (`YYYY-MM`). */
+export function kpiMonthDay(month: string, day: number, locale: string): string {
+  return kpiDayLabel(`${month}-${String(day).padStart(2, '0')}`, locale);
+}

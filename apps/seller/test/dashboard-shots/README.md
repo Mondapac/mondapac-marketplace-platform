@@ -6,3 +6,5 @@ drawn. Run from `apps/seller`:
 
     VITE_PATH=<vite package folder> PLAYWRIGHT_PATH=<playwright package folder> \
       node test/dashboard-shots/run.mjs <out-dir>
+
+Phase 2 cards: scenarios `p2-thin`, `p2-failed` (admin) and `goal-none`, `goal-failed`, `goal-read-only`, the goal dialog (seller); `SHOTS_ONLY=<view names>` takes only those views.

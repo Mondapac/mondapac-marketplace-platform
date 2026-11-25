@@ -40,6 +40,7 @@ export default async function HomePage({
         kpis={kpis}
         selection={selection}
         today={today}
+        csrfToken={gate.session.csrfToken}
       />
     </AdminShell>
   );

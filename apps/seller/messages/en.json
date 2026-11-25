@@ -278,7 +278,8 @@
         "earnings": "What you keep from your sales after commission, refunds and cashback you fund, without GST. It comes from your earnings ledger and is shown once a week of ledger records is in.",
         "payout": "The estimated amount of your next payout and the day it is looked at. It can change before payout day if an order is refunded or disputed.",
         "categories": "Your categories ranked by net sales: goods of paid orders with GST after refunds, so the figures can be lower than Sales. Products are not ranked yet.",
-        "health": "Your store health is the lowest of five measures, each scored 0 to 100 (cancellations, late orders, rating, disputes, reports). 67 or more is healthy. It is updated daily and needs enough orders to be scored."
+        "health": "Your store health is the lowest of five measures, each scored 0 to 100 (cancellations, late orders, rating, disputes, reports). 67 or more is healthy. It is updated daily and needs enough orders to be scored.",
+        "goal": "Your sales with GST this calendar month (Market time) against your own goal. The month does not follow the period above. The forecast is an estimate: your sales so far divided by the time passed, times the length of the month. It shows from the 4th. Only you see your goal."
       },
       "earnings": {
         "scope": "after commission, excl. GST",
@@ -342,6 +343,45 @@
           "unavailable": "Export failed. Try again."
         },
         "denied": "You can't export this report. Ask the store owner for access."
+      },
+      "goal": {
+        "title": "Monthly goal",
+        "scope": "Your own goal · {month} to date",
+        "of-goal": "of goal",
+        "pace": "On pace for {rate}",
+        "estimate": "Estimate",
+        "forecast": "Forecast {amount} by {day} · {month} was {last}",
+        "forecast-not-enough": "Forecast from day {day} · {month} was {last}",
+        "none": "No goal set for this month",
+        "none-hint": "Set a sales goal to see your progress and pace.",
+        "none-hint-read": "The store owner can set a goal for this month.",
+        "not-set": "Not set",
+        "goal": "Goal",
+        "to-date": "{month} to date",
+        "to-go": "{days, plural, one {# day} other {# days}} left · {amount} to go · {perDay} a day",
+        "set": "Set goal",
+        "edit": "Edit goal",
+        "set-title": "Set your monthly goal",
+        "edit-title": "Edit your monthly goal",
+        "field": "Sales goal for {month} ({currency}, incl. GST)",
+        "field-help": "Applies to {month} only, in {currency}. Your goal is private to your store and changes nothing else.",
+        "cancel": "Cancel",
+        "save": "Save goal",
+        "saved": "Goal for {month} saved.",
+        "reload": "Reload",
+        "error": {
+          "amount": "Enter an amount above zero, with at most the currency’s decimals.",
+          "invalid": "This goal is not accepted. Check the amount and try again.",
+          "conflict": "The goal was changed meanwhile. Reload to see the latest goal, then try again.",
+          "not-approved": "You can set a goal once your store is approved.",
+          "denied": "The goal can’t be changed in this session. Only the store owner, signed in with their own account, can set it.",
+          "csrf": "Your session needs a refresh. Reload the page and try again.",
+          "throttled": "Too many tries. Wait a moment and try again.",
+          "unavailable": "The goal could not be saved just now. Try again.",
+          "unknown": "The goal could not be saved. Try again."
+        },
+        "behind": "Behind pace: {rate}",
+        "retry": "Try again"
       }
     }
   },
