@@ -18,6 +18,7 @@ notes: `docs/modules/reporting/notes.md`.
 | `daily_engagement` | `(market_id, market_day)` | one per Market day (dashboards v2, phase 2: the shopping funnel) | 365 per Market |
 | `search_snapshot_days` | `(market_id, market_day)` | one per Market day whose zero-result searches were written (dashboards v2, phase 2) | 365 per Market |
 | `daily_zero_result_searches` | `(market_id, market_day, query_text)` | one per Market day and text the search found nothing for and at least ten customers searched | a few per day at launch; at most 2,000 per day by construction |
+| `daily_abandoned_carts` | `(market_id, market_day)` | one per Market day (dashboards v2, phase 2: abandoned carts) | 365 per Market |
 | `seller_monthly_goals` | `(market_id, seller_id, month)` | one per seller and month a goal was set for (dashboards v2 phase 2) | at most 12 × sellers who set goals (100 sellers: 1.2k) |
 
 `seller_orders` also holds `delivery_method` and `delivery_state` (a region code of at most 3
@@ -55,6 +56,16 @@ hourly snapshot (the day row first, skip-duplicates, so a second run writes noth
 changed: SELECT and INSERT only. No account, guest or session column; the column names avoid
 `account`, `customer`, `buyer` and `shopper` (the reporting-facts db-spec scans for them). No foreign
 key between the two tables (Prisma models them apart; the unit writes both).
+
+`daily_abandoned_carts` (migration `20261125080000_reporting_daily_abandoned_carts`, dashboards v2
+phase 2): per Market day `cart_count` (active carts, guest or signed-in, with at least one line, no
+order mark, last changed at least 24 h before the day's end) and their approximate value
+`approx_value_amount` (bigint minor units) and `approx_value_currency` (the Market's currency; both
+null when a line was in another currency; CHECK: both or neither, amount >= 0, `cart_count >= 0`),
+and `recorded_at`. Written once by the hourly snapshot job on the next Market day, at least 2 h
+after the day ends, from the carts as they are then (`createMany` with skip-duplicates on the
+primary key); only yesterday is ever written, so a day missed while the worker was down has no row.
+The application role has SELECT and INSERT only. No cart, account, guest, offer or seller column.
 
 `seller_monthly_goals` (migration `20261125030000_reporting_seller_monthly_goals`, dashboards v2
 phase 2) is the one table of reporting that is NOT derived data: a seller's own sales goal for a
@@ -95,6 +106,11 @@ All rows are small (under 200 bytes), so even 10x this volume stays under a few 
 - Zero-result searches: the snapshot's look-back reads `search_snapshot_days` by its primary key
   range; the read of a period reads both tables by `(market_id, market_day)` ranges (at most 13
   months of a few rows a day).
+- Abandoned carts: the snapshot's check of yesterday and the read of a period and the one before
+  are primary key lookups and ranges on `(market_id, market_day)`. The count itself is cart's: its
+  two aggregates (lines grouped by currency and quantity, and a count of carts with a line) over the
+  carts selected on `carts (market_id, last_changed_at)` and their lines through the
+  `cart_lines (market_id, cart_id, offer_id, variant_id)` unique index; no cap, no rows in memory.
 - Ledger readiness (7 days): `seller_orders (market_id, paid_day, seller_id)` and
   `ledger_entries (market_id, market_day, seller_id)`, filtered on kind; then the seller orders
   not paid in the window by primary key. `ledger_entries (market_id, seller_order_id)` serves
@@ -115,6 +131,9 @@ All rows are small (under 200 bytes), so even 10x this volume stays under a few 
 - `daily_zero_result_searches` is NOT rebuildable either (search keeps its notes 35 days, engagement
   its behaviour 12 months at most); aggregate only (a text at least ten customers searched). No purge
   yet: a 13-month purge is FE-20261125-reporting-zero-result-searches-retention.
+- `daily_abandoned_carts` is NOT rebuildable either: a cart's state at a past day's end cannot be
+  read again (carts change and are purged: guests after 7 days, signed-in after 90). Aggregate only,
+  kept as long as the dashboards show history; a down migration loses all past days.
 - `inbox` rows have no purge yet, the same as the other modules' inboxes; the shared inbox
   retention, when it is added, covers this one too.
 - Revisit partitioning `sales_entries` and the rollups by `market_day` when a table passes about

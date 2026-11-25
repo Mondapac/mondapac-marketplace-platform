@@ -391,6 +391,8 @@ import { OwnTopicController } from './presentation/own-topic.controller';
 import { OwnTopicList } from './application/use-cases/own-topic-list.use-case';
 import { OwnProductCreate } from './application/use-cases/own-product-create.use-case';
 import { OwnCategoryPicker } from './application/use-cases/own-category-picker.use-case';
+import { OwnPlatformProductSearch } from './application/use-cases/own-platform-product-search.use-case';
+import { PLATFORM_PRODUCT_SEARCH_READER } from './application/ports/platform-product-search.reader';
 import { SellerCategoryScope } from './application/business-activities/allowed-category-ids';
 import { SELLER_ACTIVITY_READER } from './application/ports/seller-activity.reader';
 import { PlatformCategoryPicker } from './application/use-cases/platform-category-picker.use-case';
@@ -673,6 +675,7 @@ const PORT = {
   addSizes: AddSizes,
   reader: OFFER_SELL_UNITS_READER,
   searchReader: OFFER_SEARCH_FACTS_READER,
+  platformSearchReader: PLATFORM_PRODUCT_SEARCH_READER,
   filterReader: SEARCH_FILTER_READER,
   namesReader: OFFER_NAMES_READER,
   labelsReader: SELL_UNIT_LABELS_READER,
@@ -3158,6 +3161,12 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
     useCaseProvider(OwnCategoryPicker, {
       unitOfWork: true,
       adminCategoryReader: true,
+      policy: true,
+      sellerCategories: true,
+    }),
+    useCaseProvider(OwnPlatformProductSearch, {
+      unitOfWork: true,
+      platformSearchReader: true,
       policy: true,
       sellerCategories: true,
     }),

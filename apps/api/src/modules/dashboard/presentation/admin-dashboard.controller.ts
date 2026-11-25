@@ -96,7 +96,10 @@ export class AdminDashboardController {
       'texts the storefront search found nothing for, each shown only on the days at least 10 ' +
       'distinct signed-in customers searched it, searches summed over those days; ' +
       '`not-enough-data` when none qualifies; never a person; key `catalog.product.view`), ' +
-      '`finance` (GMV with and without GST, refunded goods, net sales, ' +
+      '`abandonedCarts` (active carts with ' +
+      'lines, not left by a paid order, untouched for 24 hours at the end of the latest ' +
+      'snapshot day of the period, and their approximate value at the prices when added; ' +
+      '`not-enough-data` below 5 carts; key `ordering.order.view`), `finance` (GMV with and without GST, refunded goods, net sales, ' +
       'average order, and `net`: Mondapac net revenue and take rate, null until a week of ' +
       'matching ledger, a partial total never carries an amount; key ' +
       '`commission-payouts.settlement.view`), `marketTarget` (the current calendar month, ' +

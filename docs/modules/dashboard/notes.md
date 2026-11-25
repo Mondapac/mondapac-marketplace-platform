@@ -403,3 +403,16 @@ API only; the cards come in the phase 2 cards PR.
   month are behind today (so from the 4th). With it: the whole month before, `progressBp`
   (to date ÷ target), `paceBp` (forecast ÷ target), `toGo` and `perDayToGo` (`daysLeft` counts
   today). A target in another currency than the Market's is shown as no target.
+
+### Abandoned carts (dashboards v2, phase 2, nightly snapshot)
+
+`GET dashboard/admin/kpis` gains the section `abandonedCarts` (key `ordering.order.view`, null
+without it, `status: error` when it fails or takes over 1.5 s): reporting's
+`marketplaceAbandonedCarts`, from `reporting.daily_abandoned_carts` only. `carts` and
+`approximateValue` (Money as a string; null with mixed currencies) of `asOfDay`, the latest snapshot
+day of the period, with `change` against the latest day of the period before (`na` below 5 carts
+there), and `recordedDays` of `periodDays`. `not-enough-data` below 5 carts (no count, no value) or
+with no snapshot in the period (the period "today" has none until tomorrow). The card must say
+"about" for the value (prices when the items were added) and show the count as "untouched 24h+ as of
+<day>", not as a total of the period. "Reminders sent" is not in the API
+(FE-20261125-dashboards-abandoned-carts-reminders-sent). The card is built in the phase 2 cards PR.

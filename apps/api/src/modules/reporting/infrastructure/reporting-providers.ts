@@ -30,6 +30,11 @@ import { ENGAGEMENT_STORE, type EngagementStore } from '../application/ports/eng
 import { PrismaEngagementStore } from './prisma-engagement-store';
 import { SEARCH_STORE, type SearchStore } from '../application/ports/search-store';
 import { PrismaSearchStore } from './prisma-search-store';
+import {
+  ABANDONED_CARTS_STORE,
+  type AbandonedCartsStore,
+} from '../application/ports/abandoned-carts-store';
+import { PrismaAbandonedCartsStore } from './prisma-abandoned-carts-store';
 
 /** Binds the ports of reporting. Only this layer may reach `PrismaService`. */
 export const reportingProviders: readonly FactoryProvider[] = [
@@ -103,5 +108,11 @@ export const reportingProviders: readonly FactoryProvider[] = [
     provide: SEARCH_STORE,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): SearchStore => new PrismaSearchStore(prisma),
+  },
+  {
+    provide: ABANDONED_CARTS_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AbandonedCartsStore =>
+      new PrismaAbandonedCartsStore(prisma),
   },
 ];

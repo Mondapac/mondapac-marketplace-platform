@@ -1,5 +1,6 @@
 import type { CategoryPickerAnswer } from '../application/use-cases/own-category-picker.use-case';
 import { OwnCategoryPicker } from '../application/use-cases/own-category-picker.use-case';
+import { OwnPlatformProductSearch } from '../application/use-cases/own-platform-product-search.use-case';
 import {
   Body,
   Controller,
@@ -73,6 +74,7 @@ import {
   OwnProductOptions,
   OwnProductPageList,
   OwnProductView,
+  PlatformSearchPage,
 } from './own-reads.dto';
 import {
   AddSizesDone,
@@ -184,6 +186,7 @@ export class OwnProductController {
     private readonly pickCategories: OwnCategoryPicker,
     private readonly setOwnBrand: OwnProductSetOwnBrand,
     private readonly addSizes: OwnProductAddSizes,
+    private readonly searchPlatform: OwnPlatformProductSearch,
   ) {}
 
   @Get()
@@ -375,6 +378,40 @@ export class OwnProductController {
       ? (JSON.parse(JSON.stringify(result.value)) as OwnProductOptions)
       : refusal(result.error, response, context);
     return this.settle('catalog.own-product-options', context, outcome);
+  }
+
+  // Declared before `:productId`, so "platform-search" is not read as a product id.
+  @Get('platform-search')
+  @Header('Cache-Control', 'no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Search the platform products the seller may sell',
+    description:
+      "Needs catalog.own-product.edit. Published PLATFORM products inside the categories of the seller's business activities only (notice no-activity when they allow none). `q` matches the name, product code, brand, category name or a barcode (GTIN); empty lists every product in scope. `barcodes` is a comma-separated list of up to 200 barcodes answered one line each in barcodeResults (found, already-selling, not-allowed, not-found, invalid). A product the seller already sells has alreadySelling=true. 25 per page.",
+  })
+  @ApiQuery({ name: 'q', required: false, description: 'Up to 100 characters.' })
+  @ApiQuery({ name: 'barcodes', required: false, description: 'Comma-separated, up to 200.' })
+  @ApiQuery({ name: 'page', required: false, description: '1 to 200, default 1.' })
+  @ApiOkResponse({ type: PlatformSearchPage })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async platformSearch(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Query() query: Record<string, unknown>,
+  ): Promise<PlatformSearchPage> {
+    const input = productListQuery(query, ['page']);
+    const barcodes = input['barcodes'];
+    if (typeof barcodes === 'string') {
+      input['barcodes'] = barcodes.split(/[\s,;]+/).filter((line) => line !== '');
+    }
+    const result = await this.searchPlatform.execute(context, input);
+    const outcome = result.ok
+      ? (JSON.parse(JSON.stringify(result.value)) as PlatformSearchPage)
+      : refusal(result.error, response, context);
+    return this.settle('catalog.own-platform-product-search', context, outcome);
   }
 
   // Declared before `:productId`, so "category-picker" is not read as a product id.

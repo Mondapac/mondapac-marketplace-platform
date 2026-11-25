@@ -40,6 +40,19 @@ import { SnapshotDailySearches } from './application/use-cases/snapshot-daily-se
 import { ViewMarketplaceZeroResultSearches } from './application/use-cases/view-marketplace-zero-result-searches.use-case';
 import { FacadeSearchSources } from './infrastructure/facade-search-sources';
 import { snapshotDailySearchesJob } from './presentation/jobs/snapshot-daily-searches.job';
+import { CART_REPORTING_FACADE, CartModule, type CartReportingFacade } from '../cart';
+import {
+  ABANDONED_CART_SOURCES,
+  type AbandonedCartSources,
+} from './application/ports/abandoned-cart-sources';
+import {
+  ABANDONED_CARTS_STORE,
+  type AbandonedCartsStore,
+} from './application/ports/abandoned-carts-store';
+import { SnapshotAbandonedCarts } from './application/use-cases/snapshot-abandoned-carts.use-case';
+import { ViewMarketplaceAbandonedCarts } from './application/use-cases/view-marketplace-abandoned-carts.use-case';
+import { FacadeAbandonedCartSources } from './infrastructure/facade-abandoned-cart-sources';
+import { snapshotAbandonedCartsJob } from './presentation/jobs/snapshot-abandoned-carts.job';
 import {
   COMMISSION_PAYOUTS_REPORTING_FACADE,
   CommissionPayoutsModule,
@@ -126,7 +139,9 @@ const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
  * phase 2: a nightly snapshot, counts only); the zero-result searches from search's texts and
  * engagement's searcher counts (the same phase: texts at least ten customers searched); the
  * discount cost from promotions' reporting facade at request time (dashboards v2, phase 2;
- * nothing stored); the Market's monthly revenue target from the settings facade. No
+ * nothing stored); the abandoned carts from cart's reporting facade (a nightly snapshot: a
+ * count and an approximate value); the Market's monthly revenue target from the settings
+ * facade. No
  * module imports it. It publishes no event. Its own keys are the two daily exports' (dashboards v2,
  * PR 5), each audited, and the seller's monthly goal (phase 2), the one table it holds that is not
  * derived data. The history backfill job brings the facts recorded before the module was
@@ -143,6 +158,7 @@ const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
     EngagementModule,
     SearchModule,
     PromotionsModule,
+    CartModule,
   ],
   controllers: [SellerKpisController, AdminReportsController],
   providers: [
@@ -439,6 +455,43 @@ const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
       useFactory: (gate: UseCaseGate, sources: DiscountSources, zone: MarketZone, clock: Clock) =>
         new ViewMarketplaceDiscountCost(gate, { sources, zone, clock }),
     },
+    // Abandoned carts (dashboards v2, phase 2): the nightly snapshot and its read.
+    {
+      provide: ABANDONED_CART_SOURCES,
+      inject: [CART_REPORTING_FACADE],
+      useFactory: (cart: CartReportingFacade): AbandonedCartSources =>
+        new FacadeAbandonedCartSources(cart),
+    },
+    {
+      provide: SnapshotAbandonedCarts,
+      inject: [
+        USE_CASE_GATE,
+        UNIT_OF_WORK,
+        ABANDONED_CARTS_STORE,
+        ABANDONED_CART_SOURCES,
+        MARKET_ZONE,
+        CLOCK,
+      ],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        store: AbandonedCartsStore,
+        sources: AbandonedCartSources,
+        zone: MarketZone,
+        clock: Clock,
+      ) => new SnapshotAbandonedCarts(gate, { unitOfWork, store, sources, zone, clock }),
+    },
+    {
+      provide: ViewMarketplaceAbandonedCarts,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, ABANDONED_CARTS_STORE, MARKET_ZONE, CLOCK],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        store: AbandonedCartsStore,
+        zone: MarketZone,
+        clock: Clock,
+      ) => new ViewMarketplaceAbandonedCarts(gate, { unitOfWork, store, zone, clock }),
+    },
     {
       provide: REPORTING_KPI_FACADE,
       inject: [
@@ -454,6 +507,7 @@ const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
         ViewMarketplaceShoppingFunnel,
         ViewMarketplaceZeroResultSearches,
         ViewMarketplaceDiscountCost,
+        ViewMarketplaceAbandonedCarts,
         MARKET_ZONE,
         CLOCK,
       ],
@@ -470,6 +524,7 @@ const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
         shoppingFunnel: ViewMarketplaceShoppingFunnel,
         zeroResultSearches: ViewMarketplaceZeroResultSearches,
         discountCost: ViewMarketplaceDiscountCost,
+        abandonedCarts: ViewMarketplaceAbandonedCarts,
         zone: MarketZone,
         clock: Clock,
       ) =>
@@ -486,6 +541,7 @@ const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
           shoppingFunnel,
           zeroResultSearches,
           discountCost,
+          abandonedCarts,
           { zone, clock },
         ),
     },
@@ -505,6 +561,7 @@ const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
         BackfillLedger,
         SnapshotDailyEngagement,
         SnapshotDailySearches,
+        SnapshotAbandonedCarts,
       ],
       (
         reconcile: ReconcileReportFacts,
@@ -512,12 +569,14 @@ const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
         ledger: BackfillLedger,
         engagement: SnapshotDailyEngagement,
         searches: SnapshotDailySearches,
+        abandoned: SnapshotAbandonedCarts,
       ) => [
         reconcileReportFactsJob(reconcile),
         backfillHistoryJob(backfill),
         backfillLedgerJob(ledger),
         snapshotDailyEngagementJob(engagement),
         snapshotDailySearchesJob(searches),
+        snapshotAbandonedCartsJob(abandoned),
       ],
     ),
   ],
