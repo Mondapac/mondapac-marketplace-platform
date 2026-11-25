@@ -10,6 +10,7 @@ import {
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
 import { unusedChangeTrail } from '../support/change-trail-fakes';
+import { inMemoryAiUsage } from '../support/in-memory-ai-usage';
 import { FakeUnitOfWork } from '../support/pricing-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../support/test-config';
 import { AnthropicMessagesProvider } from '../../src/platform/ai/anthropic-messages.provider';
@@ -20,6 +21,7 @@ import { ASSISTANT_AI_CAPABILITIES } from '../../src/modules/assistant/contracts
 import type { ModelRequest } from '../../src/platform/ai/model-provider';
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
+import { SystemClock } from '../../src/platform/clock/system-clock';
 import type { AppConfig } from '../../src/platform/config/app-config';
 import { parseMarketValues } from '../../src/platform/config/app-config';
 import { loadMarketConfigs } from '../../src/platform/market-config/market-config';
@@ -210,8 +212,9 @@ class RecordingRuntime implements AssistantRuntime {
     tier: ModelTier,
     request: ModelRequest,
     timeoutMs: number,
+    turnId: string,
   ): Promise<ModelAnswer> {
-    const answer = await this.inner.complete(context, tier, request, timeoutMs);
+    const answer = await this.inner.complete(context, tier, request, timeoutMs, turnId);
     if (answer.ok) {
       for (const block of answer.turn.blocks) {
         if (block.type === 'tool-call') this.requested.push(block.name);
@@ -455,7 +458,15 @@ describe(`buyer assistant real-model evaluation (${EVALUATION_VERSION})`, () => 
   // The real gateway path, with the buyer chat registered; no seller-scoped capability runs here.
   const capabilities = new CapabilityRegistry();
   capabilities.register('assistant', ASSISTANT_AI_CAPABILITIES);
-  const aiGateway = new AiGateway(gateway, capabilities, { isOn: () => Promise.resolve(false) });
+  // The budget is counted in memory: the evaluation has no database.
+  const clock = new SystemClock();
+  const aiGateway = new AiGateway(
+    gateway,
+    capabilities,
+    { isOn: () => Promise.resolve(false) },
+    inMemoryAiUsage(registry, clock).usage,
+    clock,
+  );
   const reportDir = process.env.ASSISTANT_EVAL_REPORT_DIR ?? join(tmpdir(), 'assistant-eval');
 
   it('evaluates both Market fixtures (AU and ZZ), each with a key and a model', () => {

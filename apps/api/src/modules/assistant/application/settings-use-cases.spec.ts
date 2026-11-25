@@ -295,8 +295,9 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
     clock = new FixedClock(T0);
     audit = new RecordingAudit(clock);
     actors = new FakeChangeActors();
-    runtime = new FakeRuntime();
     const unitOfWork = new FakeUnitOfWork();
+    runtime = new FakeRuntime();
+    runtime.unitOfWork = unitOfWork;
     const conversations = new MemoryConversations();
     deps = {
       unitOfWork,

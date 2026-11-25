@@ -143,7 +143,9 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
   beforeEach(() => {
     settings = new OneSettings();
     settings.current = on();
+    const unitOfWork = new FakeUnitOfWork();
     runtime = new FakeRuntime();
+    runtime.unitOfWork = unitOfWork;
     tools = new FakeTools();
     conversations = new MemoryConversations();
     spend = new MemorySpend();
@@ -151,7 +153,7 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
     limits = new MemoryLimits();
     clock = new FixedClock(T0);
     deps = {
-      unitOfWork: new FakeUnitOfWork(),
+      unitOfWork,
       settings,
       runtime,
       audit: new NoAudit(),

@@ -110,10 +110,19 @@ audience, the seller switch through the `sellers` port and the configured tier (
 route conditions apply from G3). `status` takes the caller's `CallContext`, because the audience
 and acting-as checks need the actor. `maxInputTokens` and `maxToolRounds` are declared and
 validated from G1 and enforced by the gateway from G2; until then each module keeps its own caps.
-`status` opens no transaction and calls no model, so it is safe inside a UnitOfWork until G2 reads
-the budget. G4 moves both into the
+From G2 `status` reads the budget in a read-only unit of its own and `run` writes it in short
+units of its own, so neither is ever called inside a UnitOfWork (an open unit makes `status` answer
+off); the assistant asks `status` after its settings unit. G4 moves both into the
 `settings` definitions the gateway reads, and the `tier` option goes. `opts.timeoutMs` may only
 shorten the capability's `timeoutMs`.
+
+**Caps enforced from G2.** `maxInputTokens` is checked before any call against an estimate of two
+characters a token (the reservation uses the larger bound of one token a character). A capability
+with `maxToolRounds` > 0 allows that many `run`s per user turn: the caller passes `opts.turnId`, a
+random id per user message, and a `run` without one is off; the count is kept in memory on the API
+instance that serves the turn. A capability with `maxToolRounds` = 0 allows one run and is never
+sent tools. A refused input, an exhausted turn and a full cap all answer `over-budget` and are
+counted as refusals in `ai_usage_days`.
 
 **Provider contract.** `ModelProvider` stays and gains two things: image input and the processing
 region identifier. Word-by-word streaming is not in this design, because the output guard and the
@@ -173,6 +182,11 @@ number so the partner team can work in parallel (G6).
 - **Alerts.** At 80 % of a cap the admin is notified. At 100 % the capability switches off and at
   most one more notice is sent per day.
 - **Message limits** stay in the module: the gateway counts model rounds, not user messages.
+- **Cap values until G4.** The Market configuration's optional `aiBudget` section
+  (`marketDayMicroUsd`, `marketMonthMicroUsd`, `capabilityDayMicroUsd`, `sellerDayMicroUsd`,
+  `guestDayMicroUsd`, US micro-dollars). An absent cap is counted but not enforced; AU has none
+  today, so G2 changes nothing a user sees there. The guest pool is the buyer capabilities' calls
+  by anonymous visitors.
 - **Moving the buyer assistant's cap.** G2 only counts in parallel and moves nothing.
   `assistant.spend_days` moves to the gateway in its own later PR, in steps (section 10).
 
@@ -295,15 +309,18 @@ the guarded `prisma.tx(market)` client. Each table has an explicit GRANT and `do
 |---|---|---|
 | `platform.ai_calls` | One row per call: Market, capability, seller (if any), provider, model, attempt, input and output tokens, unit price used, cost, latency and outcome. No text, customer id, IP or personal key. | 90 days. A scheduled job deletes old rows in batches, like the security-events table. No partitions. |
 | `platform.ai_usage_days` | Daily totals per Market, capability and seller: settled cost, reserved cost, calls, errors and fallbacks, and latency counts in fixed buckets from which p95 is computed. | 25 months |
+| `platform.ai_budget_counters` | One row per Market, period (day or month, in the Market's zone) and cap scope (Market, capability, seller, guest pool): `held` (settled plus reserved) and `spent`. Added in G2 (Mojtaba): a month cap cannot be one conditional UPDATE over day rows. | 25 months |
 | `platform.ai_budget_reservations` | Temporary reservation with an expiry; deleted on settle or expiry. | Minutes |
 | Settings | Priority lists, saver model and threshold, caps, guest share, in-house stage, shadow share and rollback limits in the existing store (`settings.market_settings`), versioned with history. Routes are code (ADR-0052). | Versioned |
 
 - **Atomic reservation.** For each cap (Market day, Market month, capability, seller) a separate
-  `UPDATE … WHERE spent + reserved + est <= cap RETURNING`, all in one short unit in a fixed order
-  so no deadlock arises. The unit is outside the main work's transaction. The day row is created
+  `UPDATE … WHERE held <= cap - est` on `ai_budget_counters`, all in one short unit in the fixed
+  order Market month, Market day, capability, seller or guest pool, so no deadlock arises. The unit is outside the main work's transaction. The day row is created
   first with `INSERT … ON CONFLICT DO NOTHING`.
-- **Settle once.** The reservation is taken with `DELETE … RETURNING` and the counter is corrected
-  in the same unit; running it again has no effect. Settlement is written to the reservation's day,
+- **Settle once.** The reservation is taken (read, then `DELETE`; of two takes one deletes the row)
+  and the counters are corrected in the same unit, with the call's row (its id is the reservation's)
+  inserted `ON CONFLICT DO NOTHING`: a second settle finds the row and changes nothing. A settle
+  after the sweeper released the reservation adds the real cost. Settlement is written to the reservation's day,
   so a call that crosses midnight is counted right.
 - **Day-row key.** With no seller the seller column is null, so the day-row key is a unique index
   with `NULLS NOT DISTINCT`. The auto-off and once-a-day-notice columns that live in `spend_days`
@@ -358,3 +375,5 @@ the guarded `prisma.tx(market)` client. Each table has an explicit GRANT and `do
 | FE-233 | Answer cache, only for answers built from help-centre text alone, per Market |
 | FE-234 | Key reload without a server restart |
 | FE-235 | A design of its own for the admin assistant |
+| FE-20261125-ai-gateway-budget-alerts | Admin notice at 80 % and 100 % of an AI budget cap (G2 counts and refuses only) |
+| FE-20261125-ai-gateway-ops-alerts | Kazem's alerts: error rate, circuit breaker, spend at 80 % |

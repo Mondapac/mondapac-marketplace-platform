@@ -482,3 +482,12 @@ are fixed in the adapter; `environment` picks one. Prices come in the Market's d
   ambient is refused without a call).
 - `timeoutMs`, `maxAttempts`, `backoffMs`, `circuitBreaker.*` (required): as for `realTimeCarrier`.
   A shipment is created once whatever `maxAttempts` says: no idempotency key is documented.
+
+- `aiBudget` (optional section; AI Gateway G2, docs/design/domain/platform-ai.md section 7): the
+  AI budget caps of the Market in US micro-dollars (1 = US$0.000001), each optional:
+  `marketDayMicroUsd`, `marketMonthMicroUsd`, `capabilityDayMicroUsd` (each capability),
+  `sellerDayMicroUsd` (each seller of a seller-scoped capability) and `guestDayMicroUsd` (the
+  guest pool: buyer capabilities called by anonymous visitors). Days and months are the Market's
+  `timezone`. An absent cap is counted but not enforced (AU sets none today); 0 allows nothing.
+  A full cap makes the gateway answer `over-budget` and the host flow completes without AI. Read
+  by `platform/ai` until the gateway settings move to the `settings` module (G4).

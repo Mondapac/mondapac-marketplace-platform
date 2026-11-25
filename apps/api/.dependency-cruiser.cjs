@@ -396,8 +396,26 @@ module.exports = {
           '^src/platform/ai/capability\\.ts$',
           '^src/platform/ai/capability-registry\\.ts$',
           '^src/platform/ai/seller-ai-switch\\.ts$',
+          // The usage store's port; rule ai-usage-store-only-in-persistence limits who imports it.
+          '^src/platform/ai/usage/ai-usage-store\\.ts$',
         ],
       },
+    },
+    {
+      name: 'ai-usage-store-only-in-persistence',
+      comment:
+        "The AI budget and usage store's port (docs/design/domain/platform-ai.md section 10) is " +
+        'implemented only by platform/persistence/ai-usage/ and bound only by PersistenceModule ' +
+        'for AiModule, so no module reads or changes the AI budget.',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '^src/platform/ai/',
+          '^src/platform/persistence/persistence\\.module\\.ts$',
+          '^src/platform/persistence/ai-usage/',
+        ],
+      },
+      to: { path: '^src/platform/ai/usage/ai-usage-store\\.ts$' },
     },
     {
       name: 'ai-registration-only-from-module-files',

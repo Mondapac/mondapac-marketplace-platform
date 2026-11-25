@@ -66,13 +66,20 @@ const NO_KEYS = { isKnownPermissionKey: () => false };
 /** Every unit the use case opened, with its options; units that end in err roll back nothing. */
 export class FakeUnitOfWork implements UnitOfWork {
   readonly units: { readonly market: string; readonly options: UnitOfWorkOptions }[] = [];
-  run<T, E>(
+  /** Units open now (a unit inside a unit counts twice). */
+  open = 0;
+  async run<T, E>(
     market: MarketContext,
     work: () => Promise<Result<T, E>>,
     options: UnitOfWorkOptions = {},
   ): Promise<Result<T, E>> {
     this.units.push({ market: market.marketId, options });
-    return work();
+    this.open += 1;
+    try {
+      return await work();
+    } finally {
+      this.open -= 1;
+    }
   }
   /** The inbox: `(Market, event, subscriber)` of every event handled. */
   readonly handled = new Set<string>();

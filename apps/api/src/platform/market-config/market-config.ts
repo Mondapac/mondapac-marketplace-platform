@@ -1432,6 +1432,23 @@ const fleetSchema = z
     'a fleet needs serviceAreas, or outsideCityAreasOnly',
   );
 
+/**
+ * The AI Gateway's budget caps of the Market (docs/design/domain/platform-ai.md section 7), in US
+ * micro-dollars (1 = US$0.000001), until the gateway settings move to the `settings` module (G4).
+ * Days and months are the Market's (its `timezone`). A cap that is absent is not enforced: the
+ * gateway still counts every call against it. 0 allows nothing. `sellerDay` applies to each seller
+ * of a seller-scoped capability; `guestDay` is the guest pool, the share anonymous visitors of a
+ * buyer capability may use; `capabilityDay` applies to each capability.
+ */
+const aiBudgetCap = z.number().int().min(0).max(1_000_000_000_000);
+const aiBudgetSchema = z.strictObject({
+  marketDayMicroUsd: aiBudgetCap.optional(),
+  marketMonthMicroUsd: aiBudgetCap.optional(),
+  capabilityDayMicroUsd: aiBudgetCap.optional(),
+  sellerDayMicroUsd: aiBudgetCap.optional(),
+  guestDayMicroUsd: aiBudgetCap.optional(),
+});
+
 const shippingSchema = z.strictObject({
   /**
    * The region (state) of each postcode, as ranges per region code (dashboards v2, phase 1): how
@@ -2173,6 +2190,8 @@ const marketSchema = z
     certification: certificationSchema.optional(),
     /** Owned by `shipping`: the real-time carrier (SHP-02/03). Absent: sellers ship themselves. */
     shipping: shippingSchema.optional(),
+    /** Read by `platform/ai`: the AI budget caps. Absent: every call is counted, none is capped. */
+    aiBudget: aiBudgetSchema.optional(),
   })
   .refine((market) => market.supportedLocales.includes(market.defaultLocale), {
     message: 'supportedLocales must include defaultLocale',

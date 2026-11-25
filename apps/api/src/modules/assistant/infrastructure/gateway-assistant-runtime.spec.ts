@@ -39,12 +39,14 @@ describe.each([
       { ok: true, turn: TURN, route: { provider: 'p', model: 'm', attempt: 1 }, costMicroUsd: 7 },
       calls,
     );
-    expect(await runtime.complete(context, 'fast', REQUEST, 500)).toEqual({
+    expect(await runtime.complete(context, 'fast', REQUEST, 500, 'turn-1')).toEqual({
       ok: true,
       turn: TURN,
       costMicroUsd: 7,
     });
-    expect(calls).toEqual([[BUYER_CHAT, context, REQUEST, { tier: 'fast', timeoutMs: 500 }]]);
+    expect(calls).toEqual([
+      [BUYER_CHAT, context, REQUEST, { tier: 'fast', timeoutMs: 500, turnId: 'turn-1' }],
+    ]);
   });
 
   it.each([
@@ -56,7 +58,7 @@ describe.each([
     ['timeout', 'timeout', 900],
   ] as const)('maps %s to %s and keeps the cost', async (reason, failure, cost) => {
     const runtime = runtimeOf({ ok: false, reason, costMicroUsd: cost });
-    expect(await runtime.complete(context, 'fast', REQUEST, 500)).toEqual({
+    expect(await runtime.complete(context, 'fast', REQUEST, 500, 'turn-1')).toEqual({
       ok: false,
       failure,
       costMicroUsd: cost,
