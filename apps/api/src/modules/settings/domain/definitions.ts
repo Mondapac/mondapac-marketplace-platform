@@ -1,3 +1,5 @@
+import type { Money } from '@mondapac/shared-kernel';
+
 // The admin-editable Market settings (ADR-0026), declared in code: code, allowed values, the
 // value in force while no admin has changed it, and the safe value used when the store cannot be
 // read. Adding a setting is adding a definition here (and its translation keys in the panels).
@@ -37,11 +39,40 @@ export const AI_DESCRIPTION_WRITER_TIER_CODE = 'ai-description-writer-tier';
 export const AI_MODEL_TIER_VALUES = ['fast', 'balanced'] as const;
 export type AiModelTierSetting = (typeof AI_MODEL_TIER_VALUES)[number];
 
+export const MONTHLY_REVENUE_TARGET_CODE = 'monthly-revenue-target';
+
+/**
+ * The Market's monthly revenue target (dashboards v2 phase 2): the GMV with tax the marketplace
+ * aims for in each calendar month of the Market's zone, the basis of the admin KPI GMV. `none`
+ * (the default and the safe value) or `<ISO 4217 code>:<minor units>`, for example
+ * `AUD:24000000`; the currency is the Market's when it is set, never assumed. It stays in force
+ * for every month until it is changed; the history keeps the earlier targets.
+ */
+export const MONTHLY_REVENUE_TARGET_NONE = 'none';
+/** At most 15 digits of minor units (inside a BIGINT and below 2^53). */
+const MONEY_VALUE = /^([A-Z]{3}):([1-9][0-9]{0,14})$/;
+
+/** The target a stored value names; null for `none` or anything else. */
+export function targetOf(value: string): Money | null {
+  const match = MONEY_VALUE.exec(value);
+  if (match === null) return null;
+  return Object.freeze({ amount: BigInt(match[2]!), currency: match[1]! });
+}
+
+/** The stored value of a target (null: `none`). */
+export function targetValue(target: Money | null): string {
+  return target === null
+    ? MONTHLY_REVENUE_TARGET_NONE
+    : `${target.currency}:${target.amount.toString()}`;
+}
+
 export interface SettingDefinition {
   readonly code: string;
   /** The English name admins know it by, as the System requests queue labels its changes. */
   readonly label: string;
   readonly values: readonly string[];
+  /** A setting whose values are not a list (an amount) accepts the values this matches too. */
+  readonly pattern?: RegExp;
   /** In force while the Market has no row. */
   readonly defaultValue: string;
   /** Used when the store cannot be read: restrictive and cheap, never a Market choice. */
@@ -79,9 +110,24 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = Object.freeze([
     // The cheaper tier.
     safeValue: 'fast',
   },
+  {
+    code: MONTHLY_REVENUE_TARGET_CODE,
+    label: 'Monthly revenue target',
+    values: [MONTHLY_REVENUE_TARGET_NONE],
+    pattern: MONEY_VALUE,
+    defaultValue: MONTHLY_REVENUE_TARGET_NONE,
+    // An unreadable store is never read as a target; the dashboard section answers `error`.
+    safeValue: MONTHLY_REVENUE_TARGET_NONE,
+  },
 ]);
 
 export const SETTING_CODES: readonly string[] = SETTING_DEFINITIONS.map((d) => d.code);
+
+/** Whether `value` is one the definition allows. */
+export function isAllowedValue(definition: SettingDefinition, value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  return definition.values.includes(value) || (definition.pattern?.test(value) ?? false);
+}
 
 export function findDefinition(code: unknown): SettingDefinition | null {
   return SETTING_DEFINITIONS.find((definition) => definition.code === code) ?? null;

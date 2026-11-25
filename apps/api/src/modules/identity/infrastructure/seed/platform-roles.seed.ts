@@ -231,7 +231,9 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // Version 36 adds `shipping.carrier-delivery.view`, likewise unprotected (the carrier progress
     // column of the admin Shipments list, 2026-11-16); Viewer is the only default role that holds
     // `ordering.order.view`, and a custom role that holds it does not get the new key (R10).
-    seedVersion: 36,
+    // Version 37 adds `settings.monthly-revenue-target.view`, likewise unprotected (dashboards v2
+    // phase 2: the Market's monthly revenue target); the manage key is not a viewer key.
+    seedVersion: 37,
     nameKey: 'identity.role.viewer',
     permissionKeys: [
       'identity.seller-access.view',
@@ -269,6 +271,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'ordering.refund-limits.view',
       'ordering.ship-to-retention.view',
       'shipping.carrier-delivery.view',
+      'settings.monthly-revenue-target.view',
     ],
   },
   {

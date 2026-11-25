@@ -36,4 +36,17 @@ export const MarketSettingChanged = defineAuditAction({
   after: { value: auditField.enumOf(VALUES), version: auditField.integer() },
 });
 
-export const SETTINGS_AUDIT_ACTIONS = [MarketSettingChanged] as const;
+/**
+ * An admin changed the Market's monthly revenue target (an amount, so not one of the enum values
+ * above): the target before and after (null: none set) as money, and the new version.
+ */
+export const MonthlyRevenueTargetChanged = defineAuditAction({
+  action: 'settings.monthly-revenue-target.changed',
+  targetType: SETTINGS_TARGET,
+  targetId: auditField.enumOf(['monthly-revenue-target'] as const),
+  actors: ['authenticated'],
+  before: { target: auditField.optional(auditField.money()) },
+  after: { target: auditField.optional(auditField.money()), version: auditField.integer() },
+});
+
+export const SETTINGS_AUDIT_ACTIONS = [MarketSettingChanged, MonthlyRevenueTargetChanged] as const;

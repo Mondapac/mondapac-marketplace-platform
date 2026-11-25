@@ -1,10 +1,17 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
-import { MarketSettingChanged, type SETTING_TARGET_IDS } from '../domain/audit';
+import type { AuditEntry, CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
+import {
+  MarketSettingChanged,
+  MonthlyRevenueTargetChanged,
+  type SETTING_TARGET_IDS,
+} from '../domain/audit';
 import {
   findDefinition,
+  isAllowedValue,
+  MONTHLY_REVENUE_TARGET_CODE,
   SETTING_DEFINITIONS,
+  targetOf,
   type CartMode,
   type ListPaging,
   AI_DESCRIPTION_WRITER_CODE,
@@ -34,6 +41,20 @@ const AI_CODES: ReadonlySet<string> = new Set([
 const logger = new Logger('SettingsFlow');
 
 type SettingValue = ListPaging | CartMode;
+
+/** The audit row of a change: the amount action for the target, the enum action otherwise. */
+function changedEntry(code: string, was: string, next: string, version: number): AuditEntry {
+  if (code === MONTHLY_REVENUE_TARGET_CODE) {
+    return MonthlyRevenueTargetChanged.entry('monthly-revenue-target', {
+      before: { target: targetOf(was) },
+      after: { target: targetOf(next), version },
+    });
+  }
+  return MarketSettingChanged.entry(code as (typeof SETTING_TARGET_IDS)[number], {
+    before: { value: was as SettingValue },
+    after: { value: next as SettingValue, version },
+  });
+}
 
 export interface FieldIssue {
   readonly path: string;
@@ -189,7 +210,7 @@ export async function changeSetting(
   }
   const { value, expectedVersion } = input;
   const fields: FieldIssue[] = [];
-  if (typeof value !== 'string' || !definition.values.includes(value)) {
+  if (!isAllowedValue(definition, value)) {
     fields.push({ path: 'value', code: 'value' });
   }
   if (!Number.isSafeInteger(expectedVersion) || (expectedVersion as number) < 0) {
@@ -225,13 +246,7 @@ export async function changeSetting(
       changedBy: adminId,
     });
     if (!applied) return err({ code: 'settings.conflict' });
-    await deps.audit.record(
-      context,
-      MarketSettingChanged.entry(definition.code as (typeof SETTING_TARGET_IDS)[number], {
-        before: { value: was as SettingValue },
-        after: { value: next as SettingValue, version },
-      }),
-    );
+    await deps.audit.record(context, changedEntry(definition.code, was, next, version));
     // The change is live; its review opens in the same unit (a refusal rolls the change back).
     const review = await deps.review.openReview(context, {
       area: SETTINGS_REVIEW_AREA,
@@ -273,7 +288,7 @@ export async function revertSetting(
   if (adminId === null) throw new Error('settings: a revert needs a signed-in admin');
   const definition = findDefinition(request.subjectRef);
   const restore = request.before.value;
-  if (definition === null || typeof restore !== 'string' || !definition.values.includes(restore)) {
+  if (definition === null || !isAllowedValue(definition, restore)) {
     return 'gone';
   }
   const row = await deps.settings.find(context.market, definition.code);
@@ -291,12 +306,6 @@ export async function revertSetting(
     changedBy: adminId,
   });
   if (!applied) return 'changed-since';
-  await deps.audit.record(
-    context,
-    MarketSettingChanged.entry(definition.code as (typeof SETTING_TARGET_IDS)[number], {
-      before: { value: current as SettingValue },
-      after: { value: restore as SettingValue, version },
-    }),
-  );
+  await deps.audit.record(context, changedEntry(definition.code, current, restore, version));
   return 'reverted';
 }

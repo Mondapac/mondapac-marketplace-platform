@@ -1,6 +1,7 @@
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { ReadAiDescriptionWriter } from '../application/use-cases/read-ai-description-writer.use-case';
 import type { ReadCartMode } from '../application/use-cases/read-cart-mode.use-case';
+import type { ReadMonthlyRevenueTarget } from '../application/use-cases/read-monthly-revenue-target.use-case';
 import type { SettingsFacade } from '../contracts/settings.facade';
 
 /** {@link SettingsFacade} on the settings use cases; a refusal or a throw is off (or
@@ -9,7 +10,12 @@ export class SettingsFacadeImplementation implements SettingsFacade {
   constructor(
     private readonly readAiDescriptionWriter: ReadAiDescriptionWriter,
     private readonly readCartMode: ReadCartMode,
+    private readonly readMonthlyRevenueTarget: ReadMonthlyRevenueTarget,
   ) {}
+
+  monthlyRevenueTarget(context: CallContext) {
+    return this.readMonthlyRevenueTarget.execute(context, {});
+  }
 
   async aiDescriptionWriter(context: CallContext) {
     try {

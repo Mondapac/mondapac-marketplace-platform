@@ -25,12 +25,19 @@ import { ChangeListPagingSetting } from '../application/use-cases/change-list-pa
 import { ReadListPaging } from '../application/use-cases/read-list-paging.use-case';
 import { ViewCartModeSetting } from '../application/use-cases/view-cart-mode-setting.use-case';
 import { ViewListPagingSetting } from '../application/use-cases/view-list-paging-setting.use-case';
+import { ChangeMonthlyRevenueTargetSetting } from '../application/use-cases/change-monthly-revenue-target-setting.use-case';
+import { ViewMonthlyRevenueTargetSetting } from '../application/use-cases/view-monthly-revenue-target-setting.use-case';
 import { closedBody, refusal } from './http-answers';
 import { CART_MODE_CODE } from '../domain/definitions';
 import {
   ChangeAiSettingRequest,
   ChangeCartModeRequest,
+  ChangeMonthlyRevenueTargetRequest,
   ChangeSettingRequest,
+  MonthlyRevenueTargetBody,
+  monthlyRevenueTargetBody,
+  MonthlyRevenueTargetChangeBody,
+  monthlyRevenueTargetChangeBody,
   ListPagingBody,
   listPagingBody,
   SettingBody,
@@ -75,7 +82,85 @@ export class AdminSettingsController {
     private readonly changeCartMode: ChangeCartModeSetting,
     private readonly viewAi: ViewAiSettings,
     private readonly changeAi: ChangeAiSetting,
+    private readonly viewTarget: ViewMonthlyRevenueTargetSetting,
+    private readonly changeTarget: ChangeMonthlyRevenueTargetSetting,
   ) {}
+
+  @Get('monthly-revenue-target')
+  @ApiOperation({
+    summary: 'The monthly revenue target of the Market (admin)',
+    description:
+      'Needs settings.monthly-revenue-target.view. The GMV with tax the Market aims for in each ' +
+      "calendar month of its zone, in the Market's currency (minor units as a string); null while " +
+      'none is set (version 0). It stays in force for every month until changed.',
+  })
+  @ApiOkResponse({ type: MonthlyRevenueTargetBody })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  async monthlyRevenueTarget(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.viewTarget.execute(context, {});
+    logRoute(
+      this.#logger,
+      'settings.view-monthly-revenue-target-route',
+      context,
+      result.ok ? 'read' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    const [view] = result.value;
+    if (view === undefined) throw refusal({ code: 'internal' }, context, this.#logger);
+    return monthlyRevenueTargetBody(view);
+  }
+
+  @Put('monthly-revenue-target')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Set or clear the monthly revenue target of the Market (admin)',
+    description:
+      'Needs settings.monthly-revenue-target.manage; refused in an acting-as session. `target` ' +
+      "is minor units above zero (at most 15 digits) in the Market's own currency, or null to " +
+      'clear it. The body carries the version the admin saw: a stale edit is 409 ' +
+      'settings.conflict. Audited with the target before and after; asking for the target ' +
+      'already in force changes nothing. ' +
+      REVIEWED,
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: ChangeMonthlyRevenueTargetRequest })
+  @ApiOkResponse({ type: MonthlyRevenueTargetChangeBody })
+  @ApiBadRequestResponse({
+    ...ERROR,
+    description: 'validation.failed (details.fields: target, target.amount, target.currency, ...)',
+  })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiConflictResponse({ ...ERROR, description: 'settings.conflict' })
+  async putMonthlyRevenueTarget(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() requestBody: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, requestBody, ['target', 'expectedVersion', 'note']);
+    if (invalid !== null) throw invalid;
+    const { target, expectedVersion, note } = requestBody as {
+      target?: unknown;
+      expectedVersion?: unknown;
+      note?: unknown;
+    };
+    const result = await this.changeTarget.execute(context, { target, expectedVersion, note });
+    logRoute(
+      this.#logger,
+      'settings.change-monthly-revenue-target-route',
+      context,
+      result.ok ? 'set' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return monthlyRevenueTargetChangeBody(result.value);
+  }
 
   @Get('ai')
   @ApiOperation({

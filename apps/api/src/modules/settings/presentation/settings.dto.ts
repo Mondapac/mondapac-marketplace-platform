@@ -1,6 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
 import type { ListPaging } from '../domain/definitions';
-import { CART_MODE_VALUES, LIST_PAGING_VALUES, SETTING_DEFINITIONS } from '../domain/definitions';
+import {
+  CART_MODE_VALUES,
+  LIST_PAGING_VALUES,
+  SETTING_DEFINITIONS,
+  targetOf,
+} from '../domain/definitions';
 import type {
   SettingChangeView,
   SettingView,
@@ -72,6 +77,64 @@ export class ChangeAiSettingRequest {
   })
   note?: string;
 }
+
+export class TargetMoneyBody {
+  @ApiProperty({ description: 'Minor units above zero, as a decimal string (at most 15 digits).' })
+  amount!: string;
+  @ApiProperty({ description: "ISO 4217; must be the Market's currency." }) currency!: string;
+}
+
+export class MonthlyRevenueTargetBody {
+  @ApiProperty({
+    type: TargetMoneyBody,
+    nullable: true,
+    description:
+      "GMV with tax aimed for in each calendar month of the Market's zone; null while none is set.",
+  })
+  target!: TargetMoneyBody | null;
+  @ApiProperty({ description: '0 while no target was ever set.' }) version!: number;
+  @ApiProperty({ format: 'date-time', nullable: true, type: String }) updatedAt!: string | null;
+  @ApiProperty({ type: SettingsReviewBody }) review!: SettingsReviewBody;
+}
+
+export class MonthlyRevenueTargetChangeBody extends MonthlyRevenueTargetBody {
+  @ApiProperty({
+    type: ReviewRequestRef,
+    nullable: true,
+    description: 'The review request the change opened; null where the area is not reviewed.',
+  })
+  request!: ReviewRequestRef | null;
+}
+
+export class ChangeMonthlyRevenueTargetRequest {
+  @ApiProperty({ type: TargetMoneyBody, nullable: true, description: 'Null clears the target.' })
+  target!: TargetMoneyBody | null;
+  @ApiProperty({ description: 'The version the admin saw; a stale edit is refused (409).' })
+  expectedVersion!: number;
+  @ApiProperty({
+    required: false,
+    description: 'The note for the reviewer, 1 to 500 characters; required where reviewed.',
+  })
+  note?: string;
+}
+
+export const monthlyRevenueTargetBody = (view: SettingView): MonthlyRevenueTargetBody => {
+  const target = targetOf(view.value);
+  return {
+    target:
+      target === null ? null : { amount: target.amount.toString(), currency: target.currency },
+    version: view.version,
+    updatedAt: view.updatedAt === null ? null : view.updatedAt.toString(),
+    review: { reviewed: view.review.reviewed, risk: view.review.risk },
+  };
+};
+
+export const monthlyRevenueTargetChangeBody = (
+  view: SettingChangeView,
+): MonthlyRevenueTargetChangeBody => ({
+  ...monthlyRevenueTargetBody(view),
+  request: view.request === null ? null : { id: view.request.id, number: view.request.number },
+});
 
 export class ListPagingBody {
   @ApiProperty({ enum: [...LIST_PAGING_VALUES] }) listPaging!: string;

@@ -63,3 +63,22 @@ store of ADR-0026).
   and its undo made while the area was off leave no request, and a later revert restores over them.
 - The admin panel sends no `note` yet; keep area `marketplace` off in a Market until the panel's
   save dialog asks for one (frontend package), or every save there answers 400 on `note`.
+
+## Monthly revenue target (dashboards v2, phase 2)
+
+- Fifth setting in the same store, the first whose value is an amount: code
+  `monthly-revenue-target`, value `none` (default and safe value) or `<ISO 4217>:<minor units>`
+  (for example `AUD:24000000`, at most 15 digits, above zero). A definition may now carry a
+  `pattern` besides its list of values; the change and the revert accept a value that matches it.
+  No migration: the value column takes 1 to 64 characters.
+- Routes: `GET` and `PUT settings/admin/monthly-revenue-target`; the body is
+  `{target: {amount, currency} | null, expectedVersion, note?}` and the currency must be the
+  Market's (`validation.failed` on `target.currency` otherwise). Keys
+  `settings.monthly-revenue-target.view` (in the Viewer role, seed version 37) and `.manage`, both
+  unprotected.
+- Audited as `settings.monthly-revenue-target.changed` with the target before and after as money
+  (the enum action `settings.market-setting.changed` cannot hold an amount); both fields are on the
+  audit money allow-list.
+- Read by reporting through `SettingsFacade.monthlyRevenueTarget` (use case
+  `settings.read-monthly-revenue-target`, the view key). An unreadable store is
+  `access.unavailable`, never "no target".
