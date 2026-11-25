@@ -27,8 +27,6 @@ export interface SnapshotAbandonedCartsCounts {
   readonly alreadyWritten: number;
   /** 1 when cart could not count now; tried again next run while the day is still yesterday. */
   readonly failedDays: number;
-  /** 1 when an earlier run of this process found the day over cart's cap; not asked again. */
-  readonly cappedDays: number;
 }
 
 const logger = new Logger('SnapshotAbandonedCarts');
@@ -40,8 +38,7 @@ const logger = new Logger('SnapshotAbandonedCarts');
  * that day's end, as they are now, and writes the count and the approximate value in the Market's
  * currency once. Only yesterday is written: a cart's state cannot be read for an older day, so a
  * day missed while the worker was down stays without a row. A failure is logged by day and reason
- * (no id) and tried again next hour; a day over cart's line cap is asked once per process
- * (FE-20261125-reporting-abandoned-carts-paging).
+ * (no id) and tried again next hour.
  */
 export class SnapshotAbandonedCarts extends UseCase<
   Record<string, never>,
@@ -52,9 +49,6 @@ export class SnapshotAbandonedCarts extends UseCase<
     name: 'reporting.snapshot-abandoned-carts',
     rule: { kind: 'system' },
   };
-
-  /** `<market>|<day>` of the days found over cart's cap; not asked again by this process. */
-  readonly #overCap = new Set<string>();
 
   constructor(
     gate: UseCaseGate,
@@ -68,7 +62,7 @@ export class SnapshotAbandonedCarts extends UseCase<
   ): Promise<Result<SnapshotAbandonedCartsCounts, never>> {
     const { market } = context;
     const zone = this.deps.zone.zoneOf(market);
-    const counts = { written: 0, alreadyWritten: 0, failedDays: 0, cappedDays: 0 };
+    const counts = { written: 0, alreadyWritten: 0, failedDays: 0 };
     const candidate = abandonedCartsDayDue(this.deps.clock.now(), zone, false);
     if (candidate === null) return ok(counts);
     const recorded = await this.deps.unitOfWork.run(
@@ -79,12 +73,9 @@ export class SnapshotAbandonedCarts extends UseCase<
     if (!recorded.ok) throw new Error('reporting.snapshot-abandoned-carts: read refused');
     if (recorded.value) return ok(counts);
     const day = candidate;
-    const key = `${market.marketId}|${day}`;
-    if (this.#overCap.has(key)) return ok({ ...counts, cappedDays: 1 });
     // Cart is read before the unit, in its own unit.
     const totals = await this.deps.sources.abandonedCartsAt(context, idleCutoffOf(day, zone));
     if (!totals.ok) {
-      if (totals.error.overCap === true) this.#overCap.add(key);
       logger.warn({
         msg: 'reporting.abandoned-carts-snapshot.day-failed',
         day,

@@ -592,9 +592,13 @@ new/returning card, phase 2 cards PR):
   Approximate by design (prices change; the card says "about"); it is never the price now and never
   a basis for money decisions. When any line is in another currency than the Market's, the value is
   null (no conversion) and the count is still written; the job logs the currencies only.
-- Cap: at most 20,000 lines in one read; beyond it the day is not written (never a short count), is
-  asked once per worker process, and the job fails so the run shows in the logs
-  (FE-20261125-reporting-abandoned-carts-paging).
+- No cap (Mojtaba M1, option A): cart answers with two aggregate statements in one read-only unit,
+  scoped by Market and tenant at both levels (Hassan L1): the lines grouped by currency and quantity
+  with their prices summed (value = quantity × that sum; a line holds 1 to 999 units, so the groups
+  stay few), and a count of the carts that have a line. No row reaches memory and no raw SQL is
+  used. The unit opens no transaction (ADR-0025), so a cart changed between the two statements can
+  make the count and the value differ by that cart: within "about". If the statements get slow at
+  volume: FE-20261125-reporting-abandoned-carts-paging.
 - Privacy: counts and a sum only. No cart, account or guest id leaves cart's adapter; nothing is
   logged but the day, a reason code and currencies. The table has no account, customer, guest,
   offer or seller column (db-spec `reporting-abandoned-carts`); SELECT and INSERT only for the

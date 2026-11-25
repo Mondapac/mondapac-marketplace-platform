@@ -122,18 +122,13 @@ describe.each(TEST_MARKETS)('abandoned carts in market %s (database)', (code) =>
   });
   const insert = (target: MarketContext, state: CartState) =>
     unit(target, () => carts.insert(target, state));
-  const facade = (maxLines?: number) => {
-    const totals = new PrismaAbandonedCartTotals(db.service);
-    return new CartReportingFacadeImplementation(
+  const facade = () =>
+    new CartReportingFacadeImplementation(
       new CountAbandonedCarts(gate, {
         unitOfWork: db.unitOfWork,
-        totals:
-          maxLines === undefined
-            ? totals
-            : { totals: (target, at) => totals.totals(target, at, maxLines) },
+        totals: new PrismaAbandonedCartTotals(db.service),
       }),
     );
-  };
 
   it('counts active carts with lines, untouched since the cutoff, of this Market only', async () => {
     const old = cutoff.subtract({ hours: 30 });
@@ -144,8 +139,16 @@ describe.each(TEST_MARKETS)('abandoned carts in market %s (database)', (code) =>
         { quantity: 1, price: 250n },
       ]),
     );
-    await insert(market, cart(market, cutoff, 'guest', [{ quantity: 3, price: 100n }]));
-    // Left out: changed after the cutoff, merged, empty, left by a paid order, another Market's.
+    // Two lines of the same quantity in different carts: one group, its prices summed, times 2.
+    await insert(
+      market,
+      cart(market, cutoff, 'guest', [
+        { quantity: 3, price: 100n },
+        { quantity: 2, price: 40n },
+      ]),
+    );
+    // Left out: changed after the cutoff, merged, empty, left by a paid order, another Market's,
+    // another tenant's.
     await insert(market, cart(market, cutoff.add({ seconds: 1 })));
     await insert(market, cart(market, old, 'merged'));
     await insert(market, cart(market, old, 'account', []));
@@ -153,14 +156,26 @@ describe.each(TEST_MARKETS)('abandoned carts in market %s (database)', (code) =>
     await insert(market, ordered);
     await unit(market, () => carts.markOrdered(market, ordered.id, old));
     await insert(other, cart(other, old));
+    // Another tenant's cart in the same Market (moved there as the owner): left out too.
+    const theirs = cart(market, old);
+    await insert(market, theirs);
+    await owner.query(`UPDATE cart.cart_lines SET tenant_id = 'other-tenant' WHERE cart_id = $1`, [
+      theirs.id,
+    ]);
+    await owner.query(`UPDATE cart.carts SET tenant_id = 'other-tenant' WHERE id = $1`, [
+      theirs.id,
+    ]);
 
     expect(await facade().abandonedCarts(system, { changedAtOrBefore: cutoff })).toEqual({
       ok: true,
-      value: { carts: 2, values: [{ amount: 2n * 1500n + 250n + 3n * 100n, currency }] },
+      value: {
+        carts: 2,
+        values: [{ amount: 2n * 1500n + 250n + 3n * 100n + 2n * 40n, currency }],
+      },
     });
   });
 
-  it('answers a sum per currency, and refuses rather than answering short over the cap', async () => {
+  it('answers a sum per currency, never converted', async () => {
     const old = cutoff.subtract({ hours: 1 });
     await insert(
       market,
@@ -176,10 +191,6 @@ describe.each(TEST_MARKETS)('abandoned carts in market %s (database)', (code) =>
         { amount: 7n, currency: otherCurrency },
       ].sort((a, b) => (a.currency < b.currency ? -1 : 1)),
     );
-    expect(await facade(1).abandonedCarts(system, { changedAtOrBefore: cutoff })).toEqual({
-      ok: false,
-      error: { code: 'cart.abandoned-too-large' },
-    });
   });
 
   it('writes the Market day once as the application role, and reads it for an admin', async () => {
@@ -196,7 +207,7 @@ describe.each(TEST_MARKETS)('abandoned carts in market %s (database)', (code) =>
     });
     expect(await snapshot.execute(system, {})).toEqual({
       ok: true,
-      value: { written: 1, alreadyWritten: 0, failedDays: 0, cappedDays: 0 },
+      value: { written: 1, alreadyWritten: 0, failedDays: 0 },
     });
     await insert(market, cart(market, cutoff.subtract({ hours: 1 })));
     expect(await snapshot.execute(system, {})).toMatchObject({ value: { written: 0 } });

@@ -116,7 +116,7 @@ describe.each(TEST_MARKETS)('abandoned carts in market %s', (code) => {
   });
 
   it('writes yesterday once, two hours after it ends, from carts idle 24 h at its end', async () => {
-    const none = { written: 0, alreadyWritten: 0, failedDays: 0, cappedDays: 0 };
+    const none = { written: 0, alreadyWritten: 0, failedDays: 0 };
     expect(await snapshot.execute(system, {})).toEqual({ ok: true, value: none });
     expect(asked).toEqual([]);
     clock.set(startOf('2026-11-25').add({ hours: 2 }));
@@ -173,13 +173,13 @@ describe.each(TEST_MARKETS)('abandoned carts in market %s', (code) => {
     expect(store.rows.get(`${code}|2026-11-24`)).toMatchObject({ carts: 9, value: null });
   });
 
-  it('logs a failure by day and reason only, retries it, and asks a day over cap once', async () => {
+  it('logs a failure by day and reason only, and asks again next run', async () => {
     clock.set(startOf('2026-11-25').add({ hours: 2 }));
-    let failure: { code: string; overCap?: boolean } = { code: 'cart:access.denied' };
+    let fail = true;
     sources = {
       abandonedCartsAt: (_context, at) => {
         asked.push(at);
-        return Promise.resolve(err(failure));
+        return Promise.resolve(fail ? err({ code: 'cart:access.denied' }) : ok(counts));
       },
     };
     const warnings = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
@@ -194,18 +194,16 @@ describe.each(TEST_MARKETS)('abandoned carts in market %s', (code) => {
           correlationId: system.correlationId,
         },
       ]);
-      failure = { code: 'cart:cart.abandoned-too-large', overCap: true };
-      expect(await snapshot.execute(system, {})).toMatchObject({ value: { failedDays: 1 } });
-      asked.length = 0;
+      expect(store.rows.size).toBe(0);
+      fail = false;
       expect(await snapshot.execute(system, {})).toEqual({
         ok: true,
-        value: { written: 0, alreadyWritten: 0, failedDays: 0, cappedDays: 1 },
+        value: { written: 1, alreadyWritten: 0, failedDays: 0 },
       });
-      expect(asked).toEqual([]);
+      expect(asked).toHaveLength(2);
     } finally {
       warnings.mockRestore();
     }
-    expect(store.rows.size).toBe(0);
   });
 
   it('runs for the system actor only', async () => {
@@ -282,14 +280,7 @@ describe('the abandoned-cart sources adapter', () => {
     expect(requests).toEqual([{ changedAtOrBefore: at }]);
   });
 
-  it('marks cart’s line cap as over cap and passes any other refusal by its code', async () => {
-    const tooLarge = new FacadeAbandonedCartSources({
-      abandonedCarts: () => Promise.resolve(err({ code: 'cart.abandoned-too-large' as const })),
-    });
-    expect(await tooLarge.abandonedCartsAt(system, at)).toEqual({
-      ok: false,
-      error: { code: 'cart:cart.abandoned-too-large', overCap: true },
-    });
+  it('passes a refusal on by its code', async () => {
     const denied = new FacadeAbandonedCartSources({
       abandonedCarts: () => Promise.resolve(err({ code: 'access.denied' as const })),
     });

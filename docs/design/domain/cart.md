@@ -444,6 +444,7 @@ The first cart build (`feat/cart-core`) follows the speed plan: one PR, no new d
 reporting's nightly snapshot: how many ACTIVE carts of the Market, guest or signed-in, hold a line,
 carry no order mark and were last changed at or before an instant, and the sum of their lines at
 `price_at_add` per currency (approximate; never a price source, as in 2.1). Counts and sums only: no
-cart, account or guest id leaves the adapter. At most 20,000 lines in one read
-(`cart.abandoned-too-large` beyond it, never a short count). Details:
+cart, account or guest id leaves the adapter. Two aggregate statements in the caller's Market and
+tenant (lines grouped by currency and quantity with their prices summed; carts with a line counted),
+no cap and no rows in memory (Mojtaba M1). Details:
 `docs/modules/reporting/notes.md` (Abandoned carts).

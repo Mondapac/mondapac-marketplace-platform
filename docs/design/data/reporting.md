@@ -69,8 +69,9 @@ All rows are small (under 200 bytes), so even 10x this volume stays under a few 
   are primary key ranges on `(market_id, market_day)`.
 - Abandoned carts: the snapshot's check of yesterday and the read of a period and the one before
   are primary key lookups and ranges on `(market_id, market_day)`. The count itself is cart's: its
-  lines (`cart_lines (market_id, cart_id, ...)` unique index) of the carts selected on
-  `carts (market_id, last_changed_at)`, at most 20,000 lines per read.
+  two aggregates (lines grouped by currency and quantity, and a count of carts with a line) over the
+  carts selected on `carts (market_id, last_changed_at)` and their lines through the
+  `cart_lines (market_id, cart_id, offer_id, variant_id)` unique index; no cap, no rows in memory.
 - Ledger readiness (7 days): `seller_orders (market_id, paid_day, seller_id)` and
   `ledger_entries (market_id, market_day, seller_id)`, filtered on kind; then the seller orders
   not paid in the window by primary key. `ledger_entries (market_id, seller_order_id)` serves

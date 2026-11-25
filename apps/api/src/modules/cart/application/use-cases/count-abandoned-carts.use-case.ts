@@ -4,9 +4,6 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type { AbandonedCartTotalsReader } from '../ports/abandoned-cart-totals';
 
-/** The most lines one count reads; beyond it the count is refused, never answered short. */
-export const MAX_ABANDONED_CART_LINES = 20_000;
-
 export interface CountAbandonedCartsInput {
   /** A cart counts when it was last changed at or before this instant. */
   readonly changedAtOrBefore: Temporal.Instant;
@@ -19,17 +16,14 @@ export interface AbandonedCartTotals {
 }
 
 export type CountAbandonedCartsFailure =
-  | { readonly code: 'access.denied' }
-  | { readonly code: 'validation.failed' }
-  /** More than {@link MAX_ABANDONED_CART_LINES} lines: asking again cannot succeed. */
-  | { readonly code: 'cart.abandoned-too-large' };
+  { readonly code: 'access.denied' } | { readonly code: 'validation.failed' };
 
 /**
  * `cart.count-abandoned-carts` (dashboards v2, phase 2; rule `system`, for reporting's nightly
  * snapshot): the Market's ACTIVE carts, guest and account, that hold a line, carry no order mark
  * and were last changed at or before the instant, and their lines' value at the price when added
- * (approximate: prices change). Counts and sums only; no id is answered or logged. One read-only
- * unit (ADR-0025).
+ * (approximate: prices change). Counts and sums only, both computed by the database (no cap, no
+ * row in memory); no id is answered or logged. One read-only unit (ADR-0025).
  */
 export class CountAbandonedCarts extends UseCase<
   CountAbandonedCartsInput,
@@ -61,18 +55,10 @@ export class CountAbandonedCarts extends UseCase<
     }
     const read = await this.deps.unitOfWork.run(
       context.market,
-      async () =>
-        ok(
-          await this.deps.totals.totals(
-            context.market,
-            input.changedAtOrBefore,
-            MAX_ABANDONED_CART_LINES,
-          ),
-        ),
+      async () => ok(await this.deps.totals.totals(context.market, input.changedAtOrBefore)),
       { readOnly: true },
     );
     if (!read.ok) return err({ code: 'access.denied' });
-    if (read.value === null) return err({ code: 'cart.abandoned-too-large' });
     return ok(read.value);
   }
 }

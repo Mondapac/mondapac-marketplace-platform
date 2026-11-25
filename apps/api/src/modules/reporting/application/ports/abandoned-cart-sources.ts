@@ -6,11 +6,9 @@ export interface AbandonedCartCounts {
   readonly values: readonly Money[];
 }
 
-/** Why the carts could not be counted now: cart's code, and whether asking again can succeed. */
+/** Why the carts could not be counted now: cart's code. The next run asks again. */
 export interface AbandonedCartsUnavailable {
   readonly code: string;
-  /** True when the carts are over cart's line cap: a rescan this process would fail again. */
-  readonly overCap?: boolean;
 }
 
 /**

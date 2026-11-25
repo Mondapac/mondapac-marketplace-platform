@@ -3,43 +3,45 @@ import type { PrismaService } from '../../../platform/persistence/prisma.service
 import type { AbandonedCartTotalsReader } from '../application/ports/abandoned-cart-totals';
 
 /**
- * {@link AbandonedCartTotalsReader} on `cart.cart_lines` of the qualifying `cart.carts` (the
- * carts' `(market_id, last_changed_at)` index, then the lines' `(market_id, cart_id, ...)` unique
- * index). One statement reads at most `maxLines + 1` lines, so the cart count and the value come
- * from the same rows; the ids stay in this method.
+ * {@link AbandonedCartTotalsReader} on `cart.carts` and `cart.cart_lines`, in the caller's Market
+ * and tenant at both levels, with two aggregate statements and no row brought into memory: the
+ * lines grouped by currency and quantity with their prices summed (the value is the sum of
+ * quantity × that sum; a line holds 1 to 999 units, so the groups stay few), and a count of the
+ * carts that have a line. The carts are found by their `(market_id, last_changed_at)` index and
+ * their lines through the lines' `(market_id, cart_id, offer_id, variant_id)` unique index. The two
+ * statements run in the caller's read-only unit, which opens no transaction (ADR-0025), so a cart
+ * changed between them can make the count and the value differ by that cart: approximate anyway.
  */
 export class PrismaAbandonedCartTotals implements AbandonedCartTotalsReader {
   constructor(private readonly prisma: PrismaService) {}
 
-  async totals(market: MarketContext, changedAtOrBefore: Temporal.Instant, maxLines: number) {
-    const lines = await this.prisma.tx(market).cartLine.findMany({
-      where: {
-        marketId: market.marketId,
-        cart: {
-          marketId: market.marketId,
-          status: 'active',
-          // Not left as a paid order left it (the buyer's next change clears the mark).
-          orderedAt: null,
-          lastChangedAt: { lte: new Date(changedAtOrBefore.epochMilliseconds) },
-        },
-      },
-      select: { cartId: true, quantity: true, priceAtAddAmount: true, priceAtAddCurrency: true },
-      take: maxLines + 1,
-    });
-    if (lines.length > maxLines) return null;
-    const carts = new Set<string>();
+  async totals(market: MarketContext, changedAtOrBefore: Temporal.Instant) {
+    const tx = this.prisma.tx(market);
+    const abandoned = {
+      marketId: market.marketId,
+      tenantId: market.tenantId,
+      status: 'active',
+      // Not left as a paid order left it (the buyer's next change clears the mark).
+      orderedAt: null,
+      lastChangedAt: { lte: new Date(changedAtOrBefore.epochMilliseconds) },
+    };
+    const [groups, carts] = await Promise.all([
+      tx.cartLine.groupBy({
+        by: ['priceAtAddCurrency', 'quantity'],
+        where: { marketId: market.marketId, tenantId: market.tenantId, cart: abandoned },
+        _sum: { priceAtAddAmount: true },
+      }),
+      tx.cartCart.count({ where: { ...abandoned, lines: { some: {} } } }),
+    ]);
     const sums = new Map<string, bigint>();
-    for (const line of lines) {
-      carts.add(line.cartId);
-      const currency = line.priceAtAddCurrency;
-      sums.set(
-        currency,
-        (sums.get(currency) ?? 0n) + line.priceAtAddAmount * BigInt(line.quantity),
-      );
+    for (const group of groups) {
+      const currency = group.priceAtAddCurrency;
+      const amount = (group._sum.priceAtAddAmount ?? 0n) * BigInt(group.quantity);
+      sums.set(currency, (sums.get(currency) ?? 0n) + amount);
     }
     const values: Money[] = [...sums.entries()]
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
       .map(([currency, amount]) => ({ amount, currency }));
-    return { carts: carts.size, values };
+    return { carts, values };
   }
 }

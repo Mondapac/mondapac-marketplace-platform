@@ -1,11 +1,11 @@
 {
   "id": "FE-20261125-reporting-abandoned-carts-paging",
   "area": "infra",
-  "title": "شمارش سبدهای رهاشده بیش از ۲۰٬۰۰۰ ردیف سبد",
-  "desc": "cart.count-abandoned-carts در یک خواندن حداکثر ۲۰٬۰۰۰ ردیف سبد (cart_lines) را می‌خواند و ارزش تقریبی را در حافظه جمع می‌کند؛ بیشتر از آن، روز نوشته نمی‌شود (هرگز عدد کم ثبت نمی‌شود) و آن روز در همان فرایند دوباره پرسیده نمی‌شود. در حجم بالا: COUNT(DISTINCT cart_id) و SUM(quantity * price_at_add_amount) به تفکیک ارز در خود SQL (کوئری خام با بازبینی حسن) یا صفحه‌بندی بر اساس شناسهٔ ردیف.",
-  "src": "apps/api/src/modules/cart/application/use-cases/count-abandoned-carts.use-case.ts",
+  "title": "کندی شمارش شبانهٔ سبدهای رهاشده در حجم بالا",
+  "desc": "cart.count-abandoned-carts با دو پرس‌وجوی تجمیعی Prisma (groupBy ردیف‌های سبد بر اساس ارز و تعداد با جمع قیمت، و شمارش سبدهای دارای ردیف) در یک واحد فقط‌خواندنی، بدون سقف و بدون آوردن ردیف به حافظه کار می‌کند (یافتهٔ M1 مجتبی، گزینهٔ A). اگر سبدهای بی‌تغییر یک بازار خیلی زیاد شوند، این دو پرس‌وجو همهٔ سبدهای قدیمی‌تر از مرز را می‌پیمایند. راه: نمایهٔ جزئی روی carts (market_id, last_changed_at) فقط برای سبدهای active بی‌نشان سفارش، یا یک SUM(quantity * price_at_add_amount) در SQL خام با بازبینی حسن.",
+  "src": "apps/api/src/modules/cart/infrastructure/prisma-abandoned-cart-totals.ts",
   "date": "2026-11-25",
-  "trig": "وقتی لاگ reporting.abandoned-carts-snapshot.day-failed با cart.abandoned-too-large دیده شود یا ردیف‌های سبدهای بی‌تغییر یک بازار به ۱۰٬۰۰۰ برسد",
+  "trig": "وقتی کار reporting.snapshot-abandoned-carts بیش از یک دقیقه طول بکشد یا سبدهای بی‌تغییر یک بازار از ۱۰۰٬۰۰۰ بگذرد",
   "prio": "پایین",
   "status": "موکول"
 }

@@ -15,14 +15,11 @@ import { loadMarketConfigs } from '../../../platform/market-config/market-config
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { CartReportingFacadeImplementation } from '../presentation/cart-reporting.facade';
 import type { AbandonedCartTotalsReader } from './ports/abandoned-cart-totals';
-import {
-  CountAbandonedCarts,
-  MAX_ABANDONED_CART_LINES,
-} from './use-cases/count-abandoned-carts.use-case';
+import { CountAbandonedCarts } from './use-cases/count-abandoned-carts.use-case';
 
 // The abandoned-cart count for reporting's nightly snapshot (dashboards v2, phase 2) on both Market
 // fixtures: the system actor only, the instant passed to the reader unchanged in the caller's
-// Market, a read over the line cap refused rather than answered short.
+// Market.
 
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
 const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
@@ -39,11 +36,11 @@ const AT = Temporal.Instant.from('2026-11-23T14:00:00Z');
 describe.each(TEST_MARKETS)('cart.count-abandoned-carts in market %s', (code) => {
   const market = testMarketContext(code, 'default');
   const currency = markets.get(market.marketId).defaultCurrency;
-  let asked: { market: MarketContext; at: Temporal.Instant; maxLines: number }[];
+  let asked: { market: MarketContext; at: Temporal.Instant }[];
   let answer: Awaited<ReturnType<AbandonedCartTotalsReader['totals']>>;
   const reader: AbandonedCartTotalsReader = {
-    totals: (m, at, maxLines) => {
-      asked.push({ market: m, at, maxLines });
+    totals: (m, at) => {
+      asked.push({ market: m, at });
       return Promise.resolve(answer);
     },
   };
@@ -61,15 +58,7 @@ describe.each(TEST_MARKETS)('cart.count-abandoned-carts in market %s', (code) =>
       changedAtOrBefore: AT,
     });
     expect(result).toEqual({ ok: true, value: answer });
-    expect(asked).toEqual([{ market, at: AT, maxLines: MAX_ABANDONED_CART_LINES }]);
-  });
-
-  it('refuses a read over the line cap instead of answering a short count', async () => {
-    answer = null;
-    const result = await facade.abandonedCarts(testCallContext(market, 'system'), {
-      changedAtOrBefore: AT,
-    });
-    expect(result).toEqual({ ok: false, error: { code: 'cart.abandoned-too-large' } });
+    expect(asked).toEqual([{ market, at: AT }]);
   });
 
   it('refuses a person, even a platform admin, and a missing instant', async () => {

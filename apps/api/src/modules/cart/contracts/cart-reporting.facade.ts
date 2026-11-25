@@ -11,11 +11,7 @@ export interface AbandonedCartTotals {
   readonly values: readonly Money[];
 }
 
-export type CartReportingFailure =
-  | AccessDenied
-  | { readonly code: 'validation.failed' }
-  /** Too many lines for one read: asking again cannot succeed. */
-  | { readonly code: 'cart.abandoned-too-large' };
+export type CartReportingFailure = AccessDenied | { readonly code: 'validation.failed' };
 
 /** The cart reads of reporting's nightly snapshot (dashboards v2, phase 2). System actor only. */
 export interface CartReportingFacade {
