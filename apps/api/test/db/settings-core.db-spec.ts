@@ -56,6 +56,10 @@ import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
 const CHECK = '23514';
+/** These tests change list paging only, which spends no step-up proof; any call is a mistake. */
+const NO_STEP_UP: SettingsDependencies['stepUp'] = {
+  consume: () => Promise.reject(new Error('no step-up expected')),
+};
 const NO_PRIVILEGE = '42501';
 const RESTRICT = '23001';
 const UNIQUE = '23505';
@@ -102,6 +106,7 @@ describe.each(TEST_MARKETS)('settings in market %s (database)', (code) => {
       unitOfWork: db.unitOfWork,
       settings: new PrismaMarketSettingRepository(db.service),
       audit: { record: () => Promise.resolve() },
+      stepUp: NO_STEP_UP,
       clock,
       // Area marketplace is not reviewed here; system-requests-core covers the real recorder.
       review: new RecordingReview(),
@@ -322,6 +327,7 @@ describe.each(TEST_MARKETS)('settings in market %s (database)', (code) => {
           .select(SettingsModule)
           .get<MarketSettingRepository>(MARKET_SETTING_REPOSITORY, { strict: true }),
         audit: { record: () => Promise.resolve() },
+        stepUp: NO_STEP_UP,
         clock,
         review: reviews.get<SystemRequestRecorder>(SYSTEM_REQUEST_RECORDER, { strict: true }),
       };

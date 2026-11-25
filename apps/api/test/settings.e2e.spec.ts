@@ -63,6 +63,8 @@ it('maps every refusal code of the settings routes to its exact status', () => {
   expect(SETTINGS_STATUS).toEqual({
     'validation.failed': 400,
     'settings.conflict': 409,
+    'second-factor.required': 403,
+    'second-factor.enrolment-required': 403,
   });
 });
 
@@ -167,7 +169,28 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
       version: 1,
       createdAt: START,
     });
+    fakes.factors.set(ADMIN, {
+      id: id<'SecondFactor'>(0xf309),
+      marketId,
+      accountId: ADMIN,
+      state: 'active',
+      secretCiphertext: 'sealed',
+      pendingSecretCiphertext: null,
+      lastAcceptedStep: null,
+      activatedAt: START,
+      lockedAt: null,
+      createdAt: START,
+      recoveryCodes: Array.from({ length: 10 }, (_, index) => ({
+        position: index + 1,
+        codeHash: new Uint8Array(32).fill(index + 1),
+        usedAt: null,
+      })),
+      version: 1,
+    });
   }
+  /** A fresh step-up proof of the admin session n for one settings action. */
+  const prove = (n: number, action: string) =>
+    fakes.stepUpProofs.set(`${code}|${id<'Session'>(0xf100 + n)}|${action}`, clock.now());
 
   function sessionOf(population: 'seller' | 'admin', n: number) {
     const issued = tokens.issue();
@@ -473,6 +496,14 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
         request: null,
       },
     ]);
+    const noCode = await call('put', path, 'admin', session, { changes, note: 'Launch' });
+    expect(noCode.status).toBe(403);
+    expect(noCode.body).toEqual({
+      statusCode: 403,
+      code: 'second-factor.required',
+      details: { actionKey: 'settings.offer-review.change' },
+    });
+    prove(4, 'settings.offer-review.change');
     const set = await call('put', path, 'admin', session, { changes, note: 'Launch' });
     expect(set.status).toBe(200);
     expect(set.headers['cache-control']).toBe('no-store');
@@ -525,6 +556,14 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
     });
     const body = { value: 'off', expectedVersion: 1, note: 'All clear' };
     next = ok([]);
+    const noCode = await call('put', path, 'admin', session, body);
+    expect(noCode.status).toBe(403);
+    expect(noCode.body).toEqual({
+      statusCode: 403,
+      code: 'second-factor.required',
+      details: { actionKey: 'settings.offer-review-emergency-stop.change' },
+    });
+    prove(5, 'settings.offer-review-emergency-stop.change');
     const set = await call('put', path, 'admin', session, body);
     expect(set.status).toBe(200);
     expect(set.body).toEqual({ settings: [] });

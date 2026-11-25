@@ -2,6 +2,7 @@
 
 import { Banner } from '@mondapac/ui';
 import { useFormatter, useTranslations } from 'next-intl';
+import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { usePoll } from '../security-centre/parts.tsx';
@@ -30,7 +31,9 @@ export function EmergencyStopBanner({ zone }: { readonly zone: string }) {
     void read();
   }, [read]);
   usePoll(() => void read(), BANNER_POLL_MS);
-  if (stop === null || !stop.on) return null;
+  // The stop's own page shows the same state in its card (Reza).
+  const onItsPage = usePathname() === EMERGENCY_STOP_HREF;
+  if (stop === null || !stop.on || onItsPage) return null;
   const when =
     stop.changedAt === null
       ? null

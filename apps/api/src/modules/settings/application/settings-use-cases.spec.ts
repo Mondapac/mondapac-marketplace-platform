@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { parseId, Temporal } from '@mondapac/shared-kernel';
+import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { AuditEntry, CallContext, Id, MarketContext } from '@mondapac/shared-kernel';
 import {
   FixedClock,
@@ -11,7 +11,7 @@ import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import { RecordingReview } from '../../../../test/support/system-request-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
-import type { AccessDecision } from '../../../platform/authz';
+import type { AccessDecision, StepUpProofConsumer } from '../../../platform/authz';
 import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
@@ -108,6 +108,16 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
   let audit: RecordingAudit;
   let deps: SettingsDependencies;
   let review: RecordingReview;
+  /** The step-up proofs spent, and whether the admin has a fresh one left. */
+  let spentProofs: string[];
+  let proofLeft: boolean;
+  const stepUp: StepUpProofConsumer = {
+    consume: (_context: CallContext, actionKey: string) => {
+      if (!proofLeft) return Promise.resolve(err({ code: 'second-factor.required', actionKey }));
+      spentProofs.push(actionKey);
+      return Promise.resolve(ok({ sessionId: id<'Session'>(0x99), verifiedAt: T0 }));
+    },
+  };
 
   const adminCtx = () =>
     testCallContext(
@@ -153,7 +163,10 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       audit,
       clock: new FixedClock(T0),
       review,
+      stepUp,
     };
+    spentProofs = [];
+    proofLeft = true;
   });
 
   it('shows the default (page numbers, version 0) before any change', async () => {
@@ -1067,6 +1080,48 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         note: 'x',
       });
       expect(page.ok).toBe(false);
+    });
+
+    it('spends a fresh two-step proof of the admin, and saves nothing without one', async () => {
+      proofLeft = false;
+      expect(await stop({ value: 'on', expectedVersion: 0, note: 'Fraud wave' })).toEqual({
+        ok: false,
+        error: {
+          code: 'second-factor.required',
+          actionKey: 'settings.offer-review-emergency-stop.change',
+        },
+      });
+      expect(store.history).toHaveLength(0);
+      proofLeft = true;
+      expect((await stop({ value: 'on', expectedVersion: 0, note: 'Fraud wave' })).ok).toBe(true);
+      expect(spentProofs).toEqual(['settings.offer-review-emergency-stop.change']);
+    });
+
+    it('spends no proof on a stale version', async () => {
+      expect((await stop({ value: 'on', expectedVersion: 3, note: 'x' })).ok).toBe(false);
+      expect(spentProofs).toEqual([]);
+    });
+
+    it('is never switched off by a rejected review; a rejected "off" is restored on', async () => {
+      const reverter = new SettingsReverter(deps);
+      await stop({ value: 'on', expectedVersion: 0, note: 'Fraud wave' });
+      expect(
+        await reverter.revert(adminCtx(), {
+          requestId: id<'SystemRequest'>(0x5e2),
+          subjectRef: 'offer-review-emergency-stop',
+          before: { value: 'off' },
+          after: { value: 'on' },
+        }),
+      ).toBe('not-permitted');
+      await stop({ value: 'off', expectedVersion: 1, note: 'Over' });
+      expect(
+        await reverter.revert(adminCtx(), {
+          requestId: id<'SystemRequest'>(0x5e2),
+          subjectRef: 'offer-review-emergency-stop',
+          before: { value: 'on' },
+          after: { value: 'off' },
+        }),
+      ).toBe('reverted');
     });
 
     it('shows the banner to admins only', async () => {

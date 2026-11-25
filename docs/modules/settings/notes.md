@@ -112,7 +112,13 @@ senior custom role; admin second factor). It is not part of the Offer review pag
 `settings.offer-review.manage` save can never switch it. `PUT settings/admin/offer-review/emergency-stop`
 takes `value`, `expectedVersion` and a `note` that is always required (1 to 500 characters); the
 change is live at once, audited as `settings.market-setting.changed` and reviewed at high risk
-afterwards where the area is reviewed. Nothing switches it off by itself.
+afterwards where the area is reviewed. Nothing switches it off by itself, and a rejected or
+withdrawn review never switches it off either: that revert answers `not-permitted`, so only a
+holder of the stop's own key turns it off (a rejected "off" is restored to on).
+Both Offer review saves need a fresh two-step code of the admin, spent in the change's unit
+(settings step-up actions, admin audience, locked): `settings.offer-review-emergency-stop.change`
+for the stop and `settings.offer-review.change` for the Offer review page; without one the route
+answers `403 second-factor.required` with `details.actionKey` and the panel asks for the code.
 `GET settings/admin/offer-review/emergency-stop` (rule own-resources, admins only) answers `on`,
 the version, when it was last switched and the display name of who switched it (identity
 `changeActors`); the admin shell shows a critical banner on every page while it is on.

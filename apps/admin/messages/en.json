@@ -18335,7 +18335,7 @@
       "last-by-at": "Last switched by {name}, {when}.",
       "last-at": "Last switched {when}.",
       "reason-label": "Reason",
-      "reason-help": "Required. Kept in the history and the audit log.",
+      "reason-help": "Required to switch it either way. Kept in the history and the audit log.",
       "reason-required": "Enter a reason of up to 500 characters.",
       "turn-on": "Turn on emergency stop",
       "turn-off": "Turn off emergency stop",
@@ -18345,7 +18345,11 @@
         "conflict": "Someone switched it a moment ago. The page shows the latest state; check it and try again.",
         "denied": "You do not have permission to switch the emergency stop.",
         "unknown": "It could not be switched. Try again."
-      }
+      },
+      "confirm-title": "Turn on emergency stop?",
+      "confirm-body": "Every new offer from every seller will wait for an admin until you turn it off. Offers already live stay on sale.",
+      "confirm-cancel": "Cancel",
+      "confirm-turn-on": "Turn on"
     }
   }
 }

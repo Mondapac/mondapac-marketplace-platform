@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
+vi.mock('next/navigation', () => ({ usePathname: () => '/orders' }));
 vi.mock('../step-up/step-up.tsx', async () => {
   const api = await import('../api/client.ts');
   return {
@@ -46,7 +47,16 @@ const mount = (initial = OFF, canSwitch = true) =>
     ),
   );
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  // jsdom has no modal <dialog>.
+  HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  };
+  HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+    this.removeAttribute('open');
+  };
+});
 afterEach(cleanup);
 
 describe('emergency stop answers', () => {
@@ -67,11 +77,12 @@ describe('EmergencyStopPanel', () => {
   });
 
   it('switches on with the reason and the version it saw, then shows who and when', async () => {
-    call.mockResolvedValueOnce(ok({ settings: [] }) as never);
-    call.mockResolvedValueOnce(ok(ON) as never);
+    call.mockResolvedValueOnce(ok({ settings: [] }));
+    call.mockResolvedValueOnce(ok(ON));
     mount();
     fireEvent.change(screen.getByLabelText('Reason'), { target: { value: ' Fraud wave ' } });
     fireEvent.click(screen.getByRole('button', { name: 'Turn on emergency stop' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Turn on', hidden: true }));
     await waitFor(() =>
       expect(screen.getByText('On: every new offer waits for review')).toBeTruthy(),
     );
@@ -91,10 +102,11 @@ describe('EmergencyStopPanel', () => {
       ok: false,
       failure: { status: 409, code: 'settings.conflict' },
     } as never);
-    call.mockResolvedValueOnce(ok(ON) as never);
+    call.mockResolvedValueOnce(ok(ON));
     mount();
     fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'x' } });
     fireEvent.click(screen.getByRole('button', { name: 'Turn on emergency stop' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Turn on', hidden: true }));
     await waitFor(() => expect(screen.getByText(/Someone switched it a moment ago/)).toBeTruthy());
     expect(screen.getByRole('button', { name: 'Turn off emergency stop' })).toBeTruthy();
   });
@@ -108,14 +120,14 @@ describe('EmergencyStopPanel', () => {
 
 describe('EmergencyStopBanner', () => {
   it('shows nothing while the stop is off or the read fails', async () => {
-    call.mockResolvedValueOnce(ok(OFF) as never);
+    call.mockResolvedValueOnce(ok(OFF));
     const { container } = render(wrap(<EmergencyStopBanner zone="Australia/Brisbane" />));
     await waitFor(() => expect(call).toHaveBeenCalled());
     expect(container.textContent).toBe('');
   });
 
   it('warns on every page while it is on, with who, when and a link', async () => {
-    call.mockResolvedValueOnce(ok(ON) as never);
+    call.mockResolvedValueOnce(ok(ON));
     render(wrap(<EmergencyStopBanner zone="Australia/Brisbane" />));
     await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
     expect(screen.getByText('Emergency stop is on')).toBeTruthy();

@@ -2,6 +2,7 @@ import { err } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { SETTINGS_OFFER_REVIEW_EMERGENCY_STOP } from '../../contracts/permissions';
+import { SETTINGS_EMERGENCY_STOP_STEP_UP } from '../../contracts/step-up';
 import { OFFER_REVIEW_EMERGENCY_STOP_CODE } from '../../domain/definitions';
 import type { SettingsDependencies } from '../settings-dependencies';
 import { changeSettings, type SettingChangeView, type SettingsFailure } from '../settings-flow';
@@ -23,7 +24,9 @@ const MAX_NOTE = 500;
  * protected key switches the Market's Offer review emergency stop on or off. A reason is always
  * required, whether or not the Market reviews settings changes; the change is live at once,
  * audited, and reviewed at high risk afterwards where the area is reviewed. A stale version is a
- * conflict. Nothing switches it off by itself.
+ * conflict. A fresh two-step code of the admin is spent in the change's unit
+ * (`settings.offer-review-emergency-stop.change`). Nothing switches it off by itself, and a rejected
+ * review never switches it off either.
  */
 export class ChangeOfferReviewEmergencyStop extends UseCase<
   Input,
@@ -52,15 +55,21 @@ export class ChangeOfferReviewEmergencyStop extends UseCase<
         err({ code: 'validation.failed', fields: [{ path: 'note', code: 'required' }] }),
       );
     }
-    return changeSettings(this.deps, context, [OFFER_REVIEW_EMERGENCY_STOP_CODE], {
-      changes: [
-        {
-          code: OFFER_REVIEW_EMERGENCY_STOP_CODE,
-          value: input.value,
-          expectedVersion: input.expectedVersion,
-        },
-      ],
-      note,
-    });
+    return changeSettings(
+      this.deps,
+      context,
+      [OFFER_REVIEW_EMERGENCY_STOP_CODE],
+      {
+        changes: [
+          {
+            code: OFFER_REVIEW_EMERGENCY_STOP_CODE,
+            value: input.value,
+            expectedVersion: input.expectedVersion,
+          },
+        ],
+        note,
+      },
+      SETTINGS_EMERGENCY_STOP_STEP_UP,
+    );
   }
 }

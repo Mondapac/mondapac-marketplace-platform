@@ -12,6 +12,7 @@ import {
 } from '@nestjs/swagger';
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { Request, Response } from 'express';
+import { RequiresStepUp } from '../../../platform/authz';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
 import {
@@ -31,6 +32,10 @@ import { ViewCartModeSetting } from '../application/use-cases/view-cart-mode-set
 import { ViewListPagingSetting } from '../application/use-cases/view-list-paging-setting.use-case';
 import { ChangeMonthlyRevenueTargetSetting } from '../application/use-cases/change-monthly-revenue-target-setting.use-case';
 import { ViewMonthlyRevenueTargetSetting } from '../application/use-cases/view-monthly-revenue-target-setting.use-case';
+import {
+  SETTINGS_EMERGENCY_STOP_STEP_UP,
+  SETTINGS_OFFER_REVIEW_STEP_UP,
+} from '../contracts/step-up';
 import { closedBody, refusal } from './http-answers';
 import { CART_MODE_CODE } from '../domain/definitions';
 import {
@@ -59,6 +64,9 @@ import {
 
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
 const ERROR = { type: Object };
+const STEP_UP_FORBIDDEN =
+  'access.denied, request.csrf, second-factor.required (details.actionKey) or ' +
+  'second-factor.enrolment-required';
 
 function logRoute(logger: Logger, msg: string, context: CallContext, outcome: string): void {
   // Ids and codes only.
@@ -128,11 +136,15 @@ export class AdminSettingsController {
 
   @Put('offer-review/emergency-stop')
   @HttpCode(200)
+  @RequiresStepUp(SETTINGS_EMERGENCY_STOP_STEP_UP)
   @ApiOperation({
     summary: 'Switch the Offer review emergency stop on or off (admin)',
     description:
-      'Needs the protected settings.offer-review.emergency-stop (admin second factor); refused ' +
-      'in an acting-as session. A note is always required. Live at once: while on, every new ' +
+      'Needs the protected settings.offer-review.emergency-stop and a fresh two-step proof of ' +
+      'this admin (`POST identity/admin/step-up/verify` for ' +
+      'settings.offer-review-emergency-stop.change; without it 403 second-factor.required with ' +
+      'details.actionKey); refused in an acting-as session. A rejected review never switches it ' +
+      'off. A note is always required. Live at once: while on, every new ' +
       'Offer of the Market waits for an admin; live Offers stay live. Audited, and reviewed at ' +
       'high risk where the area is reviewed. A stale version is 409 settings.conflict.',
   })
@@ -141,7 +153,7 @@ export class AdminSettingsController {
   @ApiOkResponse({ type: SettingsChangeListBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
-  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiForbiddenResponse({ ...ERROR, description: STEP_UP_FORBIDDEN })
   @ApiConflictResponse({ ...ERROR, description: 'settings.conflict' })
   async putEmergencyStop(
     @Call() context: CallContext,
@@ -275,10 +287,13 @@ export class AdminSettingsController {
 
   @Put('offer-review')
   @HttpCode(200)
+  @RequiresStepUp(SETTINGS_OFFER_REVIEW_STEP_UP)
   @ApiOperation({
     summary: 'Change the Offer review policy of the Market (admin)',
     description:
-      'Needs settings.offer-review.manage; refused in an acting-as session. `changes` lists each ' +
+      'Needs settings.offer-review.manage and a fresh two-step proof of this admin ' +
+      '(`POST identity/admin/step-up/verify` for settings.offer-review.change; without it 403 ' +
+      'second-factor.required with details.actionKey); refused in an acting-as session. `changes` lists each ' +
       'changed setting once with the version the admin saw. All or nothing: a stale version of ' +
       'any of them is 409 settings.conflict and nothing is saved. Each change is audited and, ' +
       'where reviewed, opens its own review request. ' +
@@ -289,7 +304,7 @@ export class AdminSettingsController {
   @ApiOkResponse({ type: SettingsChangeListBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
-  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiForbiddenResponse({ ...ERROR, description: STEP_UP_FORBIDDEN })
   @ApiConflictResponse({ ...ERROR, description: 'settings.conflict' })
   async putOfferReview(
     @Call() context: CallContext,

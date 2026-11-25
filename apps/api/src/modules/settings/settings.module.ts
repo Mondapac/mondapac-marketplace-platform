@@ -6,7 +6,14 @@ import { FacadeAdminNames } from './infrastructure/facade-admin-names';
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
-import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
+import {
+  registerPermissions,
+  registerStepUpActions,
+  STEP_UP_CONSUMER,
+  USE_CASE_GATE,
+  type UseCaseGate,
+} from '../../platform/authz';
+import { SETTINGS_STEP_UP_ACTIONS } from './contracts/step-up';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
@@ -47,6 +54,7 @@ const PORTS: readonly [keyof SettingsDependencies, InjectionToken][] = [
   ['audit', AUDIT_WRITER],
   ['clock', CLOCK],
   ['review', SYSTEM_REQUEST_RECORDER],
+  ['stepUp', STEP_UP_CONSUMER],
 ];
 
 /** The reverter of a Market setting change, registered with System requests below. */
@@ -83,6 +91,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     PersistenceModule.auditWriterFor('settings'),
     registerAuditActions('settings', SETTINGS_AUDIT_ACTIONS),
     registerPermissions('settings', SETTINGS_PERMISSIONS),
+    registerStepUpActions('settings', SETTINGS_STEP_UP_ACTIONS),
     ...settingsProviders,
     ...[
       ViewListPagingSetting,

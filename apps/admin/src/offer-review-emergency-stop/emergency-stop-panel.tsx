@@ -1,8 +1,8 @@
 'use client';
 
-import { Banner, Button, SettingsPage, SettingsSection, TextAreaField } from '@mondapac/ui';
+import { Banner, Button, Dialog, SettingsPage, SettingsSection, TextAreaField } from '@mondapac/ui';
 import { useFormatter, useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { EMERGENCY_STOP_PATH, MAX_REASON, emergencyStopOf, type EmergencyStop } from './types.ts';
@@ -33,6 +33,8 @@ export function EmergencyStopPanel({
   const [reason, setReason] = useState('');
   const [problem, setProblem] = useState<Problem | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const cancel = useRef<HTMLButtonElement>(null);
 
   const when =
     stop.changedAt === null
@@ -49,12 +51,20 @@ export function EmergencyStopPanel({
     if (parsed !== null) setStop(parsed);
   }
 
-  async function toggle() {
+  /** Turning on says what it does first (Reza); turning off goes straight through. */
+  function ask() {
     const note = reason.trim();
     if (note.length === 0 || note.length > MAX_REASON) {
       setProblem('reason');
       return;
     }
+    if (stop.on) void toggle();
+    else setConfirming(true);
+  }
+
+  async function toggle() {
+    setConfirming(false);
+    const note = reason.trim();
     setBusy(true);
     setProblem(null);
     const answer = await guarded<unknown>(
@@ -122,7 +132,7 @@ export function EmergencyStopPanel({
                 <Button
                   variant={stop.on ? 'secondary' : 'destructive-solid'}
                   disabled={busy}
-                  onClick={() => void toggle()}
+                  onClick={ask}
                 >
                   {stop.on ? t('turn-off') : t('turn-on')}
                 </Button>
@@ -133,6 +143,24 @@ export function EmergencyStopPanel({
           )}
         </div>
       </SettingsSection>
+      <Dialog
+        open={confirming}
+        title={t('confirm-title')}
+        onClose={() => setConfirming(false)}
+        initialFocus={cancel}
+        actions={
+          <>
+            <Button ref={cancel} variant="secondary" onClick={() => setConfirming(false)}>
+              {t('confirm-cancel')}
+            </Button>
+            <Button variant="destructive-solid" onClick={() => void toggle()}>
+              {t('confirm-turn-on')}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm">{t('confirm-body')}</p>
+      </Dialog>
     </SettingsPage>
   );
 }
