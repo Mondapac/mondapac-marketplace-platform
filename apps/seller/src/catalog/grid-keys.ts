@@ -1,7 +1,7 @@
 import type { KeyboardEvent } from 'react';
 
 /** A field a seller types into: a text input that is not disabled (not a checkbox or switch). */
-const FIELD = 'input:not([type="checkbox"]):not([type="radio"]):not([disabled])';
+const FIELD = 'input:not([type="checkbox"]):not([type="radio"]):not([disabled]):not([readonly])';
 
 /**
  * Spreadsheet keys for a table of fields (Offer page PR 5): Tab moves right as usual; Enter moves
@@ -10,7 +10,8 @@ const FIELD = 'input:not([type="checkbox"]):not([type="radio"]):not([disabled])'
  * row) are skipped.
  */
 export function moveOnEnter(event: KeyboardEvent<HTMLElement>): void {
-  if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
+  // An input method still composing (Safari says so only with key code 229) keeps its Enter.
+  if (event.key !== 'Enter' || event.nativeEvent.isComposing || event.keyCode === 229) return;
   const target = event.target;
   if (!(target instanceof HTMLInputElement) || !target.matches(FIELD)) return;
   const cell = target.closest('td');

@@ -108,7 +108,7 @@ export function createErrorKey(code: string): string {
  * "Add offer" (Offer page design, PR 1): the seller searches the platform products they are allowed
  * to sell (their business activities decide), ticks one or more, or pastes a list of barcodes, and
  * "Sell this" / "Sell these (N)" creates one draft Offer for each, with the condition and handling
- * of the seller's last offer (else Sealed original). One product opens its Offer; several open
+ * of the seller's last offer (a first offer has no handling until the seller chooses one). One product opens its Offer; several open
  * the quick entry table. A product the seller already sells is shown, not selectable.
  */
 export function AddOfferDialog({
@@ -141,7 +141,9 @@ export function AddOfferDialog({
   const [problems, setProblems] = useState<
     readonly { productId: string; name: string; key: string }[]
   >([]);
-  const [madeDrafts, setMadeDrafts] = useState(0);
+  // Drafts made by an earlier try that had refusals: a later try opens them together.
+  const [madeIds, setMadeIds] = useState<readonly string[]>([]);
+  const madeDrafts = madeIds.length;
   const [defaults, setDefaults] = useState<OfferDefaults | null>(null);
   const [conditionFailed, setConditionFailed] = useState(false);
   const requestId = useRef(0);
@@ -250,12 +252,12 @@ export function AddOfferDialog({
     busy.current = false;
     setSaving(false);
     if (refused.length === 0) {
-      navigate(afterSellPath(created.map((item) => item.offerId)));
+      navigate(afterSellPath([...madeIds, ...created.map((item) => item.offerId)]));
       return;
     }
     // The dialog stays open: what was created leaves the picks, what was refused stays to be seen.
     setProblems(refused);
-    setMadeDrafts((before) => before + created.length);
+    setMadeIds((before) => [...before, ...created.map((item) => item.offerId)]);
     setPicked((current) => {
       const next = new Map(current);
       for (const { productId } of created) next.delete(productId);
@@ -377,7 +379,7 @@ export function AddOfferDialog({
               ))}
             </ul>
             {madeDrafts > 0 ? (
-              <Button variant="link" onClick={() => navigate('/offers?view=drafts')}>
+              <Button variant="link" onClick={() => navigate(afterSellPath(madeIds))}>
                 {t('open-drafts', { count: madeDrafts })}
               </Button>
             ) : null}

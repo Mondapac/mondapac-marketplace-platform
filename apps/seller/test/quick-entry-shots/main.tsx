@@ -48,18 +48,24 @@ const row = (id: string, label: string) => ({
   },
   stock: {},
 });
-const group = (n: number, name: string, code: string, sizes: string[]): QuickGroup => ({
+const group = (
+  n: number,
+  name: string,
+  code: string,
+  sizes: string[],
+  handling: string | null = 'SEALED_ORIGINAL',
+): QuickGroup => ({
   offerId: `0190a000-0000-7000-8000-00000000000${n}`,
   name,
   productCode: code,
   thumb: null,
   conditionCode: 'new',
-  handling: 'SEALED_ORIGINAL',
+  handling,
   rows: sizes.map((label, i) => row(`v${n}${i}`, label)),
 });
 const groups = [
   group(1, 'Beef brisket', 'P00000371', ['1 kg']),
-  group(2, 'Beef mince', 'P00000412', ['250 g', '500 g', '1 kg']),
+  group(2, 'Beef mince', 'P00000412', ['250 g', '500 g', '1 kg'], null),
 ];
 const offer: OfferView = {
   offerId: '0190a000-0000-7000-8000-000000000002',

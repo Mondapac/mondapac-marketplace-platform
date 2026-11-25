@@ -183,6 +183,19 @@ describe('QuickEntryTable', () => {
     expect(call).not.toHaveBeenCalled();
   });
 
+  it('asks to save or discard before a new search leaves the page', async () => {
+    mount();
+    fireEvent.change(priceBox('Beef brisket', '1 kg'), { target: { value: '32.00' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Back to search' }));
+    await expectToast('Save or discard your changes first, then search again.', 'info');
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('shows the price field with the currency sign', () => {
+    mount();
+    expect(screen.getAllByText('$').length).toBeGreaterThan(0);
+  });
+
   it('points to Drafts for the drafts it does not show', () => {
     mount({ more: 2, unreadable: 1 });
     expect(

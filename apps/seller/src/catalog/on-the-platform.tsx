@@ -92,7 +92,7 @@ export function OnThePlatform({
 
   /**
    * Creates the draft Offer and opens it with the cursor on the first price; the condition and
-   * handling are those of the seller's last offer, else the Market default and Sealed original.
+   * handling are those of the seller's last offer, else the Market default and no handling.
    */
   async function sell(product: PlatformProduct) {
     if (busy.current) return;

@@ -96,6 +96,18 @@ describe('OfferEditForm', () => {
     await expectToast('Offer saved.');
   });
 
+  it('says when leaving Sealed original withdrew the sealed-pack statement', async () => {
+    call.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { changedFields: ['handling', 'attestation'] },
+    });
+    mount();
+    fireEvent.change(screen.getByLabelText('Handling'), { target: { value: 'REPACKED' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save offer' }));
+    await expectToast(/sealed-pack statement was withdrawn/, 'info');
+  });
+
   it('keeps a handling the server refused as an unsaved change', async () => {
     call
       .mockResolvedValueOnce({ ok: true, status: 200, body: { changedFields: ['sellerSku'] } })

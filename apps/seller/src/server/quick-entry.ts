@@ -1,12 +1,15 @@
 import 'server-only';
 import { redirect } from 'next/navigation';
 import { productThumbSrc } from '../catalog/product-thumb.ts';
-import type { QuickGroup } from '../catalog/quick-entry-logic.ts';
+import { inBatches, type QuickGroup } from '../catalog/quick-entry-logic.ts';
 import type { OfferSellUnitsView, OfferView } from '../catalog/types.ts';
 import { PRICE_VIEW_PERMISSION, type OfferPricesView } from '../price/types.ts';
 import type { StockLevelsView } from '../stock/levels-types.ts';
 import { STOCK_VIEW_PERMISSION, type SourcesView } from '../stock/types.ts';
 import { serverGet } from './server-fetch.ts';
+
+/** How many drafts are read at the same time (four reads each). */
+const OFFERS_AT_ONCE = 4;
 
 /** What the quick entry table of new drafts needs (Offer page PR 5). */
 export interface QuickEntry {
@@ -16,6 +19,8 @@ export interface QuickEntry {
   /** The Market currency of the prices; null when the seller may not see prices. */
   readonly currency: string | null;
   readonly sources: SourcesView['sources'];
+  /** The seller may see stock but the locations could not be read: no stock column is shown. */
+  readonly stockUnavailable: boolean;
 }
 
 /**
@@ -32,20 +37,21 @@ export async function loadQuickEntry(
 ): Promise<QuickEntry> {
   const canPrice = permissionKeys.includes(PRICE_VIEW_PERMISSION);
   const canStock = permissionKeys.includes(STOCK_VIEW_PERMISSION);
-  const [sources, ...reads] = await Promise.all([
+  const readOffer = (offerId: string) =>
+    Promise.all([
+      serverGet<OfferView>(`catalog/seller/offers/${offerId}`),
+      serverGet<OfferSellUnitsView>(`catalog/seller/offers/${offerId}/sell-units`),
+      canPrice
+        ? serverGet<OfferPricesView>(`pricing/seller/offers/${offerId}/prices`)
+        : Promise.resolve(null),
+      canStock
+        ? serverGet<StockLevelsView>(`inventory/seller/offers/${offerId}/stock`)
+        : Promise.resolve(null),
+    ]);
+  // A few drafts at a time, so one page load never sends all its reads at once.
+  const [sources, reads] = await Promise.all([
     canStock ? serverGet<SourcesView>('inventory/seller/sources') : Promise.resolve(null),
-    ...offerIds.map((offerId) =>
-      Promise.all([
-        serverGet<OfferView>(`catalog/seller/offers/${offerId}`),
-        serverGet<OfferSellUnitsView>(`catalog/seller/offers/${offerId}/sell-units`),
-        canPrice
-          ? serverGet<OfferPricesView>(`pricing/seller/offers/${offerId}/prices`)
-          : Promise.resolve(null),
-        canStock
-          ? serverGet<StockLevelsView>(`inventory/seller/offers/${offerId}/stock`)
-          : Promise.resolve(null),
-      ]),
-    ),
+    inBatches(offerIds, OFFERS_AT_ONCE, readOffer),
   ]);
   const all = [sources, ...reads.flat()];
   if (all.some((item) => item?.kind === 'signed-out')) redirect('/session-ended');
@@ -94,5 +100,6 @@ export async function loadQuickEntry(
     unreadable,
     currency,
     sources: sources?.kind === 'ok' ? sources.body.sources : [],
+    stockUnavailable: sources !== null && sources.kind !== 'ok',
   };
 }

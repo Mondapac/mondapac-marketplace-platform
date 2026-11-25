@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-offer-quick-entry-review-later",
+  "area": "seller",
+  "title": "ریزه‌کاری‌های بعدی جدول ورود سریع",
+  "desc": "از بازبینی PR 1357: غیرفعال ماندن Save تا پایان زمان انتظار پس از «too many requests»؛ پیام «Handling ثبت نشد» وقتی ثبت پیش‌فرض Handling رد شود؛ جستجوی Handling در بیش از ۲۵ Offer اخیر؛ ستون Product و Size چسبنده یا کارت در موبایل (همراه PR ۱۰).",
+  "src": "بازبینی PR 1357 (سجاد QA، حسن، رضا UI/UX)",
+  "date": "2026-11-25",
+  "trig": "همراه PR ۱۰ صفحهٔ Offer",
+  "prio": "پایین",
+  "status": "موکول"
+}

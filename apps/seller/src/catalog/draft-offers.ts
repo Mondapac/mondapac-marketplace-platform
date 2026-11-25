@@ -9,7 +9,7 @@ interface OfferPage {
 
 /**
  * Reads what a new draft starts with: the Market's conditions and the seller's newest offers.
- * When the offers cannot be read the Market default and Sealed original are used; when the
+ * When the offers cannot be read the Market default is used and no handling; when the
  * conditions cannot be read no draft can be made (`failed`). A signed-out read says so.
  */
 export async function loadOfferDefaults(): Promise<OfferDefaults | 'failed' | 'signed-out'> {
@@ -53,7 +53,7 @@ export function draftOfferBody(product: SellableProduct, condition: string) {
 
 /**
  * Creates one draft Offer with the defaults (Offer page PR 5): the condition goes with the draft,
- * then its handling is recorded. The draft is the result: a handling that could not be recorded
+ * then the handling of the seller's last offer, when there is one, is recorded. The draft is the result: a handling that could not be recorded
  * leaves it without one, which the seller sets on the Offer (the draft cannot be submitted
  * before), so only a signed-out answer is passed on (`handlingSignedOut`).
  */
@@ -68,7 +68,7 @@ export async function createDraftOffer(
     draftOfferBody(product, defaults.condition),
     csrfToken,
   );
-  if (!result.ok) return { result, handlingSignedOut: false };
+  if (!result.ok || defaults.handling === null) return { result, handlingSignedOut: false };
   const handling = await callApi<unknown>(
     'PUT',
     `catalog/seller/offers/${result.body.offerId}/handling`,

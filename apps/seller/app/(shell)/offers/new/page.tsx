@@ -49,6 +49,7 @@ export default async function QuickEntryPage({
         unreadable={entry.unreadable}
         more={moreOf(query.more)}
         sources={entry.sources}
+        stockUnavailable={entry.stockUnavailable}
         currency={entry.currency}
         canEditPrice={keys.includes(PRICE_EDIT_PERMISSION)}
         canEditStock={keys.includes(STOCK_EDIT_PERMISSION)}

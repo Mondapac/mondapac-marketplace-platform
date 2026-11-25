@@ -112,6 +112,7 @@ export function OfferEditForm({
     setProblem(null);
     // The offer's own fields and its handling are two routes; only what changed is sent.
     let reached = saved;
+    let attestationWithdrawn = false;
     const offerChanged =
       conditionCode !== saved.conditionCode ||
       sellerSku !== saved.sellerSku ||
@@ -137,14 +138,21 @@ export function OfferEditForm({
         { handling },
         csrfToken,
       );
-      if (result.ok) reached = { ...reached, handling };
+      if (result.ok) {
+        reached = { ...reached, handling };
+        // Away from Sealed original the recorded attestation goes with it: the seller is told.
+        const body = result.body as { changedFields?: readonly string[] } | null;
+        if (body?.changedFields?.includes('attestation') === true) attestationWithdrawn = true;
+      }
     }
     busy.current = false;
     setPending(false);
     // What the server took is now the saved state: the bar hides when nothing else is left.
     setSaved(reached);
-    if (result.ok) toast.success(t('catalog.offer-edit.saved'));
-    else if (result.failure.status === 401) {
+    if (result.ok) {
+      toast.success(t('catalog.offer-edit.saved'));
+      if (attestationWithdrawn) toast.info(t('catalog.offer-edit.attestation-withdrawn'));
+    } else if (result.failure.status === 401) {
       flushSync(() => setLeaving(true));
       window.location.assign('/session-ended');
     } else setProblem(offerEditProblemOf(result.failure));

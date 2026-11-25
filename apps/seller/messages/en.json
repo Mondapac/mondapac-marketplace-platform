@@ -2018,8 +2018,9 @@
         "not-found": "This offer was not found.",
         "denied": "You don't have permission to edit offers."
       },
-      "handling-help": "How the goods reach the customer. Sealed original means the maker's sealed pack, unchanged. New drafts start with the handling of your last offer.",
-      "handling-choose": "Choose how you handle the goods"
+      "handling-help": "How the goods reach the customer. Sealed original means the maker's sealed pack, unchanged.",
+      "handling-choose": "Choose how you handle the goods",
+      "attestation-withdrawn": "Your sealed-pack statement was withdrawn because the handling is no longer Sealed original. Badges that need it are checked again."
     },
     "offer-actions": {
       "submit": "Submit for review",
@@ -2037,7 +2038,7 @@
       "changes-needed": "We asked for changes to this offer and emailed you the reason. Edit the offer, then submit it again.",
       "waiting": "This offer is waiting for our review. You can't change it until we decide.",
       "error": {
-        "handling-missing": "This offer can't be submitted yet because its handling is not set. Handling can't be set from this panel yet, so try again later.",
+        "handling-missing": "This offer can't be submitted yet because its handling is not set. Choose a handling on Edit offer, then submit again.",
         "not-submittable": "This offer can't be submitted in its current state. Reload the page.",
         "product-not-published": "The product of this offer is not published yet, so the offer can't be submitted.",
         "not-found": "This offer was not found.",
@@ -3115,8 +3116,8 @@
       "stock-for-all": "Stock for all sizes",
       "apply": "Apply to all sizes",
       "applied": "{count, plural, one {Filled the stock of # size of {product}.} other {Filled the stock of # sizes of {product}.}} Nothing is saved until you press Save.",
-      "defaults": "Condition: {condition} · Handling: {handling}.",
-      "handling-none": "not set yet",
+      "defaults": "Condition: {condition} · Handling: {handling}. New drafts copy these from your last offer.",
+      "handling-none": "not set yet (choose it before you submit)",
       "change": "Change for {product}",
       "ready": "{ready} of {total} sizes have a price and stock",
       "in-drafts": "{count, plural, one {# more new draft is not in this table. It is waiting in Drafts.} other {# more new drafts are not in this table. They are waiting in Drafts.}}",
@@ -3130,7 +3131,9 @@
         "check-stock": "Check stock",
         "out-of-stock": "Out of stock",
         "not-sold": "Not sold"
-      }
+      },
+      "save-first": "Save or discard your changes first, then search again.",
+      "stock-unavailable": "Stock can't be shown right now, so Status checks prices only. Reload the page to try again."
     }
   },
   "stock": {
@@ -5796,7 +5799,7 @@
         "title": "New offers",
         "about": "Type a price and stock for every size of the drafts you just made. Tab moves right, Enter moves down, and \"Apply to all sizes\" fills the stock of one product. Nothing is saved until you press Save.",
         "good": [
-          "New drafts start with the condition and handling of your last offer, or Sealed original. Change them on each offer.",
+          "New drafts copy the condition and handling of your last offer. A first offer has no handling until you choose one on Edit offer.",
           "The drafts stay drafts: submit each one from its own page when it is ready."
         ],
         "related": [

@@ -18,7 +18,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { formatMinor } from '../price/money.ts';
+import { currencySign, formatMinor } from '../price/money.ts';
 import {
   customerPaysMinor,
   estimateFor,
@@ -28,6 +28,7 @@ import {
 import type { SourceView } from '../stock/types.ts';
 import { useGuardedCall } from '../step-up/step-up.tsx';
 import { AddOfferDialog } from './add-offer-dialog.tsx';
+import { HANDLINGS } from './offer-edit-form.tsx';
 import { focusFirstPrice, moveOnEnter } from './grid-keys.ts';
 import { readable } from './format.ts';
 import { sizeStatusOf, type QuickGroup, type SizeStatus } from './quick-entry-logic.ts';
@@ -63,6 +64,7 @@ export function QuickEntryTable({
   unreadable,
   more,
   sources,
+  stockUnavailable = false,
   currency: marketCurrency,
   canEditPrice: mayEditPrice,
   canEditStock,
@@ -75,6 +77,8 @@ export function QuickEntryTable({
   /** Drafts made beyond the table's limit; they wait in Drafts. */
   readonly more: number;
   readonly sources: readonly SourceView[];
+  /** The stock locations could not be read: stock is not shown and Status does not judge it. */
+  readonly stockUnavailable?: boolean;
   /** The Market currency; null when the seller may not see prices (no price columns then). */
   readonly currency: string | null;
   readonly canEditPrice: boolean;
@@ -177,8 +181,11 @@ export function QuickEntryTable({
     }
     busy.current = true;
     setSaving(true);
-    const priceLeft = { ...priceDrafts };
-    const stockLeft = { ...stockDrafts };
+    // What was sent: a cell typed again while the save runs keeps its newer text.
+    const sentPrices = priceDrafts;
+    const sentStocks = stockDrafts;
+    const savedPrices: string[] = [];
+    const savedStocks: string[] = [];
     const seenAll = { ...versions };
     let done = 0;
     let stopped = false;
@@ -204,8 +211,8 @@ export function QuickEntryTable({
         return false;
       }
       Object.assign(found, sent.found);
-      for (const id of sent.savedPrices) delete priceLeft[id];
-      for (const key of sent.savedStocks) delete stockLeft[key];
+      savedPrices.push(...sent.savedPrices);
+      savedStocks.push(...sent.savedStocks);
       seenAll[plan.group.offerId] = sent.seen;
       done += sent.done;
       if (sent.stopped) {
@@ -218,8 +225,8 @@ export function QuickEntryTable({
     setSaving(false);
     // After a refresh the server's versions are the truth; keep ours only when nothing refreshes.
     setVersions(done > 0 ? {} : seenAll);
-    setPriceDrafts(priceLeft);
-    setStockDrafts(stockLeft);
+    setPriceDrafts((old) => withoutSaved(old, savedPrices, sentPrices));
+    setStockDrafts((old) => withoutSaved(old, savedStocks, sentStocks));
     setErrors(found);
     const failed = Object.keys(found).length;
     if (failed > 0) setFocusTick((n) => n + 1);
@@ -247,6 +254,7 @@ export function QuickEntryTable({
   }
 
   function discard() {
+    setApplyNote(null);
     setPriceDrafts({});
     setStockDrafts({});
     setErrors({});
@@ -263,7 +271,14 @@ export function QuickEntryTable({
       className="mb-4"
       actions={
         <>
-          <Button variant="secondary" onClick={() => setSearchOpen(true)}>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              // A new search leaves this page: typed prices are saved or discarded first.
+              if (changeCount > 0) toast.info(t('catalog.quick-entry.save-first'));
+              else setSearchOpen(true);
+            }}
+          >
             {t('catalog.quick-entry.back-to-search')}
           </Button>
           <Button variant="secondary" disabled={saving} onClick={() => void saveAndLeave()}>
@@ -312,7 +327,8 @@ export function QuickEntryTable({
 
   // Product, Size, price, "You receive", one stock column per location, Status (rem): the table
   // scrolls inside its card below this width, never the page.
-  const minRem = 12 + 5 + (showPrice ? 8 : 0) + (showReceive ? 7 : 0) + sources.length * 7 + 8;
+  // 45 rem with one location fits a 768 px window beside the panel's gutters.
+  const minRem = 11 + 4.5 + (showPrice ? 8 : 0) + (showReceive ? 6.5 : 0) + sources.length * 6 + 7;
   return (
     <>
       {header}
@@ -325,7 +341,12 @@ export function QuickEntryTable({
         }}
       >
         {notices}
-        {canEditStock && sources.length === 0 ? (
+        {stockUnavailable ? (
+          <Banner tone="critical">
+            <p>{t('catalog.quick-entry.stock-unavailable')}</p>
+          </Banner>
+        ) : null}
+        {canEditStock && sources.length === 0 && !stockUnavailable ? (
           <Banner tone="attention">
             <p>{t('stock.levels.no-locations')}</p>
             <a className="font-medium text-link underline" href="/settings/stock-locations">
@@ -336,8 +357,9 @@ export function QuickEntryTable({
         <Card>
           <div
             ref={tableRef}
-            // Relative: the hidden labels inside are clipped by the scroll, not by the page.
-            className="relative overflow-x-auto"
+            // Relative: the hidden labels inside are clipped by the scroll, not by the page. The
+            // padding keeps a focused field's ring inside the scroll box.
+            className="relative overflow-x-auto p-1"
             role="region"
             aria-label={title}
             tabIndex={0}
@@ -515,8 +537,19 @@ export function QuickEntryTable({
   );
 }
 
-const HANDLINGS = ['SEALED_ORIGINAL', 'REPACKED', 'PREPARED', 'FRESH'];
-const handlingKey = (value: string) => (HANDLINGS.includes(value) ? value : 'unknown');
+const handlingKey = (value: string) =>
+  (HANDLINGS as readonly string[]).includes(value) ? value : 'unknown';
+
+/** The drafts left after a save: a saved cell goes, unless it was typed again meanwhile. */
+function withoutSaved(
+  drafts: Readonly<Record<string, string>>,
+  saved: readonly string[],
+  sent: Readonly<Record<string, string>>,
+): Record<string, string> {
+  const next = { ...drafts };
+  for (const key of saved) if (next[key] === sent[key]) delete next[key];
+  return next;
+}
 
 /** The rows of one new draft, with its own "You receive (est.)" read. */
 function GroupRows({
@@ -621,6 +654,7 @@ function GroupRows({
                   <div className="w-28">
                     <TextField
                       name={`price-${row.variantId}`}
+                      prefix={currencySign(currency, locale)}
                       label={t('price.field', { currency })}
                       aria-label={t('catalog.quick-entry.price-for', {
                         product: group.name,
@@ -648,7 +682,7 @@ function GroupRows({
               return (
                 <td key={source.id} className="p-2 [&_label]:sr-only">
                   {canEditStock && !retired ? (
-                    <div className="w-24">
+                    <div className="w-20">
                       <TextField
                         name={`onHand-${key}`}
                         label={t('stock.levels.on-hand')}

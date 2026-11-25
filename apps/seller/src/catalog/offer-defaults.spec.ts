@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_HANDLING, defaultCondition, offerDefaultsOf } from './offer-defaults.ts';
+import { defaultCondition, offerDefaultsOf } from './offer-defaults.ts';
 
 describe('offerDefaultsOf', () => {
   it('copies the condition and handling of the newest offer that has a handling', () => {
@@ -14,13 +14,12 @@ describe('offerDefaultsOf', () => {
       ),
     ).toEqual({ condition: 'used', handling: 'FRESH', fromLastOffer: true });
   });
-  it('starts as Sealed original with the Market default when no offer has a handling', () => {
+  it('declares no handling for the seller when no offer of theirs has one', () => {
     expect(offerDefaultsOf([{ conditionCode: 'used', handling: null }], ['used', 'new'])).toEqual({
       condition: 'new',
-      handling: DEFAULT_HANDLING,
+      handling: null,
       fromLastOffer: false,
     });
-    expect(DEFAULT_HANDLING).toBe('SEALED_ORIGINAL');
     expect(offerDefaultsOf([], ['used'])?.condition).toBe('used');
   });
   it('does not copy a condition the Market no longer has', () => {

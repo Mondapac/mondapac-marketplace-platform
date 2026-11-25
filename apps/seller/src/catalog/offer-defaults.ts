@@ -1,12 +1,14 @@
 import type { OfferView } from './types.ts';
 
-/** The handling a new draft starts with when none of the seller's offers has one (john, 25 Nov). */
-export const DEFAULT_HANDLING = 'SEALED_ORIGINAL';
-
 /** What a new draft Offer starts with, and whether it came from the seller's own last offer. */
 export interface OfferDefaults {
   readonly condition: string;
-  readonly handling: string;
+  /**
+   * The seller's own last declaration, else null: a handling is a seller commitment (ADR-0012),
+   * so the panel never declares one the seller has not made; the draft can't be submitted until
+   * the seller chooses it.
+   */
+  readonly handling: string | null;
   /** True when the condition and handling were copied from the seller's newest offer that has them. */
   readonly fromLastOffer: boolean;
 }
@@ -19,7 +21,7 @@ export function defaultCondition(conditions: readonly string[]): string | null {
 /**
  * The condition and handling of a new draft (Offer page PR 5): those of the seller's newest offer
  * that has its handling recorded (a condition the Market no longer has is not copied), else the
- * Market's default condition and Sealed original. `offers` are newest first. Null when the
+ * Market's default condition and no handling. `offers` are newest first. Null when the
  * Market has no condition at all (no draft can be made).
  */
 export function offerDefaultsOf(
@@ -30,7 +32,7 @@ export function offerDefaultsOf(
   if (fallback === null) return null;
   const last = offers.find((offer) => typeof offer.handling === 'string');
   if (last === undefined || typeof last.handling !== 'string') {
-    return { condition: fallback, handling: DEFAULT_HANDLING, fromLastOffer: false };
+    return { condition: fallback, handling: null, fromLastOffer: false };
   }
   return {
     condition:

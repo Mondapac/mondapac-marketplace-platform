@@ -250,6 +250,13 @@ describe('VariantsTable', () => {
     expect(call).not.toHaveBeenCalled();
   });
 
+  it('leaves Enter to an input method that is still composing', () => {
+    mount();
+    priceBox('Small').focus();
+    fireEvent.keyDown(priceBox('Small'), { key: 'Enter', keyCode: 229 });
+    expect(document.activeElement).toBe(priceBox('Small'));
+  });
+
   it('puts the cursor on the first empty price of a new draft', () => {
     mount({ focusPrice: true });
     expect(document.activeElement).toBe(priceBox('Huge'));

@@ -70,3 +70,16 @@ export function moreOf(value: string | string[] | undefined): number {
   const text = Array.isArray(value) ? (value[0] ?? '') : (value ?? '');
   return /^\d{1,5}$/.test(text) ? Math.min(Number(text), 10_000) : 0;
 }
+
+/** `read` of every item, `size` items at a time, answers in the order of `items`. */
+export async function inBatches<T, R>(
+  items: readonly T[],
+  size: number,
+  read: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = [];
+  for (let i = 0; i < items.length; i += size) {
+    out.push(...(await Promise.all(items.slice(i, i + size).map(read))));
+  }
+  return out;
+}

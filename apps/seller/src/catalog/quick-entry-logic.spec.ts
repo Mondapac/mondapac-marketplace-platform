@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { afterSellPath } from './add-offer-dialog.tsx';
-import { moreOf, QUICK_MAX, quickIdsOf, sizeStatusOf } from './quick-entry-logic.ts';
+import { inBatches, moreOf, QUICK_MAX, quickIdsOf, sizeStatusOf } from './quick-entry-logic.ts';
 import type { TableRow } from './variants-table-logic.ts';
 
 const ID = (n: number) => `0190aaaa-0000-7000-8000-${String(n).padStart(12, '0')}`;
@@ -74,5 +74,23 @@ describe('quick entry address', () => {
     expect(moreOf('-1')).toBe(0);
     expect(moreOf('99999999')).toBe(0);
     expect(moreOf(undefined)).toBe(0);
+  });
+});
+
+describe('inBatches', () => {
+  it('reads a few at a time and answers in order', async () => {
+    let running = 0;
+    let most = 0;
+    const read = async (n: number) => {
+      running += 1;
+      most = Math.max(most, running);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      running -= 1;
+      return n * 2;
+    };
+    expect(await inBatches([1, 2, 3, 4, 5, 6, 7, 8, 9], 4, read)).toEqual([
+      2, 4, 6, 8, 10, 12, 14, 16, 18,
+    ]);
+    expect(most).toBe(4);
   });
 });
