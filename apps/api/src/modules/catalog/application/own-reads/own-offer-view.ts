@@ -2,6 +2,7 @@ import type { Offer, OffSaleCause, OfferHandling, OfferStatus } from '../../doma
 import type { OfferTagStatus, TagBadge, TagBasis } from '../../domain/offer-tag';
 import type { OwnOfferSellUnitView, ProductLabel } from '../ports/own-catalog.reader';
 import { isoOf } from './own-reads.shared';
+import type { OfferChangeView } from '../offer-change-view';
 
 export interface OwnOfferView {
   readonly offerId: string;
@@ -34,6 +35,11 @@ export interface OwnOfferView {
   readonly tags?: readonly OwnOfferTagView[];
   /** The stored sell-unit rows (variant SKU and selling switch); on the single read only. */
   readonly sellUnits?: readonly OwnOfferSellUnitView[];
+  /**
+   * The Offer's latest held change in any status (slice 2c), with the reviewer's note; null when
+   * it never had one. On the single read only.
+   */
+  readonly pendingChange?: OfferChangeView | null;
 }
 
 /** One open tag as the seller sees it (design 5.3 "Seller sees"): badge data only while active. */

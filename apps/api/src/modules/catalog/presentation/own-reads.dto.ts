@@ -1,3 +1,4 @@
+import { OfferChangeViewDto } from './offer-change.dto';
 import { ApiProperty } from '@nestjs/swagger';
 import { TopicRefBody } from './topic.dto';
 
@@ -386,6 +387,15 @@ export class OwnOfferViewDto {
       'has no SKU. On the single-Offer read only.',
   })
   sellUnits?: OwnOfferSellUnitDto[];
+  @ApiProperty({
+    type: OfferChangeViewDto,
+    nullable: true,
+    required: false,
+    description:
+      'The latest held change of a live Offer (slice 2c) in any status, with the reviewer note; ' +
+      'null when it never had one. On the single-Offer read only.',
+  })
+  pendingChange?: OfferChangeViewDto | null;
 }
 
 export class OwnOfferStatusCounts {

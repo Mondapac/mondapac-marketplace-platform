@@ -439,6 +439,13 @@ import {
 } from '../application/ports/offer-review';
 import { FacadeOfferReviewInputs } from './facade-offer-review-inputs';
 import { PrismaOfferReviewReferralStore } from './prisma-offer-review-referral.store';
+import {
+  OFFER_PENDING_CHANGE_REPOSITORY,
+  type OfferPendingChangeRepository,
+} from '../application/ports/offer-pending-change.repository';
+import { PrismaOfferPendingChangeRepository } from './prisma-offer-pending-change.repository';
+import { OfferEditReview } from '../application/offer-edit-review';
+import { AUDIT_WRITER, type AuditWriter } from '../../../platform/audit/audit-writer';
 
 export const catalogProviders: readonly Provider[] = [
   {
@@ -470,6 +477,29 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService, ID_GENERATOR],
     useFactory: (prisma: PrismaService, ids: IdGenerator): OfferReviewReferralStore =>
       new PrismaOfferReviewReferralStore(prisma, ids),
+  },
+  {
+    provide: OFFER_PENDING_CHANGE_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): OfferPendingChangeRepository =>
+      new PrismaOfferPendingChangeRepository(prisma),
+  },
+  {
+    provide: OfferEditReview,
+    inject: [
+      OFFER_REVIEW_INPUTS,
+      OFFER_REVIEW_REFERRAL_STORE,
+      OFFER_PENDING_CHANGE_REPOSITORY,
+      AUDIT_WRITER,
+      ID_GENERATOR,
+    ],
+    useFactory: (
+      inputs: OfferReviewInputs,
+      referrals: OfferReviewReferralStore,
+      pendingChanges: OfferPendingChangeRepository,
+      audit: AuditWriter,
+      ids: IdGenerator,
+    ): OfferEditReview => new OfferEditReview({ inputs, referrals, pendingChanges, audit, ids }),
   },
   {
     provide: MARKET_DAY_CALENDAR,

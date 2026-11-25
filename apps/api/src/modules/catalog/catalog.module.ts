@@ -68,6 +68,8 @@ import {
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
 import { OFFER_REVIEW_INPUTS, OFFER_REVIEW_REFERRAL_STORE } from './application/ports/offer-review';
+import { OFFER_PENDING_CHANGE_REPOSITORY } from './application/ports/offer-pending-change.repository';
+import { OfferEditReview } from './application/offer-edit-review';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { registerEvents } from '../../platform/events/event-catalogue';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
@@ -120,6 +122,11 @@ import { OwnOfferCreateOnPlatformProduct } from './application/use-cases/own-off
 import { ReviewQueueBulkDecide } from './application/use-cases/review-queue-bulk-decide.use-case';
 import { OfferApprove } from './application/use-cases/offer-approve.use-case';
 import { OfferRequestChanges } from './application/use-cases/offer-request-changes.use-case';
+import { AdminOfferChangeApprove } from './application/use-cases/admin-offer-change-approve.use-case';
+import { AdminOfferChangeRequestChanges } from './application/use-cases/admin-offer-change-request-changes.use-case';
+import { AdminOfferChangeReject } from './application/use-cases/admin-offer-change-reject.use-case';
+import { AdminOfferChangesList } from './application/use-cases/admin-offer-changes-list.use-case';
+import { OwnOfferWithdrawChange } from './application/use-cases/own-offer-withdraw-change.use-case';
 import { OwnOfferDelete } from './application/use-cases/own-offer-delete.use-case';
 import { OwnOfferEdit } from './application/use-cases/own-offer-edit.use-case';
 import { OwnOfferSetHandling } from './application/use-cases/own-offer-set-handling.use-case';
@@ -669,6 +676,8 @@ const PORT = {
   policy: CATALOG_MARKET_POLICY,
   reviewInputs: OFFER_REVIEW_INPUTS,
   referrals: OFFER_REVIEW_REFERRAL_STORE,
+  editReview: OfferEditReview,
+  pendingChanges: OFFER_PENDING_CHANGE_REPOSITORY,
   matcher: CLAIM_TEXT_MATCHER,
   check: CheckClaimText,
   save: SaveWorkingCopy,
@@ -2331,6 +2340,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       evaluator: true,
       outbox: true,
       clock: true,
+      editReview: true,
     }),
     useCaseProvider(OwnOfferSetHandling, {
       unitOfWork: true,
@@ -2341,6 +2351,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       evaluator: true,
       outbox: true,
       clock: true,
+      editReview: true,
     }),
     useCaseProvider(OwnOfferRecordAttestation, {
       unitOfWork: true,
@@ -2378,6 +2389,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       outbox: true,
       clock: true,
       ids: true,
+      editReview: true,
     }),
     useCaseProvider(OwnOfferRemoveTag, {
       unitOfWork: true,
@@ -2408,6 +2420,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       products: true,
       outbox: true,
       clock: true,
+      editReview: true,
     }),
     useCaseProvider(OfferApprove, {
       unitOfWork: true,
@@ -2426,6 +2439,44 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       offers: true,
       outbox: true,
       clock: true,
+    }),
+    useCaseProvider(AdminOfferChangeApprove, {
+      unitOfWork: true,
+      offers: true,
+      pendingChanges: true,
+      eligibility: true,
+      check: true,
+      claims: true,
+      evaluator: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AdminOfferChangeRequestChanges, {
+      unitOfWork: true,
+      offers: true,
+      pendingChanges: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(AdminOfferChangeReject, {
+      unitOfWork: true,
+      offers: true,
+      pendingChanges: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(OwnOfferWithdrawChange, {
+      unitOfWork: true,
+      offers: true,
+      pendingChanges: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(AdminOfferChangesList, {
+      unitOfWork: true,
+      pendingChanges: true,
     }),
     useCaseProvider(ReviewQueueList, {
       unitOfWork: true,
@@ -2711,6 +2762,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
         evaluator: true,
         outbox: true,
         clock: true,
+        editReview: true,
       },
       { save: NO_SAVE_BUDGET },
       ['import-row'],
@@ -2931,6 +2983,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       outbox: true,
       audit: true,
       clock: true,
+      editReview: true,
     }),
     useCaseProvider(PlatformProductRetire, {
       unitOfWork: true,
@@ -3148,6 +3201,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       offers: true,
       ownReader: true,
       policy: true,
+      pendingChanges: true,
     }),
     useCaseProvider(OwnOfferReadSellUnits, {
       unitOfWork: true,

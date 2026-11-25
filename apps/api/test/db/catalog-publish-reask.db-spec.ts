@@ -1,3 +1,4 @@
+import { NO_AUDIT, prismaOfferEditReview } from '../support/catalog-offer-edit-review-fakes';
 import { randomUUID } from 'node:crypto';
 import { Temporal, ok, uuidV7 } from '@mondapac/shared-kernel';
 import type { Id, IdGenerator } from '@mondapac/shared-kernel';
@@ -246,6 +247,7 @@ describe.each(TEST_MARKETS)(
 
     function addTagWith(evaluator: FakeClaimEvaluator) {
       return new OwnOfferAddTag(gate, {
+        editReview: prismaOfferEditReview(persistence.service, ids, NO_AUDIT),
         unitOfWork: persistence.unitOfWork,
         offers: new PrismaOfferRepository(persistence.service, ids),
         eligibility: { isEligible: () => Promise.resolve(true) },
@@ -314,7 +316,7 @@ describe.each(TEST_MARKETS)(
         await publish.committed;
         expect(outcome).toEqual({
           ok: true,
-          value: { typeCode, status: 'active', basis: 'SELLER' },
+          value: { typeCode, status: 'active', basis: 'SELLER', applied: true },
         });
         expect(doneAt).toBeGreaterThanOrEqual(committedAt);
         expect(evaluator.calls.map((call) => call[0]!.productRevisionId)).toEqual([first, second]);

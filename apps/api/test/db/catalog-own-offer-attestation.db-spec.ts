@@ -1,3 +1,4 @@
+import { NO_AUDIT, prismaOfferEditReview } from '../support/catalog-offer-edit-review-fakes';
 import { randomUUID } from 'node:crypto';
 import { Temporal, uuidV7 } from '@mondapac/shared-kernel';
 import type { Id, IdGenerator } from '@mondapac/shared-kernel';
@@ -239,6 +240,7 @@ describe.each(TEST_MARKETS)(
         evaluator,
         outbox: new RecordingOutbox(),
         clock: new FixedClock(T1),
+        editReview: prismaOfferEditReview(persistence.service, ids, NO_AUDIT),
       };
       const context = testCallContext(
         market,
@@ -315,7 +317,7 @@ describe.each(TEST_MARKETS)(
       });
       expect(await r.addTag.execute(r.context, { offerId, typeCode })).toEqual({
         ok: true,
-        value: { typeCode, status: 'active', basis: 'MANUFACTURER' },
+        value: { typeCode, status: 'active', basis: 'MANUFACTURER', applied: true },
       });
 
       const withdrawn = await r.record.execute(r.context, { offerId, attested: false });
@@ -395,7 +397,7 @@ describe.each(TEST_MARKETS)(
 
       expect(await r.setHandling.execute(r.context, { offerId, handling: 'REPACKED' })).toEqual({
         ok: true,
-        value: { changedFields: ['handling', 'attestation'] },
+        value: { changedFields: ['handling', 'attestation'], applied: true },
       });
       expect(await offerRow(offerId)).toMatchObject({
         attestation_recorded_at: null,
@@ -417,7 +419,7 @@ describe.each(TEST_MARKETS)(
 
       expect(
         await r.setHandling.execute(r.context, { offerId, handling: 'SEALED_ORIGINAL' }),
-      ).toEqual({ ok: true, value: { changedFields: ['handling'] } });
+      ).toEqual({ ok: true, value: { changedFields: ['handling'], applied: true } });
       expect(await offerRow(offerId)).toMatchObject({
         attestation_recorded_at: null,
         listed: false,

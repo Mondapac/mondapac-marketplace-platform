@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { OFFER_REVIEW_REASONS } from '../domain/offer-review-policy';
 
 // Body and answer of the seller Offer routes (catalog design 4.4, 8.2; OFR-02, OFR-03; slice 7a-3).
 // Ids and codes only. The one exception is a refused unknown key: it is cut and sanitised, and
@@ -50,6 +51,14 @@ export class OwnOfferEditRequest {
       'status are never accepted. An Offer waiting for review or needing changes returns to draft.',
   })
   description!: Record<string, string>;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Live Offer with a held change (slice 2c): true sets the held change aside and judges ' +
+      'this request alone; without it a watched change is offer.change-pending.',
+  })
+  replacePending?: boolean;
 }
 
 export class OwnOfferEdited {
@@ -57,9 +66,31 @@ export class OwnOfferEdited {
     type: [String],
     description:
       'Field ids that changed (sellerSku, conditionCode, description); empty when the form ' +
-      'matched what was stored.',
+      'matched what was stored. A held description is not among them.',
   })
   changedFields!: string[];
+
+  @ApiProperty({
+    description:
+      'False when the review policy held the watched part of the request on a live Offer ' +
+      '(slice 2c); the rest of the request applied.',
+  })
+  applied!: boolean;
+
+  @ApiProperty({
+    required: false,
+    format: 'uuid',
+    description: 'The held change, when applied is false.',
+  })
+  pendingChangeId?: string;
+
+  @ApiProperty({
+    required: false,
+    enum: OFFER_REVIEW_REASONS,
+    isArray: true,
+    description: 'Why the change is held, when applied is false.',
+  })
+  reasons?: string[];
 }
 
 export class OwnOfferSellUnitChangeRequest {
@@ -139,6 +170,14 @@ export class OwnOfferSetHandlingRequest {
       'for review or needing changes returns to draft.',
   })
   handling!: string;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Live Offer with a held change (slice 2c): true sets the held change aside and judges ' +
+      'this request alone; without it a watched change is offer.change-pending.',
+  })
+  replacePending?: boolean;
 }
 
 export class OwnOfferHandlingSet {
@@ -146,9 +185,32 @@ export class OwnOfferHandlingSet {
     type: [String],
     description:
       "['handling'] when the value changed, ['handling', 'attestation'] when a change away from " +
-      'SEALED_ORIGINAL also withdrew the attestation; empty when the Offer already held it.',
+      'SEALED_ORIGINAL also withdrew the attestation; empty when the Offer already held it or ' +
+      'the change is held.',
   })
   changedFields!: string[];
+
+  @ApiProperty({
+    description:
+      'False when the review policy held the watched part of the request on a live Offer ' +
+      '(slice 2c); the rest of the request applied.',
+  })
+  applied!: boolean;
+
+  @ApiProperty({
+    required: false,
+    format: 'uuid',
+    description: 'The held change, when applied is false.',
+  })
+  pendingChangeId?: string;
+
+  @ApiProperty({
+    required: false,
+    enum: OFFER_REVIEW_REASONS,
+    isArray: true,
+    description: 'Why the change is held, when applied is false.',
+  })
+  reasons?: string[];
 }
 
 export class OwnOfferRecordAttestationRequest {
@@ -206,6 +268,14 @@ export class OwnOfferAddTagRequest {
       'basis, certificate, issuer or status is accepted (they come from certification).',
   })
   typeCode!: string;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Live Offer with a held change (slice 2c): true sets the held change aside and judges ' +
+      'this request alone; without it a watched change is offer.change-pending.',
+  })
+  replacePending?: boolean;
 }
 
 export class OwnOfferSellWithoutBadgeRequest {
@@ -220,9 +290,40 @@ export class OwnOfferSellWithoutBadgeRequest {
 
 export class OwnOfferTagAdded {
   @ApiProperty() typeCode!: string;
-  @ApiProperty({ enum: ['active'] }) status!: string;
-  @ApiProperty({ enum: ['SELLER', 'MANUFACTURER'], description: 'The basis of the tag (CERT-24).' })
-  basis!: string;
+  @ApiProperty({
+    enum: ['active', 'held'],
+    description: 'held: the review policy held the new badge of a live Offer; no tag is written.',
+  })
+  status!: string;
+  @ApiProperty({
+    enum: ['SELLER', 'MANUFACTURER'],
+    nullable: true,
+    type: String,
+    description: 'The basis of the tag (CERT-24); null when held.',
+  })
+  basis!: string | null;
+
+  @ApiProperty({
+    description:
+      'False when the review policy held the watched part of the request on a live Offer ' +
+      '(slice 2c); the rest of the request applied.',
+  })
+  applied!: boolean;
+
+  @ApiProperty({
+    required: false,
+    format: 'uuid',
+    description: 'The held change, when applied is false.',
+  })
+  pendingChangeId?: string;
+
+  @ApiProperty({
+    required: false,
+    enum: OFFER_REVIEW_REASONS,
+    isArray: true,
+    description: 'Why the change is held, when applied is false.',
+  })
+  reasons?: string[];
 }
 
 export class OwnProductCreateRequest {

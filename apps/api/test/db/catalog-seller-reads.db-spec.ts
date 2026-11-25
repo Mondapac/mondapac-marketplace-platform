@@ -1,3 +1,4 @@
+import { PrismaOfferPendingChangeRepository } from '../../src/modules/catalog/infrastructure/prisma-offer-pending-change.repository';
 import { ALL_CATEGORIES_IN_SCOPE } from '../support/seller-scope-allow-all';
 import { randomUUID } from 'node:crypto';
 import { Temporal, ok, uuidV7 } from '@mondapac/shared-kernel';
@@ -380,6 +381,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       clock,
     });
     readOffer = new OwnOfferRead(gate, {
+      pendingChanges: new PrismaOfferPendingChangeRepository(persistence.service),
       unitOfWork: persistence.unitOfWork,
       offers,
       ownReader: reader,

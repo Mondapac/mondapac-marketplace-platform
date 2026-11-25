@@ -511,7 +511,79 @@
       "outcome": "enumOf(queued|published)",
       "policyVersion": "integer",
       "reasons": "listOf(enumOf(emergency-stop|probation|certificate-badge|handling|contact-text|full-review|sensitive-category|review-all), max 8)",
-      "trigger": "enumOf(first-publication)"
+      "trigger": "enumOf(first-publication|edit)"
+    }
+  },
+  {
+    "action": "catalog.offer-change.held",
+    "targetType": "catalog.offer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "changeId": "id",
+      "fields": "listOf(enumOf(description|handling|tags), max 3)",
+      "handling": "optional(enumOf(sealed-original|repacked|prepared|fresh))",
+      "policyVersion": "integer",
+      "reasons": "listOf(enumOf(emergency-stop|probation|certificate-badge|handling|contact-text|full-review|sensitive-category|review-all), max 8)"
+    }
+  },
+  {
+    "action": "catalog.offer-change.approved",
+    "targetType": "catalog.offer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "addedTagIds": "listOf(id, max 32)",
+      "changeId": "id",
+      "fields": "listOf(enumOf(description|handling|tags), max 3)",
+      "handling": "optional(enumOf(sealed-original|repacked|prepared|fresh))"
+    }
+  },
+  {
+    "action": "catalog.offer-change.changes-requested",
+    "targetType": "catalog.offer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "changeId": "id",
+      "fields": "listOf(enumOf(description|handling|tags), max 3)"
+    }
+  },
+  {
+    "action": "catalog.offer-change.rejected",
+    "targetType": "catalog.offer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "changeId": "id",
+      "fields": "listOf(enumOf(description|handling|tags), max 3)"
+    }
+  },
+  {
+    "action": "catalog.offer-change.withdrawn",
+    "targetType": "catalog.offer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "changeId": "id",
+      "fields": "listOf(enumOf(description|handling|tags), max 3)"
+    }
+  },
+  {
+    "action": "catalog.offer-change.superseded",
+    "targetType": "catalog.offer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "cause": "enumOf(resubmitted|offer-deleted)",
+      "changeId": "id",
+      "fields": "listOf(enumOf(description|handling|tags), max 3)"
     }
   },
   {

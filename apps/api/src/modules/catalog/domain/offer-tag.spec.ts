@@ -11,6 +11,7 @@ import {
   type TagClaimQuery,
   type TagDecision,
 } from './offer-tag';
+import { issueReviewClearance } from './review-clearance';
 
 // Certification tags on Offers (catalog design 5.1 to 5.4; AC 7 to 11, 14, 15): the verdict on
 // the decisions of every variant, the equality of returned inputs with the state being saved,
@@ -125,6 +126,7 @@ describe.each([
       actor: seller,
       hash,
       now: T1,
+      review: issueReviewClearance('policy', offer.state.id),
     });
 
   const withActiveTag = (overrides: Partial<OfferState> = {}): Offer => {
@@ -502,7 +504,13 @@ describe.each([
 
     it('re-asks after a handling change against the new handling (AC 11)', () => {
       const offer = withActiveTag();
-      expect(offer.setHandling({ handling: 'PREPARED', now: T1 }).ok).toBe(true);
+      expect(
+        offer.setHandling({
+          handling: 'PREPARED',
+          now: T1,
+          review: issueReviewClearance('policy', offer.state.id),
+        }).ok,
+      ).toBe(true);
       expect(offer.state.status).toBe('published');
       const stale = settle(offer, (q) =>
         allowed(q, { inputs: { ...q, handling: 'SEALED_ORIGINAL' } }),
