@@ -108,7 +108,27 @@ describe('the query a link opens the list on', () => {
     expect(query.days).toBeNull();
   });
 
-  it('ignores a day that is not a date', () => {
+  it('ignores a day that is not a date, real or calendar-wise', () => {
     expect(queryFromParams({ from: 'yesterday' }).days).toBeNull();
+    expect(queryFromParams({ from: '2026-13-45', to: '2026-02-30' }).days).toBeNull();
+  });
+
+  it('keeps a range when the placed preset is unknown, and drops it when the preset is known', () => {
+    expect(queryFromParams({ placed: 'bogus', from: '2026-11-01' }).days).toEqual({
+      from: '2026-11-01',
+    });
+    expect(
+      queryFromParams({ placed: 'today', from: '2026-11-01', to: '2026-11-02' }).days,
+    ).toBeNull();
+  });
+
+  it('reads the payment state and keeps a backwards range for the empty state', () => {
+    const query = queryFromParams({
+      paymentState: 'captured',
+      from: '2026-11-30',
+      to: '2026-11-01',
+    });
+    expect(query.filters).toEqual({ paymentState: 'captured' });
+    expect(rangeIsBackwards(query.days)).toBe(true);
   });
 });

@@ -42,6 +42,7 @@ export default async function OrdersPage({
     <AdminShell session={gate.session} activeId="orders" title={title}>
       {gate.session.permissionKeys.includes(VIEW_PERMISSION) ? (
         <OrdersList
+          key={JSON.stringify(initialQuery)}
           title={title}
           paging={paging}
           initialQuery={initialQuery}

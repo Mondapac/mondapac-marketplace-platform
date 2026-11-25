@@ -211,7 +211,7 @@ export function queryFromParams(params: Readonly<Record<string, string | undefin
     ),
   );
   const valid = (value: string | undefined): string | undefined =>
-    value !== undefined && DAY.test(value) ? value : undefined;
+    value !== undefined && startOfDay(value, 'UTC') !== null ? value : undefined;
   const days =
     filters.placed === undefined ? savedDays(valid(params['from']), valid(params['to'])) : null;
   return { ...DEFAULT_QUERY, tab: status ?? 'all', filters, days };
