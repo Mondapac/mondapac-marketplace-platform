@@ -67,7 +67,9 @@ export interface SpecialWrite {
   readonly startsAt: string | null;
   readonly endsAt: string;
 }
-export type Write = PriceWrite | StockWrite | SpecialWrite;
+/** A write of one table cell: a price or a stock level. */
+export type CellWrite = PriceWrite | StockWrite;
+export type Write = CellWrite | SpecialWrite;
 
 /** A line a save cannot send because its text is not a valid value. */
 export interface Invalid {
@@ -88,8 +90,8 @@ export function writesOf(
   currency: string,
   priceDrafts: Readonly<Record<string, string>>,
   stockDrafts: Readonly<Record<string, string>>,
-): { readonly writes: Write[]; readonly invalid: Invalid[] } {
-  const writes: Write[] = [];
+): { readonly writes: CellWrite[]; readonly invalid: Invalid[] } {
+  const writes: CellWrite[] = [];
   const invalid: Invalid[] = [];
   for (const row of rows) {
     if (row.price?.retired === true) continue;
