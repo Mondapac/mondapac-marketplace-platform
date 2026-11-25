@@ -2123,8 +2123,8 @@
       "select-all": "Select all variants",
       "price-for": "Price for {variant}",
       "unusual": {
-        "below": "Lower than typical",
-        "above": "Higher than typical"
+        "below": "Below typical",
+        "above": "Above typical"
       },
       "held": "Waiting for review: {amount}",
       "bulk": "Bulk actions",

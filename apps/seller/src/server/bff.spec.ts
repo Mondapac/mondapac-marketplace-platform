@@ -753,6 +753,34 @@ describe('relay allowlist for stock locations', () => {
       expect((await relay(config, get, path, upstream)).status).toBe(404);
     }
   });
+  it('relays the Typical price read by UUID only, with no query (Offer page PR 9-UI)', async () => {
+    const upstream = upstreamOk();
+    const typical = ['pricing', 'seller', 'offers', ID, 'typical-prices'];
+    const read = await relay(
+      config,
+      new Request(`http://seller.localhost:3001/api/${typical.join('/')}?variantId=${ID}`, {
+        method: 'GET',
+        headers: { host: 'seller.localhost:3001' },
+      }),
+      typical,
+      upstream,
+    );
+    expect(read.status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/pricing/seller/offers/${ID}/typical-prices`,
+    );
+    for (const path of [
+      ['pricing', 'seller', 'offers', 'x', 'typical-prices'],
+      ['pricing', 'seller', 'offers', ID, 'typical-prices', 'x'],
+    ]) {
+      const get = new Request(`http://seller.localhost:3001/api/${path.join('/')}`, {
+        method: 'GET',
+        headers: { host: 'seller.localhost:3001' },
+      });
+      expect((await relay(config, get, path, upstream)).status).toBe(404);
+    }
+    expect((await relay(config, put(typical.join('/')), typical, upstream)).status).toBe(404);
+  });
   it('relays an offer submit (POST) and delete (DELETE) by UUID only', async () => {
     const upstream = upstreamOk();
     const req = (method: string, path: string[]) =>

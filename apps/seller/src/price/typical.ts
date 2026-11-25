@@ -25,6 +25,9 @@ export type Unusual = 'below' | 'above' | null;
 /** The ranges by variant id; a size with no entry has no range (too few sellers, or none read). */
 export type TypicalState = ReadonlyMap<string, TypicalRange>;
 
+/** Minor units as the API writes them: digits only, so `BigInt` never throws on one. */
+const MINOR = /^\d{1,19}$/;
+
 const NONE: TypicalState = new Map();
 
 /** The ranges the API gave, by size. A size without a range is left out: no reason is shown. */
@@ -37,7 +40,9 @@ export function typicalOf(body: TypicalPricesBody): TypicalState {
     if (
       typeof line?.variantId === 'string' &&
       typeof range?.lowMinor === 'string' &&
-      typeof range.highMinor === 'string'
+      typeof range.highMinor === 'string' &&
+      MINOR.test(range.lowMinor) &&
+      MINOR.test(range.highMinor)
     ) {
       found.set(line.variantId, { lowMinor: range.lowMinor, highMinor: range.highMinor });
     }

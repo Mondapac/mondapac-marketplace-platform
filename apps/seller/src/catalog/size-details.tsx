@@ -1,6 +1,6 @@
 'use client';
 
-import { Tabs, tabIdOf } from '@mondapac/ui';
+import { FieldStatus, Tabs, tabIdOf } from '@mondapac/ui';
 import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import { formatMinor, minorOf } from '../price/money.ts';
 import { formatInZone, resolveZone } from '../price/zone-time.ts';
@@ -151,9 +151,9 @@ export function SizeDetails({
           </dl>
         ) : null}
         {tab === 'price' && typical?.unusual != null ? (
-          <p className="max-w-xl py-2 text-sm text-info-fg" role="status">
-            {t(`typical.unusual.${typical.unusual}`)}
-          </p>
+          <div className="max-w-xl py-2">
+            <FieldStatus tone="info">{t(`typical.unusual.${typical.unusual}`)}</FieldStatus>
+          </div>
         ) : null}
         {tab === 'price' && price?.retired === true ? (
           <p className="max-w-xl py-2 text-sm text-fg-muted">{t('price.retired')}</p>

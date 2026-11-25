@@ -118,13 +118,13 @@ describe('Typical price', () => {
     mount();
     await settle();
     fireEvent.change(priceField('250 g'), { target: { value: '40.00' } });
-    expect(screen.getByText('Higher than typical')).toBeTruthy();
+    expect(screen.getByText('Above typical')).toBeTruthy();
     openDetails('250 g');
     expect(
       screen.getByText('Your price is higher than the typical price. You can still save it.'),
     ).toBeTruthy();
     fireEvent.change(priceField('250 g'), { target: { value: '5.00' } });
-    expect(screen.getByText('Lower than typical')).toBeTruthy();
+    expect(screen.getByText('Below typical')).toBeTruthy();
     fireEvent.change(priceField('250 g'), { target: { value: '12.50' } });
     expect(screen.queryByText(/than typical/)).toBeNull();
   });
@@ -142,5 +142,16 @@ describe('Typical price', () => {
     await settle();
     fireEvent.change(priceField('500 g'), { target: { value: '999.00' } });
     expect(screen.queryByText(/than typical/)).toBeNull();
+  });
+
+  it('shows no range for a size no longer sold', async () => {
+    const retired = {
+      ...ROWS[0]!,
+      price: { ...price(V1, '950'), retired: true },
+    } as TableRow;
+    mount({ rows: [retired, ROWS[1]!] });
+    await settle();
+    openDetails('250 g');
+    expect(screen.queryByText('Typical price')).toBeNull();
   });
 });

@@ -202,6 +202,12 @@ export function VariantsTable({
   // "Typical price" (Offer page PR 9): the range other businesses sell each size in, when the API
   // gives one. It informs the price field and the Price tab; it never stops a save.
   const typical = useTypicalPrices(offerId, canViewTypical && showPrice);
+  const priceNote = (row: TableRow) => {
+    const unusual = unusualOfRow(row);
+    return unusual === null ? undefined : (
+      <FieldStatus tone="info">{t(`catalog.variants-table.unusual.${unusual}`)}</FieldStatus>
+    );
+  };
   const unusualOfRow = (row: TableRow) =>
     row.price?.retired === true
       ? null
@@ -1132,15 +1138,7 @@ export function VariantsTable({
                                       inputMode="decimal"
                                       value={priceText(row)}
                                       error={errors[row.variantId]}
-                                      status={
-                                        unusualOfRow(row) === null ? undefined : (
-                                          <FieldStatus tone="info">
-                                            {t(
-                                              `catalog.variants-table.unusual.${unusualOfRow(row)}`,
-                                            )}
-                                          </FieldStatus>
-                                        )
-                                      }
+                                      status={priceNote(row)}
                                       onChange={(event) =>
                                         setPriceDrafts({
                                           ...priceDrafts,
@@ -1285,7 +1283,7 @@ export function VariantsTable({
                                   stockDrafts={stockDrafts}
                                   receive={showReceive ? receiveView(row) : null}
                                   typical={
-                                    typical.has(row.variantId)
+                                    typical.has(row.variantId) && row.price?.retired !== true
                                       ? {
                                           range: typical.get(row.variantId)!,
                                           unusual: unusualOfRow(row),

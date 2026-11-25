@@ -14,6 +14,17 @@ describe('typicalOf', () => {
     });
     expect([...state.keys()]).toEqual(['a']);
   });
+  it('drops a range that is not digits, so a bad answer never breaks the page', () => {
+    const state = typicalOf({
+      offerId: 'o',
+      variants: [
+        { variantId: 'a', range: { lowMinor: '1.5', highMinor: '2700' } },
+        { variantId: 'b', range: { lowMinor: 'abc', highMinor: '2700' } },
+        { variantId: 'c', range: { lowMinor: '', highMinor: '2700' } },
+      ],
+    });
+    expect(state.size).toBe(0);
+  });
 });
 
 describe('unusualOf', () => {
