@@ -255,6 +255,8 @@ const PINNED: readonly (readonly [string, string])[] = [
   ['platform:viewer@37', '54c4572c9df56fc73beb92dfc18a8a96b7a7d83aea90b13b8a13c2405e0454b5'],
   // Dashboards v2 phase 2: the Market's monthly revenue target, `settings.monthly-revenue-target.view`.
   ['platform:viewer@38', 'f4311a521f0e9bb7d5c440ac3309734c8445d2d15ace8a1e90ae07c8e4245a28'],
+  // AI Gateway G4a: the Market's AI caps and emergency stop, `settings.ai-gateway.view`.
+  ['platform:viewer@39', '872e2e2cdbef87950c4cee2e6ebfc3e03b9defb385a35f52004a7c08a084b61b'],
 ];
 
 const ENTRY = /^(platform|seller):([a-z][a-z0-9-]*)@([1-9][0-9]*)$/;

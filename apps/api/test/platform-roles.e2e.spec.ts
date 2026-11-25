@@ -192,7 +192,7 @@ describe('role catalogue over HTTP (integration, slice 10a)', () => {
         kind: 'default',
         seedCode: 'viewer',
         name: null,
-        permissionCount: 37,
+        permissionCount: 38,
         grantable: true,
         // A viewer holds no editor key: every action is access.denied.
         actions: {
