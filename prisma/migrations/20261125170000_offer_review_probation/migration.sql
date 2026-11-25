@@ -206,6 +206,11 @@ BEGIN
     RAISE EXCEPTION 'catalog.seller_review_standings: updated_at outside tolerance' USING ERRCODE = 'check_violation';
   END IF;
   IF TG_OP = 'INSERT' THEN
+    -- A standing is created only in its start state; every later state comes from a guarded UPDATE.
+    IF NEW.epoch <> 1 OR NEW.target_kind <> 'initial' OR NEW.trusted_at IS NOT NULL
+       OR NEW.trust_lost_at IS NOT NULL OR NEW.consecutive_changes_needed <> 0 OR NEW.version <> 1 THEN
+      RAISE EXCEPTION 'catalog.seller_review_standings: a standing is inserted in its start state' USING ERRCODE = 'check_violation';
+    END IF;
     RETURN NEW;
   END IF;
   IF (NEW.market_id, NEW.tenant_id, NEW.seller_id, NEW.created_at)

@@ -213,7 +213,7 @@ export class CatalogOfferReviewController {
   @ApiOperation({
     summary: "A seller's probation and Trusted (admin)",
     description:
-      'Needs catalog.product.approve. The status as the review policy sees it now (N read now), ' +
+      'Needs catalog.product.approve and sellers.seller.view. The status as the review policy sees it now (N read now), ' +
       "the count of the current epoch and the seller's Offer review flags.",
   })
   @ApiParam({ name: 'sellerId', format: 'uuid' })

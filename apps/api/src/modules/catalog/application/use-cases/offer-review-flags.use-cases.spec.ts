@@ -340,6 +340,11 @@ describe.each(TEST_MARKET_IDS)('Category Offer review flags (slice 4) in %s', (c
         }),
       );
       expect(JSON.stringify(t.checked)).toContain('catalog.product.approve');
+      // The seller flags it shows need the sellers read key too (Hassan N2).
+      expect(ViewSellerReviewStanding.access.rule).toEqual({
+        kind: 'permissions',
+        allOf: ['catalog.product.approve', 'sellers.seller.view'],
+      });
     });
 
     it('answers Trusted by count, and by the admin flag; flags null when sellers cannot answer', async () => {

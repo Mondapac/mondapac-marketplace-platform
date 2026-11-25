@@ -37,6 +37,38 @@ export const OFFER_REVIEW_REASONS = [
 ] as const;
 export type OfferReviewReason = (typeof OFFER_REVIEW_REASONS)[number];
 
+/**
+ * The reasons a seller is told (Hadi's decision (b) on Hassan S1, PR #1358): the ones about the
+ * seller's own content stay (`certificate-badge`, `handling`, `contact-text`); every other reason
+ * becomes the one generic `held-for-review`, so a seller never learns of its own stop, its full
+ * review or probation, a category stop or the admins' "always review" categories. Admin views keep
+ * the full codes; the stored referral and change rows always hold them.
+ */
+export const SELLER_REVIEW_REASONS = [
+  'certificate-badge',
+  'handling',
+  'contact-text',
+  'held-for-review',
+] as const;
+export type SellerReviewReason = (typeof SELLER_REVIEW_REASONS)[number];
+
+const TOLD_TO_SELLER: ReadonlySet<OfferReviewReason> = new Set([
+  'certificate-badge',
+  'handling',
+  'contact-text',
+]);
+
+/** The reasons as a seller sees them: in order, with every other reason once as `held-for-review`. */
+export function sellerReviewReasonsOf(
+  reasons: readonly OfferReviewReason[],
+): readonly SellerReviewReason[] {
+  const told = new Set<SellerReviewReason>();
+  for (const reason of reasons) {
+    told.add(TOLD_TO_SELLER.has(reason) ? (reason as SellerReviewReason) : 'held-for-review');
+  }
+  return [...told];
+}
+
 /** The Market's review mode (settings `catalog.offer-review.mode`). */
 export type OfferReviewMode = 'all' | 'risk-based' | 'off';
 

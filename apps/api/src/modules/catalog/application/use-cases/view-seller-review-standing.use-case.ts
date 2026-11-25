@@ -2,6 +2,7 @@ import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Result, Temporal } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
+import { SELLERS_SELLER_VIEW } from '../../../sellers';
 import { CATALOG_PRODUCT_APPROVE } from '../../contracts/permissions';
 import {
   trustStatusOf,
@@ -47,7 +48,7 @@ export interface ViewSellerReviewStandingDependencies {
  * `catalog.view-seller-review-standing` (risk-based Offer approval slice 4): the admin read of a
  * seller's probation and Trusted, as the policy sees it now (`trustStatusOf` with N read now and
  * the seller's flags), with the stored epoch, target kind and the last misconduct revocation.
- * Rule `permissions [catalog.product.approve]`; admin population only. A seller with no standing
+ * Rule `permissions [catalog.product.approve, sellers.seller.view]`; admin population only. A seller with no standing
  * yet answers count 0 and epoch 0. The seller's flags come from `sellers.offerReviewFlagsOf`; when
  * sellers cannot answer, `flags` is null and Trusted from start is read as off (the stricter
  * answer). A malformed id is `seller.not-found`; a failed read of the standing is
@@ -60,7 +61,9 @@ export class ViewSellerReviewStanding extends UseCase<
 > {
   static override readonly access: AccessDeclaration = {
     name: 'catalog.view-seller-review-standing',
-    rule: { kind: 'permissions', allOf: [CATALOG_PRODUCT_APPROVE.key] },
+    // The seller's review flags are shown here too, so the sellers read key is required as well
+    // (Hassan N2 on PR #1358): nobody sees them here who cannot read them in sellers.
+    rule: { kind: 'permissions', allOf: [CATALOG_PRODUCT_APPROVE.key, SELLERS_SELLER_VIEW.key] },
   };
 
   constructor(

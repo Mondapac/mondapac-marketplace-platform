@@ -3,6 +3,9 @@ import {
   OFFER_REVIEW_POLICY_VERSION,
   offerEditReviewReasons,
   offerReviewReasons,
+  OFFER_REVIEW_REASONS,
+  SELLER_REVIEW_REASONS,
+  sellerReviewReasonsOf,
   type OfferEditReviewInput,
   type OfferReviewFacts,
   type OfferReviewInput,
@@ -285,5 +288,29 @@ describe('hasContactText on long hostile text (Hassan S1)', () => {
     const started = performance.now();
     for (let locale = 0; locale < 20; locale += 1) hasContactText(text);
     expect(performance.now() - started).toBeLessThan(100);
+  });
+});
+
+describe('sellerReviewReasonsOf (what a seller is told; Hadi (b) on Hassan S1)', () => {
+  it('keeps the reasons about the seller content and folds every other into held-for-review', () => {
+    expect(
+      sellerReviewReasonsOf([
+        'emergency-stop',
+        'certificate-badge',
+        'handling',
+        'contact-text',
+        'sensitive-category',
+        'review-all',
+      ]),
+    ).toEqual(['held-for-review', 'certificate-badge', 'handling', 'contact-text']);
+    for (const hidden of OFFER_REVIEW_REASONS.filter(
+      (r) => !['certificate-badge', 'handling', 'contact-text'].includes(r),
+    )) {
+      expect(sellerReviewReasonsOf([hidden])).toEqual(['held-for-review']);
+    }
+    expect(sellerReviewReasonsOf([])).toEqual([]);
+    for (const told of sellerReviewReasonsOf([...OFFER_REVIEW_REASONS])) {
+      expect(SELLER_REVIEW_REASONS).toContain(told);
+    }
   });
 });

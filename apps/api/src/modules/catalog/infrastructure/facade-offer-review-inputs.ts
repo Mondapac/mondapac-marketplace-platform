@@ -16,6 +16,7 @@ import { categoryReviewFactsOf } from '../domain/category-offer-review-flags';
 import {
   probationOffersOf,
   SAFE_PROBATION_OFFERS,
+  stampsTrust,
   trustStatusOf,
   type StandingFacts,
 } from '../domain/seller-review-standing';
@@ -105,7 +106,8 @@ export class FacadeOfferReviewInputs implements OfferReviewInputs {
         standing.trustedAt === null &&
         trust !== null &&
         trust.status === 'trusted' &&
-        trust.source === 'count',
+        trust.source === 'count' &&
+        stampsTrust(trust.count, trust.target),
       probationOffers,
     };
   }

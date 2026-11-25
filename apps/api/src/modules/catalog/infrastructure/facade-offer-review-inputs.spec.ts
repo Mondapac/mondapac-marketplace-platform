@@ -197,14 +197,23 @@ describe.each(TEST_MARKET_IDS)('FacadeOfferReviewInputs in market %s', (code) =>
       expect((await below.facts(context, subject)).probation).toBe(true);
     });
 
-    it('has no probation when N is 0, and asks for the stamp only with a standing', async () => {
+    it('has no probation while N is 0 and never asks for a stamp then (Hassan S2)', async () => {
       const zero = () => Promise.resolve({ ...POLICY, probationOffers: 0 });
       expect(await inputsWith({ policy: zero }).facts(context, subject)).toMatchObject({
         probation: false,
         stampTrust: false,
       });
-      const known = inputsWith({ policy: zero, standings: await standingWith(0) });
-      expect((await known.facts(context, subject)).stampTrust).toBe(true);
+      const known = inputsWith({ policy: zero, standings: await standingWith(2) });
+      expect(await known.facts(context, subject)).toMatchObject({
+        probation: false,
+        stampTrust: false,
+      });
+      // N raised to 3 again: the seller with 2 is back in probation.
+      const three = inputsWith({
+        policy: () => Promise.resolve({ ...POLICY, probationOffers: 3 }),
+        standings: await standingWith(2),
+      });
+      expect((await three.facts(context, subject)).probation).toBe(true);
     });
 
     it('reads Trusted from start, the full-review flag and the seller stop', async () => {

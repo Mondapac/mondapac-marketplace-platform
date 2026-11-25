@@ -322,6 +322,22 @@ settings (mode `all`).
   acting-as session, and spends the step-up proof in its own unit only when it changes something.
 - **Edits**: the seller and category stops hold watched edits like the Market's stop, and
   "always review" now holds watched edits too (`sensitive-category`, owner answer 4).
+- **Review fixes of PR #1358**:
+  - A first publication with degraded facts is judged in the safe settings (mode `all`, badges
+    reviewed), like an edit, so a stop that could not be read never publishes in mode `off`
+    (Hassan M1).
+  - What a seller is told (Hadi's decision (b) on Hassan S1): the edit, add-tag and set-handling
+    answers and the seller's own read of a held change keep `certificate-badge`, `handling` and
+    `contact-text`, and show every other reason once as `held-for-review`
+    (`sellerReviewReasonsOf`). The referral and change rows and the admin views keep the full
+    codes, so a seller never learns of a stop, its probation, full review or the "always review"
+    categories.
+  - N = 0 means "no probation" while it lasts (Hadi's decision (a) on Hassan S2): Trusted live,
+    but `trustedAt` is stamped only when N >= 1 and the count meets the target, so raising N again
+    puts sellers below it back in probation.
+  - A standing row is inserted only in its start state (the guard trigger; Hassan N1).
+  - The standing read needs `sellers.seller.view` as well as `catalog.product.approve`, since it
+    shows the seller's flags (Hassan N2).
 - **Fail closed**: the facts are read outside the decision's unit. Sellers unavailable: probation
   and full review; standing unreadable: probation; categories unreadable: sensitive category;
   each marks the facts `degraded`, and a degraded edit verdict uses mode `all`. A failure never

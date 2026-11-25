@@ -216,6 +216,82 @@ describe.each(TEST_MARKETS)('Offer review probation in market %s (database)', (c
       }
     });
 
+    it('inserts a standing only in its start state, even for the owner (Hassan N1)', async () => {
+      const insert = (columns: string, values: string) =>
+        owner.query(
+          `INSERT INTO catalog.seller_review_standings
+             (market_id, tenant_id, seller_id, created_at, updated_at, ${columns})
+           VALUES ($1, $2, $3, now(), now(), ${values})`,
+          [code, market.tenantId, uuid7()],
+        );
+      const start = {
+        epoch: '1',
+        target_kind: "'initial'",
+        consecutive_changes_needed: '0',
+        trusted_at: 'NULL',
+        trust_lost_at: 'NULL',
+        version: '1',
+      };
+      const row = (patch: Partial<typeof start>) => {
+        const all = { ...start, ...patch };
+        return insert(Object.keys(all).join(', '), Object.values(all).join(', '));
+      };
+      await expect(row({})).resolves.toBeDefined();
+      for (const patch of [
+        { epoch: '2' },
+        { target_kind: "'after-misconduct'", epoch: '2', trust_lost_at: 'now()' },
+        { trusted_at: 'now()' },
+        { trust_lost_at: 'now()' },
+        { consecutive_changes_needed: '1' },
+        { version: '2' },
+      ]) {
+        await expect(row(patch)).rejects.toThrow(/start state/);
+      }
+    });
+
+    it('serialises two units on one seller: no credit lost, no deadlock (Mojtaba L1)', async () => {
+      const audits: AuditEntry[] = [];
+      const probation = new SellerReviewProbation({
+        standings,
+        sellerFlags: { flagsOf: () => Promise.resolve(FLAGS_OFF) },
+        inputs: { probationOffers: () => Promise.resolve(2) },
+        audit: {
+          record: (_c, entry) => {
+            audits.push(entry);
+            return Promise.resolve();
+          },
+        },
+      });
+      const context = testCallContext(market, 'system');
+      const sellerId = uuid7() as Id<'Seller'>;
+      const [first, second] = [await offerOf(sellerId), await offerOf(sellerId)];
+      const approve = async (made: { productId: Id<'Product'>; offerId: Id<'Offer'> }) => {
+        const prepared = await probation.prepare(context, sellerId);
+        await inUnit(() =>
+          probation.recordApproval(context, prepared, { ...made, now: clock.now() }),
+        );
+      };
+      // Two approvals at once on a seller with no standing yet: both create-or-lock the same row.
+      await Promise.all([approve(first), approve(second)]);
+      const both = await inUnit(() => standings.read(market, sellerId));
+      expect(both).toMatchObject({ count: 2, state: { epoch: 1 } });
+      expect(both!.state.trustedAt).not.toBeNull();
+      expect(audits.map((a) => a.action)).toEqual(['catalog.seller-review.trusted']);
+
+      // An approval against a Changes needed of the same seller: both finish, in some order.
+      const other = uuid7() as Id<'Seller'>;
+      const made = await offerOf(other);
+      const preparedOther = await probation.prepare(context, other);
+      await Promise.all([
+        inUnit(() =>
+          probation.recordApproval(context, preparedOther, { ...made, now: clock.now() }),
+        ),
+        inUnit(() => probation.recordChangesNeeded(context, preparedOther, clock.now())),
+      ]);
+      const mixed = await inUnit(() => standings.read(market, other));
+      expect(mixed).toMatchObject({ count: 1, state: { epoch: 1 } });
+    });
+
     it('keeps credits insert-only and binds a credit to the Offer of the same seller', async () => {
       const sellerId = uuid7() as Id<'Seller'>;
       const { productId, offerId } = await offerOf(sellerId);

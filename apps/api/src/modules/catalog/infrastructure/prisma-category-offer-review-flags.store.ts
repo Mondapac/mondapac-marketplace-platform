@@ -12,6 +12,20 @@ const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMillis
 const toInstant = (date: Date | null): Temporal.Instant | null =>
   date === null ? null : Temporal.Instant.fromEpochMilliseconds(date.getTime());
 
+/** The columns `find` reads, named (Mojtaba L2 on PR #1358): never a `SELECT *`. */
+const COLUMNS = {
+  marketId: true,
+  categoryId: true,
+  alwaysReview: true,
+  alwaysReviewChangedAt: true,
+  alwaysReviewChangedByAccountId: true,
+  reviewStop: true,
+  reviewStopChangedAt: true,
+  reviewStopChangedByAccountId: true,
+  version: true,
+  createdAt: true,
+} as const;
+
 /**
  * {@link CategoryOfferReviewFlagsStore} over Prisma, in the caller's unit, every statement scoped
  * by `market_id`. The flags row is created by the first change at version 1; every later change
@@ -33,6 +47,7 @@ export class PrismaCategoryOfferReviewFlagsStore implements CategoryOfferReviewF
   async find(market: MarketContext, categoryId: Id<'Category'>): Promise<CategoryOfferReviewFlags> {
     const row = await this.prisma.tx(market).catalogCategoryOfferReviewFlags.findFirst({
       where: { marketId: market.marketId, categoryId },
+      select: COLUMNS,
     });
     if (row === null) return CategoryOfferReviewFlags.none(market.marketId, categoryId);
     return CategoryOfferReviewFlags.restore({

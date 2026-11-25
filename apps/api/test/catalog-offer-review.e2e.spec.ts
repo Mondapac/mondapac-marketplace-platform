@@ -807,6 +807,9 @@ describe('admin Offer review over HTTP (integration)', () => {
         decidedByAccountId: MODERATOR,
       });
       expect(audits.map((a) => a.action)).toContain('catalog.offer-change.approved');
+      // An approved edit is not a first publication: no credit, no standing (Sajad G1).
+      expect(standings.credits).toEqual([]);
+      expect(standings.locks).toBe(0);
 
       const again = await post(
         code,

@@ -9,7 +9,7 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import { CATALOG_OWN_PRODUCT_EDIT } from '../../contracts/permissions';
 import type { Offer } from '../../domain/offer';
 import { claimQueriesFor, isTagTypeCode, judgeTag, type TagBasis } from '../../domain/offer-tag';
-import type { OfferReviewReason } from '../../domain/offer-review-policy';
+import { sellerReviewReasonsOf, type SellerReviewReason } from '../../domain/offer-review-policy';
 import { isWatched, type OfferEditReview, type WatchedChange } from '../offer-edit-review';
 import { clearanceFromPolicy } from '../offer-review-clearance';
 import type { ClaimEvaluator } from '../ports/claim-evaluator';
@@ -50,8 +50,8 @@ export interface OwnOfferAddTagOutput {
   readonly applied: boolean;
   /** The held change, when `applied` is false. */
   readonly pendingChangeId?: string;
-  /** The policy's reasons, when `applied` is false. */
-  readonly reasons?: readonly OfferReviewReason[];
+  /** Why it is held, as a seller is told (`sellerReviewReasonsOf`), when `applied` is false. */
+  readonly reasons?: readonly SellerReviewReason[];
 }
 
 export type OwnOfferAddTagFailure =
@@ -313,7 +313,7 @@ export class OwnOfferAddTag extends UseCase<
             basis: null,
             applied: false,
             pendingChangeId,
-            reasons,
+            reasons: sellerReviewReasonsOf(reasons),
           });
         }
         const added = offer.addTags({

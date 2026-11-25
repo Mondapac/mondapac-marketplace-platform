@@ -53,6 +53,16 @@ export function probationTarget(kind: StandingTargetKind, probationOffers: numbe
   return kind === 'initial' ? n : Math.ceil(n / 2);
 }
 
+/**
+ * Whether a count may stamp `trustedAt`: the target is at least 1 and met. N = 0 means "no
+ * probation" while it lasts (Hadi's decision (a) on Hassan S2, PR #1358): {@link trustStatusOf}
+ * answers Trusted live, but nothing is stamped, so raising N again puts every seller below it back
+ * in probation.
+ */
+export function stampsTrust(count: number, target: number): boolean {
+  return target >= 1 && count >= target;
+}
+
 function assertCount(count: number): void {
   if (!Number.isSafeInteger(count) || count < 0) throw new RangeError('standing: bad count');
 }
@@ -116,7 +126,7 @@ export class SellerReviewStanding {
     assertCount(input.count);
     if (this.#state.trustedAt !== null) return 'ignored';
     const target = probationTarget(this.#state.targetKind, input.probationOffers);
-    if (input.count >= target) {
+    if (stampsTrust(input.count, target)) {
       this.#set({ trustedAt: input.now, consecutiveChangesNeeded: 0 }, input.now);
       return 'trusted';
     }
@@ -178,7 +188,8 @@ export class SellerReviewStanding {
   }): boolean {
     assertCount(input.count);
     if (this.#state.trustedAt !== null) return false;
-    if (input.count < probationTarget(this.#state.targetKind, input.probationOffers)) return false;
+    const target = probationTarget(this.#state.targetKind, input.probationOffers);
+    if (!stampsTrust(input.count, target)) return false;
     this.#set({ trustedAt: input.now, consecutiveChangesNeeded: 0 }, input.now);
     return true;
   }
@@ -238,6 +249,7 @@ export function trustStatusOf(
   ) {
     return { status: 'trusted', source: 'admin', trustedSince: flag.at, ...base };
   }
+  // A target of 0 (N = 0) is "no probation" while it lasts: Trusted live, never stamped.
   if (count >= target) return { status: 'trusted', source: 'count', trustedSince: null, ...base };
   return { status: 'probation', source: null, trustedSince: null, ...base };
 }

@@ -199,6 +199,30 @@ describe.each(TEST_MARKET_IDS)('SellerReviewStanding in market %s', (code) => {
       expect(trusted.stampTrust({ count: 9, probationOffers: 3, now: at(1) })).toBe(false);
       expect(trusted.changed).toBe(false);
     });
+
+    it('never stamps while N is 0, for either target kind (Hadi (a) on Hassan S2)', () => {
+      for (const targetKind of ['initial', 'after-misconduct'] as const) {
+        const standing = restored({
+          targetKind,
+          epoch: 2,
+          trustLostAt: targetKind === 'initial' ? null : T0,
+        });
+        expect(standing.stampTrust({ count: 0, probationOffers: 0, now: at(1) })).toBe(false);
+        expect(standing.stampTrust({ count: 5, probationOffers: 0, now: at(1) })).toBe(false);
+        expect(standing.recordApproval({ count: 1, probationOffers: 0, now: at(1) })).toBe(
+          'counted',
+        );
+        expect(standing.state.trustedAt).toBeNull();
+      }
+    });
+
+    it('with N 0 then raised to 3, a seller below 3 is in probation again', () => {
+      const standing = fresh();
+      standing.recordApproval({ count: 1, probationOffers: 0, now: at(1) });
+      const facts = { ...standing.state, count: 1 };
+      expect(trustStatusOf(facts, OFF, 0)).toMatchObject({ status: 'trusted', trustedSince: null });
+      expect(trustStatusOf(facts, OFF, 3)).toMatchObject({ status: 'probation', target: 3 });
+    });
   });
 });
 
