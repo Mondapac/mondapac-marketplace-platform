@@ -352,6 +352,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // The dashboard's count of failed webhooks (dashboards upgrade, phase 1): the events given up.
   'payments.stripe_events_market_id_received_at_failed_idx':
     "CREATE INDEX stripe_events_market_id_received_at_failed_idx ON payments.stripe_events USING btree (market_id, received_at) WHERE (outcome = 'failed'::text)",
+  // AI Gateway G7 (platform-ai.md section 10): a capability's newest "cap reached" record.
+  'platform.ai_budget_counters_cap_reached_idx':
+    'CREATE INDEX ai_budget_counters_cap_reached_idx ON platform.ai_budget_counters USING btree (market_id, scope_key, cap_reached_at) WHERE (cap_reached_at IS NOT NULL)',
   // Payments package 8a: the relay's claim index of payments' outbox.
   'payments.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON payments.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',

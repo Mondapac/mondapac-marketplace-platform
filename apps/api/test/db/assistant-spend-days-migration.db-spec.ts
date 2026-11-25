@@ -97,6 +97,9 @@ describe('assistant spend_days expand migration (database integration, AI Gatewa
       [first, '2026-11-20', 5000, 100, 50, 3, null, null],
       [first, '2026-11-25', 9000, 200, 80, 4, 'daily', '2026-11-25T03:00:00Z'],
       [first, '2026-10-31', 400, 8, 4, 0, null, null],
+      // After the first gateway day: the gateway counted every call, so nothing is added (a call
+      // that crossed midnight is in spend_days on one day and in the gateway on the other).
+      [first, '2026-11-26', 9999, 99, 9, 2, null, null],
       [second, '2026-11-25', 700, 10, 5, 1, 'monthly', '2026-11-25T10:00:00Z'],
     ];
     for (const row of days) {
@@ -179,6 +182,7 @@ describe('assistant spend_days expand migration (database integration, AI Gatewa
       [
         { market_id: first, day: '2026-11-20', conversations: 3 },
         { market_id: first, day: '2026-11-25', conversations: 4 },
+        { market_id: first, day: '2026-11-26', conversations: 2 },
         { market_id: second, day: '2026-11-25', conversations: 1 },
       ].sort((a, b) => `${a.market_id}${a.day}`.localeCompare(`${b.market_id}${b.day}`)),
     );
@@ -202,6 +206,7 @@ describe('assistant spend_days expand migration (database integration, AI Gatewa
     });
     expect(byKey.get(`${first}|2026-10-31`)).toMatchObject({ cost: '400' });
     expect(byKey.get(`${second}|2026-11-25`)).toMatchObject({ cost: '700' });
+    expect(byKey.has(`${first}|2026-11-26`)).toBe(false);
     expect(rows).toHaveLength(4);
   });
 
@@ -252,10 +257,21 @@ describe('assistant spend_days expand migration (database integration, AI Gatewa
     ).rejects.toMatchObject({ code: '23514' });
   });
 
-  it('adds nothing twice when it is reverted and applied again', async () => {
-    const before = { usage: await usageDays(), counters: await counters() };
+  it('adds nothing twice when it runs again, after a failure part way or a revert', async () => {
+    const before = {
+      conversations: await conversationDays(),
+      usage: await usageDays(),
+      counters: await counters(),
+    };
+    // Prisma runs the statements one by one: a retry after a failure part way runs them all again.
+    await owner.query(readFileSync(join(MIGRATIONS, EXPAND, 'migration.sql'), 'utf8'));
+    expect(await conversationDays()).toEqual(before.conversations);
+    expect(await usageDays()).toEqual(before.usage);
+    expect(await counters()).toEqual(before.counters);
+
     await owner.query(readFileSync(join(MIGRATIONS, EXPAND, 'down.sql'), 'utf8'));
     await owner.query(readFileSync(join(MIGRATIONS, EXPAND, 'migration.sql'), 'utf8'));
+    expect(await conversationDays()).toEqual(before.conversations);
     expect(await usageDays()).toEqual(before.usage);
     expect(await counters()).toEqual(before.counters);
   });

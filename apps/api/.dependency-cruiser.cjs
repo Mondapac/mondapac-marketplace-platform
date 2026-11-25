@@ -54,6 +54,13 @@ const MODEL_ENTRY_ALLOW_LIST = [
   '^src/modules/catalog/infrastructure/catalog-providers\\.ts$',
 ];
 
+// The files that import the gateway's usage report port (G7): a module's providers file takes the
+// handle for its own capabilities, and its adapters use it. Never a domain/ or application/ file.
+const AI_USAGE_REPORT_ALLOW_LIST = [
+  '^src/modules/assistant/infrastructure/assistant-providers\\.ts$',
+  '^src/modules/assistant/infrastructure/prisma-spend\\.repository\\.ts$',
+];
+
 /** @type {import('dependency-cruiser').IConfiguration} */
 module.exports = {
   forbidden: [
@@ -399,7 +406,7 @@ module.exports = {
           // The usage store's port; rule ai-usage-store-only-in-persistence limits who imports it.
           '^src/platform/ai/usage/ai-usage-store\\.ts$',
           // A module's read of its own capability's usage (G7); no model call. Rule
-          // ai-usage-report-only-from-module-infrastructure limits who imports it.
+          // ai-usage-report-only-from-the-allow-list limits who imports it.
           '^src/platform/ai/usage/ai-usage-report\\.ts$',
         ],
       },
@@ -421,13 +428,13 @@ module.exports = {
       to: { path: '^src/platform/ai/usage/ai-usage-store\\.ts$' },
     },
     {
-      name: 'ai-usage-report-only-from-module-infrastructure',
+      name: 'ai-usage-report-only-from-the-allow-list',
       comment:
         "A module reads its own AI capability's spend and keeps its cap-reached record through " +
         'the gateway port AiUsageReport (docs/design/domain/platform-ai.md section 10, G7) only ' +
-        'from its infrastructure/ adapters: never from domain/ or application/ code.',
+        'from the infrastructure files on AI_USAGE_REPORT_ALLOW_LIST (Hassan, PR 1354).',
       severity: 'error',
-      from: { pathNot: ['^src/platform/ai/', '^src/modules/[^/]+/infrastructure/'] },
+      from: { pathNot: ['^src/platform/ai/', ...AI_USAGE_REPORT_ALLOW_LIST] },
       to: { path: '^src/platform/ai/usage/ai-usage-report\\.ts$' },
     },
     {

@@ -386,6 +386,8 @@ export class PrismaAiUsageStore implements AiUsageStore {
       where: {
         marketId: market.marketId,
         tenantId: market.tenantId,
+        period: 'day',
+        scope: 'capability',
         scopeKey: capability,
         capReachedAt: { not: null },
       },

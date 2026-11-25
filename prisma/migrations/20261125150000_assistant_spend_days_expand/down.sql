@@ -5,7 +5,6 @@ SET lock_timeout = '5s';
 -- it still holds every count. The spend this migration added to the gateway's day rows and
 -- counters stays: it is real spend, and the up migration adds only what is missing, so running it
 -- again adds nothing twice.
-REVOKE SELECT, INSERT, UPDATE ON TABLE "assistant"."conversation_days" FROM "mondapac_app";
 DROP TABLE "assistant"."conversation_days";
 
 DROP INDEX "platform"."ai_budget_counters_cap_reached_idx";

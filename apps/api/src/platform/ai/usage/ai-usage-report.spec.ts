@@ -4,6 +4,9 @@ import { CapabilityRegistry } from '../capability-registry';
 import type { CapabilitySpec } from '../capability';
 import { InMemoryAiUsageStore } from '../../../../test/support/in-memory-ai-usage';
 import { PLATFORM_TENANT_ID } from '../../market-context/tenant';
+import { MarketRegistry } from '../../market-config/market-registry';
+import { loadMarketConfigs } from '../../market-config/market-config';
+import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import { AiUsageReport } from './ai-usage-report';
 
 const SPEC: CapabilitySpec = {
@@ -25,8 +28,10 @@ describe('AiUsageReport (AI Gateway G7)', () => {
   function setUp() {
     const registry = new CapabilityRegistry();
     registry.register('alpha', [SPEC]);
+    registry.register('beta', [{ ...SPEC, id: 'beta.write', task: 'write' }]);
     const store = new InMemoryAiUsageStore();
-    return { store, report: new AiUsageReport(store, registry) };
+    const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
+    return { store, report: new AiUsageReport(store, registry, markets).for('alpha') };
   }
 
   describe.each(['AU', 'ZZ'])('Market %s', (code) => {
@@ -69,21 +74,30 @@ describe('AiUsageReport (AI Gateway G7)', () => {
       await expect(
         report.markCapReached(market, 'alpha.chat', day, 'day', at.add({ hours: 1 })),
       ).resolves.toBe(false);
-      await expect(report.lastCapReached(market, 'alpha.chat')).resolves.toEqual({
-        at,
-        period: 'month',
-      });
+      const last = await report.lastCapReached(market, 'alpha.chat');
+      // Temporal instants compare by their text (toEqual sees no fields on them).
+      expect([last?.at.toString(), last?.period]).toEqual([at.toString(), 'month']);
     });
 
-    it('refuses a capability no module registered, so a typo never reads as nothing spent', () => {
+    it('refuses another owner’s capability and one nobody registered (Hassan, PR 1354)', async () => {
       const { report } = setUp();
-      expect(() => report.costByDay(market, 'alpha.chatt', day, day)).toThrow(
-        'Unknown AI capability',
+      await expect(report.costByDay(market, 'beta.write', day, day)).rejects.toThrow(
+        'has no AI capability',
       );
-      expect(() => report.markCapReached(market, 'beta.write', day, 'day', at)).toThrow(
-        'Unknown AI capability',
+      await expect(report.markCapReached(market, 'beta.write', day, 'day', at)).rejects.toThrow(
+        'has no AI capability',
       );
-      expect(() => report.lastCapReached(market, 'nope.none')).toThrow('Unknown AI capability');
+      await expect(report.lastCapReached(market, 'alpha.chatt')).rejects.toThrow(
+        'has no AI capability',
+      );
+    });
+
+    it('refuses a cap-reached record for a day after the Market day of its instant', async () => {
+      const { report, store } = setUp();
+      await expect(
+        report.markCapReached(market, 'alpha.chat', day.add({ days: 2 }), 'day', at),
+      ).rejects.toThrow('A cap cannot be reached on');
+      expect(store.capReached.size).toBe(0);
     });
   });
 });

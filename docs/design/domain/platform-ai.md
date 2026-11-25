@@ -352,11 +352,16 @@ the guarded `prisma.tx(market)` client. Each table has an explicit GRANT and `do
     `ai_budget_counters` gains `cap_reached_at` and `cap_reached_period`, set once on the capability's
     day row (CHECK: only there). The migration copies both, and adds to the gateway's day rows and
     counters only the part of each day's `spend_days` spend the gateway did not count (calls before
-    G2), so running it again adds nothing. The assistant writes both homes in the same unit; the
+    G2) on days up to the Market's first gateway day, in one statement; every step can run again
+    after a failure part way through and adds nothing twice (Mojtaba, PR 1354). Deploy G2's code
+    everywhere before this migration runs. The cap-reached record lives on a counter row, so it is
+    kept 25 months (spend_days kept it for ever): after that "last auto-off" may read as never. The assistant writes both homes in the same unit; the
     spend needs no second write (the gateway counts every call since G2).
-  - The port is `AiUsageReport` (`platform/ai/usage/ai-usage-report.ts`): a capability's settled cost
-    per day and its "cap reached" record, in the caller's unit; it never changes what is held or
-    spent, and only a module's `infrastructure/` imports it. An unknown capability throws.
+  - The port is `AiUsageReport` (`platform/ai/usage/ai-usage-report.ts`): `for(owner)` gives a module
+    the handle of its own capabilities (another owner's id is refused, Hassan PR 1354): settled cost
+    per day and the "cap reached" record, in the caller's unit; a day after the Market's day of the
+    record's instant is refused. It never changes what is held or spent, and only the files on
+    `AI_USAGE_REPORT_ALLOW_LIST` import it.
   - G7b switches the readers: the assistant's cap check and its insights page read the cost through
     the port and the conversations from `conversation_days`, and `spend_days` is no longer written.
     The cap values stay in the assistant's settings until G4 moves them to the gateway's caps

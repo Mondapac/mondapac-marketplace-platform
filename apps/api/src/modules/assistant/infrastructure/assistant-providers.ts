@@ -92,7 +92,7 @@ export const assistantProviders: readonly FactoryProvider[] = [
     provide: SPEND_REPOSITORY,
     inject: [PrismaService, AiUsageReport],
     useFactory: (prisma: PrismaService, usage: AiUsageReport): SpendRepository =>
-      new PrismaSpendRepository(prisma, usage),
+      new PrismaSpendRepository(prisma, usage.for('assistant')),
   },
   {
     provide: ASSISTANT_TOOLS,

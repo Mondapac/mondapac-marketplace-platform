@@ -1,6 +1,6 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { MarketContext } from '@mondapac/shared-kernel';
-import type { AiUsageReport } from '../../../platform/ai/usage/ai-usage-report';
+import type { CapabilityUsageReport } from '../../../platform/ai/usage/ai-usage-report';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import { BUYER_CHAT } from '../contracts/ai-capabilities';
 import type { SpendRepository, SpendTotals } from '../application/ports/spend.repository';
@@ -14,13 +14,13 @@ const dateOf = (day: Temporal.PlainDate): Date => new Date(`${day.toString()}T00
  * AI Gateway G7, step 2 of 4 (docs/design/domain/platform-ai.md section 10): every write also goes
  * to the new homes, in the same unit, while `spend_days` stays the one that is read. The
  * conversation count goes to `assistant.conversation_days`; the auto-off record goes to the
- * gateway's "cap reached" record of the buyer chat ({@link AiUsageReport}). The spend itself needs
+ * gateway's "cap reached" record of the buyer chat ({@link CapabilityUsageReport}). The spend itself needs
  * no second write: the gateway counts every call already (G2). Step 3 (G7b) switches the reads.
  */
 export class PrismaSpendRepository implements SpendRepository {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly usage: AiUsageReport,
+    private readonly usage: CapabilityUsageReport,
   ) {}
 
   async totals(market: MarketContext, day: Temporal.PlainDate): Promise<SpendTotals> {
@@ -106,7 +106,11 @@ export class PrismaSpendRepository implements SpendRepository {
       where: { marketId: market.marketId, day: dateOf(day), autoOffCap: null },
       data: { autoOffCap: cap, autoOffAt: new Date(at.epochMilliseconds) },
     });
-    // The same record on the gateway's side; spend_days still decides (and answers) until G7b.
+    // The same record on the gateway's side, only when spend_days took it (the migration copied the
+    // earlier ones), so a capped turn does not wait on the counter row for nothing (Mojtaba, PR 1354
+    // finding 5); spend_days still decides (and answers) until G7b. A failure here rolls the whole
+    // unit back, as any failed write of the turn's unit does (fail closed).
+    if (marked.count !== 1) return false;
     await this.usage.markCapReached(
       market,
       BUYER_CHAT,
@@ -114,6 +118,6 @@ export class PrismaSpendRepository implements SpendRepository {
       cap === 'monthly' ? 'month' : 'day',
       at,
     );
-    return marked.count === 1;
+    return true;
   }
 }

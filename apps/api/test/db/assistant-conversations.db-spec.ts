@@ -483,7 +483,8 @@ describe.each(TEST_MARKETS)('assistant conversations store in market %s (databas
       conversationsToday: 1,
       lastAutoOff: null,
     });
-    const at = T0.add({ hours: 1 });
+    // An instant on that Market day (a record for a later day is refused).
+    const at = Temporal.Instant.from(`${next.toString()}T12:00:00Z`);
     await expect(inUnit(market, () => spend.markAutoOff(market, next, 'daily', at))).resolves.toBe(
       true,
     );
@@ -525,7 +526,7 @@ describe.each(TEST_MARKETS)('assistant conversations store in market %s (databas
       ]),
     );
 
-    const at = T0.add({ hours: 2 });
+    const at = Temporal.Instant.from(`${day.toString()}T12:00:00Z`);
     await inUnit(market, () => spend.markAutoOff(market, day, 'monthly', at));
     await inUnit(market, () => spend.markAutoOff(market, day, 'daily', at.add({ minutes: 1 })));
     const reached = await sql.query<{ market_id: string; at: Date; period: string }>(
@@ -538,6 +539,45 @@ describe.each(TEST_MARKETS)('assistant conversations store in market %s (databas
     expect(reached.rows).toEqual([
       { market_id: market.marketId, at: new Date(at.epochMilliseconds), period: 'month' },
     ]);
+    // Cross-Market canary (Hassan, PR 1354): the other Market reads neither the record nor the cost.
+    const report = assistantUsageReport(db.service);
+    await sql.query(
+      `INSERT INTO platform.ai_usage_days (id, market_id, tenant_id, day, capability, seller_id,
+         calls, cost_micro_usd) VALUES (gen_random_uuid(), $1, $2, $3, $4, NULL, 1, 4321)`,
+      [market.marketId, market.tenantId, day.toString(), BUYER_CHAT],
+    );
+    // The other Market's run of this file may have its own record; never this one (Temporal
+    // instants compare by their text: toEqual sees no fields on them).
+    const others = await read(other, () => report.lastCapReached(other, BUYER_CHAT));
+    expect(others?.at.toString()).not.toBe(at.toString());
+    await expect(read(other, () => report.costByDay(other, BUYER_CHAT, day, day))).resolves.toEqual(
+      [],
+    );
+    await expect(
+      read(market, () => report.costByDay(market, BUYER_CHAT, day, day)),
+    ).resolves.toEqual([{ day, costMicroUsd: 4321 }]);
+    const cost = await read(market, () => report.costByDay(market, BUYER_CHAT, day, day));
+    expect(cost.map((row) => row.day.toString())).toEqual([day.toString()]);
+  });
+
+  it('rolls the auto-off back when the gateway record cannot be written (fail closed)', async () => {
+    const day = Temporal.PlainDate.from(code === 'AU' ? '2031-08-14' : '2031-10-14');
+    const real = assistantUsageReport(db.service);
+    const failing = new PrismaSpendRepository(db.service, {
+      ...real,
+      markCapReached: () => Promise.reject(new Error('gateway down')),
+    });
+    await inUnit(market, () =>
+      spend.add(market, day, { microUsd: 1, inputTokens: 1, outputTokens: 1, conversations: 1 }),
+    );
+    await expect(
+      inUnit(market, () => failing.markAutoOff(market, day, 'daily', T0)),
+    ).rejects.toThrow('gateway down');
+    const row = await sql.query<{ auto_off_at: Date | null }>(
+      'SELECT auto_off_at FROM assistant.spend_days WHERE market_id = $1 AND day = $2',
+      [market.marketId, day.toString()],
+    );
+    expect(row.rows).toEqual([{ auto_off_at: null }]);
   });
 
   const outboxWriter = () => {
