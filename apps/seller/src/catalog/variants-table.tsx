@@ -914,7 +914,9 @@ export function VariantsTable({
                           ) : null}
                           {showDetails ? (
                             // Sticky at the end: on a phone Details and Close stay in view.
-                            <td className={`p-2 sm:sticky sm:end-0 sm:z-10 sm:border-s sm:border-line ${bg}`}>
+                            <td
+                              className={`p-2 sm:sticky sm:end-0 sm:z-10 sm:border-s sm:border-line ${bg}`}
+                            >
                               {detailsButton(row, open, detailsId, 'max-sm:hidden')}
                             </td>
                           ) : null}
