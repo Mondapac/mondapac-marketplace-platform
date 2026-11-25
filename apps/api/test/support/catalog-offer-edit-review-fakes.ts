@@ -4,13 +4,16 @@ import type {
   Id,
   IdGenerator,
   MarketContext,
-  Temporal,
 } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
 import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
 import type { PrismaService } from '../../src/platform/persistence/prisma.service';
 import { OfferEditReview } from '../../src/modules/catalog/application/offer-edit-review';
-import type { OfferPendingChangeRepository } from '../../src/modules/catalog/application/ports/offer-pending-change.repository';
+import type {
+  OfferChangePage,
+  OfferChangeQueueFilter,
+  OfferPendingChangeRepository,
+} from '../../src/modules/catalog/application/ports/offer-pending-change.repository';
 import type {
   OfferReviewFactsRead,
   OfferReviewReferral,
@@ -107,32 +110,67 @@ export class InMemoryOfferPendingChanges implements OfferPendingChangeRepository
     );
   }
 
-  listPending(
-    market: MarketContext,
-    page: {
-      readonly after: { readonly submittedAt: Temporal.Instant; readonly id: string } | null;
-      readonly limit: number;
-    },
-  ) {
-    const after = page.after;
-    const rows = [...this.rows.values()]
+  /**
+   * The product-side filters (`categoryId`, the text search) need the product: a spec sets this
+   * predicate; by default they keep every row.
+   */
+  productFilter: (row: OfferPendingChangeState, filter: OfferChangeQueueFilter) => boolean = () =>
+    true;
+
+  #kept(market: MarketContext, filter: OfferChangeQueueFilter): OfferPendingChangeState[] {
+    const from = filter.submittedFrom ?? null;
+    const to = filter.submittedTo ?? null;
+    return [...this.rows.values()]
       .filter((row) => row.marketId === market.marketId && row.status === 'pending')
+      .filter((row) => filter.sellerId === undefined || row.sellerId === filter.sellerId)
+      .filter(
+        (row) =>
+          filter.reasons === undefined ||
+          filter.reasons.length === 0 ||
+          row.reasons.some((reason) => filter.reasons!.includes(reason)),
+      )
+      .filter(
+        (row) =>
+          (from === null || row.submittedAt.epochNanoseconds >= from.epochNanoseconds) &&
+          (to === null || row.submittedAt.epochNanoseconds < to.epochNanoseconds),
+      )
+      .filter(
+        (row) =>
+          (filter.categoryId === undefined && filter.search === undefined) ||
+          this.productFilter(row, filter),
+      )
       .sort((a, b) =>
         a.submittedAt.epochNanoseconds === b.submittedAt.epochNanoseconds
           ? a.id.localeCompare(b.id)
           : a.submittedAt.epochNanoseconds < b.submittedAt.epochNanoseconds
             ? -1
             : 1,
-      )
-      .filter(
-        (row) =>
-          after === null ||
-          row.submittedAt.epochNanoseconds > after.submittedAt.epochNanoseconds ||
-          (row.submittedAt.epochNanoseconds === after.submittedAt.epochNanoseconds &&
-            row.id > after.id),
-      )
-      .slice(0, page.limit);
-    return Promise.resolve(rows.map((row) => OfferPendingChange.restore(row)));
+      );
+  }
+
+  listPending(market: MarketContext, page: OfferChangePage, filter: OfferChangeQueueFilter = {}) {
+    const after = page.after;
+    let rows = this.#kept(market, filter).filter(
+      (row) =>
+        after === null ||
+        row.submittedAt.epochNanoseconds > after.submittedAt.epochNanoseconds ||
+        (row.submittedAt.epochNanoseconds === after.submittedAt.epochNanoseconds &&
+          row.id > after.id),
+    );
+    if (page.direction === 'desc') rows = rows.reverse();
+    const offset = page.offset ?? 0;
+    return Promise.resolve(
+      rows.slice(offset, offset + page.limit).map((row) => OfferPendingChange.restore(row)),
+    );
+  }
+
+  countPending(market: MarketContext, filter: OfferChangeQueueFilter = {}) {
+    return Promise.resolve(this.#kept(market, filter).length);
+  }
+
+  pendingSellerIds(market: MarketContext, limit: number) {
+    const ids = new Set(this.#kept(market, {}).map((row) => row.sellerId));
+    return Promise.resolve([...ids].sort().slice(0, limit));
   }
 }
 

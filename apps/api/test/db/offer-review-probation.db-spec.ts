@@ -553,6 +553,25 @@ describe.each(TEST_MARKETS)('Offer review probation in market %s (database)', (c
       expect(await inUnitOf(other)(() => sellerFlags.read(other, sellerId))).toBeNull();
     });
 
+    it('counts the sellers of the Market with their stop on (the stop banner, slice 5)', async () => {
+      const before = await inUnit(() => sellerFlags.countStopped(market));
+      const otherBefore = await inUnitOf(other)(() => sellerFlags.countStopped(other));
+      const sellerId = await seller();
+      await seller();
+      expect(await inUnit(() => sellerFlags.countStopped(market))).toBe(before);
+      await inUnit(() =>
+        sellerFlags.set(market, sellerId, {
+          flag: 'review-stop',
+          on: true,
+          by: uuid7() as Id<'Account'>,
+          at: clock.now(),
+          expectedVersion: 1,
+        }),
+      );
+      expect(await inUnit(() => sellerFlags.countStopped(market))).toBe(before + 1);
+      expect(await inUnitOf(other)(() => sellerFlags.countStopped(other))).toBe(otherBefore);
+    });
+
     it('keeps the change log insert-only with a checked reason and a value that changed', async () => {
       const sellerId = await seller();
       const entry = {

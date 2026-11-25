@@ -47,6 +47,14 @@ export const adminNav: NavConfig = {
       anyOf: ['catalog.product.view'],
     },
     {
+      id: 'offer-reviews',
+      icon: 'inbox',
+      labelKey: 'nav.offer-reviews',
+      href: '/offer-reviews',
+      group: 'inbox',
+      anyOf: ['catalog.product.view'],
+    },
+    {
       id: 'price-holds',
       icon: 'clock',
       labelKey: 'nav.price-holds',

@@ -433,12 +433,22 @@ import { GatewayDescriptionWriterModel } from './gateway-description-writer-mode
 import { RegistryMarketDayCalendar } from './registry-market-day-calendar';
 import {
   OFFER_REVIEW_INPUTS,
+  OFFER_REVIEW_QUEUE_FACTS,
+  type OfferReviewQueueFacts,
   OFFER_REVIEW_REFERRAL_STORE,
   type OfferReviewInputs,
   type OfferReviewReferralStore,
 } from '../application/ports/offer-review';
 import { FacadeOfferReviewInputs } from './facade-offer-review-inputs';
-import { PrismaOfferReviewReferralStore } from './prisma-offer-review-referral.store';
+import {
+  PrismaOfferReviewQueueFacts,
+  PrismaOfferReviewReferralStore,
+} from './prisma-offer-review-referral.store';
+import {
+  OFFER_REVIEW_STOPS_READER,
+  type OfferReviewStopsReader,
+} from '../application/ports/offer-review-stops.reader';
+import { FacadeOfferReviewStopsReader } from './facade-offer-review-stops.reader';
 import {
   OFFER_PENDING_CHANGE_REPOSITORY,
   type OfferPendingChangeRepository,
@@ -543,6 +553,18 @@ export const catalogProviders: readonly Provider[] = [
       audit: AuditWriter,
     ): SellerReviewProbation =>
       new SellerReviewProbation({ standings, sellerFlags, inputs, audit }),
+  },
+  {
+    provide: OFFER_REVIEW_QUEUE_FACTS,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): OfferReviewQueueFacts =>
+      new PrismaOfferReviewQueueFacts(prisma),
+  },
+  {
+    provide: OFFER_REVIEW_STOPS_READER,
+    inject: [SETTINGS_FACADE, SELLERS_FACADE],
+    useFactory: (settings: SettingsFacade, sellers: SellersFacade): OfferReviewStopsReader =>
+      new FacadeOfferReviewStopsReader(settings, sellers),
   },
   {
     provide: OFFER_REVIEW_REFERRAL_STORE,

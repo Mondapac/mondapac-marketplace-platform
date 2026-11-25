@@ -63,6 +63,15 @@ export class InMemoryOfferReviewFlags implements OfferReviewFlagsRepository {
     return Promise.resolve(true);
   }
 
+  countStopped(market: MarketContext) {
+    if (this.failReads) return Promise.reject(new Error('down'));
+    return Promise.resolve(
+      [...this.rows].filter(
+        ([key, row]) => key.startsWith(`${market.marketId}|`) && row.reviewStop.on,
+      ).length,
+    );
+  }
+
   appendChange(market: MarketContext, entry: OfferReviewFlagChangeEntry) {
     this.changes.push({ ...entry, marketId: market.marketId });
     return Promise.resolve();

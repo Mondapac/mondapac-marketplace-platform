@@ -110,6 +110,12 @@ export class PrismaOfferReviewFlagsRepository implements OfferReviewFlagsReposit
     return count === 1;
   }
 
+  async countStopped(market: MarketContext): Promise<number> {
+    return this.prisma.tx(market).sellersSellerAdminSettings.count({
+      where: { marketId: market.marketId, offerReviewStop: true },
+    });
+  }
+
   async appendChange(market: MarketContext, entry: OfferReviewFlagChangeEntry): Promise<void> {
     await this.prisma.tx(market).sellersOfferReviewFlagChange.create({
       data: {

@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-offer-queue-kit-filter-bottom-sheet",
+  "area": "admin",
+  "title": "پنل فیلتر super list به صورت bottom sheet در موبایل",
+  "desc": "پنل فیلتر لیست‌های super list در عرض ۳۷۵ امروز popover است؛ جا می‌شود و خواناست، اما bottom sheet تمام‌عرض برای موبایل مناسب‌تر است. تغییر در packages/ui برای همهٔ super listها.",
+  "src": "بازبینی PR 1364 برش ۵ تأیید Offer (رضا، UI/UX)",
+  "date": "2026-11-25",
+  "trig": "وقتی ادمین‌ها از موبایل زیاد فیلتر کنند یا بازسازی بعدی اجزای لیست",
+  "prio": "پایین",
+  "status": "موکول"
+}

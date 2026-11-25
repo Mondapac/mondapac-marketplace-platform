@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-offer-queue-category-flags-stale-panel-test",
+  "area": "admin",
+  "title": "آزمون پنل برای 409 کهنه در پرچم‌های دسته",
+  "desc": "آزمون API برای 409 conflict.stale پرچم‌های دسته هست، اما آزمون پنل CategoryFlags در flags.spec پیام کهنه بودن را نمی‌آزماید (سجاد G4).",
+  "src": "بازبینی PR 1364 (سجاد، QA)",
+  "date": "2026-11-25",
+  "trig": "همراه کار بعدی روی پرچم‌های بازبینی در پنل ادمین",
+  "prio": "پایین",
+  "status": "موکول"
+}

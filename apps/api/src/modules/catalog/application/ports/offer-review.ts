@@ -78,3 +78,46 @@ export interface OfferReviewReferralStore {
   record(market: MarketContext, referral: OfferReviewReferral): Promise<void>;
 }
 export const OFFER_REVIEW_REFERRAL_STORE = Symbol('CATALOG_OFFER_REVIEW_REFERRAL_STORE');
+
+/** The latest first-publication decision of the policy about one Offer (slice 5). */
+export interface FirstPublicationDecision {
+  /** The Offer's version after the submit the decision is about. */
+  readonly offerVersion: number;
+  readonly reasons: readonly OfferReviewReason[];
+}
+
+/**
+ * What the review queue reads about Offers waiting for their first publication (slice 5): the
+ * reasons of each Offer's latest `first-publication` referral (the queue's reason chips and the
+ * bulk approval's allow-list) and the certification type codes of its open tags (the bulk
+ * approval's "one certificate type" check). Runs in the caller's unit, by Market.
+ */
+export interface OfferReviewQueueFacts {
+  /**
+   * The latest `first-publication` referral of each Offer (highest Offer version): its reasons and
+   * the Offer version it decided (a bulk approval accepts the reasons only for the version it
+   * approves, Hassan L2). An Offer with no such referral is left out of the map.
+   */
+  firstPublicationReasons(
+    market: MarketContext,
+    offerIds: readonly Id<'Offer'>[],
+  ): Promise<ReadonlyMap<string, FirstPublicationDecision>>;
+
+  /**
+   * The Offers of the Market waiting for their first publication whose latest `first-publication`
+   * referral carries any of `reasons` (the queue's `reasons` filter). The latest referral decides,
+   * so a reason of an earlier submit never matches. The pending rows are a work list: the read
+   * walks their referrals, never the Market's whole history.
+   */
+  pendingFirstPublicationsWithReasons(
+    market: MarketContext,
+    reasons: readonly OfferReviewReason[],
+  ): Promise<readonly Id<'Offer'>[]>;
+
+  /** The distinct type codes of each Offer's open (not removed) tags, sorted; an Offer with none is left out. */
+  openTagTypes(
+    market: MarketContext,
+    offerIds: readonly Id<'Offer'>[],
+  ): Promise<ReadonlyMap<string, readonly string[]>>;
+}
+export const OFFER_REVIEW_QUEUE_FACTS = Symbol('CATALOG_OFFER_REVIEW_QUEUE_FACTS');

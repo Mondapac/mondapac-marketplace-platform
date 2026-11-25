@@ -607,6 +607,12 @@ describe.each(TEST_MARKETS)(
       expect(
         await inUnit(() => offerStore.listPendingReview(market, page, { sellerId: OTHER }), true),
       ).toEqual([]);
+      // The seller filter's options: the seller of a pending revision, only when revisions count.
+      const sellersOf = (kinds: { offers: boolean; revisions: boolean }) =>
+        inUnit(() => reader.pendingQueueSellerIds(market, kinds, 1000), true);
+      expect(await sellersOf({ offers: false, revisions: true })).toContain(SELLER);
+      expect(await sellersOf({ offers: true, revisions: true })).toContain(SELLER);
+      expect(await sellersOf({ offers: false, revisions: true })).not.toContain(OTHER);
     });
 
     // The search tests use a token of their own in the name and a seller of their own, so rows that

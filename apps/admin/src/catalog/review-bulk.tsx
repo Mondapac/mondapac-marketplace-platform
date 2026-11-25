@@ -1,9 +1,13 @@
 'use client';
 
-import { Select } from '@mondapac/ui';
+import { Button, Dialog, Select } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
-import { BulkDecideDialog, type BulkRow } from '../shared/paged-list/bulk-decide-dialog.tsx';
+import {
+  BulkDecideDialog,
+  type BulkResult,
+  type BulkRow,
+} from '../shared/paged-list/bulk-decide-dialog.tsx';
 import { PRODUCT_CHANGE_REASONS } from './version-review/types.ts';
 import { CHANGE_REASONS } from './types.ts';
 
@@ -13,6 +17,17 @@ export interface ReviewBulk {
   readonly kind: ReviewBulkKind;
   readonly action: ReviewBulkAction;
   readonly rows: readonly BulkRow[];
+  /**
+   * An Offer approval the reviewer may not ask for (the Offer review queue checks it before the
+   * server does): the dialog says why and offers no confirm.
+   */
+  readonly blocked?: {
+    readonly why: 'reasons' | 'certificate-mixed';
+    /** The names of the rows to open one by one (those whose reasons need a person). */
+    readonly rows: readonly string[];
+  };
+  /** Offers with a certificate badge to check: who and which type, named in the confirmation. */
+  readonly certificate?: { readonly seller: string; readonly type: string };
 }
 
 const API_BULK = 'catalog/admin/review-queue/bulk-decide';
@@ -63,6 +78,51 @@ function Inner({
   const sendBack = bulk.action === 'request-changes';
   const count = bulk.rows.length;
   const reasons = bulk.kind === 'revision' ? PRODUCT_CHANGE_REASONS : CHANGE_REASONS;
+  const tq = useTranslations('offer-review.bulk');
+  const tReason = useTranslations('offer-review.reason');
+  const tc = useTranslations('bulk-decide');
+  if (bulk.blocked !== undefined) {
+    return (
+      <Dialog
+        open
+        size="form"
+        title={tq('blocked.title')}
+        onClose={onClose}
+        actions={<Button onClick={onClose}>{tc('close')}</Button>}
+      >
+        <p role="status" className="wrap-anywhere">
+          {bulk.blocked.why === 'reasons' ? tq('blocked.reasons') : tq('blocked.certificate-mixed')}
+        </p>
+        {bulk.blocked.rows.length === 0 ? null : (
+          <ul className="mt-2 mb-0 list-disc ps-5">
+            {bulk.blocked.rows.map((name, index) => (
+              <li key={index} className="wrap-anywhere">
+                {name}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Dialog>
+    );
+  }
+  const skippedLine = (entry: BulkResult): string | null => {
+    const name = entry.name ?? entry.id;
+    switch (entry.reason) {
+      case 'review.bulk-not-allowed':
+        return tq('skipped.not-allowed', {
+          name,
+          reasons: (entry.blockers ?? [])
+            .map((code) => (tReason.has(code) ? tReason(code) : code))
+            .join(', '),
+        });
+      case 'review.bulk-certificate-mixed':
+        return tq('skipped.certificate-mixed', { name });
+      case 'review.reasons-unknown':
+        return tq('skipped.reasons-unknown', { name });
+      default:
+        return null;
+    }
+  };
   return (
     <BulkDecideDialog
       endpoint={API_BULK}
@@ -74,10 +134,18 @@ function Inner({
           : { id: row.id, version: row.version }
       }
       title={t(`${bulk.action}.title.${bulk.kind}`, { count })}
-      body={t(`${bulk.action}.${bulk.kind}`, { count })}
+      body={
+        bulk.certificate === undefined
+          ? t(`${bulk.action}.${bulk.kind}`, { count })
+          : `${t(`${bulk.action}.${bulk.kind}`, { count })} ${tq('certificate', bulk.certificate)}`
+      }
       confirm={t(`${bulk.action}.confirm.${bulk.kind}`, { count })}
       ready={!sendBack || reason !== ''}
+      confirmVariant={
+        bulk.kind === 'offer' && bulk.action === 'approve' ? 'primary' : 'destructive-solid'
+      }
       extraBody={{ kind: bulk.kind, ...(sendBack ? { reasonCode: reason } : {}) }}
+      describeSkipped={bulk.kind === 'offer' ? skippedLine : undefined}
       reasonText={(code, rows) =>
         code === 'review.checks-missing' ? t('checks-missing', { count: rows }) : null
       }

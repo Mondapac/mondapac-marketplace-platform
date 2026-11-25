@@ -229,6 +229,12 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The review queue as a file (CSV or XLSX): `format` and the list's own filter. No `sort` or
     // `direction`: the file is oldest first, and the route refuses `direction`.
     'catalog/admin/review-queue/export',
+    // The held edits of live Offers as a super list, as a file, and the active stops (catalog,
+    // risk-based Offer approval slice 5). The category flags read lists the flagged categories.
+    'catalog/admin/offer-changes',
+    'catalog/admin/offer-changes/export',
+    'catalog/admin/offer-review/stops',
+    'catalog/admin/offer-review/category-flags',
     // Requests to turn off Material waiting for a second administrator (attributes A2 part 3).
     'catalog/admin/attribute-relaxations',
     // Requests to archive a Material attribute waiting for a second administrator (attributes A8).
@@ -534,6 +540,11 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'pricing/admin/price-holds/:id/reject',
     'catalog/admin/offers/:id/approve',
     'catalog/admin/offers/:id/request-changes',
+    // Approve, send back or reject a held edit of a live Offer, with an optional (approve) or
+    // required (the other two) note to the seller (catalog, risk-based Offer approval slice 5).
+    'catalog/admin/offer-changes/:id/approve',
+    'catalog/admin/offer-changes/:id/request-changes',
+    'catalog/admin/offer-changes/:id/reject',
     // Approve or send back a pending product version, naming the version seen (catalog, product
     // version review); take a photo down with a reason (cannot be undone).
     'catalog/admin/products/:id/revisions/:id/approve',
@@ -684,6 +695,15 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'reviews/admin/moderation/:id/dismiss-reports',
   ],
   PUT: [
+    // A seller's Offer review flags (sellers, SEL-25): `{on, reason, expectedVersion}`; Trusted
+    // from start and the stop are protected, so they may ask a fresh two-step code.
+    'sellers/admin/:id/offer-review/trusted',
+    'sellers/admin/:id/offer-review/full-review',
+    'sellers/admin/:id/offer-review/stop',
+    // A category's "always review" and review stop flags (catalog); the stop is protected, and
+    // so is "always review" (`catalog.category-review.change`).
+    'catalog/admin/categories/:id/offer-review',
+    'catalog/admin/categories/:id/offer-review-stop',
     // Change a feature set: names, groups and requirement levels, with the version read
     // (catalog, attributes A4).
     'catalog/admin/feature-sets/:id',
@@ -787,6 +807,11 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   ],
   // The seller's commission rate and ledger, read from the seller review page.
   GET: [
+    // One held edit of a live Offer with its live values, a seller's review standing and flags
+    // (catalog and sellers, risk-based Offer approval slices 4 and 5).
+    'catalog/admin/offer-changes/:id',
+    'catalog/admin/sellers/:id/review-standing',
+    'sellers/admin/:id/offer-review',
     // One system request with its values and its history (system-requests).
     'system-requests/admin/requests/:id',
     // One category with its path and history, and the impact of a change on its subtree
@@ -1582,8 +1607,35 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'sort',
     'direction',
   ],
+  'catalog/admin/offer-changes': [
+    'afterId',
+    'limit',
+    'reasons',
+    'sellerId',
+    'categoryId',
+    'submittedFrom',
+    'submittedTo',
+    'q',
+    'page',
+    'pageSize',
+    'paging',
+    'sort',
+    'direction',
+  ],
+  'catalog/admin/offer-changes/export': [
+    'format',
+    'reasons',
+    'sellerId',
+    'categoryId',
+    'submittedFrom',
+    'submittedTo',
+    'q',
+  ],
   'catalog/admin/review-queue': [
     'kind',
+    'q',
+    'reasons',
+    'categoryId',
     'submittedFrom',
     'submittedTo',
     'sellerId',
@@ -1598,6 +1650,9 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'catalog/admin/review-queue/export': [
     'format',
     'kind',
+    'q',
+    'reasons',
+    'categoryId',
     'submittedFrom',
     'submittedTo',
     'sellerId',
@@ -1683,6 +1738,11 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
 };
 /** Free text typed in a list's search box: 1 to 80 characters. */
 const SEARCH_TEXT = /^[\s\S]{1,80}$/;
+/** The review queue's search text: 2 to 100 characters once trimmed (the API judges the minimum). */
+const QUEUE_SEARCH_TEXT = /^[\s\S]{1,100}$/;
+/** The review reasons of a held edit (`reasons` of the offer-changes list), comma-separated. */
+const OFFER_REVIEW_REASONS_LIST =
+  /^(emergency-stop|probation|certificate-badge|handling|contact-text|full-review|sensitive-category|review-all)(,(emergency-stop|probation|certificate-badge|handling|contact-text|full-review|sensitive-category|review-all)){0,7}$/;
 /** An instant as the API takes it: ISO 8601 date and time with a zone (`Z` or an offset). */
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
 /** At most 200 ids, the cap of a selection. */
@@ -2313,8 +2373,38 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     typeCode: /^[a-z0-9][a-z0-9_-]{0,63}$/,
     sellerId: UUID,
   },
+  'catalog/admin/offer-changes': {
+    afterId: UUID,
+    limit: /^([1-9]|[1-4][0-9]|50)$/,
+    reasons: OFFER_REVIEW_REASONS_LIST,
+    sellerId: UUID,
+    categoryId: UUID,
+    submittedFrom: ISO_INSTANT,
+    submittedTo: ISO_INSTANT,
+    q: QUEUE_SEARCH_TEXT,
+    // The API takes pages 1 to 20 of 1 to 50 rows (its list contract for this route).
+    page: /^([1-9]|1[0-9]|20)$/,
+    pageSize: /^([1-9]|[1-4][0-9]|50)$/,
+    paging: /^(pages|prev-next)$/,
+    sort: /^submitted$/,
+    direction: /^(asc|desc)$/,
+  },
+  'catalog/admin/offer-changes/export': {
+    format: /^(csv|xlsx)$/,
+    reasons: OFFER_REVIEW_REASONS_LIST,
+    sellerId: UUID,
+    categoryId: UUID,
+    submittedFrom: ISO_INSTANT,
+    submittedTo: ISO_INSTANT,
+    q: QUEUE_SEARCH_TEXT,
+  },
   'catalog/admin/review-queue': {
     kind: /^(offer-first-publication|product-revision)$/,
+    q: QUEUE_SEARCH_TEXT,
+    // Offers only (the API refuses them with kind=product-revision): the first publication's
+    // reason filter and its platform category.
+    reasons: OFFER_REVIEW_REASONS_LIST,
+    categoryId: UUID,
     submittedFrom: ISO_INSTANT,
     submittedTo: ISO_INSTANT,
     sellerId: UUID,
@@ -2329,6 +2419,9 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   'catalog/admin/review-queue/export': {
     format: /^(csv|xlsx)$/,
     kind: /^(offer-first-publication|product-revision)$/,
+    q: QUEUE_SEARCH_TEXT,
+    reasons: OFFER_REVIEW_REASONS_LIST,
+    categoryId: UUID,
     submittedFrom: ISO_INSTANT,
     submittedTo: ISO_INSTANT,
     sellerId: UUID,

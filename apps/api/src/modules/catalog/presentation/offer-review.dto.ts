@@ -1,5 +1,6 @@
 import { ApiExtraModels, ApiProperty, getSchemaPath } from '@nestjs/swagger';
 import { OFFER_CHANGE_REASONS } from '../domain/events';
+import { OFFER_REVIEW_REASONS } from '../domain/offer-review-policy';
 
 // Bodies and answers of the admin Offer review routes (catalog design 4.4, 8.2, 9.2). Ids, codes
 // and the seller's own Offer content only.
@@ -67,6 +68,21 @@ export class ReviewQueueRowDto {
 
   @ApiProperty({ nullable: true, type: String })
   handling!: string | null;
+
+  @ApiProperty({
+    enum: OFFER_REVIEW_REASONS,
+    isArray: true,
+    description:
+      "The review reasons of the Offer's latest first-publication decision (reason chips); empty " +
+      'when none is stored.',
+  })
+  reasons!: string[];
+
+  @ApiProperty({
+    type: [String],
+    description: "The certification type codes of the Offer's open tags, sorted.",
+  })
+  tagTypes!: string[];
 
   @ApiProperty({ nullable: true, type: String, description: 'ISO instant; oldest first.' })
   submittedAt!: string | null;
@@ -141,6 +157,17 @@ export class ProductRevisionRowDto {
  * The whole queue per kind, whatever the filters (also `sellerId`): the counts of the queue's tabs.
  * The number of rows a filtered list holds is `total`.
  */
+/** One store of a review list's seller filter options. */
+export class QueueSellerDto {
+  @ApiProperty({ format: 'uuid' }) sellerId!: string;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'The public store name; null when sellers cannot say.',
+  })
+  storeName!: string | null;
+}
+
 export class ReviewQueueTotals {
   @ApiProperty({ name: 'product-revision', description: 'Pending product revisions.' })
   'product-revision'!: number;
@@ -201,6 +228,17 @@ export class ReviewQueueList {
       'False with no `q`.',
   })
   searchCapped!: boolean;
+
+  @ApiProperty({
+    type: [QueueSellerDto],
+    description:
+      'The stores with a row of the kinds `kind` keeps, whatever the other filters (the seller ' +
+      'filter options): named stores by name, then unnamed ones by id; at most 100.',
+  })
+  sellers!: QueueSellerDto[];
+
+  @ApiProperty({ description: 'More stores have rows than `sellers` holds (100).' })
+  sellersCapped!: boolean;
 }
 
 export class OfferDecided {}

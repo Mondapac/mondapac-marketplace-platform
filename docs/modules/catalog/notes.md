@@ -342,3 +342,46 @@ settings (mode `all`).
   and full review; standing unreadable: probation; categories unreadable: sensitive category;
   each marks the facts `degraded`, and a degraded edit verdict uses mode `all`. A failure never
   invents a stop.
+
+## The admin review queue APIs (risk-based Offer approval slice 5)
+
+- **Edits super list** (`GET catalog/admin/offer-changes`, Hadi's decision 2): the page read of
+  the review queue (`sort` `submitted`, `direction`, `page`, `pageSize`, `paging` from the
+  Market's "List paging"; `total` in `pages` mode) next to the slice 2c keyset read (`afterId`,
+  `limit`), never mixed. Filters `reasons` (any of, comma-separated), `sellerId`, `categoryId`
+  (the product's published revision, exact category), `submittedFrom`/`submittedTo` (the age)
+  and `q` (the review queue's rules and escaping). `totalPending` is the tab count. Each row also
+  carries `live` (the Offer's description, handling and open tag types now), `offer`, `product`,
+  `storeName` and the caller's `actions`. Export at `offer-changes/export` (CSV, XLSX; codes and
+  labels only, never the proposed description); one change by id at `offer-changes/:changeId`.
+  No new index: the filters run on the few pending rows the `(market_id, status, submitted_at,
+  id)` index picks.
+- **First publications**: review queue Offer rows carry `reasons` (the latest first-publication
+  referral) and `tagTypes` (open tags), for the chips and the bulk check.
+- **Bulk approval of Offers** (Hadi's decision 3) is enforced in `review-queue.bulk-decide`: only
+  `probation` (R1), `full-review` (R6) and `certificate-badge` (R2) when every R2 row of the batch
+  is one seller's with one certificate type. Other rows are `skipped` with
+  `review.bulk-not-allowed` and `blockers`, `review.bulk-certificate-mixed`, or
+  `review.reasons-unknown` (no stored decision; fail closed). Offer results carry the product
+  `name`. If the reasons cannot be read, an approval is refused whole (503); a send-back goes on.
+- **Bulk approve re-reads the R0 stops** (Hassan M1, PR 1364): for every row it reads the Market
+  emergency stop, the seller's review stop and the category stops (ancestors and merges, as the
+  slice 4 policy). A stopped row is `skipped` with `review.bulk-not-allowed` and `emergency-stop`
+  first in its blockers; if any stop cannot be read the whole approve is refused (503,
+  fail closed). A row with no verdict is skipped as `offer.not-found`; stored first-publication
+  reasons are used only when their Offer version equals the row's and the current version,
+  otherwise `review.reasons-unknown`.
+- **Stop banner** (`GET catalog/admin/offer-review/stops`): the Market stop and how many sellers
+  (sellers facade `offerReviewStoppedSellerCount`, needs `sellers.seller.view`) and categories
+  have their stop on; a part that cannot be read is null.
+- First-publication reject is deferred (Hadi's decision 1; FE-20261125-offer-first-publication-reject).
+- **Super list gaps closed** (CLAUDE.md rule 14): the review queue takes the Offer filters
+  `reasons` (Offers whose latest first-publication referral carries any of them; resolved in the
+  read unit to the waiting Offer ids, so an earlier submit's reasons never match) and
+  `categoryId` (the product's published revision); both keep Offers only and are refused
+  (`not-allowed`) with `kind=product-revision` or a revision filter, and the export takes them
+  too. Both lists answer `sellers` (the stores with rows of the kinds kept, whatever the other
+  filters; at most 100, `sellersCapped` beyond) as the seller filter's options; the panel takes
+  the category options from `catalog/categories`, as the Products list. The Edits list has saved
+  filters of its own (`admin.catalog.offer-changes`: `reasons`, `age` preset, `sellerId`,
+  `categoryId`, `q`); `admin.catalog.review-queue` also keeps `reasons` and `categoryId`.

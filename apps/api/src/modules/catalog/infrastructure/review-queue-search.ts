@@ -1,5 +1,5 @@
 import type { Prisma } from '../../../generated/prisma/client';
-import type { QueueTextSearch } from '../application/ports/own-catalog.reader';
+import type { OfferQueueFilter, QueueTextSearch } from '../application/ports/own-catalog.reader';
 import { likeLiteral } from './like-literal';
 
 // The text search of the review queue (`q`), one condition per kind of row, so the list and its
@@ -45,4 +45,26 @@ export function revisionQueueSearchWhere(search: QueueTextSearch): Prisma.Catalo
       ...(search.sellerIds.length === 0 ? [] : [{ ownerSellerId: { in: [...search.sellerIds] } }]),
     ],
   };
+}
+
+/**
+ * The conditions of an Offer queue filter beyond seller and submit window, for the list and its
+ * count alike: the text search, the platform category of the product's published revision (an
+ * uncorrelated relation filter on catalog's own tables, as the held-edit list's) and the Offer ids
+ * of a resolved `reasons` filter (an empty list keeps none).
+ */
+export function offerQueueAnd(filter: OfferQueueFilter): Prisma.CatalogOfferWhereInput[] {
+  const and: Prisma.CatalogOfferWhereInput[] = [];
+  if (filter.search !== undefined) and.push(offerQueueSearchWhere(filter.search));
+  if (filter.categoryId !== undefined) {
+    and.push({
+      product: {
+        is: {
+          publishedRevision: { is: { categories: { some: { categoryId: filter.categoryId } } } },
+        },
+      },
+    });
+  }
+  if (filter.offerIds !== undefined) and.push({ id: { in: [...filter.offerIds] } });
+  return and;
 }

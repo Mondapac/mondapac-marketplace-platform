@@ -65,6 +65,13 @@ export interface BulkDecideResult {
   readonly id: string;
   readonly outcome: BulkOutcome;
   readonly reason?: string;
+  /**
+   * The row's label for the result list (the review queue's Offer rows: the product name in the
+   * Market's default locale; null when unknown). Absent on the other queues.
+   */
+  readonly name?: string | null;
+  /** The review reasons that kept the row out of a bulk approval (Offer rows of the review queue). */
+  readonly blockers?: readonly string[];
 }
 
 export interface BulkDecideCounts {
@@ -84,6 +91,10 @@ const SKIPPED_CODES = new Set([
   'review.not-current-revision',
   'offer.product-not-published',
   'seller.not-eligible',
+  // The review queue's bulk approval of Offers (slice 5): a row whose reasons need a person.
+  'review.bulk-not-allowed',
+  'review.bulk-certificate-mixed',
+  'review.reasons-unknown',
 ]);
 
 const isSkipped = (code: string): boolean =>

@@ -3,7 +3,12 @@ import type { Id, MarketContext, MarketId } from '@mondapac/shared-kernel';
 import type { Prisma } from '../../../generated/prisma/client';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
-import type { OfferPendingChangeRepository } from '../application/ports/offer-pending-change.repository';
+import { instantRangeOn } from '../../../platform/list-query';
+import type {
+  OfferChangePage,
+  OfferChangeQueueFilter,
+  OfferPendingChangeRepository,
+} from '../application/ports/offer-pending-change.repository';
 import type { OfferHandling } from '../domain/offer-handling';
 import {
   OfferPendingChange,
@@ -11,6 +16,7 @@ import {
   type OfferPendingChangeStatus,
 } from '../domain/offer-pending-change';
 import type { OfferReviewReason } from '../domain/offer-review-policy';
+import { offerQueueSearchWhere } from './review-queue-search';
 
 type Row = Prisma.CatalogOfferPendingChangeGetPayload<object>;
 
@@ -139,12 +145,12 @@ export class PrismaOfferPendingChangeRepository implements OfferPendingChangeRep
 
   async listPending(
     market: MarketContext,
-    page: {
-      readonly after: { readonly submittedAt: Temporal.Instant; readonly id: string } | null;
-      readonly limit: number;
-    },
+    page: OfferChangePage,
+    filter: OfferChangeQueueFilter = {},
   ): Promise<readonly OfferPendingChange[]> {
     const cursor = page.after;
+    const direction = page.direction ?? 'asc';
+    if (cursor !== null && direction !== 'asc') throw new Error('listPending: keyset is ascending');
     const after =
       cursor === null
         ? {}
@@ -157,11 +163,79 @@ export class PrismaOfferPendingChangeRepository implements OfferPendingChangeRep
               { submittedAt: toDate(cursor.submittedAt), id: { gt: cursor.id } },
             ],
           };
+    const where = queueWhere(market, filter);
     const rows = await this.prisma.tx(market).catalogOfferPendingChange.findMany({
-      where: { marketId: market.marketId, status: 'pending', ...after },
-      orderBy: [{ submittedAt: 'asc' }, { id: 'asc' }],
+      where: {
+        ...where,
+        ...after,
+        // The submit range and the cursor bound both constrain `submitted_at`: keep both.
+        ...(cursor !== null && where.submittedAt !== undefined
+          ? { AND: [...(where.AND ?? []), { submittedAt: where.submittedAt }] }
+          : {}),
+      },
+      orderBy: [{ submittedAt: direction }, { id: direction }],
+      ...(page.offset === undefined || page.offset === 0 ? {} : { skip: page.offset }),
       take: page.limit,
     });
     return rows.map(changeOf);
   }
+
+  async countPending(market: MarketContext, filter: OfferChangeQueueFilter = {}): Promise<number> {
+    return this.prisma.tx(market).catalogOfferPendingChange.count({
+      where: queueWhere(market, filter),
+    });
+  }
+
+  async pendingSellerIds(market: MarketContext, limit: number): Promise<readonly Id<'Seller'>[]> {
+    // GROUP BY over the pending rows only (the queue index leads with market_id, status).
+    const groups = await this.prisma.tx(market).catalogOfferPendingChange.groupBy({
+      by: ['sellerId'],
+      where: { marketId: market.marketId, status: 'pending' },
+      orderBy: { sellerId: 'asc' },
+      take: limit,
+    });
+    return groups.map((group) => group.sellerId as Id<'Seller'>);
+  }
+}
+
+/**
+ * The `where` of the admin list and its count, so both keep the same rows. `market_id` and
+ * `status` lead (the queue index `(market_id, status, submitted_at, id)`, Mojtaba's keyset
+ * decision in slice 2c); seller, reasons and the submit window filter the few pending rows. The
+ * category and the text search reach the Offer's product through uncorrelated relation filters
+ * (same schema, catalog's own tables), as the review queue's search does: fine while the pending
+ * rows are few (see review-queue-search.ts for the plan note).
+ */
+function queueWhere(market: MarketContext, filter: OfferChangeQueueFilter) {
+  const and: Prisma.CatalogOfferPendingChangeWhereInput[] = [];
+  if (filter.search !== undefined)
+    and.push({ offer: { is: offerQueueSearchWhere(filter.search) } });
+  if (filter.categoryId !== undefined) {
+    and.push({
+      offer: {
+        is: {
+          product: {
+            is: {
+              publishedRevision: {
+                is: { categories: { some: { categoryId: filter.categoryId } } },
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+  return {
+    marketId: market.marketId,
+    status: 'pending',
+    ...(filter.sellerId === undefined ? {} : { sellerId: filter.sellerId }),
+    ...(filter.reasons === undefined || filter.reasons.length === 0
+      ? {}
+      : { reasons: { hasSome: [...filter.reasons] } }),
+    ...instantRangeOn('submittedAt', {
+      from: filter.submittedFrom ?? null,
+      to: filter.submittedTo ?? null,
+    }),
+    ...(and.length === 0 ? {} : { AND: and }),
+  } satisfies Prisma.CatalogOfferPendingChangeWhereInput;
 }

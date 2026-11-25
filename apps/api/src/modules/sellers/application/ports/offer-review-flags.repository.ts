@@ -38,6 +38,12 @@ export interface OfferReviewFlagsRepository {
     },
   ): Promise<boolean>;
 
+  /**
+   * How many sellers of the Market have their review stop on (the admin stop banner, slice 5).
+   * The rows are one per seller; a count of the few `true` rows.
+   */
+  countStopped(market: MarketContext): Promise<number>;
+
   /** Appends one change to the insert-only log, in the unit of the change. */
   appendChange(market: MarketContext, entry: OfferReviewFlagChangeEntry): Promise<void>;
 }

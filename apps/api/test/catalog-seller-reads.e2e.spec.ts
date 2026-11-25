@@ -177,6 +177,7 @@ describe('seller read routes over HTTP (integration)', () => {
               Promise.resolve([{ variantId: VARIANT, variantSku: 'SKU-1-A', selling: false }]),
             offerStatusCounts: () =>
               Promise.resolve({ draft: 0, pendingFirstPublish: 0, changesNeeded: 0, published: 0 }),
+            pendingQueueSellerIds: () => Promise.resolve([]),
             pendingReviewCount: () => Promise.resolve(0),
             productForm: () => Promise.resolve({ fields: [], categories: [] }),
             productCategories: () =>

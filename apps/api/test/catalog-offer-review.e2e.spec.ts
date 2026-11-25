@@ -15,6 +15,10 @@ import { CLAIM_EVALUATOR } from '../src/modules/catalog/application/ports/claim-
 import { OFFER_PENDING_CHANGE_REPOSITORY } from '../src/modules/catalog/application/ports/offer-pending-change.repository';
 import { OFFER_REPOSITORY } from '../src/modules/catalog/application/ports/offer.repository';
 import { SELLER_OFFER_REVIEW_FLAGS_READER } from '../src/modules/catalog/application/ports/seller-offer-review-flags.reader';
+import { OFFER_REVIEW_QUEUE_FACTS } from '../src/modules/catalog/application/ports/offer-review';
+import { CATEGORY_OFFER_REVIEW_FLAGS_STORE } from '../src/modules/catalog/application/ports/category-offer-review-flags.store';
+import { OFFER_REVIEW_STOPS_READER } from '../src/modules/catalog/application/ports/offer-review-stops.reader';
+import type { OfferReviewReason } from '../src/modules/catalog/domain/offer-review-policy';
 import { SELLER_REVIEW_STANDING_REPOSITORY } from '../src/modules/catalog/application/ports/seller-review-standing.repository';
 import { ClaimQueryBuilder } from '../src/modules/catalog/application/tags/claim-query-builder';
 import { OfferPendingChange } from '../src/modules/catalog/domain/offer-pending-change';
@@ -110,6 +114,11 @@ describe('admin Offer review over HTTP (integration)', () => {
   let evaluator: FakeClaimEvaluator;
   let claimFacts: FixedFactsClaimQueryBuilder;
   let standings: InMemorySellerReviewStandings;
+  /** The first-publication reasons and tag types of Offers (the queue's chips, slice 5). */
+  let firstReasons: Map<string, readonly OfferReviewReason[]>;
+  let tagTypes: Map<string, readonly string[]>;
+  /** The Market's emergency stop as the settings facade answers it. */
+  let marketStop: boolean;
   const http = () => request(app.getHttpServer());
 
   async function boot() {
@@ -135,6 +144,12 @@ describe('admin Offer review over HTTP (integration)', () => {
             findById: (_m: MarketContext, offerId: Id<'Offer'>) =>
               Promise.resolve(
                 offers.has(offerId) ? Offer.restore(offers.get(offerId)!.state) : null,
+              ),
+            findManyByIds: (_m: MarketContext, wanted: readonly Id<'Offer'>[]) =>
+              Promise.resolve(
+                wanted.flatMap((offerId) =>
+                  offers.has(offerId) ? [Offer.restore(offers.get(offerId)!.state)] : [],
+                ),
               ),
             save: (_m: MarketContext, offer: Offer, actor: OfferActor) => {
               if (saveThrows !== null) return Promise.reject(saveThrows);
@@ -166,6 +181,7 @@ describe('admin Offer review over HTTP (integration)', () => {
           })
           .overrideProvider(OWN_CATALOG_READER)
           .useValue({
+            pendingQueueSellerIds: () => Promise.resolve([]),
             pendingReviewCount: () => Promise.resolve(1),
             pendingRevisionCount: () => Promise.resolve(0),
             listPendingRevisions: () => Promise.resolve([]),
@@ -188,6 +204,47 @@ describe('admin Offer review over HTTP (integration)', () => {
           .useValue(standings)
           .overrideProvider(SELLER_OFFER_REVIEW_FLAGS_READER)
           .useValue({ flagsOf: () => Promise.resolve(FLAGS_OFF) })
+          .overrideProvider(OFFER_REVIEW_QUEUE_FACTS)
+          .useValue({
+            pendingFirstPublicationsWithReasons: () => Promise.resolve([]),
+            firstPublicationReasons: (_m: MarketContext, wanted: readonly string[]) =>
+              Promise.resolve(
+                new Map(
+                  // Each decision is about the Offer's version now (the submit's).
+                  wanted.flatMap((offerId) =>
+                    firstReasons.has(offerId)
+                      ? [
+                          [
+                            offerId,
+                            {
+                              offerVersion: offers.get(offerId)?.state.version ?? 1,
+                              reasons: firstReasons.get(offerId)!,
+                            },
+                          ],
+                        ]
+                      : [],
+                  ),
+                ),
+              ),
+            openTagTypes: (_m: MarketContext, wanted: readonly string[]) =>
+              Promise.resolve(
+                new Map(wanted.map((offerId) => [offerId, tagTypes.get(offerId) ?? []])),
+              ),
+          })
+          .overrideProvider(CATEGORY_OFFER_REVIEW_FLAGS_STORE)
+          .useValue({
+            listFlagged: () =>
+              Promise.resolve([
+                { categoryId: PRODUCT, alwaysReview: true, reviewStop: true, version: 1 },
+                { categoryId: SELLER, alwaysReview: true, reviewStop: false, version: 1 },
+              ]),
+            publishedCategoryIds: () => Promise.resolve([]),
+          })
+          .overrideProvider(OFFER_REVIEW_STOPS_READER)
+          .useValue({
+            marketStop: () => Promise.resolve(marketStop),
+            stoppedSellerCount: () => Promise.resolve(2),
+          })
           .overrideProvider(AUDIT_WRITER)
           .useValue({
             record: (_c: unknown, entry: { action: string }) => {
@@ -377,6 +434,9 @@ describe('admin Offer review over HTTP (integration)', () => {
     }, []);
     claimFacts = new FixedFactsClaimQueryBuilder(null);
     standings = new InMemorySellerReviewStandings();
+    firstReasons = new Map();
+    tagTypes = new Map();
+    marketStop = false;
   });
   afterEach(async () => {
     await app.close();
@@ -393,6 +453,12 @@ describe('admin Offer review over HTTP (integration)', () => {
       }
     }
     expect(document['/catalog/admin/offer-changes']?.get?.responses).toHaveProperty('403');
+    // Slice 5: the Edits list's export, one change by id and the stop banner's counts.
+    expect(document['/catalog/admin/offer-changes/export']?.get?.responses).toHaveProperty('413');
+    expect(document['/catalog/admin/offer-changes/{changeId}']?.get?.responses).toHaveProperty(
+      '404',
+    );
+    expect(document['/catalog/admin/offer-review/stops']?.get?.responses).toHaveProperty('200');
     for (const route of ['approve', 'request-changes', 'reject']) {
       const responses =
         document[`/catalog/admin/offer-changes/{changeId}/${route}`]?.post?.responses;
@@ -421,6 +487,8 @@ describe('admin Offer review over HTTP (integration)', () => {
       const later = waiting(code, 9);
       const earlier = waiting(code, 1);
       waiting(code, 2, { status: 'draft', submittedAt: null, handling: null });
+      firstReasons.set(earlier.state.id, ['probation', 'certificate-badge']);
+      tagTypes.set(earlier.state.id, [code === 'AU' ? 'halal' : 'zz-cert']);
 
       const response = await get(code, '/review-queue', sessionOf(code, VIEWER, 1));
 
@@ -437,7 +505,10 @@ describe('admin Offer review over HTTP (integration)', () => {
         storeName: 'Dates Co',
         product: { productCode: 'P00000001', typeCode: 'simple', name: 'Dates' },
         handling: 'SEALED_ORIGINAL',
+        reasons: ['probation', 'certificate-badge'],
+        tagTypes: [code === 'AU' ? 'halal' : 'zz-cert'],
       });
+      expect(body.items[1]).toMatchObject({ reasons: [], tagTypes: [] });
     });
 
     it('pages the queue with limit and afterId, and refuses a bad cursor and limit', async () => {
@@ -455,6 +526,29 @@ describe('admin Offer review over HTTP (integration)', () => {
       expect((second.body as { nextAfterId: unknown }).nextAfterId).toBeNull();
       expect((await get(code, '/review-queue?afterId=nope', session)).status).toBe(400);
       expect((await get(code, '/review-queue?limit=0', session)).status).toBe(400);
+    });
+
+    it('takes the Offer filters reasons and categoryId, refused for product revisions (slice 5)', async () => {
+      await boot();
+      await seeded(code);
+      waiting(code, 1);
+      const session = sessionOf(code, VIEWER, 1);
+      const category = '01990000-0000-7000-8000-0000000000c1';
+      const kept = await get(
+        code,
+        `/review-queue?kind=offer-first-publication&reasons=probation,handling&categoryId=${category}`,
+        session,
+      );
+      expect(kept.status).toBe(200);
+      expect(kept.body).toMatchObject({ sellers: [], sellersCapped: false });
+      expect(
+        (await get(code, '/review-queue?kind=product-revision&reasons=probation', session)).status,
+      ).toBe(400);
+      expect((await get(code, '/review-queue?reasons=nope', session)).status).toBe(400);
+      expect((await get(code, '/review-queue?categoryId=x', session)).status).toBe(400);
+      expect(
+        (await get(code, '/review-queue/export?reasons=probation', session).buffer(true)).status,
+      ).toBe(200);
     });
 
     it('exports the queue as CSV and XLSX with the list filters, and refuses a bad request', async () => {
@@ -772,6 +866,192 @@ describe('admin Offer review over HTTP (integration)', () => {
       expect((await get(code, '/offer-changes?limit=0', session)).status).toBe(400);
       expect((await get(code, '/offer-changes', null)).status).toBe(401);
       expect((await get(code, '/offer-changes', sessionOf(code, NO_KEY, 3))).status).toBe(403);
+    });
+
+    it('serves the Edits super list: filters, total, live values, actions per key (slice 5)', async () => {
+      await boot();
+      await seeded(code);
+      const a = held(1, { proposedHandling: 'FRESH' });
+      const b = held(2, { proposedDescription: { 'en-AU': 'New text' } });
+      pendingChanges.rows.set(b.change.state.id, {
+        ...pendingChanges.rows.get(b.change.state.id)!,
+        reasons: ['contact-text'],
+      });
+      const viewer = sessionOf(code, VIEWER, 1);
+
+      const page = await get(code, '/offer-changes?page=1&pageSize=1&paging=pages', viewer);
+      expect(page.status).toBe(200);
+      expect(page.headers['cache-control']).toBe('no-store');
+      expect(page.body).toMatchObject({
+        page: 1,
+        pageSize: 1,
+        paging: 'pages',
+        total: 2,
+        totalPending: 2,
+        hasNext: true,
+        searchCapped: false,
+      });
+      const row = (page.body as { items: Record<string, unknown>[] }).items[0];
+      expect(row).toMatchObject({
+        changeId: a.change.state.id,
+        proposedHandling: 'FRESH',
+        storeName: 'Dates Co',
+        product: { productCode: 'P00000001', name: 'Dates' },
+        offer: { sellerSku: 'SKU-1', status: 'published', version: 5 },
+        live: {
+          description: { 'en-AU': 'Fresh dates' },
+          handling: 'SEALED_ORIGINAL',
+          tagTypes: [],
+        },
+        // The Viewer holds no approve key: no decision is offered.
+        actions: [],
+      });
+      const filtered = await get(
+        code,
+        `/offer-changes?reasons=contact-text,review-all&sellerId=${SELLER}&submittedFrom=${encodeURIComponent(
+          START.toString(),
+        )}`,
+        sessionOf(code, MODERATOR, 2),
+      );
+      expect((filtered.body as { items: { changeId: string; actions: string[] }[] }).items).toEqual(
+        [
+          expect.objectContaining({
+            changeId: b.change.state.id,
+            actions: ['approve', 'request-changes', 'reject'],
+          }),
+        ],
+      );
+      expect((await get(code, '/offer-changes?reasons=nope', viewer)).status).toBe(400);
+      expect((await get(code, '/offer-changes?limit=1&page=1', viewer)).status).toBe(400);
+      expect((await get(code, '/offer-changes?pageSize=abc', viewer)).status).toBe(400);
+      expect((await get(code, '/offer-changes?q=x', viewer)).status).toBe(400);
+    });
+
+    it('exports the Edits list as CSV and XLSX, and reads one change with its live values', async () => {
+      await boot();
+      await seeded(code);
+      const a = held(1, { proposedHandling: 'FRESH' });
+      const viewer = sessionOf(code, VIEWER, 1);
+
+      const csv = await get(code, '/offer-changes/export?reasons=handling', viewer).buffer(true);
+      expect(csv.status).toBe(200);
+      expect(csv.headers['content-type']).toContain('text/csv');
+      expect(csv.headers['content-disposition']).toMatch(
+        /^attachment; filename="offer-changes-.*\.csv"$/,
+      );
+      const lines = csv.text.replace('\uFEFF', '').trim().split(/\r?\n/);
+      expect(lines).toHaveLength(2);
+      expect(lines[1]).toContain(`${a.change.state.id},${a.offer.state.id},P00000001,Dates`);
+      const xlsx = await get(code, '/offer-changes/export?format=xlsx', viewer).buffer(true);
+      expect(xlsx.headers['content-type']).toContain('spreadsheetml');
+      expect((await get(code, '/offer-changes/export?format=pdf', viewer)).status).toBe(400);
+      expect((await get(code, '/offer-changes/export', null)).status).toBe(401);
+      expect((await get(code, '/offer-changes/export', sessionOf(code, NO_KEY, 3))).status).toBe(
+        403,
+      );
+
+      const one = await get(code, `/offer-changes/${a.change.state.id}`, viewer);
+      expect(one.status).toBe(200);
+      expect(one.body).toMatchObject({
+        changeId: a.change.state.id,
+        live: { handling: 'SEALED_ORIGINAL' },
+        proposedHandling: 'FRESH',
+      });
+      expect(
+        (await get(code, `/offer-changes/${id<'OfferPendingChange'>(0x8fff)}`, viewer)).status,
+      ).toBe(404);
+      expect((await get(code, '/offer-changes/nope', viewer)).status).toBe(400);
+      expect(
+        (await get(code, `/offer-changes/${a.change.state.id}`, sessionOf(code, NO_KEY, 4))).status,
+      ).toBe(403);
+    });
+
+    it('answers the stop banner counts, and 401 or 403 without a session or the key', async () => {
+      await boot();
+      await seeded(code);
+      marketStop = true;
+      const stops = await get(code, '/offer-review/stops', sessionOf(code, VIEWER, 1));
+      expect(stops.status).toBe(200);
+      expect(stops.headers['cache-control']).toBe('no-store');
+      expect(stops.body).toEqual({
+        marketStop: true,
+        stoppedSellers: 2,
+        stoppedCategories: 1,
+        active: true,
+      });
+      expect((await get(code, '/offer-review/stops', null)).status).toBe(401);
+      expect((await get(code, '/offer-review/stops', sessionOf(code, NO_KEY, 3))).status).toBe(403);
+    });
+
+    it('bulk-approves R1 and R6 first publications and skips an R3 row with its name and blockers', async () => {
+      await boot();
+      await seeded(code);
+      const r1 = waiting(code, 1);
+      const r6 = waiting(code, 2);
+      const r3 = waiting(code, 3);
+      firstReasons.set(r1.state.id, ['probation']);
+      firstReasons.set(r6.state.id, ['full-review']);
+      firstReasons.set(r3.state.id, ['probation', 'handling']);
+
+      const response = await post(
+        code,
+        '/review-queue/bulk-decide',
+        sessionOf(code, MODERATOR, 1),
+        {
+          kind: 'offer',
+          action: 'approve',
+          items: [r1, r6, r3].map((offer) => ({ id: offer.state.id, version: 4 })),
+        },
+      );
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        action: 'approve',
+        counts: { done: 2, skipped: 1, failed: 0 },
+        results: [
+          { id: r1.state.id, outcome: 'done', name: 'Dates' },
+          { id: r6.state.id, outcome: 'done', name: 'Dates' },
+          {
+            id: r3.state.id,
+            outcome: 'skipped',
+            reason: 'review.bulk-not-allowed',
+            name: 'Dates',
+            blockers: ['handling'],
+          },
+        ],
+      });
+      expect(offers.get(r3.state.id)!.state.status).toBe('pending-first-publish');
+      expect(saved.map((s) => s.offer.state.id)).toEqual([r1.state.id, r6.state.id]);
+    });
+
+    it('skips every row of a bulk approval while the Market emergency stop is on (Hassan M1)', async () => {
+      await boot();
+      await seeded(code);
+      const r1 = waiting(code, 1);
+      firstReasons.set(r1.state.id, ['probation']);
+      marketStop = true;
+
+      const response = await post(
+        code,
+        '/review-queue/bulk-decide',
+        sessionOf(code, MODERATOR, 1),
+        { kind: 'offer', action: 'approve', items: [{ id: r1.state.id, version: 4 }] },
+      );
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        action: 'approve',
+        counts: { done: 0, skipped: 1, failed: 0 },
+        results: [
+          {
+            id: r1.state.id,
+            outcome: 'skipped',
+            reason: 'review.bulk-not-allowed',
+            name: 'Dates',
+            blockers: ['emergency-stop'],
+          },
+        ],
+      });
+      expect(offers.get(r1.state.id)!.state.status).toBe('pending-first-publish');
+      expect(saved).toEqual([]);
     });
 
     it('approves a held change: its fields go live in one edit, admin actor, audited', async () => {

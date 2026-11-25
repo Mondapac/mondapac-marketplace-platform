@@ -30,7 +30,7 @@ import type { Product, ProductStatus } from '../domain/product';
 import type { WorkingCopy } from '../domain/working-copy';
 import { offerFromRow } from './prisma-offer.repository';
 import { productFromRow } from './prisma-product.repository';
-import { offerQueueSearchWhere, revisionQueueSearchWhere } from './review-queue-search';
+import { offerQueueAnd, revisionQueueSearchWhere } from './review-queue-search';
 
 const toInstant = (date: Date): Temporal.Instant =>
   Temporal.Instant.fromEpochMilliseconds(date.getTime());
@@ -716,9 +716,38 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
         status: 'pending-first-publish',
         ...(filter.sellerId === undefined ? {} : { sellerId: filter.sellerId }),
         ...submittedWhere('submittedAt', filter),
-        ...(filter.search === undefined ? {} : { AND: [offerQueueSearchWhere(filter.search)] }),
+        AND: offerQueueAnd(filter),
       },
     });
+  }
+
+  async pendingQueueSellerIds(
+    market: MarketContext,
+    kinds: { readonly offers: boolean; readonly revisions: boolean },
+    limit: number,
+  ): Promise<readonly Id<'Seller'>[]> {
+    const tx = this.prisma.tx(market);
+    const found = new Set<string>();
+    // GROUP BY over the queue rows only, with no ORDER BY or LIMIT (Sajad B1): an ordered,
+    // limited group pulls the plan onto a (market_id, seller_id, ...) index of the whole table,
+    // which never stops early while the queue has fewer sellers than the limit. Unordered, the
+    // partial queue index picks the rows and a hash aggregate groups them; the few groups are
+    // sorted and capped here. The work follows the queue's length, not the Market's Offers.
+    if (kinds.offers) {
+      const groups = await tx.catalogOffer.groupBy({
+        by: ['sellerId'],
+        where: { marketId: market.marketId, status: 'pending-first-publish' },
+      });
+      for (const group of groups) found.add(group.sellerId);
+    }
+    if (kinds.revisions) {
+      const groups = await tx.catalogProduct.groupBy({
+        by: ['ownerSellerId'],
+        where: pendingRevisionsWhere(market, {}),
+      });
+      for (const group of groups) if (group.ownerSellerId !== null) found.add(group.ownerSellerId);
+    }
+    return [...found].sort().slice(0, limit) as Id<'Seller'>[];
   }
 
   async pendingRevisionCount(

@@ -60,6 +60,8 @@ const offerRow = (n: number): ReviewQueueRow => ({
   conditionCode: 'new',
   description: {},
   handling: null,
+  reasons: ['probation'],
+  tagTypes: [],
   submittedAt: SENT.toString(),
   actions: [],
 });
@@ -110,6 +112,8 @@ describe.each(['AU', 'ZZ'] as const)('review queue export in market %s', (code) 
           total: null,
           totals: { 'product-revision': 0, 'offer-first-publication': 0 },
           searchCapped: capped,
+          sellers: [],
+          sellersCapped: false,
         } satisfies ReviewQueueListOutput,
       } as Result<ReviewQueueListOutput, ReviewQueueListFailure>);
     },
@@ -156,7 +160,7 @@ describe.each(['AU', 'ZZ'] as const)('review queue export in market %s', (code) 
     expect(lines).toEqual([
       'kind,product_code,product_name,seller_id,store_name,seller_sku,first_publication,reasons,required_checks,has_images,warnings,submitted_at',
       `product-revision,P1,Product 1,${ID(0x2000)},Dates Co,,yes,new-product; photo,claims,yes,gtin.duplicate,${SENT.toString()}`,
-      `offer-first-publication,P2,'=cmd,${ID(0x2000)},,SKU-2,,,,,,${SENT.toString()}`,
+      `offer-first-publication,P2,'=cmd,${ID(0x2000)},,SKU-2,,probation,,,,${SENT.toString()}`,
     ]);
   });
 

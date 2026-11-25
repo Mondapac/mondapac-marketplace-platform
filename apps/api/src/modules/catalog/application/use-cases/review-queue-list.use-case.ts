@@ -17,11 +17,14 @@ import {
 import { CATALOG_PRODUCT_APPROVE, CATALOG_PRODUCT_VIEW } from '../../contracts/permissions';
 import type { OfferHandling } from '../../domain/offer';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
+import type { OfferReviewQueueFacts } from '../ports/offer-review';
 import type { OfferRepository } from '../ports/offer.repository';
 import type { OwnCatalogReader, QueueTextSearch } from '../ports/own-catalog.reader';
 import type { VariantGtinRegistry } from '../ports/variant-gtin.registry';
 import type { SellerNamesReader } from '../ports/seller-names.reader';
 import type { StoreNameSearch } from '../ports/store-name-search';
+import { parseOfferReviewReasons } from '../offer-changes/review-reasons-filter';
+import type { OfferReviewReason } from '../../domain/offer-review-policy';
 import { requiredChecksOf } from '../revisions/review-checks';
 import { invalid, parsePage, isoOf, type ValidationFailure } from '../own-reads/own-reads.shared';
 
@@ -35,6 +38,8 @@ export const REVIEW_QUEUE_SEARCH_MIN_LENGTH = 2;
 export const REVIEW_QUEUE_SEARCH_MAX_LENGTH = 100;
 /** The most rows read from each source for one descending page. */
 const DESC_MAX_ROWS = 1000;
+/** The most stores the seller filter offers (one page of the store-name read). */
+export const REVIEW_QUEUE_SELLERS_MAX = 100;
 
 /** What each row action needs: the approve key (the single decisions check it again). */
 export const REVIEW_ROW_ACTION_RULES: readonly RowActionRule<unknown>[] = [
@@ -58,6 +63,13 @@ export interface ReviewQueueListInput {
   readonly firstPublication?: unknown;
   /** Product revisions only: the pending revision has a photo (true) or none (false). */
   readonly hasImages?: unknown;
+  /**
+   * Offers only: review reason codes (an array, or one comma-separated text); Offers whose latest
+   * first-publication decision carries any of them.
+   */
+  readonly reasons?: unknown;
+  /** Offers only: the product's published revision names this platform category. */
+  readonly categoryId?: unknown;
   /** Submitted at or after this ISO 8601 instant (inclusive); both kinds of row. */
   readonly submittedFrom?: unknown;
   /** Submitted before this ISO 8601 instant (exclusive); both kinds of row. */
@@ -92,6 +104,13 @@ export interface OfferReviewRow {
   readonly conditionCode: string;
   readonly description: Readonly<Record<string, string>>;
   readonly handling: OfferHandling | null;
+  /**
+   * The review reasons of the Offer's latest first-publication decision (the reason chips; slice
+   * 5), in policy order; empty when none is stored (an Offer queued before the policy).
+   */
+  readonly reasons: readonly string[];
+  /** The certification type codes of the Offer's open tags, sorted (the R2 bulk check). */
+  readonly tagTypes: readonly string[];
   /** The instant the seller submitted; the queue is oldest first. */
   readonly submittedAt: string | null;
   /** The row actions of the Actions menu the caller may run: `approve`, `request-changes`. */
@@ -151,6 +170,42 @@ export interface ReviewQueueListOutput {
    * stores left out are missing, so the search must be narrowed. False with no `q`.
    */
   readonly searchCapped: boolean;
+  /**
+   * The stores with a row of the kinds `kind` keeps, whatever the other filters (the seller
+   * filter's options), by store name; a store `sellers` cannot name has a null name.
+   */
+  readonly sellers: readonly QueueSeller[];
+  /** More stores have rows than {@link REVIEW_QUEUE_SELLERS_MAX}: the others are not offered. */
+  readonly sellersCapped: boolean;
+}
+
+/** One store of the seller filter's options. */
+export interface QueueSeller {
+  readonly sellerId: string;
+  readonly storeName: string | null;
+}
+
+/** The seller filter's options: names read for the ids, named stores first by name, then by id. */
+export async function queueSellersOf(
+  context: CallContext,
+  sellerNames: SellerNamesReader,
+  ids: readonly Id<'Seller'>[],
+): Promise<readonly QueueSeller[]> {
+  if (ids.length === 0) return [];
+  const names = await sellerNames.storeNames(context, ids);
+  return ids
+    .map((sellerId): QueueSeller => ({ sellerId, storeName: names.get(sellerId) ?? null }))
+    .sort((a, b) =>
+      a.storeName !== null && b.storeName !== null
+        ? a.storeName.localeCompare(b.storeName) || (a.sellerId < b.sellerId ? -1 : 1)
+        : a.storeName !== null
+          ? -1
+          : b.storeName !== null
+            ? 1
+            : a.sellerId < b.sellerId
+              ? -1
+              : 1,
+    );
 }
 
 export type ReviewQueueListFailure =
@@ -165,6 +220,7 @@ export interface ReviewQueueListDependencies {
   readonly storeSearch: StoreNameSearch;
   readonly gtinRegistry: VariantGtinRegistry;
   readonly productApproveProbe: PermissionProbe;
+  readonly queueFacts: OfferReviewQueueFacts;
 }
 
 interface Position {
@@ -202,6 +258,8 @@ interface QueueFilter {
   readonly sellerId?: Id<'Seller'>;
   readonly firstPublication?: boolean;
   readonly hasImages?: boolean;
+  readonly reasons?: readonly OfferReviewReason[];
+  readonly categoryId?: Id<'Category'>;
   readonly submittedFrom?: Temporal.Instant | null;
   readonly submittedTo?: Temporal.Instant | null;
   /** The trimmed search text; absent for none. */
@@ -213,6 +271,8 @@ const FILTER_KEYS = [
   'sellerId',
   'firstPublication',
   'hasImages',
+  'reasons',
+  'categoryId',
   'submittedFrom',
   'submittedTo',
   'q',
@@ -241,7 +301,9 @@ export function parseQueueSearch(value: unknown): Result<string | null, Validati
 
 /**
  * The filters of the queue. `firstPublication` and `hasImages` are product revision fields: given,
- * they keep revisions only, and asking them of Offers is refused.
+ * they keep revisions only, and asking them of Offers is refused. `reasons` and `categoryId` are
+ * Offer fields: given, they keep Offers only, and asking them of revisions (or with a revision
+ * field) is refused.
  */
 function parseFilter(record: Record<string, unknown>): Result<QueueFilter, ValidationFailure> {
   const kind = record['kind'];
@@ -266,6 +328,22 @@ function parseFilter(record: Record<string, unknown>): Result<QueueFilter, Valid
     if (kind === 'offer-first-publication') return invalid(key, 'not-allowed');
     flags[key] = value;
   }
+  const reasons = parseOfferReviewReasons(record['reasons']);
+  if (!reasons.ok) return reasons;
+  let categoryId: Id<'Category'> | undefined;
+  if (record['categoryId'] !== undefined) {
+    const parsed =
+      typeof record['categoryId'] === 'string' ? parseId<'Category'>(record['categoryId']) : null;
+    if (parsed === null || !parsed.ok) return invalid('categoryId', 'format');
+    categoryId = parsed.value;
+  }
+  const revisionField = flags.firstPublication !== undefined || flags.hasImages !== undefined;
+  for (const [key, given] of [
+    ['reasons', reasons.value !== null],
+    ['categoryId', categoryId !== undefined],
+  ] as const) {
+    if (given && (kind === 'product-revision' || revisionField)) return invalid(key, 'not-allowed');
+  }
   const submitted = parseNamedInstantRange(record, 'submittedFrom', 'submittedTo');
   if (!submitted.ok) return submitted;
   const text = parseQueueSearch(record['q']);
@@ -274,6 +352,8 @@ function parseFilter(record: Record<string, unknown>): Result<QueueFilter, Valid
     kind: (kind as ReviewQueueKind | undefined) ?? null,
     ...(sellerId === undefined ? {} : { sellerId }),
     ...flags,
+    ...(reasons.value === null ? {} : { reasons: reasons.value }),
+    ...(categoryId === undefined ? {} : { categoryId }),
     submittedFrom: submitted.value.from,
     submittedTo: submitted.value.to,
     ...(text.value === null ? {} : { text: text.value }),
@@ -302,8 +382,9 @@ function parseCursor(value: unknown): Result<Position | null, ValidationFailure>
  * (`sellerSummaries`; absent when `sellers` cannot say) and the label of its product; a product
  * revision row also carries what changed and the checks an approval must confirm. Rule: the key
  * `catalog.product.view` and the admin population. `afterId` is the opaque `nextAfterId` of the
- * previous page; the filters (`kind`, `sellerId`, `submittedFrom`, `submittedTo`, `q`, and for
- * revisions `firstPublication` and `hasImages`) keep the same order, so a cursor stays valid under
+ * previous page; the filters (`kind`, `sellerId`, `submittedFrom`, `submittedTo`, `q`, for
+ * revisions `firstPublication` and `hasImages`, for Offers `reasons` (the latest first-publication
+ * decision's) and `categoryId`) keep the same order, so a cursor stays valid under
  * the same filters. `q` keeps the rows whose product code, product name (the one the row shows) or
  * store name contains the text; the store names are matched by `sellers` before the read unit, and a
  * failed match fails the read (`access.unavailable`) rather than drop the store matches. `total`
@@ -391,16 +472,26 @@ export class ReviewQueueList extends UseCase<
       descending = paged.value.direction === 'desc';
     }
     const after = cursor;
-    const { kind, sellerId, firstPublication, hasImages, submittedFrom, submittedTo, text } =
-      filter.value;
+    const {
+      kind,
+      sellerId,
+      firstPublication,
+      hasImages,
+      reasons,
+      categoryId,
+      submittedFrom,
+      submittedTo,
+      text,
+    } = filter.value;
     const submittedFilter = {
       ...(submittedFrom === null || submittedFrom === undefined ? {} : { submittedFrom }),
       ...(submittedTo === null || submittedTo === undefined ? {} : { submittedTo }),
     };
     const ranged = (submittedFrom ?? null) !== null || (submittedTo ?? null) !== null;
     const revisionOnly = firstPublication !== undefined || hasImages !== undefined;
+    const offerOnly = reasons !== undefined || categoryId !== undefined;
     const withOffers = kind !== 'product-revision' && !revisionOnly;
-    const withRevisions = kind !== 'offer-first-publication';
+    const withRevisions = kind !== 'offer-first-publication' && !offerOnly;
     let locale: string;
     try {
       locale = this.deps.policy.locales(market).default;
@@ -424,13 +515,13 @@ export class ReviewQueueList extends UseCase<
         return err({ code: 'access.unavailable' });
       }
     }
-    const offerFilter = {
+    const baseFilter = {
       ...(sellerId === undefined ? {} : { sellerId }),
       ...submittedFilter,
       ...(search === undefined ? {} : { search }),
     };
     const revisionFilter = {
-      ...offerFilter,
+      ...baseFilter,
       ...(firstPublication === undefined ? {} : { firstPublication }),
       ...(hasImages === undefined ? {} : { hasImages }),
     };
@@ -439,11 +530,27 @@ export class ReviewQueueList extends UseCase<
     const read = await this.deps.unitOfWork.run(
       market,
       async () => {
+        // The `reasons` filter resolves to the waiting Offers whose latest decision carries one.
+        const offerIds =
+          reasons === undefined
+            ? undefined
+            : await this.deps.queueFacts.pendingFirstPublicationsWithReasons(market, reasons);
+        const offerFilter = {
+          ...baseFilter,
+          ...(categoryId === undefined ? {} : { categoryId }),
+          ...(offerIds === undefined ? {} : { offerIds }),
+        };
+        const sellerIds = await this.deps.ownReader.pendingQueueSellerIds(
+          market,
+          { offers: kind !== 'product-revision', revisions: kind !== 'offer-first-publication' },
+          REVIEW_QUEUE_SELLERS_MAX + 1,
+        );
         const totals = {
           'product-revision': await this.deps.ownReader.pendingRevisionCount(market),
           'offer-first-publication': await this.deps.ownReader.pendingReviewCount(market),
         };
-        const filtered = sellerId !== undefined || revisionOnly || ranged || search !== undefined;
+        const filtered =
+          sellerId !== undefined || revisionOnly || offerOnly || ranged || search !== undefined;
         const offerTotal = withOffers
           ? filtered
             ? await this.deps.ownReader.pendingReviewCount(market, offerFilter)
@@ -527,6 +634,14 @@ export class ReviewQueueList extends UseCase<
           ],
           locale,
         );
+        const shownOffers = shown.flatMap((entry) =>
+          entry.kind === 'offer' ? [entry.offer.state.id] : [],
+        );
+        const offerReasons = await this.deps.queueFacts.firstPublicationReasons(
+          market,
+          shownOffers,
+        );
+        const offerTagTypes = await this.deps.queueFacts.openTagTypes(market, shownOffers);
         const warnings = new Map<string, readonly string[]>();
         for (const entry of shown) {
           if (entry.kind !== 'revision') continue;
@@ -548,14 +663,34 @@ export class ReviewQueueList extends UseCase<
                 ],
           );
         }
-        return ok({ found, shown, labels, total, totals, warnings });
+        return ok({
+          found,
+          shown,
+          labels,
+          total,
+          totals,
+          warnings,
+          offerReasons,
+          offerTagTypes,
+          sellerIds,
+        });
       },
       { readOnly: true },
     );
     if (!read.ok) {
       return read.error.code === 'validation.failed' ? read : err({ code: 'access.unavailable' });
     }
-    const { found, shown, labels, total, totals, warnings } = read.value;
+    const {
+      found,
+      shown,
+      labels,
+      total,
+      totals,
+      warnings,
+      offerReasons,
+      offerTagTypes,
+      sellerIds,
+    } = read.value;
     const labelOf = new Map(labels.map((label) => [label.productId, label]));
     const last = shown[shown.length - 1];
     const granted = await heldKeys(context, {
@@ -570,6 +705,13 @@ export class ReviewQueueList extends UseCase<
         ),
       ),
     ] as Id<'Seller'>[]);
+
+    const sellersCapped = sellerIds.length > REVIEW_QUEUE_SELLERS_MAX;
+    const sellers = await queueSellersOf(
+      context,
+      this.deps.sellerNames,
+      sellerIds.slice(0, REVIEW_QUEUE_SELLERS_MAX),
+    );
 
     const items = shown.map((entry): ReviewQueueRow => {
       if (entry.kind === 'revision') {
@@ -613,6 +755,8 @@ export class ReviewQueueList extends UseCase<
         conditionCode: state.conditionCode,
         description: state.description,
         handling: state.handling,
+        reasons: offerReasons.get(state.id)?.reasons ?? [],
+        tagTypes: offerTagTypes.get(state.id) ?? [],
         submittedAt: isoOf(state.submittedAt),
         actions,
       };
@@ -629,6 +773,8 @@ export class ReviewQueueList extends UseCase<
         total,
         totals,
         searchCapped,
+        sellers,
+        sellersCapped,
       });
     }
     const hasNext = pagesMode ? offset + pageSize < total : hasMore;
@@ -643,6 +789,8 @@ export class ReviewQueueList extends UseCase<
       total: pagesMode ? total : null,
       totals,
       searchCapped,
+      sellers,
+      sellersCapped,
     });
   }
 }

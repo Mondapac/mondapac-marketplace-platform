@@ -42,6 +42,8 @@ import {
 import { TOPIC_SUGGESTION_SORTS } from '../use-cases/topic-suggestion-list.use-case';
 import { VARIANT_REQUEST_SORTS } from '../use-cases/variant-request-list.use-case';
 import { parseFilter as parseVariantsFilter } from '../variants/variant-admin.shared';
+import { parseOfferReviewReasons } from '../offer-changes/review-reasons-filter';
+import { OFFER_CHANGES_SORTS } from '../use-cases/admin-offer-changes-list.use-case';
 
 // The catalog lists of super list phase 2 register with `lists` so they have saved filters through
 // the generic routes (B0-1b): the admin lists 3 to 13 (the Product review queue and the Revision
@@ -363,7 +365,15 @@ const REVIEW_QUEUE: ListDefinition = {
   shareKey: CATALOG_SAVED_FILTER_SHARE.key,
   parsePayload: savedListPayloadParser({
     views: null,
-    filterKeys: ['kind', 'sellerId', 'firstPublication', 'hasImages', ...SUBMITTED_KEYS],
+    filterKeys: [
+      'kind',
+      'sellerId',
+      'firstPublication',
+      'hasImages',
+      'reasons',
+      'categoryId',
+      ...SUBMITTED_KEYS,
+    ],
     sorts: REVIEW_QUEUE_SORTS,
     read(query) {
       const kind = query['kind'];
@@ -378,6 +388,16 @@ const REVIEW_QUEUE: ListDefinition = {
         if (!FLAGS.includes(value)) return refused(key, 'type');
         // These are revision fields: asked of first publications they are refused, as the list does.
         if (kind === 'offer-first-publication') return refused(key, 'not-allowed');
+      }
+      // Offer fields, as the list reads them: refused for revisions and with a revision field.
+      const offerFields = offerFieldsOf(query);
+      if (offerFields.refusal !== null) return offerFields.refusal;
+      const revisionField =
+        query['firstPublication'] !== undefined || query['hasImages'] !== undefined;
+      for (const key of ['reasons', 'categoryId']) {
+        if (query[key] !== undefined && (kind === 'product-revision' || revisionField)) {
+          return refused(key, 'not-allowed');
+        }
       }
       const date = dateFilterOf(query, SUBMITTED);
       if (date.refusal !== null) return date.refusal;
@@ -394,6 +414,72 @@ const REVIEW_QUEUE: ListDefinition = {
           sellerId: sellerId === undefined ? null : sellerId.toLowerCase(),
           firstPublication: query['firstPublication'] ?? null,
           hasImages: query['hasImages'] ?? null,
+          ...offerFields.canonical,
+        }),
+      };
+    },
+  }),
+};
+
+const none = { reasons: null, categoryId: null };
+
+/**
+ * The Offer review filters shared by the first-publication queue and the held-edit list: `reasons`
+ * (one or more review reason codes, comma-separated, as the lists read them) and `categoryId`.
+ */
+function offerFieldsOf(query: Query): {
+  refusal: Read | null;
+  canonical: { reasons: string | null; categoryId: string | null };
+} {
+  const reasons = parseOfferReviewReasons(query['reasons']);
+  if (!reasons.ok) {
+    return { refusal: { fields: fieldsOf(reasons.error), canonical: {} }, canonical: none };
+  }
+  const categoryId = query['categoryId'];
+  if (categoryId !== undefined && !UUID.test(categoryId)) {
+    return { refusal: refused('categoryId', 'format'), canonical: none };
+  }
+  return {
+    refusal: null,
+    canonical: {
+      reasons: reasons.value === null ? null : reasons.value.join(','),
+      categoryId: categoryId === undefined ? null : categoryId.toLowerCase(),
+    },
+  };
+}
+/** The "Waiting longer than" presets of the held-edit list (the panel turns each into instants). */
+const OFFER_CHANGE_AGES = ['older-24h', 'older-48h', 'older-7d'];
+
+/**
+ * The held edits of live Offers (risk-based Offer approval slice 5): reasons, the age preset,
+ * seller, category and the review queue's search text. The age is kept as its preset id only, as
+ * the panel resolves it into instants on each load.
+ */
+const OFFER_CHANGES: ListDefinition = {
+  listKey: 'admin.catalog.offer-changes',
+  population: 'admin',
+  viewKey: CATALOG_PRODUCT_VIEW.key,
+  shareKey: CATALOG_SAVED_FILTER_SHARE.key,
+  parsePayload: savedListPayloadParser({
+    views: null,
+    filterKeys: ['reasons', 'age', 'sellerId', 'categoryId'],
+    sorts: OFFER_CHANGES_SORTS,
+    read(query) {
+      const offerFields = offerFieldsOf(query);
+      if (offerFields.refusal !== null) return offerFields.refusal;
+      const age = query['age'];
+      if (age !== undefined && !OFFER_CHANGE_AGES.includes(age)) return refused('age', 'enum');
+      const sellerId = query['sellerId'];
+      if (sellerId !== undefined && !UUID.test(sellerId)) return refused('sellerId', 'format');
+      const text = parseQueueSearch(query['q']);
+      if (!text.ok) return { fields: fieldsOf(text.error), canonical: {} };
+      return {
+        fields: [],
+        canonical: canonicalQuery({
+          q: text.value,
+          ...offerFields.canonical,
+          age: age ?? null,
+          sellerId: sellerId === undefined ? null : sellerId.toLowerCase(),
         }),
       };
     },
@@ -443,6 +529,7 @@ export const CATALOG_PHASE2_LISTS: readonly ListDefinition[] = [
   TAG_SUGGESTIONS,
   CATEGORY_PROPOSALS,
   REVIEW_QUEUE,
+  OFFER_CHANGES,
   ownSuggestionList('seller.catalog.attribute-suggestions'),
   ownSuggestionList('seller.catalog.topic-suggestions'),
 ];

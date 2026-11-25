@@ -1,3 +1,4 @@
+import { OFFER_REVIEW_QUEUE_FACTS } from '../src/modules/catalog/application/ports/offer-review';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type {
@@ -215,6 +216,12 @@ describe('admin product revision review over HTTP (integration)', () => {
               return Promise.resolve(waiting.slice(0, page.limit));
             },
           })
+          .overrideProvider(OFFER_REVIEW_QUEUE_FACTS)
+          .useValue({
+            pendingFirstPublicationsWithReasons: () => Promise.resolve([]),
+            firstPublicationReasons: () => Promise.resolve(new Map()),
+            openTagTypes: () => Promise.resolve(new Map()),
+          })
           // The owner has no Offer on the product here: the approval asks nothing (the re-ask of
           // tags at publication is covered by the use-case and db specs, slice 11).
           .overrideProvider(BRAND_ASSIGNER)
@@ -228,6 +235,7 @@ describe('admin product revision review over HTTP (integration)', () => {
           })
           .overrideProvider(OWN_CATALOG_READER)
           .useValue({
+            pendingQueueSellerIds: () => Promise.resolve([]),
             pendingReviewCount: (_m: MarketContext, filter: { sellerId?: string } = {}) =>
               Promise.resolve(
                 [...offers.values()].filter(

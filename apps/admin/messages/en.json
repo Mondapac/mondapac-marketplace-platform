@@ -148,7 +148,8 @@
     "security": "Security",
     "customer-groups": "Customer groups",
     "deletion-requests": "Deletion requests",
-    "customer-attributions": "Suspicious attributions"
+    "customer-attributions": "Suspicious attributions",
+    "offer-reviews": "Offer reviews"
   },
   "home": {
     "title": "Dashboard",
@@ -16693,7 +16694,8 @@
       "title": "Decision made",
       "summary": "{done, plural, one {# row decided} other {# rows decided}}, {skipped, plural, one {# skipped} other {# skipped}}.",
       "failed": "{count, plural, one {# row could not be decided and is still waiting.} other {# rows could not be decided and are still waiting.}}",
-      "skipped-help": "A row that changed, was decided by someone else or needs a permission you do not have is skipped, never forced."
+      "skipped-help": "A row that changed, was decided by someone else or needs a permission you do not have is skipped, never forced.",
+      "skipped-rows": "Skipped rows"
     },
     "error": {
       "too-large": "At most 50 rows can be decided at once.",
@@ -17935,6 +17937,33 @@
             "href": "/settings/offer-review"
           }
         ]
+      },
+      "offer-reviews-changeId": {
+        "title": "Offer review",
+        "about": "One held edit of a live offer: what is live now next to what the seller proposed.",
+        "good": [
+          "Approve, request changes or reject here. A note is needed to request changes or reject."
+        ],
+        "related": [
+          {
+            "label": "Offer reviews",
+            "href": "/offer-reviews?tab=edits"
+          }
+        ]
+      },
+      "settings-offer-review-categories": {
+        "title": "Offer review categories",
+        "about": "Categories whose offers always wait for review, or whose new offers all wait. A flag also covers sub-categories.",
+        "good": [
+          "Every change asks for a reason and a fresh two-step code.",
+          "A banner shows on every admin page while any stop is on."
+        ],
+        "related": [
+          {
+            "label": "Offer review",
+            "href": "/settings/offer-review"
+          }
+        ]
       }
     },
     "tabbed": {
@@ -18391,6 +18420,44 @@
             "related": []
           }
         ]
+      },
+      "t-offer-reviews": {
+        "page": "Offer reviews",
+        "about": "Offers that wait for a person before or after they go on sale, with the reason each one waits.",
+        "good": [
+          "Open a row to see what changed and decide. Request changes and Reject need a note for the seller.",
+          "Dates and times are in your time zone ({zone}). Change it in My profile."
+        ],
+        "tabs": [
+          {
+            "label": "First publications",
+            "text": "New offers waiting for their first publication. Open one to read it and decide, or tick rows to approve them together.",
+            "points": [
+              "Bulk approve works for new sellers, watched sellers, and one seller’s one certificate type. Other rows are skipped and named.",
+              "Send back uses one prepared reason."
+            ],
+            "related": [
+              {
+                "label": "Offer review settings",
+                "href": "/settings/offer-review"
+              }
+            ]
+          },
+          {
+            "label": "Edits",
+            "text": "Changes to live offers that were held for review. The live and proposed values sit side by side.",
+            "points": [
+              "Approve puts every held field live together.",
+              "Request changes and Reject need a note of 1 to 2000 characters."
+            ],
+            "related": [
+              {
+                "label": "Flagged categories",
+                "href": "/settings/offer-review/categories"
+              }
+            ]
+          }
+        ]
       }
     }
   },
@@ -18463,7 +18530,8 @@
       "throttled": "Too many attempts. Wait a moment and try again.",
       "unavailable": "The service isn't available right now. Try again.",
       "unknown": "Something went wrong. Try again."
-    }
+    },
+    "categories-link": "Flagged categories"
   },
   "emergency-stop": {
     "banner": {
@@ -18471,7 +18539,15 @@
       "body": "Every new offer waits for an admin. Offers already live stay on sale.",
       "by-at": "Turned on by {name}, {when}.",
       "at": "Turned on {when}.",
-      "link": "Open emergency stop"
+      "link": "Open emergency stop",
+      "partial": {
+        "title": "Offer review stop is on",
+        "sellers": "Sellers",
+        "categories": "Categories",
+        "body-sellers": "{sellers, plural, one {# seller has} other {# sellers have}} the review stop on: their new offers wait for review.",
+        "body-categories": "{categories, plural, one {# category has} other {# categories have}} the review stop on: new offers in it wait for review.",
+        "body-both": "{sellers, plural, one {# seller} other {# sellers}} and {categories, plural, one {# category} other {# categories}} have the review stop on: their new offers wait for review."
+      }
     },
     "page": {
       "title": "Emergency stop",
@@ -18499,6 +18575,545 @@
       "confirm-body": "Every new offer from every seller will wait for an admin until you turn it off. Offers already live stay on sale. Next you enter a fresh two-step code.",
       "confirm-cancel": "Cancel",
       "confirm-turn-on": "Turn on"
+    }
+  },
+  "offer-review": {
+    "queue": {
+      "title": "Offer reviews",
+      "tabs": "Offer review queue",
+      "tab": {
+        "first": "First publications",
+        "edits": "Edits"
+      },
+      "tab-count": "{tab} ({count})",
+      "count-live": "{count, plural, one {# row waits for review} other {# rows wait for review}}",
+      "no-access": "You don't have access to the offer review queue. It needs the {permission} permission.",
+      "back": "Back to edits"
+    },
+    "reason": {
+      "label": "Why it waits",
+      "emergency-stop": "R0 Emergency stop",
+      "probation": "R1 New seller",
+      "certificate-badge": "R2 Certificate badge",
+      "handling": "R3 Handling",
+      "contact-text": "R5 Contact text",
+      "full-review": "R6 Watched seller",
+      "sensitive-category": "R7 Sensitive category",
+      "review-all": "Review all"
+    },
+    "age": {
+      "days": "{days}d {hours}h",
+      "hours": "{hours}h {minutes}m",
+      "minutes": "{minutes}m"
+    },
+    "handling": {
+      "SEALED_ORIGINAL": "Sealed original",
+      "REPACKED": "Repacked",
+      "PREPARED": "Prepared",
+      "FRESH": "Fresh"
+    },
+    "first": {
+      "title": "First publications",
+      "search": {
+        "label": "Search first publications",
+        "placeholder": "Product code, name or store",
+        "invalid": "Enter at least 2 characters."
+      },
+      "tabs": "Offer review views",
+      "tab": {
+        "first": "All"
+      },
+      "filter": {
+        "title": "Filter first publications",
+        "age": {
+          "older-24h": "Waiting longer than 24 hours",
+          "older-48h": "Waiting longer than 48 hours",
+          "older-7d": "Waiting longer than 7 days"
+        },
+        "name": {
+          "submitted": "Submitted",
+          "reasons": "Reason",
+          "sellerId": "Store",
+          "categoryId": "Category"
+        }
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "submitted": "Waiting since"
+        },
+        "waiting": {
+          "first": "Oldest first",
+          "second": "Newest first"
+        }
+      },
+      "sorted": "Sorted by {field}, {order}",
+      "col": {
+        "offer": "Offer",
+        "seller": "Seller",
+        "reasons": "Why it waits",
+        "tags": "Certificates",
+        "handling": "Handling",
+        "waiting": "Waiting since"
+      },
+      "chip-search": "Search: {text}",
+      "loading": "Loading first publications",
+      "match": "{count, plural, one {# offer matches} other {# offers match}}",
+      "range": "{from}–{to} of {total}",
+      "too-many": "More than {limit} offers match. Add a filter to see the rest.",
+      "no-access": "Your role cannot see the review queue.",
+      "error": {
+        "unavailable": "The first publications could not be loaded. Check your connection and try again.",
+        "refused": "The filters cannot be used. Change them and try again."
+      },
+      "empty": {
+        "title": "Nothing waiting for review.",
+        "body": "New offers and held edits show here when they need a person.",
+        "no-match": "No rows match",
+        "no-match-help": "Change the filters, or clear them."
+      },
+      "select": {
+        "page": "Select all offers on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# offer selected} other {# offers selected}}",
+        "all": "{count, plural, one {The # matching offer is selected} other {All # matching offers are selected}}",
+        "all-open": "All matching offers are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "actions": {
+        "header": "Actions",
+        "for": "Actions for {name}",
+        "open": "Open review…"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# offer selected} other {# offers selected}}",
+        "all-open": "All matching offers selected",
+        "export": "Export…"
+      },
+      "export": {
+        "title": "Export first publications",
+        "body": "The file holds every offer waiting for review that the current filters match, oldest first, whatever the list is sorted by. Ticked rows don't change what is exported.",
+        "legend": "File format",
+        "csv": "CSV",
+        "csv-help": "Plain text. Opens in any spreadsheet or tool.",
+        "xlsx": "XLSX",
+        "xlsx-help": "An Excel workbook. Every cell is plain text, so nothing runs as a formula.",
+        "confirm": "Export",
+        "cancel": "Cancel",
+        "pending": "Preparing the file",
+        "done": "File downloaded",
+        "too-large": "More than {max} offers match. Narrow the filter and export again.",
+        "unavailable": "The file could not be made. Try again in a moment."
+      },
+      "open-named": "Review {name}",
+      "seller-unnamed": "Unnamed store",
+      "handling-missing": "Not set"
+    },
+    "edits": {
+      "title": "Edits",
+      "search": {
+        "label": "Search edits",
+        "placeholder": "Product code, name or store",
+        "invalid": "Enter at least 2 characters."
+      },
+      "tabs": "Offer review views",
+      "tab": {
+        "edits": "All"
+      },
+      "filter": {
+        "title": "Filter edits",
+        "name": {
+          "reasons": "Reason",
+          "age": "Waiting longer than",
+          "sellerId": "Store",
+          "categoryId": "Category"
+        },
+        "age": {
+          "older-24h": "24 hours",
+          "older-48h": "48 hours",
+          "older-7d": "7 days"
+        }
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "submitted": "Waiting since"
+        },
+        "waiting": {
+          "first": "Oldest first",
+          "second": "Newest first"
+        }
+      },
+      "sorted": "Sorted by {field}, {order}",
+      "col": {
+        "offer": "Offer",
+        "seller": "Seller",
+        "reasons": "Why it waits",
+        "fields": "Changes",
+        "waiting": "Waiting since"
+      },
+      "chip-search": "Search: {text}",
+      "loading": "Loading edits",
+      "match": "{count, plural, one {# edit matches} other {# edits match}}",
+      "range": "{from}–{to} of {total}",
+      "too-many": "More than {limit} edits match. Add a filter to see the rest.",
+      "no-access": "Your role cannot see the review queue.",
+      "error": {
+        "unavailable": "The edits could not be loaded. Check your connection and try again.",
+        "refused": "The filters cannot be used. Change them and try again."
+      },
+      "empty": {
+        "title": "Nothing waiting for review.",
+        "body": "New offers and held edits show here when they need a person.",
+        "no-match": "No rows match",
+        "no-match-help": "Change the filters, or clear them."
+      },
+      "select": {
+        "page": "Select all edits on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# edit selected} other {# edits selected}}",
+        "all": "{count, plural, one {The # matching edit is selected} other {All # matching edits are selected}}",
+        "all-open": "All matching edits are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "actions": {
+        "header": "Actions",
+        "for": "Actions for {name}",
+        "open": "Open review…",
+        "open-page": "Open on its own page"
+      },
+      "bulk": {
+        "button": "Actions",
+        "selected": "{count, plural, one {# edit selected} other {# edits selected}}",
+        "all-open": "All matching edits selected",
+        "export": "Export…"
+      },
+      "export": {
+        "title": "Export edits",
+        "body": "The file holds every edit waiting for review that the current filters match, oldest first, whatever the list is sorted by. It lists codes and labels only, never the proposed text. Ticked rows don’t change what is exported.",
+        "legend": "File format",
+        "csv": "CSV",
+        "csv-help": "Plain text. Opens in any spreadsheet or tool.",
+        "xlsx": "XLSX",
+        "xlsx-help": "An Excel workbook. Every cell is plain text, so nothing runs as a formula.",
+        "confirm": "Export",
+        "cancel": "Cancel",
+        "pending": "Preparing the file",
+        "done": "File downloaded",
+        "too-large": "More than {max} edits match. Narrow the filter and export again.",
+        "unavailable": "The file could not be made. Try again in a moment."
+      },
+      "open-named": "Review {name}",
+      "seller-unnamed": "Unnamed store",
+      "field": {
+        "description": "Description",
+        "handling": "Handling",
+        "tags": "Certificates"
+      }
+    },
+    "bulk": {
+      "blocked": {
+        "title": "These rows need a closer look",
+        "reasons": "These offers wait for a person to look at them closely. Open each one to decide it; the others can be approved together.",
+        "certificate-mixed": "Certificate rows can be approved together only when they come from one seller and share one certificate type. Select rows of one seller and one certificate type, or open them one by one."
+      },
+      "certificate": "Certificate to check: {type}, seller {seller}.",
+      "skipped": {
+        "not-allowed": "{name}: needs a closer look ({reasons}). Open it to decide.",
+        "certificate-mixed": "{name}: not the same seller and certificate type as the other certificate rows. Open it to decide.",
+        "reasons-unknown": "{name}: the reasons it waits could not be read. Open it to decide."
+      }
+    },
+    "detail": {
+      "seller": "Seller",
+      "seller-unnamed": "Unnamed store",
+      "why": "Why it waits",
+      "submitted": "Submitted",
+      "version": "Version",
+      "version-value": "Version {version}",
+      "base-version": "Edited from version {base}",
+      "content": "What the seller wrote",
+      "sku": "SKU",
+      "condition": "Condition",
+      "handling": "Handling",
+      "handling-missing": "Not set",
+      "tags": "Certificates asked for",
+      "no-tags": "None",
+      "description": "Description",
+      "standing": "Seller standing",
+      "decision-note": "Note sent to the seller:",
+      "base-version-now": "Edited from version {base}; live is version {now}"
+    },
+    "decide": {
+      "approve": "Approve",
+      "request-changes": "Request changes",
+      "send-back": "Send back",
+      "send-back-cancel": "Cancel",
+      "reject": "Reject",
+      "note": "Note to the seller",
+      "note-help": "Required to request changes or reject, 1 to 2000 characters. Optional when you approve.",
+      "note-counter": "{count} / {max}",
+      "note-required": "Write a note for the seller before you request changes or reject.",
+      "note-too-long": "The note can have at most {max} characters.",
+      "reason": "Reason for sending it back",
+      "reload": "Reload",
+      "view-only": "You can view this review but not decide. Deciding needs catalog.product.approve.",
+      "superseded": "Superseded: {cause}",
+      "decided": "This change was already decided: {status}.",
+      "cause": {
+        "resubmitted": "the seller sent a newer edit",
+        "offer-deleted": "the offer was deleted",
+        "unknown": "it was set aside"
+      },
+      "status": {
+        "approved": "approved",
+        "changes-requested": "sent back",
+        "rejected": "rejected",
+        "withdrawn": "withdrawn",
+        "superseded": "set aside",
+        "pending": "waiting"
+      },
+      "done": {
+        "approve": "Approved. The seller is told.",
+        "request-changes": "Sent back to the seller.",
+        "reject": "Rejected. The seller is told."
+      },
+      "error": {
+        "stale": "Changed since you opened it. Reload to see the latest version.",
+        "gone": "This row is no longer waiting for review.",
+        "own": "You cannot decide a change that your own account submitted.",
+        "denied": "You do not have access to decide on offers (catalog.product.approve).",
+        "claim": "The description makes a claim that needs a matching certificate. Send it back instead.",
+        "tag": "A requested certificate is not allowed for this seller. Nothing changed; send it back or reject it.",
+        "seller": "This seller cannot sell right now, so it cannot be approved.",
+        "invalid": "Check the note and try again.",
+        "throttled": "Too many requests. Wait a moment and try again.",
+        "csrf": "Your session could not be checked. Reload the page and try again.",
+        "unavailable": "The decision could not be sent. Nothing changed. Try again.",
+        "unknown": "Something went wrong. Try again."
+      }
+    },
+    "drawer": {
+      "title": "Offer review",
+      "close": "Close",
+      "discard": "Discard what you typed?",
+      "discard-body": "The note or reason you typed is not saved.",
+      "discard-keep": "Keep editing",
+      "discard-confirm": "Discard"
+    },
+    "diff": {
+      "live": "Live",
+      "proposed": "Proposed",
+      "removed": "Removed",
+      "added": "Added",
+      "empty": "(empty)",
+      "unknown": "Not available",
+      "hidden-char": "Hidden character {code}",
+      "live-unavailable": "Live values unavailable. Only the proposed values are shown.",
+      "description": "Description ({locale})",
+      "unchanged": "{count, plural, one {# unchanged language} other {# unchanged languages}}",
+      "handling": "Handling",
+      "not-set": "Not set",
+      "tags": "Certificates",
+      "no-tags": "None"
+    },
+    "standing": {
+      "trusted": "Trusted",
+      "probation": "Probation",
+      "source-admin": "Set by an admin",
+      "source-count": "Earned",
+      "since": "since {when}",
+      "progress": "{count} of {target} first publications approved",
+      "progress-label": "Probation progress",
+      "after-misconduct": "The target is shortened after a misconduct removal.",
+      "streak": "{count, plural, one {# change needed in a row} other {# changes needed in a row}}"
+    },
+    "seller": {
+      "title": "Offer review",
+      "standing": "Standing",
+      "unreadable": "The review flags could not be read. Try again later.",
+      "never-changed": "Never changed",
+      "last-changed": "Last changed {when}",
+      "read-only": "Read only: you cannot change this",
+      "stale": "The flags changed since you opened this page. They are reloaded; check them and try again.",
+      "flag": {
+        "trusted": {
+          "label": "Trusted from start",
+          "effect": "Skips probation: new offers of this seller go on sale without a review, apart from the always-checked reasons."
+        },
+        "full-review": {
+          "label": "Full review",
+          "effect": "Every first publication of this seller waits for an admin."
+        },
+        "stop": {
+          "label": "Stop",
+          "effect": "First publications and watched edits of this seller wait for an admin in every mode."
+        }
+      },
+      "dialog": {
+        "trusted": {
+          "on": {
+            "title": "Turn on Trusted from start?",
+            "body": "This seller skips probation. Sellers are not told. Needs a two-step code.",
+            "confirm": "Turn on"
+          },
+          "off": {
+            "title": "Turn off Trusted from start?",
+            "body": "This seller goes back to its probation count. Needs a two-step code.",
+            "confirm": "Turn off"
+          }
+        },
+        "full-review": {
+          "on": {
+            "title": "Turn on Full review?",
+            "body": "Every first publication of this seller waits for an admin.",
+            "confirm": "Turn on"
+          },
+          "off": {
+            "title": "Turn off Full review?",
+            "body": "This seller’s offers follow the usual review rules again.",
+            "confirm": "Turn off"
+          }
+        },
+        "stop": {
+          "on": {
+            "title": "Turn on the review stop?",
+            "body": "First publications and watched edits of this seller wait for an admin. Needs a two-step code.",
+            "confirm": "Turn on stop"
+          },
+          "off": {
+            "title": "Turn off the review stop?",
+            "body": "This seller’s offers follow the usual review rules again. Needs a two-step code.",
+            "confirm": "Turn off stop"
+          }
+        }
+      },
+      "done": {
+        "trusted": {
+          "on": "Trusted from start is on.",
+          "off": "Trusted from start is off."
+        },
+        "full-review": {
+          "on": "Full review is on.",
+          "off": "Full review is off."
+        },
+        "stop": {
+          "on": "The review stop is on.",
+          "off": "The review stop is off."
+        }
+      }
+    },
+    "reason-dialog": {
+      "reason": "Reason",
+      "reason-help": "Kept in the change log for admins. The seller is not shown it.",
+      "counter": "{count} / {max}",
+      "required": "Write a reason.",
+      "too-long": "The reason can have at most {max} characters.",
+      "cancel": "Cancel"
+    },
+    "flag-error": {
+      "stale": "The flags changed since you opened this page. Reload and try again.",
+      "denied": "You do not have access to change this.",
+      "acting-as": "This cannot be changed while you are acting as a seller.",
+      "second-factor": "The two-step code was not accepted. Try again.",
+      "invalid": "Check the reason (1 to 500 characters) and try again.",
+      "csrf": "Your session could not be checked. Reload the page and try again.",
+      "throttled": "Too many requests. Wait a moment and try again.",
+      "unavailable": "The change could not be sent. Nothing changed. Try again.",
+      "unknown": "Something went wrong. Nothing changed."
+    },
+    "categories": {
+      "title": "Offer review categories",
+      "load-failed": "The category flags could not be loaded. Try again.",
+      "caption": "Categories with an Offer review flag",
+      "col": {
+        "category": "Category",
+        "always-review": "Always review (R7)",
+        "review-stop": "Review stop (R0)",
+        "changed": "Last changed"
+      },
+      "switch": {
+        "always-review": "Always review {name}",
+        "review-stop": "Review stop for {name}"
+      },
+      "on": "On",
+      "off": "Off",
+      "unknown-category": "Unknown category",
+      "empty": {
+        "title": "No flagged categories.",
+        "body": "Add a category to make its offers always wait for review, or to stop its new offers."
+      },
+      "add": {
+        "label": "Add a category",
+        "placeholder": "Choose a category",
+        "search": "Search categories",
+        "no-results": "No category matches.",
+        "button": "Add"
+      },
+      "read-only": "You can view these flags but not change them.",
+      "stale": "The flags changed since you opened this page. They are reloaded; check them and try again.",
+      "done": {
+        "always-review": {
+          "on": "{name} is now always reviewed.",
+          "off": "{name} is no longer always reviewed."
+        },
+        "review-stop": {
+          "on": "The review stop is on for {name}.",
+          "off": "The review stop is off for {name}."
+        }
+      },
+      "dialog": {
+        "subcategories": "Applies to sub-categories too.",
+        "always-review": {
+          "on": {
+            "title": "Always review {name}?",
+            "body": "Every new offer and watched edit in this category waits for an admin. Needs a two-step code.",
+            "confirm": "Turn on"
+          },
+          "off": {
+            "title": "Stop always reviewing {name}?",
+            "body": "Offers in this category follow the usual review rules again. Needs a two-step code.",
+            "confirm": "Turn off"
+          }
+        },
+        "review-stop": {
+          "on": {
+            "title": "Turn on the review stop for {name}?",
+            "body": "Every new offer in this category waits for an admin, as in an emergency stop. Needs a two-step code.",
+            "confirm": "Turn on stop"
+          },
+          "off": {
+            "title": "Turn off the review stop for {name}?",
+            "body": "Offers in this category follow the usual review rules again. Needs a two-step code.",
+            "confirm": "Turn off stop"
+          }
+        }
+      }
+    },
+    "change": {
+      "title": "Offer review",
+      "no-access": {
+        "title": "No access",
+        "body": "You need the {permission} permission to see this review."
+      },
+      "not-found": {
+        "title": "Review not found",
+        "body": "This edit does not exist, or belongs to another market."
+      },
+      "unavailable": "The review could not be loaded. Try again later."
     }
   }
 }

@@ -223,7 +223,12 @@ describe.each([
       add: () => Promise.reject(new Error('unused')),
       listOnProduct: () => Promise.resolve([]),
       listPendingReview: () => Promise.resolve([]),
-      findManyByIds: () => Promise.resolve([]),
+      findManyByIds: (m, wanted) =>
+        Promise.resolve(
+          wanted.includes(current.state.id) && current.state.marketId === m.marketId
+            ? [Offer.restore(current.state, current.tags)]
+            : [],
+        ),
       findById: (m, id) =>
         Promise.resolve(
           current.state.id === id && current.state.marketId === m.marketId
@@ -312,7 +317,30 @@ describe.each([
         decision: Parameters<typeof decideHeldChange>[3],
       ) => decideHeldChange(decisionDeps, c, target, decision),
       /** The use cases' own steps without the gate, for a context the gate cannot mint yet. */
-      list: new AdminOfferChangesList(gate, { unitOfWork, pendingChanges }),
+      list: new AdminOfferChangesList(gate, {
+        unitOfWork,
+        pendingChanges,
+        offers,
+        ownReader: {
+          productLabels: () =>
+            Promise.resolve([
+              {
+                productId: current.state.productId,
+                productCode: 'P1',
+                typeCode: 'simple',
+                name: 'Lamb',
+              },
+            ]),
+        } as unknown as OwnCatalogReader,
+        policy: {
+          locales: () => ({ default: locale, allowed: [locale] }),
+        } as unknown as CatalogMarketPolicy,
+        sellerNames: { storeNames: () => Promise.resolve(new Map()) },
+        storeSearch: {
+          sellersMatching: () => Promise.resolve({ sellerIds: [], capped: false }),
+        },
+        productApproveProbe: { execute: () => Promise.resolve({ ok: true, value: undefined }) },
+      }),
       /** The seller's single Offer read (its latest held change, as the seller is told it). */
       read: new OwnOfferRead(gate, {
         unitOfWork,
@@ -763,6 +791,10 @@ describe.each([
         fields: ['description'],
         reasons: ['contact-text'],
         sellerId,
+        // The live values next to the proposed ones (slice 5): the held text is not live.
+        live: { description: { [locale]: 'Lamb shoulder, 1 kg' }, handling: 'SEALED_ORIGINAL' },
+        offer: { status: 'published', sellerSku: 'SKU-1' },
+        product: { productCode: 'P1', name: 'Lamb' },
       });
       expect(page.ok && page.value.nextAfterId).toBeNull();
       expect(await a.list.execute(sellerContext(), {})).toEqual({
