@@ -90,6 +90,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/seller/topic-suggestions',
     // The category choices of the product form (catalog, categories C5a): levels 3 and 4, no hidden node.
     'catalog/seller/products/category-picker',
+    // "Add offer": the published platform products the seller may sell, and a pasted barcode list
+    // (query: q, barcodes, page; the API validates every value and the seller's category scope).
+    'catalog/seller/products/platform-search',
     // The Products list as a file (CSV or XLSX): the list's selector plus format, columns and the
     // selected product ids; the answer is an attachment.
     'catalog/seller/products/export',
@@ -120,6 +123,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   ]),
   DELETE: new Set(['sellers/store-profile/logo', 'sellers/store-profile/banner']),
   POST: new Set([
+    // A draft Offer on a platform product ("Sell this"): product, SKU, condition and description.
+    'catalog/seller/offers',
     // The Customers list (a JSON body: view, search, filters, sort, page) and its export as a file
     // (the body names at most 1,000 codes, or the list's selector). Reads, but the filters are a document.
     'customers/seller/customers/list',
@@ -363,6 +368,11 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
   },
   'identity/seller/team': { after: UUID },
   'catalog/seller/topics': { search: null, afterId: UUID, limit: /^[0-9]{1,3}$/ },
+  'catalog/seller/products/platform-search': {
+    q: null,
+    barcodes: /^[0-9A-Za-z ,;-]{1,4000}$/,
+    page: /^[0-9]{1,3}$/,
+  },
   'catalog/seller/offers': {
     view: /^(all|drafts|in-review|changes-needed|live)$/,
     q: null,

@@ -463,3 +463,35 @@ export class OwnProductOptions {
   @ApiProperty({ type: [String], description: 'Statuses a seller sees on Offers in lists.' })
   offerStatuses!: string[];
 }
+
+export class PlatformSearchItemView {
+  @ApiProperty() productId!: string;
+  @ApiProperty() productCode!: string;
+  @ApiProperty({ nullable: true, type: String }) name!: string | null;
+  @ApiProperty({ nullable: true, type: String }) brandName!: string | null;
+  @ApiProperty({ nullable: true, type: String }) categoryId!: string | null;
+  @ApiProperty({ nullable: true, type: String }) categoryName!: string | null;
+  @ApiProperty({ description: 'The sizes of the product.' }) variantCount!: number;
+  @ApiProperty({ description: 'The seller already has a live Offer on this product.' })
+  alreadySelling!: boolean;
+}
+
+export class PlatformSearchBarcodeResultView {
+  @ApiProperty() input!: string;
+  @ApiProperty({
+    enum: ['found', 'already-selling', 'not-allowed', 'not-found', 'invalid'],
+  })
+  status!: string;
+  @ApiProperty({ nullable: true, type: PlatformSearchItemView })
+  product!: PlatformSearchItemView | null;
+}
+
+export class PlatformSearchPage {
+  @ApiProperty({ type: [PlatformSearchItemView] }) items!: PlatformSearchItemView[];
+  @ApiProperty() total!: number;
+  @ApiProperty() page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({ nullable: true, enum: ['no-activity'], type: String }) notice!: string | null;
+  @ApiProperty({ type: [PlatformSearchBarcodeResultView] })
+  barcodeResults!: PlatformSearchBarcodeResultView[];
+}

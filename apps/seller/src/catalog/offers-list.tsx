@@ -18,6 +18,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { numberFormat } from '../shared/intl.ts';
+import { AddOfferButton } from './add-offer-button.tsx';
 import { OffersBulk } from './offers-bulk.tsx';
 import { DEFAULT_COLUMNS, cleanColumns, type OfferColumn } from './offers-columns.ts';
 import { OffersColumnsPanel, OffersFilterPanel, OffersSortPanel } from './offers-panels.tsx';
@@ -41,7 +42,7 @@ import { useOfferRowActions } from './offers-row-actions.tsx';
 import { OffersSavedViews } from './offers-saved-views.tsx';
 import { LIST_KEY, queryOf, type SavedFilter, type SavedFiltersAnswer } from './offers-saved.ts';
 import { OffersTable } from './offers-table.tsx';
-import type { OfferListCounts, OfferListPage } from './types.ts';
+import { EDIT_PERMISSION, type OfferListCounts, type OfferListPage } from './types.ts';
 
 const OPEN_ENDED = Number.MAX_SAFE_INTEGER;
 
@@ -403,17 +404,22 @@ export function OffersList({
     <SuperList
       heading={{
         actions: (
-          <OffersBulk
-            selection={{
-              ids: [...selection.selected],
-              allMatching: selection.allMatching,
-              total,
-            }}
-            query={query}
-            columns={columns}
-            total={total}
-            timeZone={timeZone}
-          />
+          <>
+            {permissionKeys.includes(EDIT_PERMISSION) ? (
+              <AddOfferButton csrfToken={csrfToken} />
+            ) : null}
+            <OffersBulk
+              selection={{
+                ids: [...selection.selected],
+                allMatching: selection.allMatching,
+                total,
+              }}
+              query={query}
+              columns={columns}
+              total={total}
+              timeZone={timeZone}
+            />
+          </>
         ),
       }}
       views={{

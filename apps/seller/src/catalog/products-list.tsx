@@ -25,6 +25,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { numberFormat } from '../shared/intl.ts';
+import { AddOfferButton } from './add-offer-button.tsx';
 import { canRunImport } from './import/import-types.ts';
 import {
   ProductsColumnsPanel,
@@ -440,6 +441,7 @@ export function ProductsList({
                   {t('import')}
                 </LinkButton>
               ) : null}
+              {canEdit ? <AddOfferButton csrfToken={csrfToken} /> : null}
               {/* An empty store carries Add product in its empty state, so it is shown once. */}
               {canEdit && !noProducts ? (
                 <LinkButton href="/products/new">{t('add')}</LinkButton>
