@@ -124,6 +124,10 @@ describe.each([
       /** The Offer review settings; default risk-based with automatic badges (publishes). */
       review?: OfferReviewSettings;
       reviewFacts?: Partial<OfferReviewFacts>;
+      /** The settings read rejects (the real adapter never does; the use case must not publish). */
+      reviewInputsFail?: boolean;
+      /** The referral write throws in the unit. */
+      referralFails?: boolean;
     } = {},
   ) {
     let current: { state: OfferState; tags: readonly OfferTagState[] } | null =
@@ -240,7 +244,11 @@ describe.each([
       check,
       reviewInputs: {
         settings: () =>
-          Promise.resolve(options.review ?? { mode: 'risk-based', certificateBadges: 'automatic' }),
+          options.reviewInputsFail === true
+            ? Promise.reject(new Error('settings down'))
+            : Promise.resolve(
+                options.review ?? { mode: 'risk-based', certificateBadges: 'automatic' },
+              ),
         facts: () =>
           Promise.resolve({
             emergencyStop: false,
@@ -253,6 +261,7 @@ describe.each([
       referrals: {
         record: (_m, referral) => {
           if (openUnits === 0) throw new Error('recorded outside a unit');
+          if (options.referralFails === true) throw new Error('insert failed');
           referrals.push(referral);
           return Promise.resolve();
         },
@@ -556,6 +565,33 @@ describe.each([
         }),
       );
       expect(r.outbox.types).not.toContain('catalog.offer-published.v1');
+    });
+
+    it.each([
+      ['handling (R3)', { handling: 'FRESH' as const }, ['handling']],
+      ['contact text (R5)', { description: { 'en-AU': 'Call 0412 345 678' } }, ['contact-text']],
+    ])('queues an Offer for %s with only that reason', async (_name, overrides, reasons) => {
+      const r = rig({ offer: offerState({ ...draft(), ...overrides }) });
+      const outcome = await r.submit.execute(contextOf('seller'), { offerId: r.offerId });
+      expect(outcome).toEqual({ ok: true, value: { published: false } });
+      expect(r.current()!.state.status).toBe('pending-first-publish');
+      expect(r.referrals[0]!.reasons).toEqual(reasons);
+      expect(r.outbox.types).not.toContain('catalog.offer-published.v1');
+    });
+
+    it('never publishes when the review inputs fail, and writes nothing', async () => {
+      const r = rig({ offer: draft(), reviewInputsFail: true });
+      await expect(r.submit.execute(contextOf('seller'), { offerId: r.offerId })).rejects.toThrow();
+      expect(r.saved).toHaveLength(0);
+      expect(r.referrals).toHaveLength(0);
+      expect(r.outbox.types).toEqual([]);
+    });
+
+    it('announces nothing when the decision cannot be stored (one unit with the save)', async () => {
+      const r = rig({ offer: draft(), referralFails: true });
+      await expect(r.submit.execute(contextOf('seller'), { offerId: r.offerId })).rejects.toThrow();
+      expect(r.audits).toHaveLength(0);
+      expect(r.outbox.types).toEqual([]);
     });
 
     it('queues everything in mode all, and nothing but an emergency stop in mode off', async () => {

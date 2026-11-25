@@ -21,7 +21,7 @@ CREATE TABLE "catalog"."offer_review_referrals" (
 );
 
 -- CreateIndex
-CREATE INDEX "offer_review_referrals_market_id_offer_id_decided_at_idx" ON "catalog"."offer_review_referrals"("market_id", "offer_id", "decided_at");
+CREATE UNIQUE INDEX "offer_review_referrals_market_id_offer_id_offer_version_tri_key" ON "catalog"."offer_review_referrals"("market_id", "offer_id", "offer_version", "trigger");
 
 -- AddForeignKey
 ALTER TABLE "catalog"."offer_review_referrals" ADD CONSTRAINT "offer_review_referrals_market_id_offer_id_seller_id_fkey" FOREIGN KEY ("market_id", "offer_id", "seller_id") REFERENCES "catalog"."offers"("market_id", "id", "seller_id") ON DELETE RESTRICT ON UPDATE RESTRICT;

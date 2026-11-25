@@ -104,6 +104,13 @@ describe('hasContactText (R5)', () => {
     'follow @kedron_meats',
     'message us on WhatsApp',
     'DM me for a discount',
+    'sales [at] kedron.example',
+    'Call 0412\n345\n678',
+    'Order: 0412345678',
+    'Phone no. 0412 345 678',
+    'Call ٠٤١٢ ٣٤٥ ٦٧٨',
+    'Call 0412\u200B345\u200B678',
+    'follow ＠kedron_meats',
   ])('finds contact text in %p', (text) => {
     expect(hasContactText(text)).toBe(true);
   });
@@ -113,9 +120,27 @@ describe('hasContactText (R5)', () => {
     'Pack of 12 x 375 ml',
     'Best before 2027-03-01',
     'Packed on 01.03.2027',
+    'Barcode 9300675024235',
+    '9300675024235',
+    'SKU 12345678',
+    'ABN 51 824 753 556',
+    '1.5 kg x 6',
+    '3.5mm jack',
+    'v2.0',
+    'Signal brand dates 12/03/2027',
+    'e.g. fresh',
     'Made in Brisbane since 1998',
     '100% Australian beef, grass fed',
   ])('leaves ordinary text alone: %p', (text) => {
     expect(hasContactText(text)).toBe(false);
+  });
+});
+
+describe('hasContactText on long hostile text (Hassan S1)', () => {
+  it.each(['a', '1-.', 'a.'])('answers within 100 ms for 20 x 5000 of %p', (unit) => {
+    const text = unit.repeat(Math.ceil(5000 / unit.length)).slice(0, 5000);
+    const started = performance.now();
+    for (let locale = 0; locale < 20; locale += 1) hasContactText(text);
+    expect(performance.now() - started).toBeLessThan(100);
   });
 });

@@ -1038,8 +1038,9 @@ model CatalogOfferReviewReferral {
   decidedAt     DateTime     @map("decided_at") @db.Timestamptz(6)
   offer         CatalogOffer @relation(fields: [marketId, offerId, sellerId], references: [marketId, id, sellerId], onDelete: Restrict, onUpdate: Restrict)
 
-  /// The latest decision of an Offer (queue chips, seller status).
-  @@index([marketId, offerId, decidedAt])
+  /// One decision per Offer version and trigger (a retried insert fails, Mojtaba); also the read of
+  /// an Offer's latest decision: ORDER BY offer_version DESC (queue chips, seller status).
+  @@unique([marketId, offerId, offerVersion, trigger])
   @@map("offer_review_referrals")
   @@schema("catalog")
 }

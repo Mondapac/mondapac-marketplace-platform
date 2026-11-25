@@ -118,6 +118,12 @@ describe.each(TEST_MARKETS)(
       ]);
     });
 
+    it('keeps one decision per Offer version and trigger (a retried insert fails)', async () => {
+      const offerId = await draftOffer();
+      await record(referral(offerId));
+      await expect(record(referral(offerId, { reasons: [] }))).rejects.toThrow();
+    });
+
     it('is insert-only, even for the owner', async () => {
       const offerId = await draftOffer();
       await record(referral(offerId));

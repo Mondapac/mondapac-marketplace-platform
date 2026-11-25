@@ -87,20 +87,54 @@ const URL_PATTERN = /\b(?:https?:\/\/|www\.)\S+/i;
 /** A bare domain such as `shop.example.com.au`: a label, a dot and a known top-level domain. */
 const DOMAIN_PATTERN =
   /\b[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.(?:com|net|org|au|nz|io|co|shop|store|biz|info|me|app|online|site)\b/i;
-const EMAIL_PATTERN = /[a-z0-9._%+-]+\s*(?:@|\(at\)|\[at\])\s*[a-z0-9-]+(?:\.[a-z0-9-]+)+/i;
+/**
+ * The local part starts where no local-part character precedes it and is capped at 64, so a long
+ * run of those characters with no at sign fails in linear time (Hassan S1, ReDoS).
+ */
+const EMAIL_PATTERN =
+  /(?<![a-z0-9._%+-])[a-z0-9._%+-]{1,64}\s?(?:@|\(at\)|\[at\])\s?[a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63}){1,4}/i;
 /** Eight or more digits, allowing spaces, dots, dashes, brackets and a leading plus between them. */
 const PHONE_PATTERN = /(?:\+|\b)\d(?:[\s.()-]{0,2}\d){7,}/;
 /** A handle such as `@kedron_meats` (not an e-mail: no word character before the at sign). */
 const HANDLE_PATTERN = /(?:^|[^\w@.])@[a-z0-9_.]{3,30}\b/i;
 const CHANNEL_PATTERN =
-  /\b(?:whats\s?app|telegram|wechat|viber|signal|instagram|insta|facebook|fb|tiktok|snapchat|messenger|dm\s+me|text\s+me|call\s+me)\b/i;
+  /\b(?:whats\s?app|telegram|wechat|viber|instagram|insta|facebook|fb|tiktok|snapchat|messenger|dm\s+me|text\s+me|call\s+me)\b/i;
 
 /** Dates such as `2027-03-01` or `01.03.2027`, removed before the phone test. */
 const DATE_PATTERN = /\b(?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[.-]\d{1,2}[.-]\d{4})\b/g;
+/** A number named as a product or business identifier (barcode, SKU, ABN...), removed likewise. */
+const LABELLED_NUMBER_PATTERN =
+  /\b(?:barcode|ean|upc|gtin|sku|abn|acn|batch|lot)\s*[:#]?\s*\d[\d\s-]*/gi;
+/** A barcode: 12 to 14 digits with no separator (EAN-13, UPC-A, GTIN-14), removed likewise. */
+const BARCODE_PATTERN = /\b\d{12,14}\b/g;
+
+/** The text with dates, labelled identifiers and barcodes taken out, for the phone test. */
+const withoutNumbersThatAreNotPhones = (text: string): string =>
+  text
+    .replace(DATE_PATTERN, ' ')
+    .replace(LABELLED_NUMBER_PATTERN, ' ')
+    .replace(BARCODE_PATTERN, ' ');
+
+/** Zero-width characters a seller can hide between digits or letters. */
+const ZERO_WIDTH_PATTERN = /[\u200B-\u200D\u2060\uFEFF\u00AD]/g;
+/** Arabic-Indic and Eastern Arabic-Indic digits, which NFKC leaves as they are. */
+const ARABIC_DIGIT_PATTERN = /[\u0660-\u0669\u06F0-\u06F9]/g;
+
+/**
+ * The text as the patterns read it: compatibility forms folded (full-width `＠` and digits), hidden
+ * characters removed and Arabic-Indic digits as ASCII digits (Hassan, R5 bypass notes).
+ */
+function normalised(text: string): string {
+  return text
+    .normalize('NFKC')
+    .replace(ZERO_WIDTH_PATTERN, '')
+    .replace(ARABIC_DIGIT_PATTERN, (digit) => String((digit.charCodeAt(0) - 0x0660) % 0x90));
+}
 
 /** True when the text holds a link, an e-mail, a phone number or a social handle (R5). */
-export function hasContactText(text: string): boolean {
-  if (PHONE_PATTERN.test(text.replace(DATE_PATTERN, ' '))) return true;
+export function hasContactText(raw: string): boolean {
+  const text = normalised(raw);
+  if (PHONE_PATTERN.test(withoutNumbersThatAreNotPhones(text))) return true;
   return [URL_PATTERN, DOMAIN_PATTERN, EMAIL_PATTERN, HANDLE_PATTERN, CHANNEL_PATTERN].some(
     (pattern) => pattern.test(text),
   );

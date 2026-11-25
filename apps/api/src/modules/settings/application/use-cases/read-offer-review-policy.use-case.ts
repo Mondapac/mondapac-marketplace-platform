@@ -41,8 +41,10 @@ export const SAFE_OFFER_REVIEW_POLICY: OfferReviewPolicySettings = Object.freeze
 
 /**
  * `settings.read-offer-review-policy`: the six Offer review settings of the Market, for `catalog`
- * (and later `pricing`) through the settings facade. Rule `anonymous`: the seller's submit and the
- * system actor's jobs both read it, and none of it is secret. Each value is the stored one when the
+ * (and later `pricing`) through the settings facade. Rule `anonymous`: a seller's or an admin's
+ * request reads it (the gate reads it as an anonymous actor of the same Market) and none of it is
+ * secret. The system actor is refused by the gate, so a job reading through the facade gets the safe
+ * policy; a job that needs the stored values needs a `system` variant first (Hassan S2). Each value is the stored one when the
  * definition still allows it, else the safe value (readSettingValue), so the answer is always one
  * the definitions allow.
  */
