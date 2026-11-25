@@ -238,6 +238,8 @@ export function AddOfferDialog({
           name: product.name ?? product.productCode,
           key: createErrorKey(result.failure.code),
         });
+        // Too many requests: the next ones would be refused the same way.
+        if (result.failure.code === 'request.throttled') break;
       }
     }
     busy.current = false;

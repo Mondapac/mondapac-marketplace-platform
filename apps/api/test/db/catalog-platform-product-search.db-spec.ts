@@ -5,7 +5,12 @@ import { Client } from 'pg';
 import { PrismaPlatformProductSearchReader } from '../../src/modules/catalog/infrastructure/prisma-platform-product-search.reader';
 import type { PlatformProductSearchQuery } from '../../src/modules/catalog/application/ports/platform-product-search.reader';
 import { TEST_MARKETS } from '../support/test-config';
-import { createPersistence, marketOf, otherMarketOf, type Persistence } from './persistence-support';
+import {
+  createPersistence,
+  marketOf,
+  otherMarketOf,
+  type Persistence,
+} from './persistence-support';
 import { testDatabaseUrl } from './test-database';
 
 // PrismaPlatformProductSearchReader (seller "Add offer" search) on PostgreSQL, for both Market
@@ -156,7 +161,8 @@ describe.each(TEST_MARKETS)('platform product search reader in market %s', (code
     const m = options.market ?? market;
     const id = uuid7();
     const revisionId = uuid7();
-    const productCode = options.code ?? `X${randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase()}`;
+    const productCode =
+      options.code ?? `X${randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase()}`;
     const scope = options.scope ?? 'PLATFORM';
     await insert('products', {
       id,
@@ -228,7 +234,12 @@ describe.each(TEST_MARKETS)('platform product search reader in market %s', (code
       await app.query(
         `UPDATE catalog.products SET status = 'published', published_revision_id = $1,
            paused_at = $3, paused_by_account_id = $4 WHERE id = $2`,
-        [revisionId, id, options.paused === true ? NOW : null, options.paused === true ? uuid7() : null],
+        [
+          revisionId,
+          id,
+          options.paused === true ? NOW : null,
+          options.paused === true ? uuid7() : null,
+        ],
       );
     }
     return { id, code: productCode };
@@ -259,9 +270,11 @@ describe.each(TEST_MARKETS)('platform product search reader in market %s', (code
     });
   }
 
-  const search = (overrides: Partial<PlatformProductSearchQuery> & {
-    allowed: readonly string[];
-  }) =>
+  const search = (
+    overrides: Partial<PlatformProductSearchQuery> & {
+      allowed: readonly string[];
+    },
+  ) =>
     persistence.unitOfWork
       .run(
         market,
@@ -426,10 +439,7 @@ describe.each(TEST_MARKETS)('platform product search reader in market %s', (code
     const foreign = await category(`${t} f`, other);
     await product({ name: `${t} fm`, categoryIds: [foreign], gtin: g55, market: other });
     await offer(inScope.id, SELLER);
-    const matches = await lookup(
-      [c],
-      [g17, g24, g31, g48, g55],
-    );
+    const matches = await lookup([c], [g17, g24, g31, g48, g55]);
     const byGtin = new Map(matches.map((m) => [m.gtin, m]));
     expect(byGtin.get(g17)).toMatchObject({ inScope: true });
     expect(byGtin.get(g17)?.row.alreadySelling).toBe(true);

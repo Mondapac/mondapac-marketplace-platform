@@ -1,4 +1,5 @@
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import { escapeLikeTerm } from '../../../platform/text/like-escape';
 import type { Prisma } from '../../../generated/prisma/client';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
@@ -39,7 +40,7 @@ export class PrismaPlatformProductSearchReader implements PlatformProductSearchR
     };
     const clauses: Prisma.CatalogProductWhereInput[] = [];
     if (query.text !== null) {
-      const text = query.text;
+      const text = escapeLikeTerm(query.text);
       clauses.push(
         { productCode: { contains: text, mode: 'insensitive' } },
         {
@@ -56,7 +57,7 @@ export class PrismaPlatformProductSearchReader implements PlatformProductSearchR
       const brands = await tx.catalogBrand.findMany({
         where: { name: { contains: text, mode: 'insensitive' }, status: 'active' },
         select: { id: true },
-        take: 50,
+        take: 200,
       });
       if (brands.length > 0) clauses.push({ brandId: { in: brands.map((brand) => brand.id) } });
       const categories = await tx.catalogPlatformCategory.findMany({
@@ -88,6 +89,8 @@ export class PrismaPlatformProductSearchReader implements PlatformProductSearchR
       }
     }
     const where: Prisma.CatalogProductWhereInput = {
+      // The Market guard wants `marketId` at the top of the filter, not only inside an AND.
+      marketId: market.marketId,
       AND: [sellableBase(market), inScope, ...(clauses.length > 0 ? [{ OR: clauses }] : [])],
     };
     const [total, found] = await Promise.all([
