@@ -30,9 +30,11 @@ import {
   type SellersFacade,
   type SellersWorkQueueFacade,
 } from '../../../sellers';
+import { SETTINGS_MONTHLY_REVENUE_TARGET_VIEW } from '../../../settings';
 import type {
   FinanceAnswer,
   KpiFailure,
+  MonthlyTargetAnswer,
   OperationsAnswer,
   OrderStatusAnswer,
   OrdersByStateAnswer,
@@ -157,6 +159,12 @@ export interface AdminKpisAnswer {
   readonly ordersByStatus: KpiSection<OrderStatusAnswer> | null;
   /** Seller orders paid in the period by delivery state; null without `ordering.order.view`. */
   readonly ordersByState: KpiSection<OrdersByStateAnswer> | null;
+  /**
+   * The current month against the Market's monthly revenue target, with the month-end forecast;
+   * not tied to the period. Null without `commission-payouts.settlement.view` and
+   * `settings.monthly-revenue-target.view`.
+   */
+  readonly marketTarget: KpiSection<MonthlyTargetAnswer> | null;
   /** Null without `commission-payouts.settlement.view` (it shows each seller's money). */
   readonly topSellers: KpiSection<NamedTopSellers> | null;
   /** Null without `commission-payouts.settlement.view` (it shows money). */
@@ -239,7 +247,8 @@ async function section<T>(
 
 /**
  * `GET dashboard/admin/kpis` (dashboards upgrade, phase 5; dashboards v2 PR 6): the admin KPI
- * strip and trend, orders by status, net revenue and the supply and health numbers. Rule
+ * strip and trend, orders by status, net revenue, the supply and health numbers and the month against the
+ * Market's monthly revenue target (dashboards v2 phase 2). Rule
  * `own-resources` and a platform admin acting as themselves, like the work queue. Each section is
  * asked only when the viewer holds its key (operations and orders by status:
  * `ordering.order.view`; money: `commission-payouts.settlement.view`; each health number its
@@ -285,28 +294,40 @@ export class ViewAdminKpis extends UseCase<
           reporting.marketplaceOrderStatus(context, input),
         )
       : Promise.resolve(null);
-    const [operations, finance, topSellers, topCategories, health, orders, ordersByState] =
-      await Promise.all([
-        held.has(ORDERING_ORDER_VIEW.key)
-          ? section('operations', timeoutMs, () => reporting.marketplaceOperations(context, input))
-          : null,
-        held.has(COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key)
-          ? section('finance', timeoutMs, () => reporting.marketplaceFinance(context, input))
-          : null,
-        held.has(COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key)
-          ? section('top-sellers', timeoutMs, () => this.namedTopSellers(context, input))
-          : null,
-        held.has(COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key)
-          ? section('top-categories', timeoutMs, () => this.namedTopCategories(context, input))
-          : null,
-        this.marketHealth(context, held, ordersByStatus),
-        ordersByStatus,
-        held.has(ORDERING_ORDER_VIEW.key)
-          ? section('orders-by-state', timeoutMs, () =>
-              reporting.marketplaceOrdersByState(context, input),
-            )
-          : null,
-      ]);
+    const [
+      operations,
+      finance,
+      topSellers,
+      topCategories,
+      health,
+      orders,
+      ordersByState,
+      marketTarget,
+    ] = await Promise.all([
+      held.has(ORDERING_ORDER_VIEW.key)
+        ? section('operations', timeoutMs, () => reporting.marketplaceOperations(context, input))
+        : null,
+      held.has(COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key)
+        ? section('finance', timeoutMs, () => reporting.marketplaceFinance(context, input))
+        : null,
+      held.has(COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key)
+        ? section('top-sellers', timeoutMs, () => this.namedTopSellers(context, input))
+        : null,
+      held.has(COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key)
+        ? section('top-categories', timeoutMs, () => this.namedTopCategories(context, input))
+        : null,
+      this.marketHealth(context, held, ordersByStatus),
+      ordersByStatus,
+      held.has(ORDERING_ORDER_VIEW.key)
+        ? section('orders-by-state', timeoutMs, () =>
+            reporting.marketplaceOrdersByState(context, input),
+          )
+        : null,
+      held.has(COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key) &&
+      held.has(SETTINGS_MONTHLY_REVENUE_TARGET_VIEW.key)
+        ? section('market-target', timeoutMs, () => reporting.marketplaceMonthlyTarget(context))
+        : null,
+    ]);
     return ok({
       generatedAt: this.deps.clock.now(),
       period: typeof input.period === 'string' ? input.period : 'custom',
@@ -314,6 +335,7 @@ export class ViewAdminKpis extends UseCase<
       finance,
       ordersByStatus: orders,
       ordersByState,
+      marketTarget,
       topSellers,
       topCategories,
       health,

@@ -19,6 +19,7 @@ import type { NetRevenueAnswer } from '../application/use-cases/view-marketplace
 import type { SellerNetEarningsAnswer } from '../application/use-cases/view-seller-net-earnings.use-case';
 import type { OrdersByStateAnswer } from '../application/use-cases/view-marketplace-orders-by-state.use-case';
 import type { OrderStatusAnswer } from '../application/use-cases/view-marketplace-order-status.use-case';
+import type { MonthlyTargetAnswer } from '../application/use-cases/view-marketplace-monthly-target.use-case';
 import type { FinanceNet } from '../application/use-cases/view-marketplace-finance-kpis.use-case';
 
 export type {
@@ -72,7 +73,9 @@ export {
   READINESS_MIN_MATCHED_SELLER_ORDERS,
 } from '../domain/ledger';
 export type { NetFiguresFailure, NetFiguresInput, NetRevenueAnswer, SellerNetEarningsAnswer };
-export type { FinanceNet, OrderStatusAnswer, OrdersByStateAnswer };
+export type { FinanceNet, MonthlyTargetAnswer, OrderStatusAnswer, OrdersByStateAnswer };
+export type { CalendarMonth, MonthEndForecast, MonthForecast } from '../domain/month-forecast';
+export { MIN_FORECAST_DAYS } from '../domain/month-forecast';
 export type { OrdersByState, StateShare } from '../domain/orders-by-state';
 export type { OrderStatusCounts, SameDayShare, TakeRate } from '../domain/admin-health';
 export type { InstantWindow } from '../domain/period';
@@ -122,6 +125,17 @@ export interface ReportingKpiFacade {
     context: CallContext,
     input: KpiPeriodInput,
   ): Promise<Result<OrdersByStateAnswer, KpiFailure>>;
+
+  /**
+   * The current calendar month of the Market against its monthly revenue target: GMV with tax to
+   * date, the whole month before, the month-end forecast (an estimate; `not-enough-data` on the
+   * first three days) and the pace. Not tied to the dashboard period. Keys
+   * `commission-payouts.settlement.view` and `settings.monthly-revenue-target.view`, platform
+   * admin only.
+   */
+  marketplaceMonthlyTarget(
+    context: CallContext,
+  ): Promise<Result<MonthlyTargetAnswer, AccessDenied>>;
 
   /** The five sellers with the most goods sold in the period (money: the finance key). */
   marketplaceTopSellers(

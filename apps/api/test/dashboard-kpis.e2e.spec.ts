@@ -119,6 +119,7 @@ describe.each(TEST_MARKETS)('the admin KPIs over HTTP in market %s', (code) => {
       topCategories: null,
       health: null,
       ordersByState: null,
+      marketTarget: null,
       ordersByStatus: {
         status: 'ok',
         value: {
@@ -183,6 +184,7 @@ describe.each(TEST_MARKETS)('the admin KPIs over HTTP in market %s', (code) => {
       topSellers: null,
       topCategories: null,
       health: null,
+      marketTarget: null,
       finance: {
         status: 'ok',
         refreshedAt: START.subtract({ minutes: 4 }).toString(),
@@ -220,6 +222,7 @@ describe.each(TEST_MARKETS)('the admin KPIs over HTTP in market %s', (code) => {
       period: '7d',
       operations: { status: 'error' },
       ordersByState: { status: 'error' },
+      marketTarget: { status: 'error' },
       ordersByStatus: { status: 'error' },
       topSellers: null,
       topCategories: null,
@@ -231,6 +234,7 @@ describe.each(TEST_MARKETS)('the admin KPIs over HTTP in market %s', (code) => {
       period: null,
       operations: { status: 'error' },
       ordersByStatus: { status: 'error' },
+      marketTarget: { status: 'error' },
       finance: null,
     });
     expect((answer.body as { operations: unknown }).operations).toEqual({ status: 'error' });

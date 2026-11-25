@@ -27,7 +27,19 @@ export const REPORTING_SELLER_REPORT_EXPORT = definePermission('reporting', {
   protected: false,
 });
 
+/**
+ * Set the shop's own monthly sales goal (dashboards v2 phase 2), shown against the month's sales
+ * on the seller dashboard. A seller key; no default seller role lists it, so the Seller Owner
+ * holds it and grants it to a role. Reading the goal needs `ordering.seller-order.view` only.
+ */
+export const REPORTING_SELLER_GOAL_MANAGE = definePermission('reporting', {
+  key: 'reporting.seller-goal.manage',
+  scope: 'seller',
+  protected: false,
+});
+
 export const REPORTING_PERMISSIONS = declarePermissions('reporting', [
   REPORTING_MARKETPLACE_REPORT_EXPORT,
+  REPORTING_SELLER_GOAL_MANAGE,
   REPORTING_SELLER_REPORT_EXPORT,
 ]);

@@ -15,6 +15,7 @@ notes: `docs/modules/reporting/notes.md`.
 | `inbox` | `(event_id, handler)` | one per consumed event and handler | about 6 per seller order (600k) |
 | `ledger_entries` | `(market_id, entry_id)` | one per commission, refund-commission and seller-cashback ledger row (PR 4 of dashboards v2) | about 160k (1.5 lines per seller order, plus refunds and cashback) |
 | `daily_ledger` | `(market_id, market_day, seller_id, currency, kind)` | one per active seller, day and ledger kind | about 1.2 × `daily_seller_sales` (commission every day, the other kinds rarely) |
+| `seller_monthly_goals` | `(market_id, seller_id, month)` | one per seller and month a goal was set for (dashboards v2 phase 2) | at most 12 × sellers who set goals (100 sellers: 1.2k) |
 
 `seller_orders` also holds `delivery_method` and `delivery_state` (a region code of at most 3
 characters, never a postcode; migration `20261124010000_reporting_seller_orders_delivery`): nullable
@@ -32,6 +33,17 @@ of all-null rows: no lock is avoided, none is needed): both or neither, only wit
 rollup keys and with no index until the new-and-returning card reads them. No customer or account id
 is stored anywhere in reporting.
 
+`seller_monthly_goals` (migration `20261125010000_reporting_seller_monthly_goals`, dashboards v2
+phase 2) is the one table of reporting that is NOT derived data: a seller's own sales goal for a
+calendar month of the Market's zone, set through `reporting.set-seller-monthly-goal`. `month` is the
+first day of the month (CHECK: day 1); `amount` is minor units above zero and below 10^15, with its
+`currency` (the Market's); `version` starts at 1 and every change raises it (the use case refuses a
+stale version; the store's first insert is `ON CONFLICT DO NOTHING`, so a race never aborts the
+unit). The application role has SELECT, INSERT and column UPDATE on `currency`, `amount`,
+`version`, `updated_at` and `updated_by_account_id`: the key never changes and nothing is deleted.
+No index beyond the primary key (one point read per seller and month). Its down migration loses
+the goals (no backfill brings them back).
+
 All rows are small (under 200 bytes), so even 10x this volume stays under a few GB with indexes.
 
 ## Access paths
@@ -42,6 +54,9 @@ All rows are small (under 200 bytes), so even 10x this volume stays under a few 
 - Admin KPIs over a range: primary key range on `(market_id, market_day)`.
 - Seller KPIs over a range: `(market_id, seller_id, market_day)` on both rollups.
 - Top categories of a range: `(market_id, market_day, category_id)`.
+- The month-end forecast: the admin month to date and the month before are two `dailyTotals` ranges
+  (primary key range); the seller's are two `daily` ranges on `(market_id, seller_id, market_day)`
+  plus one primary-key read of `seller_monthly_goals`.
 - Net revenue of a range: primary key range on `(market_id, market_day)` of `daily_ledger`; a
   seller's net earnings: `(market_id, seller_id, market_day)`. Rebuild one seller day of it:
   `ledger_entries (market_id, market_day, seller_id)`.
@@ -54,6 +69,8 @@ All rows are small (under 200 bytes), so even 10x this volume stays under a few 
 
 - `ledger_entries` and `daily_ledger` hold ids and money only; like the rest, derived data the
   ledger backfill rebuilds (reset its `backfill_progress` row).
+- `seller_monthly_goals` is authored data: keep it like the other modules' settings; a goal is
+  changed in place, never removed yet (FE-20261125-seller-goal-remove).
 - The rollups and facts are derived data: kept as long as the dashboards show history, rebuilt by
   the backfill if lost. No personal data is stored (no customer, account or address id, no postcode; the delivery state is a region code only).
 - `inbox` rows have no purge yet, the same as the other modules' inboxes; the shared inbox
