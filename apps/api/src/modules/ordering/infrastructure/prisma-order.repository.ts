@@ -716,31 +716,34 @@ export class PrismaOrderRepository implements OrderRepository {
       select: { orderId: true },
     });
     const firstWithSeller = new Map<Id<'Seller'>, Id<'Order'>>();
-    // One seller at a time in seller id order, after the buyer's claim: every unit takes the claim
-    // keys in one order, so two of them never wait on each other in a cycle.
     const sellers = [...order.sellerOrders].sort((a, b) => a.sellerId.localeCompare(b.sellerId));
+    // The buyer's earliest paid seller order of every seller of the order, in ONE statement driven
+    // from the buyer's confirmed orders (orders_market_id_account_id_confirmed_idx) into
+    // seller_orders: DISTINCT ON (seller_id) by payment time, then order id (data design 3.16).
+    // A named statement, because it must run in this read-write unit and see its confirmation.
+    const earliestWith = new Map(
+      (
+        await this.prisma.namedQuery(market, 'ordering.buyer-first-with-sellers', {
+          accountId: order.accountId,
+          sellerIds: sellers.map((sellerOrder) => sellerOrder.sellerId),
+        })
+      ).map((row) => [row.sellerId, row] as const),
+    );
+    // The claims one seller at a time in seller id order, after the buyer's claim: every unit takes
+    // the claim keys in one order, so two of them never wait on each other in a cycle.
     for (const sellerOrder of sellers) {
-      const earliestWith = await tx.orderingSellerOrder.findFirst({
-        where: {
-          marketId: market.marketId,
-          tenantId: market.tenantId,
-          sellerId: sellerOrder.sellerId,
-          order: { is: { accountId: order.accountId, status: 'confirmed' } },
-        },
-        orderBy: [{ order: { confirmedAt: 'asc' } }, { orderId: 'asc' }],
-        select: { id: true, orderId: true, order: { select: { confirmedAt: true } } },
-      });
+      const found = earliestWith.get(sellerOrder.sellerId);
       const firstWith =
-        earliestWith?.order.confirmedAt == null
+        found === undefined
           ? {
               sellerOrderId: sellerOrder.id,
               orderId: order.id,
               firstOrderAt: toDate(order.confirmedAt),
             }
           : {
-              sellerOrderId: earliestWith.id,
-              orderId: earliestWith.orderId,
-              firstOrderAt: earliestWith.order.confirmedAt,
+              sellerOrderId: found.sellerOrderId,
+              orderId: found.orderId,
+              firstOrderAt: found.confirmedAt,
             };
       await tx.orderingBuyerFirstSellerOrder.createMany({
         data: [{ ...buyer, sellerId: sellerOrder.sellerId, ...firstWith }],

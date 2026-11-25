@@ -64,6 +64,22 @@ const backfillSql = (): string => {
   return text.slice(start, end);
 };
 
+const OPS_SCRIPT = path.resolve(
+  __dirname,
+  '../../../../scripts/db/ordering-buyer-first-backfill.sql',
+);
+
+/** The statements of a SQL text without its comment lines (and psql meta-commands). */
+const statementsOf = (text: string): string =>
+  text
+    .split('\n')
+    .filter((line) => !line.startsWith('--') && !line.startsWith('\\'))
+    .join('\n')
+    .trim();
+
+/** The ops script run after the deploy, as psql runs it (its meta-commands left out). */
+const opsScriptSql = (): string => statementsOf(readFileSync(OPS_SCRIPT, 'utf8'));
+
 interface FlagRow {
   readonly seller_id: string;
   readonly buyer_first_order: boolean | null;
@@ -450,11 +466,12 @@ describe.each(TEST_MARKETS)('buyer-first flags in market %s (database)', (code) 
     expect(await flagsOf(kept)).toEqual({ [s1]: RETURNING });
     expect((await claimsOf(known)).first).toEqual([kept.id]);
 
-    // Run again: nothing moves.
+    // The ops script holds the migration's statements, and running it again moves nothing.
+    expect(opsScriptSql()).toContain(statementsOf(backfillSql()));
     const before = await sql.query(
       `SELECT id, buyer_first_order, buyer_first_with_seller FROM ordering.seller_orders ORDER BY id`,
     );
-    await sql.query(backfillSql());
+    await sql.query(opsScriptSql());
     const after = await sql.query(
       `SELECT id, buyer_first_order, buyer_first_with_seller FROM ordering.seller_orders ORDER BY id`,
     );

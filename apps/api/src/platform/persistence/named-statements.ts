@@ -85,6 +85,19 @@ export function isApprovedStatement(request: RawStatementRequest, market: Market
         UUID.test(values[2])
       );
     }
+    if (sql === BUYER_FIRST_WITH_SELLERS_TEXT) {
+      return (
+        values.length === 4 &&
+        values[0] === market.marketId &&
+        values[1] === market.tenantId &&
+        typeof values[2] === 'string' &&
+        UUID.test(values[2]) &&
+        Array.isArray(values[3]) &&
+        values[3].length >= 1 &&
+        values[3].length <= MAX_BUYER_FIRST_SELLERS &&
+        values[3].every((id: unknown) => typeof id === 'string' && UUID.test(id))
+      );
+    }
     return (
       sql === LOCK_STOCK_ITEMS_TEXT &&
       values.length === 3 &&
@@ -185,6 +198,20 @@ export interface LockedDisputeCase {
 export interface LockedSellerOrder {
   readonly locked: true;
 }
+
+/**
+ * One row of `ordering.buyer-first-with-sellers`: the buyer's earliest paid seller order of one
+ * seller, with its order and the order's payment time.
+ */
+export interface BuyerFirstWithSeller {
+  readonly sellerId: string;
+  readonly sellerOrderId: string;
+  readonly orderId: string;
+  readonly confirmedAt: Date;
+}
+
+/** The most sellers one `ordering.buyer-first-with-sellers` call asks about. */
+export const MAX_BUYER_FIRST_SELLERS = 100;
 
 /** The checked-in list: statement name to its input and its rows. */
 export interface NamedStatements {
@@ -327,6 +354,18 @@ export interface NamedStatements {
   readonly 'identity.lock-invitation': {
     readonly params: { readonly invitationId: string };
     readonly row: LockedInvitation;
+  };
+  /**
+   * The buyer's earliest paid seller order of each of `sellerIds` in the unit's Market and tenant
+   * (ordering, dashboards v2 buyer-first claims; data design ordering.md 3.16): one statement driven
+   * from the buyer's confirmed orders (`orders_market_id_account_id_confirmed_idx`) into
+   * `seller_orders`, `DISTINCT ON (seller_id)` by payment time, then order id. Runs in the unit
+   * that confirms a payment, so it sees that unit's own confirmation. A seller with no paid order
+   * of the buyer has no row. Reads only; takes no lock.
+   */
+  readonly 'ordering.buyer-first-with-sellers': {
+    readonly params: { readonly accountId: string; readonly sellerIds: readonly string[] };
+    readonly row: BuyerFirstWithSeller;
   };
 }
 
@@ -784,6 +823,62 @@ const LOCK_INVITATION_TEXT = lockInvitationStatement(
   '',
 ).sql;
 
+/** The statement of `ordering.buyer-first-with-sellers`: Market, tenant, account, then sellers. */
+export function buyerFirstWithSellersStatement(
+  market: MarketContext,
+  accountId: string,
+  sellerIds: readonly string[],
+): Prisma.Sql {
+  return Prisma.sql`
+    SELECT DISTINCT ON (s.seller_id)
+           s.seller_id::text AS seller_id, s.id::text AS seller_order_id, o.id::text AS order_id,
+           o.confirmed_at
+      FROM "ordering"."orders" AS o
+      JOIN "ordering"."seller_orders" AS s
+        ON s.market_id = o.market_id AND s.order_id = o.id
+     WHERE o.market_id = ${market.marketId}
+       AND o.tenant_id = ${market.tenantId}
+       AND o.account_id = ${accountId}::uuid
+       AND o.status = 'confirmed'
+       AND s.seller_id = ANY(${sellerIds}::uuid[])
+     ORDER BY s.seller_id, o.confirmed_at, o.id`;
+}
+
+async function buyerFirstWithSellers(
+  runner: RawRunner,
+  market: MarketContext,
+  params: NamedStatementParams<'ordering.buyer-first-with-sellers'>,
+): Promise<BuyerFirstWithSeller[]> {
+  const name = 'ordering.buyer-first-with-sellers';
+  if (typeof params.accountId !== 'string' || !UUID.test(params.accountId)) {
+    throw new NamedStatementRefusedError(name, 'ids-malformed');
+  }
+  if (!Array.isArray(params.sellerIds)) throw new NamedStatementRefusedError(name, 'ids-malformed');
+  const sellerIds = [...new Set(params.sellerIds as readonly unknown[])];
+  if (sellerIds.length === 0) throw new NamedStatementRefusedError(name, 'ids-empty');
+  if (sellerIds.length > MAX_BUYER_FIRST_SELLERS) {
+    throw new NamedStatementRefusedError(name, 'ids-too-many');
+  }
+  if (!sellerIds.every((id): id is string => typeof id === 'string' && UUID.test(id))) {
+    throw new NamedStatementRefusedError(name, 'ids-malformed');
+  }
+  const rows = (await runner.query(
+    buyerFirstWithSellersStatement(market, params.accountId, sellerIds),
+  )) as { seller_id: string; seller_order_id: string; order_id: string; confirmed_at: Date }[];
+  return rows.map((row) => ({
+    sellerId: row.seller_id,
+    sellerOrderId: row.seller_order_id,
+    orderId: row.order_id,
+    confirmedAt: row.confirmed_at,
+  }));
+}
+
+const BUYER_FIRST_WITH_SELLERS_TEXT = buyerFirstWithSellersStatement(
+  { marketId: 'XX', tenantId: 'x' } as MarketContext,
+  '',
+  [],
+).sql;
+
 /** Runs one named statement on the open read-write unit's transaction. */
 export async function runNamedStatement<K extends NamedStatementName>(
   runner: RawRunner,
@@ -863,6 +958,12 @@ export async function runNamedStatement<K extends NamedStatementName>(
         runner,
         market,
         params as NamedStatementParams<'identity.lock-invitation'>,
+      );
+    case 'ordering.buyer-first-with-sellers':
+      return await buyerFirstWithSellers(
+        runner,
+        market,
+        params as NamedStatementParams<'ordering.buyer-first-with-sellers'>,
       );
     default:
       throw new Error('Unknown named statement');

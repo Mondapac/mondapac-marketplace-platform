@@ -12,7 +12,9 @@ ALTER TABLE "reporting"."seller_orders" ADD COLUMN     "buyer_first_order" BOOLE
 ADD COLUMN     "buyer_first_with_seller" BOOLEAN;
 
 -- Both or neither, only on a paid fact, and a first order is always the first with its seller.
--- NOT VALID, then VALIDATE: the scan of the existing rows (all null) holds no exclusive lock.
+-- NOT VALID, then VALIDATE. In one transaction this does not shorten the lock: the ADD COLUMN's
+-- ACCESS EXCLUSIVE lock is held until the file commits, VALIDATE included. Harmless here: every
+-- existing row is null, so the scan is quick and the lock is brief.
 ALTER TABLE "reporting"."seller_orders"
   ADD CONSTRAINT "seller_orders_buyer_first_check" CHECK (
     ("buyer_first_order" IS NULL AND "buyer_first_with_seller" IS NULL)

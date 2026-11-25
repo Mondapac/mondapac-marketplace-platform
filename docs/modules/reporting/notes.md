@@ -227,8 +227,13 @@ All rule `system`, not exposed over HTTP; ids and money only (no name, address, 
   rewrites a past order's new-or-returning customer. The recorder refuses contradictory flags
   (`checkedBuyerFirst`), as the CHECK does.
 - Unknown (NULL): unpaid; paid before ordering recorded the flags and not seen by ordering's
-  migration backfill (an order paid by the previous release during the deploy); or recorded here
-  before the columns.
+  migration backfill (an order paid by the previous release during the deploy) and not yet filled
+  by ordering's release step (`scripts/db/ordering-buyer-first-backfill.sql`, run once after the
+  deploy; ordering data 3.16); or recorded here before the columns. Reporting does not re-read a
+  row its `buyer-first` pass already walked: if the ops script filled flags after that pass
+  finished, delete the Market's `reporting.backfill_progress` row of kind `buyer-first` (migration
+  role) and the next tick walks the still-unknown rows again (known flags are kept). Until then such
+  a row counts as neither new nor returning.
 - Rows recorded before the columns: the backfill's fourth sales kind `buyer-first` (after
   `seller-orders`, `refunds` and `delivery`; the kind CHECK of `backfill_progress` allows it). It
   walks reporting's own paid `seller_orders` of the Market with `buyer_first_order IS NULL` by

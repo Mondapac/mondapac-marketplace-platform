@@ -18,12 +18,27 @@
 -- buyer and per buyer and seller (by payment time, ties by order id), and the flags of every paid
 -- seller order from them. Like the `paid_at` backfill of 20261115230000 it runs in this file's
 -- transaction: ADD COLUMN takes the table lock for the whole file, accepted while the table is small
--- (before launch). A payment confirmed by the previous release between this migration and the
--- deploy has no claim and keeps null flags (unknown); the confirming unit claims from the buyer's
--- earliest paid order, not from its own, so such a gap order still counts as the buyer's first and
--- a later order is never wrongly first.
+-- (before launch; assumed volume at most 200,000 seller orders, checked by the guard below). A
+-- payment confirmed by the previous release between this migration and the deploy has no claim and
+-- keeps null flags (unknown) until scripts/db/ordering-buyer-first-backfill.sql is run once after
+-- the deploy (a release step, docs/design/data/ordering.md 3.16); the confirming unit claims from
+-- the buyer's earliest paid order, not from its own, so such a gap order still counts as the
+-- buyer's first and a later order is never wrongly first.
 -- Safety: a blocked statement fails instead of queueing.
 SET lock_timeout = '5s';
+
+-- No payment is confirmed while the backfill reads: confirmations write orders and seller_orders
+-- (ROW EXCLUSIVE), which this mode blocks until the file commits; reads go on.
+LOCK TABLE "ordering"."orders", "ordering"."seller_orders" IN SHARE ROW EXCLUSIVE MODE;
+
+-- Guard: the in-file backfill is sized for a small table. Above it, stop and take the batched path.
+DO $$
+BEGIN
+  IF (SELECT count(*) FROM "ordering"."seller_orders") > 200000 THEN
+    RAISE EXCEPTION 'ordering.seller_orders has more than 200000 rows: use the batched backfill path (move the backfill out of 20261124020000_ordering_buyer_first_orders and run scripts/db/ordering-buyer-first-backfill.sql in batches)';
+  END IF;
+END
+$$;
 
 -- AlterTable: nullable, no default: a catalog change only (no rewrite).
 ALTER TABLE "ordering"."seller_orders" ADD COLUMN     "buyer_first_order" BOOLEAN,
@@ -74,8 +89,9 @@ ALTER TABLE "ordering"."buyer_first_seller_orders"
 -- Backfill the claims from the orders already paid: the earliest paid order of each buyer, then of
 -- each buyer and seller. Same order of the ties in both (payment time, then order id; one seller
 -- order per seller and order), so a buyer's first order is always the first with each of its sellers.
--- Re-runnable (the database spec runs this part again): a claim already there is kept, and only
--- null flags are written, so no known flag is ever rewritten.
+-- Re-runnable (scripts/db/ordering-buyer-first-backfill.sql holds the same three statements, and the
+-- database spec runs them again): a claim already there is kept, and only null flags are written,
+-- so no known flag is ever rewritten.
 INSERT INTO "ordering"."buyer_first_orders" ("market_id", "tenant_id", "account_id", "order_id", "first_order_at")
 SELECT DISTINCT ON (o."market_id", o."tenant_id", o."account_id")
        o."market_id", o."tenant_id", o."account_id", o."id", o."confirmed_at"
