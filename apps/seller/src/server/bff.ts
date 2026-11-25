@@ -273,6 +273,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/seller/imports/:id/report',
     // One of the shop's customers by code (query: `page`, `pageSize` of their orders).
     'customers/seller/customers/:code',
+    // "You receive (est.)" of the offer page (query: `lines`; Offer page PR 4).
+    'pricing/seller/offers/:id/receive-estimates',
   ],
 };
 
@@ -475,10 +477,15 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
   // The API's own opaque cursor (epoch milliseconds of the publication, an underscore, the review id).
   'reviews/seller': { cursor: /^[0-9]{1,15}_[0-9a-f-]{36}$/ },
 };
+/** Up to 20 `variantId:priceMinor` pairs, comma separated (the API checks every value again). */
+const RECEIVE_LINES =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[1-9][0-9]{0,12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[1-9][0-9]{0,12}){0,19}$/i;
 /** Per GET template with ids, the query keys passed on (same rules as {@link QUERY_KEYS}). */
 const QUERY_KEYS_WITH_ID: Readonly<Record<string, Readonly<Record<string, RegExp | null>>>> = {
   'customers/seller/customers/:code': { page: /^[0-9]{1,4}$/, pageSize: /^[0-9]{1,3}$/ },
   'catalog/seller/imports/:id/report': { kind: /^(errors|full)$/ },
+  // "You receive (est.)" of the offer page (Offer page PR 4): up to 20 `variantId:priceMinor`.
+  'pricing/seller/offers/:id/receive-estimates': { lines: RECEIVE_LINES },
 };
 /** DELETE templates whose query crosses: the list key of a generic saved filter. */
 const DELETE_QUERY_KEYS_WITH_ID: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
@@ -493,6 +500,8 @@ const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'reviews/seller/export:ids': 7400,
   'ordering/seller/orders/export:ids': 3700,
   'catalog/seller/offers/export:offerIds': 3700,
+  // 20 pairs of a 36-character id, a colon and up to 13 digits, and 19 commas.
+  'pricing/seller/offers/:id/receive-estimates:lines': 1020,
 };
 
 /**
@@ -528,23 +537,31 @@ function strictQueryRefusal(
 
 /** The allowed keys of the request's query, capped in length; everything else is dropped. */
 function upstreamQuery(method: string, path: readonly string[], requestUrl: string): string {
-  const keys =
-    method === 'DELETE'
-      ? Object.entries(DELETE_QUERY_KEYS_WITH_ID).find(([template]) =>
-          matches(template, path, null),
-        )?.[1]
-      : method !== 'GET'
-        ? undefined
-        : (QUERY_KEYS[path.join('/')] ??
-          Object.entries(QUERY_KEYS_WITH_ID).find(([template]) =>
-            matches(template, path, null),
-          )?.[1]);
+  const target = path.join('/');
+  // The template a path with ids fits: a longer value cap may be set per template.
+  let template: string | null = null;
+  let keys: Readonly<Record<string, RegExp | null>> | undefined;
+  if (method === 'DELETE') {
+    keys = Object.entries(DELETE_QUERY_KEYS_WITH_ID).find(([item]) =>
+      matches(item, path, null),
+    )?.[1];
+  } else if (method === 'GET') {
+    keys = QUERY_KEYS[target];
+    if (keys === undefined) {
+      const found = Object.entries(QUERY_KEYS_WITH_ID).find(([item]) => matches(item, path, null));
+      template = found?.[0] ?? null;
+      keys = found?.[1];
+    }
+  }
   if (keys === undefined) return '';
   const source = new URL(requestUrl).searchParams;
   const kept = new URLSearchParams();
   for (const [key, shape] of Object.entries(keys)) {
     const value = source.get(key);
-    const max = QUERY_VALUE_MAX_FOR[`${path.join('/')}:${key}`] ?? QUERY_VALUE_MAX;
+    const max =
+      QUERY_VALUE_MAX_FOR[`${target}:${key}`] ??
+      (template === null ? undefined : QUERY_VALUE_MAX_FOR[`${template}:${key}`]) ??
+      QUERY_VALUE_MAX;
     if (value === null || value.length > max) continue;
     if (shape === null || shape.test(value)) kept.set(key, value);
   }
