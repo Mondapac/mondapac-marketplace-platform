@@ -215,6 +215,7 @@ export class OwnOfferAddTag extends UseCase<
     const guard = await deps.unitOfWork.run<
       {
         readonly version: number;
+        readonly productId: Id<'Product'>;
         readonly prepared: PreparedAsk | 'unavailable';
         readonly live: boolean;
         readonly hasOpenChange: boolean;
@@ -238,6 +239,7 @@ export class OwnOfferAddTag extends UseCase<
         const open = live ? await deps.editReview.openChange(market, offer.state.id) : null;
         return ok({
           version: offer.state.version,
+          productId: offer.state.productId,
           prepared: { facts, queries, productVersion },
           live,
           hasOpenChange: open !== null,
@@ -261,7 +263,8 @@ export class OwnOfferAddTag extends UseCase<
     if (!asked.ok) return err(asked.error);
 
     // The review policy, outside any unit; any failure holds the change (fail closed).
-    const verdict = watchedEdit ? await deps.editReview.verdict(context, offerId, watched) : null;
+    const subject = { offerId, sellerId, productId: guard.value.productId };
+    const verdict = watchedEdit ? await deps.editReview.verdict(context, subject, watched) : null;
     const reasons = verdict?.reasons ?? [];
 
     try {

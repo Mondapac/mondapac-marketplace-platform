@@ -210,18 +210,18 @@ count before an activity or link is removed; the proposal form's parent list.
 
 A seller's Offer submit (`own-offer.submit`) no longer reads the Market's `approval-required`
 (that setting now governs product revisions only). The pure policy
-`domain/offer-review-policy.ts` decides, version `OFFER_REVIEW_POLICY_VERSION` (2 since slice 2c): it returns the
+`domain/offer-review-policy.ts` decides, version `OFFER_REVIEW_POLICY_VERSION` (2 since slice 2c, 3 since slice 4): it returns the
 reasons that send the Offer to the queue, empty meaning publish at once.
 
 | Reason code          | Rule       | Source today                                                                                                              |
 | -------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `emergency-stop`     | R0         | the Market switch `offer-review-emergency-stop` (slice 2b); category and seller scopes later |
-| `probation`          | R1         | none yet (slice 4): every seller counts as in probation, so risk-based mode still queues every new Offer (fail closed)    |
+| `emergency-stop`     | R0         | the Market switch `offer-review-emergency-stop` (slice 2b), the seller's stop and the category stop (slice 4) |
+| `probation`          | R1         | the seller's standing (slice 4): fewer approved products than N in the current epoch, and not Trusted                     |
 | `certificate-badge`  | R2         | kept and requested badge types, while `catalog.offer-review.certificate-badges` is `review`                               |
 | `handling`           | R3         | handling other than `SEALED_ORIGINAL`                                                                                     |
 | `contact-text`       | R5         | a link, domain, e-mail, phone number (dates excluded), `@handle` or a messaging app name in any locale of the description |
-| `full-review`        | R6         | none yet (slice 4); off                                                                                                   |
-| `sensitive-category` | R7         | none yet (category list pending with Hadi); off                                                                           |
+| `full-review`        | R6         | the seller's full-review flag (sellers, SEL-25; slice 4)                                                                  |
+| `sensitive-category` | R7         | "always review" on a category of the product or an ancestor (slice 4)                                                    |
 | `review-all`         | mode `all` | the Market's mode is `all` and no other reason applies                                                                    |
 
 Mode `off` publishes everything except during an emergency stop. The settings are read through
@@ -236,13 +236,12 @@ The rules on edits are in the next section (slice 2c).
 `offerEditReviewReasons` (policy version 2) judges a seller's edit of a **published** Offer. It
 watches three fields: the description, the handling and a new certification tag. While the
 emergency stop is on (R0, owner decision 2026-11-25), every watched change is held with
-`emergency-stop`, in every mode (today the Market's stop; the seller and category stops join when
-slice 4 reads the review facts). Without a stop, mode `off` holds nothing. Otherwise R2 (a new badge while `certificate-badges` is `review`), R3 (handling other
+`emergency-stop`, in every mode (the Market's stop, and since slice 4 the seller's and the category's). Without a stop, mode `off` holds nothing. Otherwise R2 (a new badge while `certificate-badges` is `review`), R3 (handling other
 than `SEALED_ORIGINAL`) and R5 (contact text in any locale) hold the change; in mode `all` any
 watched change is held (`review-all`), except a handling change back to `SEALED_ORIGINAL`, which
-lowers the risk and is instant in every mode (Hadi, 2026-11-25). R1, R6 and R7 are publication
-rules and do not apply to edits (R7: an Offer has no category; a category change is a product
-revision, VER-02). A settings read failure answers the safe
+lowers the risk and is instant in every mode (Hadi, 2026-11-25). R1 and R6 are publication
+rules and do not apply to edits; since slice 4, R7 holds a watched edit of an Offer whose product is
+in an "always review" category (`sensitive-category`, owner answer 4). A settings read failure answers the safe
 settings (mode `all`).
 
 - Green: the edit applies as before, and an `edit` referral with no reason is stored and audited.
@@ -286,3 +285,44 @@ settings (mode `all`).
   syntax tree of every source file: only the named files may import the issuing functions.
 - The seller's Offer read carries `pendingChange` (the latest change, or null). No event or
   notification is sent for a decision yet.
+
+## Probation, Trusted and the review flags (risk-based Offer approval slice 4)
+
+- **Standing** (`catalog.seller_review_standings`, one row per seller and Market, created by the
+  first approval or send-back): epoch, target kind, Changes needed in a row, `trustedAt`,
+  `trustLostAt`. Credits (`seller_review_credits`, insert-only) count one per **product** per
+  epoch, so deleting and recreating an Offer gains nothing. N is the Market setting
+  `probationOffers` (0 to 100; unreadable or out of bounds reads as 100). `trustStatusOf` is pure:
+  Trusted when `trustedAt` is stamped, when the admin flag Trusted from start was switched on after
+  the last revocation, or when the count meets the target (N, or ceil(N/2) after misconduct).
+- **Writes**: `offer.approve` credits the product and stamps Trusted at the target, in the
+  approval's unit (`catalog.seller-review.trusted` audited once); `offer.request-changes` counts a
+  Changes needed, and the second in a row starts a new epoch from zero
+  (`catalog.seller-review.restarted`); an approval breaks the row. Once Trusted, Changes needed
+  are ignored. When N was lowered under a count, the next submit (or send-back) stamps
+  `trustedAt`, so raising N later never demotes. Misconduct revocation is in the domain and tested,
+  not wired yet. Lock order: the Offer row, then the standing; each UPDATE raises the version by
+  one (the guard trigger allows nothing else).
+- **Seller flags** (sellers, SEL-25; `seller_admin_settings` plus the insert-only
+  `offer_review_flag_changes`): Trusted from start (`sellers.offer-review-trust.manage`, protected,
+  step-up `sellers.offer-review-trust.change`), full review (`sellers.offer-review-full.manage`,
+  no step-up, no default role) and the seller stop (`sellers.offer-review-stop.manage`, protected,
+  step-up `sellers.offer-review-stop.change`). Routes `GET` and `PUT
+  sellers/admin/:sellerId/offer-review[/trusted|/full-review|/stop]`; catalog reads them through
+  `SellersFacade.offerReviewFlagsOf`.
+- **Category flags** (`category_offer_review_flags`, `category_offer_review_changes`): "always
+  review" (R7, `catalog.category-review.manage`, step-up `catalog.category-review.change`) and the
+  category stop (R0, `catalog.offer-review-stop.manage`, step-up
+  `catalog.offer-review-stop.change`), both inherited by sub-categories through the live category
+  paths. Routes `PUT catalog/admin/categories/:categoryId/offer-review[-stop]`,
+  `GET catalog/admin/offer-review/category-flags` and `GET
+  catalog/admin/sellers/:sellerId/review-standing`.
+- Every change takes `{ on, reason, expectedVersion }` (reason 1 to 500 characters, kept in the
+  change log, never logged or audited; a stale version is 409 `conflict.stale`), is refused in an
+  acting-as session, and spends the step-up proof in its own unit only when it changes something.
+- **Edits**: the seller and category stops hold watched edits like the Market's stop, and
+  "always review" now holds watched edits too (`sensitive-category`, owner answer 4).
+- **Fail closed**: the facts are read outside the decision's unit. Sellers unavailable: probation
+  and full review; standing unreadable: probation; categories unreadable: sensitive category;
+  each marks the facts `degraded`, and a degraded edit verdict uses mode `all`. A failure never
+  invents a stop.

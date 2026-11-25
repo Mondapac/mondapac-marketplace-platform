@@ -235,6 +235,8 @@ export class OwnOfferSetHandling extends UseCase<
             : { addedBadgeTypes: [] };
         return ok({
           version: offer.state.version,
+          sellerId: offer.state.sellerId,
+          productId: offer.state.productId,
           prepared,
           watched,
           live,
@@ -251,7 +253,8 @@ export class OwnOfferSetHandling extends UseCase<
       return err({ code: 'offer.change-pending' });
     }
     // The review policy, outside any unit; any failure holds the change (fail closed).
-    const verdict = watchedEdit ? await deps.editReview.verdict(context, offerId, watched) : null;
+    const subject = { offerId, sellerId: guard.value.sellerId, productId: guard.value.productId };
+    const verdict = watchedEdit ? await deps.editReview.verdict(context, subject, watched) : null;
     const reasons = verdict?.reasons ?? [];
     const held = reasons.length > 0;
     // A held change asks nothing: the Offer keeps its handling and its tags as they are.

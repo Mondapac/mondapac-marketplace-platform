@@ -281,7 +281,8 @@ export class OwnOfferEdit extends UseCase<
     const hash = hashesOf(prepared);
 
     // The review policy, outside any unit; any failure holds the change (fail closed).
-    const verdict = watchedEdit ? await deps.editReview.verdict(context, offerId, watched) : null;
+    const subject = { offerId, sellerId: seen.state.sellerId, productId: seen.state.productId };
+    const verdict = watchedEdit ? await deps.editReview.verdict(context, subject, watched) : null;
     const reasons = verdict?.reasons ?? [];
     const held = reasons.length > 0;
 

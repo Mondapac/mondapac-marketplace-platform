@@ -175,12 +175,50 @@ export const SELLERS_SAVED_FILTER_SHARE = definePermission('sellers', {
   protected: false,
 });
 
+/**
+ * Switch a seller's Trusted-from-start flag (SEL-25; risk-based Offer approval slice 4, ADR-0051
+ * decision 4): the seller skips probation and its first publications stop waiting for an admin
+ * by default. Platform scope and protected: only the Platform Administrator holds it unless a
+ * senior custom role is given it; every change also needs a fresh two-step code of the admin
+ * (`sellers.offer-review-trust.change`) and a reason.
+ */
+export const SELLERS_OFFER_REVIEW_TRUST_MANAGE = definePermission('sellers', {
+  key: 'sellers.offer-review-trust.manage',
+  scope: 'platform',
+  protected: true,
+});
+
+/**
+ * Switch a seller's full-review flag (R6, slice 4): every first publication of the seller waits
+ * for an admin. Platform scope, not protected (turning it on only adds review). No default role
+ * lists it yet: the Platform Administrator grants it to the roles that should.
+ */
+export const SELLERS_OFFER_REVIEW_FULL_MANAGE = definePermission('sellers', {
+  key: 'sellers.offer-review-full.manage',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Switch a seller's Offer review stop (R0 for one seller, slice 4): its first publications and
+ * watched edits wait for an admin in every mode. Platform scope and protected; every change also
+ * needs a fresh two-step code (`sellers.offer-review-stop.change`) and a reason.
+ */
+export const SELLERS_OFFER_REVIEW_STOP_MANAGE = definePermission('sellers', {
+  key: 'sellers.offer-review-stop.manage',
+  scope: 'platform',
+  protected: true,
+});
+
 export const SELLERS_PERMISSIONS = declarePermissions('sellers', [
   SELLERS_BLOG_ACCESS_EDIT,
   SELLERS_BUSINESS_ACTIVITY_MANAGE,
   SELLERS_BUSINESS_ACTIVITY_VIEW,
   SELLERS_BUSINESS_DETAILS_VIEW,
   SELLERS_BUSINESS_IDENTITY_EDIT,
+  SELLERS_OFFER_REVIEW_FULL_MANAGE,
+  SELLERS_OFFER_REVIEW_STOP_MANAGE,
+  SELLERS_OFFER_REVIEW_TRUST_MANAGE,
   SELLERS_SAVED_FILTER_SHARE,
   SELLERS_SELLER_FILE_REVIEW,
   SELLERS_SELLER_HEALTH_RECALCULATE,

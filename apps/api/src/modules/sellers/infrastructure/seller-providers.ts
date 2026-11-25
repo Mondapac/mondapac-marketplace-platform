@@ -91,6 +91,11 @@ import {
   type AiAccessSettingRepository,
 } from '../application/ports/ai-access-setting.repository';
 import { PrismaAiAccessSettingRepository } from './prisma-ai-access-setting.repository';
+import {
+  OFFER_REVIEW_FLAGS_REPOSITORY,
+  type OfferReviewFlagsRepository,
+} from '../application/ports/offer-review-flags.repository';
+import { PrismaOfferReviewFlagsRepository } from './prisma-offer-review-flags.repository';
 import { PrismaCategoryProposalsSettingRepository } from './prisma-category-proposals-setting.repository';
 import {
   SELLER_BUSINESS_ACTIVITY_REPOSITORY,
@@ -503,6 +508,12 @@ export const sellerProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AiAccessSettingRepository =>
       new PrismaAiAccessSettingRepository(prisma),
+  },
+  {
+    provide: OFFER_REVIEW_FLAGS_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): OfferReviewFlagsRepository =>
+      new PrismaOfferReviewFlagsRepository(prisma),
   },
   {
     provide: SELLING_FACTS_REPOSITORY,

@@ -1,34 +1,56 @@
-import type { CallContext } from '@mondapac/shared-kernel';
+import type { CallContext, Id } from '@mondapac/shared-kernel';
+import { ok } from '@mondapac/shared-kernel';
+import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { SettingsFacade } from '../../settings';
+import type { CategoryOfferReviewFlagsStore } from '../application/ports/category-offer-review-flags.store';
+import type { CategoryPathsReader } from '../application/ports/category-paths.reader';
 import {
   SAFE_OFFER_REVIEW_SETTINGS,
+  type OfferReviewFactsRead,
   type OfferReviewInputs,
   type OfferReviewSettings,
 } from '../application/ports/offer-review';
-import type { OfferReviewFacts } from '../domain/offer-review-policy';
+import type { SellerOfferReviewFlagsReader } from '../application/ports/seller-offer-review-flags.reader';
+import type { SellerReviewStandingRepository } from '../application/ports/seller-review-standing.repository';
+import { categoryReviewFactsOf } from '../domain/category-offer-review-flags';
+import {
+  probationOffersOf,
+  SAFE_PROBATION_OFFERS,
+  trustStatusOf,
+  type StandingFacts,
+} from '../domain/seller-review-standing';
+
+export interface FacadeOfferReviewInputsDependencies {
+  readonly settings: SettingsFacade;
+  readonly sellerFlags: SellerOfferReviewFlagsReader;
+  readonly unitOfWork: UnitOfWork;
+  readonly standings: SellerReviewStandingRepository;
+  readonly categoryFlags: CategoryOfferReviewFlagsStore;
+  readonly categoryPaths: CategoryPathsReader;
+}
+
+const FAILED = Symbol('failed');
 
 /**
- * Until the probation counter and the seller flags exist, every seller counts as in probation, so
- * in risk-based mode every new Offer still goes to an admin (fail closed). The emergency stop, the
- * full-review flag and the "always review" categories have no source yet and are off.
- */
-const FACTS_BEFORE_PROBATION: OfferReviewFacts = Object.freeze({
-  emergencyStop: false,
-  probation: true,
-  fullReview: false,
-  sensitiveCategory: false,
-});
-
-/**
- * {@link OfferReviewInputs} on the settings facade (ADR-0051). A throw or an unknown value is the
- * safe answer: review everything.
+ * {@link OfferReviewInputs} (ADR-0051; slice 4): the Market's settings on the settings facade, and
+ * the facts of one seller and product from the sellers facade (`offerReviewFlagsOf`), the
+ * seller's standing and the product's categories, each read outside the decision's unit (in
+ * read-only units of their own). Fail closed, piece by piece, never throwing:
+ *
+ * - the settings: the safe answer (mode `all`); N unreadable or out of bounds: the safe 100;
+ * - the sellers facade refused, the seller is unknown or it failed: probation and full review on;
+ * - the standing cannot be read: probation on;
+ * - the categories cannot be read: sensitive category on;
+ *
+ * each of the last three with `degraded`. A stop is never invented: the seller's stop counts only
+ * when the facade answered, the category stop only when the categories were read.
  */
 export class FacadeOfferReviewInputs implements OfferReviewInputs {
-  constructor(private readonly facade: SettingsFacade) {}
+  constructor(private readonly deps: FacadeOfferReviewInputsDependencies) {}
 
   async settings(context: CallContext): Promise<OfferReviewSettings> {
     try {
-      const policy = await this.facade.offerReviewPolicy(context);
+      const policy = await this.deps.settings.offerReviewPolicy(context);
       const mode =
         policy.mode === 'risk-based' || policy.mode === 'off' || policy.mode === 'all'
           ? policy.mode
@@ -41,7 +63,101 @@ export class FacadeOfferReviewInputs implements OfferReviewInputs {
     }
   }
 
-  facts(): Promise<OfferReviewFacts> {
-    return Promise.resolve(FACTS_BEFORE_PROBATION);
+  async probationOffers(context: CallContext): Promise<number> {
+    try {
+      const policy = await this.deps.settings.offerReviewPolicy(context);
+      return typeof policy.probationOffers === 'number'
+        ? probationOffersOf(policy.probationOffers)
+        : SAFE_PROBATION_OFFERS;
+    } catch {
+      return SAFE_PROBATION_OFFERS;
+    }
+  }
+
+  async facts(
+    context: CallContext,
+    subject: { readonly sellerId: Id<'Seller'>; readonly productId: Id<'Product'> },
+  ): Promise<OfferReviewFactsRead> {
+    const [probationOffers, flags, standing, categories] = await Promise.all([
+      this.probationOffers(context),
+      this.deps.sellerFlags.flagsOf(context, subject.sellerId).catch(() => null),
+      this.#standing(context, subject.sellerId),
+      this.#categories(context, subject.productId),
+    ]);
+    const flagsFailed = flags === null;
+    const standingFailed = standing === FAILED;
+    const categoriesFailed = categories === FAILED;
+    const trust =
+      flagsFailed || standingFailed
+        ? null
+        : trustStatusOf(standing, { trustedFromStart: flags.trustedFromStart }, probationOffers);
+    return {
+      // R0: only a stop that was read; a failure never invents one.
+      emergencyStop:
+        flags?.reviewStop.on === true || (!categoriesFailed && categories.emergencyStop),
+      probation: trust === null || trust.status === 'probation',
+      fullReview: flagsFailed || flags.fullReview.on,
+      sensitiveCategory: categoriesFailed || categories.sensitiveCategory,
+      degraded: flagsFailed || standingFailed || categoriesFailed,
+      stampTrust:
+        !standingFailed &&
+        standing !== null &&
+        standing.trustedAt === null &&
+        trust !== null &&
+        trust.status === 'trusted' &&
+        trust.source === 'count',
+      probationOffers,
+    };
+  }
+
+  /** The standing and its count, null when the seller has none yet, FAILED on any error. */
+  async #standing(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<StandingFacts | null | typeof FAILED> {
+    const { market } = context;
+    try {
+      const read = await this.deps.unitOfWork.run(
+        market,
+        async () => ok(await this.deps.standings.read(market, sellerId)),
+        { readOnly: true },
+      );
+      if (!read.ok) return FAILED;
+      return read.value === null ? null : { ...read.value.state, count: read.value.count };
+    } catch {
+      return FAILED;
+    }
+  }
+
+  /**
+   * R7 and the category stop of the product: its published revision's categories and their
+   * ancestors (merges followed) against the Market's few flagged categories. FAILED on any error,
+   * including a tree that cannot be walked.
+   */
+  async #categories(
+    context: CallContext,
+    productId: Id<'Product'>,
+  ): Promise<
+    { readonly sensitiveCategory: boolean; readonly emergencyStop: boolean } | typeof FAILED
+  > {
+    const { market } = context;
+    try {
+      const read = await this.deps.unitOfWork.run(
+        market,
+        async () => {
+          const flagged = await this.deps.categoryFlags.listFlagged(market);
+          if (flagged.length === 0) return ok({ sensitiveCategory: false, emergencyStop: false });
+          const named = await this.deps.categoryFlags.publishedCategoryIds(market, productId);
+          const paths = await this.deps.categoryPaths.livePaths(market, named);
+          // The named categories count too, also one the live paths drop (an archived one).
+          const ids = new Set<string>([...named, ...paths.flat()]);
+          return ok(categoryReviewFactsOf(ids, flagged));
+        },
+        { readOnly: true },
+      );
+      return read.ok ? read.value : FAILED;
+    } catch {
+      return FAILED;
+    }
   }
 }

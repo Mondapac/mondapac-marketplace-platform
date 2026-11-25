@@ -99,12 +99,43 @@ describe('offerEditReviewReasons (the edit rules of a live Offer, slice 2c)', ()
     mode: 'risk-based',
     certificateBadges: 'review',
     emergencyStop: false,
+    sensitiveCategory: false,
     addedBadgeTypes: [],
     ...overrides,
   });
 
-  it('is version 2 of the policy', () => {
-    expect(OFFER_REVIEW_POLICY_VERSION).toBe(2);
+  it('is version 3 of the policy', () => {
+    expect(OFFER_REVIEW_POLICY_VERSION).toBe(3);
+  });
+
+  it('holds a watched edit of a product in an always-review category (R7), outside mode off', () => {
+    for (const mode of ['risk-based', 'all'] as const) {
+      expect(
+        offerEditReviewReasons(
+          edit({ mode, sensitiveCategory: true, newDescription: { en: 'Now 2 kg' } }),
+        ),
+      ).toEqual(['sensitive-category']);
+      expect(
+        offerEditReviewReasons(edit({ mode, sensitiveCategory: true, newHandling: 'FRESH' })),
+      ).toEqual(['handling', 'sensitive-category']);
+      // Nothing watched, or handling back to sealed original: still instant.
+      expect(offerEditReviewReasons(edit({ mode, sensitiveCategory: true }))).toEqual([]);
+      expect(
+        offerEditReviewReasons(
+          edit({ mode, sensitiveCategory: true, newHandling: 'SEALED_ORIGINAL' }),
+        ),
+      ).toEqual([]);
+    }
+    expect(
+      offerEditReviewReasons(
+        edit({ mode: 'off', sensitiveCategory: true, newDescription: { en: 'Now 2 kg' } }),
+      ),
+    ).toEqual([]);
+    expect(
+      offerEditReviewReasons(
+        edit({ emergencyStop: true, sensitiveCategory: true, newDescription: { en: 'x' } }),
+      ),
+    ).toEqual(['emergency-stop', 'sensitive-category']);
   });
 
   it('applies a clean edit at once in risk-based mode', () => {

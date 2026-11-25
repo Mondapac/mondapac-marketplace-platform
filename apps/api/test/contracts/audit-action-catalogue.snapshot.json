@@ -382,6 +382,32 @@
     }
   },
   {
+    "action": "catalog.category.offer-review-changed",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "on": "boolean"
+    },
+    "after": {
+      "on": "boolean",
+      "stepUpVerifiedAt": "optional(instant)"
+    }
+  },
+  {
+    "action": "catalog.category.review-stop-changed",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "on": "boolean"
+    },
+    "after": {
+      "on": "boolean",
+      "stepUpVerifiedAt": "optional(instant)"
+    }
+  },
+  {
     "action": "catalog.seller-category.promoted",
     "targetType": "catalog.seller-category",
     "targetId": "id",
@@ -442,6 +468,28 @@
     "after": {
       "definitionId": "id",
       "productId": "id"
+    }
+  },
+  {
+    "action": "catalog.seller-review.restarted",
+    "targetType": "catalog.seller-review-standing",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "epoch": "integer"
+    }
+  },
+  {
+    "action": "catalog.seller-review.trusted",
+    "targetType": "catalog.seller-review-standing",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "count": "integer",
+      "epoch": "integer",
+      "target": "integer"
     }
   },
   {
@@ -3546,6 +3594,44 @@
     },
     "after": {
       "minimumOrder": "optional(money)"
+    }
+  },
+  {
+    "action": "sellers.offer-review-full-review.changed",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "on": "boolean"
+    },
+    "after": {
+      "on": "boolean"
+    }
+  },
+  {
+    "action": "sellers.offer-review-stop.changed",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "on": "boolean"
+    },
+    "after": {
+      "on": "boolean",
+      "stepUpVerifiedAt": "optional(instant)"
+    }
+  },
+  {
+    "action": "sellers.offer-review-trust.changed",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "on": "boolean"
+    },
+    "after": {
+      "on": "boolean",
+      "stepUpVerifiedAt": "optional(instant)"
     }
   },
   {

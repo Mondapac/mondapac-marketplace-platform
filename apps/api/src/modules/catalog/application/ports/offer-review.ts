@@ -9,7 +9,7 @@ import type {
 export interface OfferReviewSettings {
   readonly mode: OfferReviewMode;
   readonly certificateBadges: 'review' | 'automatic';
-  /** R0 for the whole Market (the settings switch); category and seller stops come later. */
+  /** R0 for the whole Market (the settings switch); the category and seller stops are facts. */
   readonly emergencyStop: boolean;
 }
 
@@ -22,6 +22,26 @@ export const SAFE_OFFER_REVIEW_SETTINGS: OfferReviewSettings = Object.freeze({
 });
 
 /**
+ * The facts as read for one decision (slice 4): the policy's facts, and whether any of them was
+ * answered fail-closed because a read failed.
+ */
+export interface OfferReviewFactsRead extends OfferReviewFacts {
+  /**
+   * True when a read failed and its fact is the safe answer: the sellers facade (probation and
+   * full review on), the standing (probation on) or the categories (sensitive on). The stop is
+   * never invented. An edit with degraded facts is judged in mode `all`.
+   */
+  readonly degraded: boolean;
+  /**
+   * The seller is Trusted by its count with N read now but `trusted_at` is not stamped yet (N was
+   * lowered): the submit unit stamps it, so raising N later never demotes the seller.
+   */
+  readonly stampTrust: boolean;
+  /** N as read (the safe 100 when it cannot be read). */
+  readonly probationOffers: number;
+}
+
+/**
  * What the Offer review policy reads that is not on the Offer: the Market's settings and the facts
  * about the seller and the product. Both are read outside any unit. Neither throws: a failure is
  * the safe answer (review), never "publish".
@@ -31,7 +51,9 @@ export interface OfferReviewInputs {
   facts(
     context: CallContext,
     subject: { readonly sellerId: Id<'Seller'>; readonly productId: Id<'Product'> },
-  ): Promise<OfferReviewFacts>;
+  ): Promise<OfferReviewFactsRead>;
+  /** N (`offer-review-probation-offers`): a whole number from 0 to 100, else the safe 100. */
+  probationOffers(context: CallContext): Promise<number>;
 }
 export const OFFER_REVIEW_INPUTS = Symbol('CATALOG_OFFER_REVIEW_INPUTS');
 

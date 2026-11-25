@@ -421,6 +421,31 @@ export const CATALOG_SELLER_CATEGORY_PROMOTE_MERGE = definePermission('catalog',
   protected: true,
 });
 
+/**
+ * Mark a platform category "always review" (R7) or clear it (risk-based Offer approval slice 4;
+ * ADR-0051 decision 4): Offers of products in it, or in a sub-category, wait for an admin at their
+ * first publication and on watched edits. Platform scope and protected: clearing it lowers review
+ * for many Offers. Every change needs a fresh two-step code of the admin
+ * (`catalog.category-review.change`) and a reason. No default role lists it.
+ */
+export const CATALOG_CATEGORY_REVIEW_MANAGE = definePermission('catalog', {
+  key: 'catalog.category-review.manage',
+  scope: 'platform',
+  protected: true,
+});
+
+/**
+ * Switch a platform category's Offer review stop (R0 for the category and its sub-categories,
+ * slice 4): first publications and watched edits wait for an admin in every mode. Platform scope
+ * and protected; every change needs a fresh two-step code (`catalog.offer-review-stop.change`)
+ * and a reason. No default role lists it.
+ */
+export const CATALOG_OFFER_REVIEW_STOP_MANAGE = definePermission('catalog', {
+  key: 'catalog.offer-review-stop.manage',
+  scope: 'platform',
+  protected: true,
+});
+
 export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_OWN_CATEGORY_PROPOSE,
   CATALOG_CATEGORY_PROPOSAL_DECIDE,
@@ -431,6 +456,8 @@ export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_OWN_IMPORT_RUN,
   CATALOG_PRODUCT_VIEW,
   CATALOG_PRODUCT_APPROVE,
+  CATALOG_CATEGORY_REVIEW_MANAGE,
+  CATALOG_OFFER_REVIEW_STOP_MANAGE,
   CATALOG_PRODUCT_PAUSE,
   CATALOG_PRODUCT_DELETE,
   CATALOG_PLATFORM_PRODUCT_RETIRE,

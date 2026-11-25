@@ -9,6 +9,7 @@ import { CATALOG_PRODUCT_APPROVE } from '../../contracts/permissions';
 import { OFFER_CHANGE_REASONS, type OfferChangeReason } from '../../domain/events';
 import type { OfferRepository } from '../ports/offer.repository';
 import { parseDecision, type ReviewValidationFailure } from '../offer-review-input';
+import type { SellerReviewProbation } from '../seller-review-probation';
 
 export interface OfferRequestChangesInput {
   readonly offerId: string;
@@ -31,6 +32,8 @@ export interface OfferRequestChangesDependencies {
   readonly offers: OfferRepository;
   readonly outbox: OutboxWriter;
   readonly clock: Clock;
+  /** The seller's probation counter (slice 4), moved in the request's unit. */
+  readonly probation: SellerReviewProbation;
 }
 
 /**
@@ -40,6 +43,10 @@ export interface OfferRequestChangesDependencies {
  * reason of a closed list; free text is never accepted. The Offer becomes `changes-needed` and
  * `catalog.offer-changes-requested.v1` (the code, ids only) goes to the outbox for the seller's
  * mail; the seller's edit returns it to `draft`.
+ *
+ * Probation (risk-based Offer approval slice 4): in probation, the second Changes needed in a row
+ * (seller-wide) restarts the seller's count. N and the Trusted-from-start switch are read before
+ * the unit; in the unit the standing is locked after the Offer row.
  */
 export class OfferRequestChanges extends UseCase<
   OfferRequestChangesInput,
@@ -93,6 +100,15 @@ export class OfferRequestChanges extends UseCase<
       return err({ code: 'validation.failed', fields: [{ path: 'reasonCode', code: 'unknown' }] });
     }
     const { deps } = this;
+    // The seller of the Offer, then N and its Trusted-from-start switch, outside any unit.
+    const seen = await deps.unitOfWork.run(
+      market,
+      async () => ok((await deps.offers.findById(market, offerId))?.state.sellerId ?? null),
+      { readOnly: true },
+    );
+    if (!seen.ok) return err({ code: 'access.unavailable' });
+    if (seen.value === null) return err({ code: 'offer.not-found' });
+    const probation = await deps.probation.prepare(context, seen.value);
     try {
       return await deps.unitOfWork.run<Record<string, never>, OfferRequestChangesFailure>(
         market,
@@ -103,12 +119,15 @@ export class OfferRequestChanges extends UseCase<
             return err({ code: 'offer.not-pending-review' } as const);
           }
           if (offer.state.version !== version) return err({ code: 'conflict.stale' } as const);
-          const asked = offer.requestChanges({
-            reasonCode: reason as OfferChangeReason,
-            now: deps.clock.now(),
-          });
+          if (offer.state.sellerId !== probation.sellerId) {
+            return err({ code: 'conflict.stale' } as const);
+          }
+          const now = deps.clock.now();
+          const asked = offer.requestChanges({ reasonCode: reason as OfferChangeReason, now });
           if (!asked.ok) return err({ code: 'offer.not-pending-review' } as const);
           await deps.offers.save(market, offer, { kind: 'admin', accountId: actor.accountId });
+          // Lock order: the Offer row (saved above), then the seller's standing.
+          await deps.probation.recordChangesNeeded(context, probation, now);
           await deps.outbox.append(context, offer.pendingEvents);
           return ok({});
         },

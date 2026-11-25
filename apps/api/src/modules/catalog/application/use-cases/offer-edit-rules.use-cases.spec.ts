@@ -33,7 +33,7 @@ import type { OfferPendingChangeState } from '../../domain/offer-pending-change'
 import type { ClaimFacts, OfferTagState } from '../../domain/offer-tag';
 import { ConfigCatalogMarketPolicy } from '../../infrastructure/config-catalog-market-policy';
 import type { CheckClaimText } from '../claim-text/check-claim-text.service';
-import type { OfferReviewSettings } from '../ports/offer-review';
+import type { OfferReviewFactsRead, OfferReviewSettings } from '../ports/offer-review';
 import type { OfferRepository } from '../ports/offer.repository';
 import type { ProductRepository } from '../ports/product.repository';
 import { AdminOfferChangeApprove } from './admin-offer-change-approve.use-case';
@@ -156,6 +156,7 @@ describe.each([
       offer?: OfferState;
       tags?: OfferTagState[];
       settings?: OfferReviewSettings | 'fail';
+      facts?: Partial<OfferReviewFactsRead> | 'fail';
     } = {},
   ) {
     let settings: OfferReviewSettings | 'fail' = options.settings ?? RISK;
@@ -195,6 +196,7 @@ describe.each([
     const memory = memoryOfferEditReview({
       ids,
       settings: () => settings,
+      ...(options.facts === undefined ? {} : { facts: options.facts }),
       pendingChanges,
       inUnit: () => openUnits > 0,
     });
@@ -322,6 +324,7 @@ describe.each([
       /** Stores a held change as it is, without the domain's checks (a stored row). */
       store: (state: OfferPendingChangeState) => pendingChanges.rows.set(state.id, state),
       settingsReads: memory.settingsReads,
+      factsAsked: memory.factsAsked,
       evaluator,
       outbox,
       setSettings: (next: OfferReviewSettings | 'fail') => (settings = next),
@@ -387,7 +390,7 @@ describe.each([
         proposedHandling: null,
         proposedTagTypes: [],
         reasons: ['contact-text'],
-        policyVersion: 2,
+        policyVersion: 3,
       });
       expect(r.referrals).toEqual([
         expect.objectContaining({
@@ -426,6 +429,58 @@ describe.each([
       );
       expect(applied.ok && applied.value).toMatchObject({ applied: true });
       expect(sku.changes()).toEqual([]);
+    });
+
+    it('holds a watched change during a seller or category stop, even in mode off (R0, slice 4)', async () => {
+      const r = rig({ settings: OFF, facts: { emergencyStop: true } });
+      const held = await r.edit.execute(sellerContext(), form(r, 'Clean text'));
+      expect(held.ok && held.value).toMatchObject({ applied: false, reasons: ['emergency-stop'] });
+      // The facts are asked for the Offer's own seller and product.
+      expect(r.factsAsked).toEqual([
+        { sellerId: r.current().state.sellerId, productId: r.current().state.productId },
+      ]);
+    });
+
+    it('holds a watched change of a product in an always-review category (R7, slice 4)', async () => {
+      const r = rig({ facts: { sensitiveCategory: true } });
+      const held = await r.edit.execute(sellerContext(), form(r, 'Clean text'));
+      expect(held.ok && held.value).toMatchObject({
+        applied: false,
+        reasons: ['sensitive-category'],
+      });
+      const [change] = r.changes();
+      expect(change?.reasons).toEqual(['sensitive-category']);
+      // R7 never holds a field the rules do not watch, and mode off holds nothing but a stop.
+      const sku = rig({ facts: { sensitiveCategory: true } });
+      const applied = await sku.edit.execute(
+        sellerContext(),
+        form(sku, 'Lamb shoulder, 1 kg', { sellerSku: 'SKU-9' }),
+      );
+      expect(applied.ok && applied.value).toMatchObject({ applied: true });
+      const off = rig({ settings: OFF, facts: { sensitiveCategory: true } });
+      const offEdit = await off.edit.execute(sellerContext(), form(off, 'Clean text'));
+      expect(offEdit.ok && offEdit.value).toMatchObject({ applied: true });
+    });
+
+    it('never holds an edit for probation or full review (R1, R6 judge first publications)', async () => {
+      const r = rig({ facts: { probation: true, fullReview: true } });
+      const outcome = await r.edit.execute(sellerContext(), form(r, 'Clean text'));
+      expect(outcome.ok && outcome.value).toMatchObject({ applied: true });
+    });
+
+    it('judges the edit in mode all when the facts are degraded, with no invented stop', async () => {
+      const r = rig({ settings: OFF, facts: { degraded: true } });
+      const outcome = await r.edit.execute(sellerContext(), form(r, 'Clean text'));
+      expect(outcome.ok && outcome.value).toMatchObject({
+        applied: false,
+        reasons: ['review-all'],
+      });
+      const failed = rig({ settings: OFF, facts: 'fail' });
+      const held = await failed.edit.execute(sellerContext(), form(failed, 'Clean text'));
+      expect(held.ok && held.value).toMatchObject({
+        applied: false,
+        reasons: ['sensitive-category'],
+      });
     });
 
     it('fails closed: a settings read that fails holds the change (mode all)', async () => {
@@ -921,14 +976,14 @@ describe.each([
           fields: ['handling'],
           handling: 'repacked',
           reasons: ['handling'],
-          policyVersion: 2,
+          policyVersion: 3,
         },
         {
           changeId: tag.value.pendingChangeId,
           fields: ['tags'],
           handling: null,
           reasons: ['review-all'],
-          policyVersion: 2,
+          policyVersion: 3,
         },
       ]);
       const tagId = r.current().tags.find((t) => t.typeCode === typeCode)!.id;
