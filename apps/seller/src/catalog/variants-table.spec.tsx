@@ -221,7 +221,7 @@ describe('VariantsTable', () => {
     expect(priceBox('Small').getAttribute('aria-invalid')).toBe('true');
   });
 
-  it('saves the table when Enter is pressed in a price cell', async () => {
+  it('saves the table when its form is submitted (the Save button)', async () => {
     call.mockResolvedValue({
       ok: true,
       status: 200,
@@ -231,6 +231,35 @@ describe('VariantsTable', () => {
     fireEvent.change(priceBox('Small'), { target: { value: '12.00' } });
     fireEvent.submit(priceBox('Small').closest('form')!);
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+  });
+
+  it('moves down the column on Enter, up on Shift+Enter, and never saves on Enter', () => {
+    mount();
+    priceBox('Small').focus();
+    expect(fireEvent.keyDown(priceBox('Small'), { key: 'Enter' })).toBe(false);
+    expect(document.activeElement).toBe(priceBox('Large'));
+    fireEvent.keyDown(priceBox('Large'), { key: 'Enter' });
+    expect(document.activeElement).toBe(priceBox('Huge'));
+    fireEvent.keyDown(priceBox('Huge'), { key: 'Enter', shiftKey: true });
+    expect(document.activeElement).toBe(priceBox('Large'));
+    stockBox(0).focus();
+    fireEvent.keyDown(stockBox(0), { key: 'Enter' });
+    expect(document.activeElement).toBe(stockBox(1));
+    // The last row stays where it is, and nothing is sent.
+    fireEvent.keyDown(priceBox('Huge'), { key: 'Enter' });
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('leaves Enter to an input method that is still composing', () => {
+    mount();
+    priceBox('Small').focus();
+    fireEvent.keyDown(priceBox('Small'), { key: 'Enter', keyCode: 229 });
+    expect(document.activeElement).toBe(priceBox('Small'));
+  });
+
+  it('puts the cursor on the first empty price of a new draft', () => {
+    mount({ focusPrice: true });
+    expect(document.activeElement).toBe(priceBox('Huge'));
   });
 
   it('asks before the page unloads while drafts are unsaved', () => {

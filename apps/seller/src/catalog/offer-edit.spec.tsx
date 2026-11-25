@@ -79,6 +79,52 @@ describe('OfferEditForm', () => {
     await expectToast('Offer saved.');
   });
 
+  it('records the handling on its own route, and only when it changed', async () => {
+    call.mockResolvedValue({ ok: true, status: 200, body: { changedFields: ['handling'] } });
+    mount();
+    const handling = screen.getByLabelText<HTMLSelectElement>('Handling');
+    expect(handling.value).toBe('');
+    fireEvent.change(handling, { target: { value: 'FRESH' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save offer' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    expect(call).toHaveBeenCalledWith(
+      'PUT',
+      'catalog/seller/offers/o1/handling',
+      { handling: 'FRESH' },
+      'csrf',
+    );
+    await expectToast('Offer saved.');
+  });
+
+  it('says when leaving Sealed original withdrew the sealed-pack statement', async () => {
+    call.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { changedFields: ['handling', 'attestation'] },
+    });
+    mount();
+    fireEvent.change(screen.getByLabelText('Handling'), { target: { value: 'REPACKED' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save offer' }));
+    await expectToast(/sealed-pack statement was withdrawn/, 'info');
+  });
+
+  it('keeps a handling the server refused as an unsaved change', async () => {
+    call
+      .mockResolvedValueOnce({ ok: true, status: 200, body: { changedFields: ['sellerSku'] } })
+      .mockResolvedValueOnce({ ok: false, failure: { status: 409, code: 'conflict.stale' } });
+    mount();
+    fireEvent.change(screen.getByLabelText(/Your SKU/), { target: { value: 'OIL-2' } });
+    fireEvent.change(screen.getByLabelText('Handling'), { target: { value: 'REPACKED' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save offer' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+    expect(
+      await screen.findByText('The offer changed somewhere else. Reload the page and try again.'),
+    ).toBeTruthy();
+    // The SKU was saved; the handling still waits for Save.
+    expect(screen.getByRole('button', { name: 'Save offer' })).toBeTruthy();
+    expect(screen.getByLabelText<HTMLSelectElement>('Handling').value).toBe('REPACKED');
+  });
+
   it('shows a taken SKU on the field', async () => {
     call.mockResolvedValue({
       ok: false,

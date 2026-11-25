@@ -13,7 +13,12 @@ import {
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
-import type { ProductOptions } from './types.ts';
+import { createDraftOffer, loadOfferDefaults } from './draft-offers.ts';
+import type { OfferDefaults } from './offer-defaults.ts';
+import { QUICK_MAX } from './quick-entry-logic.ts';
+
+export { defaultCondition } from './offer-defaults.ts';
+export { draftOfferBody, type Created } from './draft-offers.ts';
 
 /** One platform product the seller may sell (`GET catalog/seller/products/platform-search`). */
 export interface PlatformProduct {
@@ -64,9 +69,17 @@ export function barcodeLines(pasted: string): string[] {
   return [...new Set(pasted.split(/[\s,;]+/).filter((line) => line !== ''))];
 }
 
-/** The condition a new draft Offer starts with: `new` when the Market has it, else the first. */
-export function defaultCondition(conditions: readonly string[]): string | null {
-  return conditions.includes('new') ? 'new' : (conditions[0] ?? null);
+/**
+ * Where "Sell this" / "Sell these" goes once the drafts exist (Offer page PR 5): one draft opens
+ * its Offer with the cursor on the first price; several open the quick entry table (at most
+ * `QUICK_MAX`, the rest are counted and wait in Drafts).
+ */
+export function afterSellPath(offerIds: readonly string[]): string {
+  if (offerIds.length === 1) return `/offers/${offerIds[0] ?? ''}?new=1#sizes`;
+  // Offer ids are UUIDs: the list needs no escaping.
+  const ids = `ids=${offerIds.slice(0, QUICK_MAX).join(',')}`;
+  const more = offerIds.length > QUICK_MAX ? `&more=${offerIds.length - QUICK_MAX}` : '';
+  return `/offers/new?${ids}${more}`;
 }
 
 /** The message key of a refused create: the codes a seller can act on, else a general one. */
@@ -91,29 +104,12 @@ export function createErrorKey(code: string): string {
   }
 }
 
-/** The created draft Offer (`POST catalog/seller/offers`). */
-export interface Created {
-  readonly offerId: string;
-}
-
-/**
- * The body that creates one draft Offer on a platform product. The product code is unique in the
- * Market, so it is a free SKU to start from.
- */
-export function draftOfferBody(product: PlatformProduct, condition: string) {
-  return {
-    productId: product.productId,
-    sellerSku: product.productCode,
-    conditionCode: condition,
-    description: {},
-  };
-}
-
 /**
  * "Add offer" (Offer page design, PR 1): the seller searches the platform products they are allowed
  * to sell (their business activities decide), ticks one or more, or pastes a list of barcodes, and
- * "Sell this" / "Sell these (N)" creates one draft Offer for each. One product opens its Offer;
- * several open the Drafts tab. A product the seller already sells is shown, not selectable.
+ * "Sell this" / "Sell these (N)" creates one draft Offer for each, with the condition and handling
+ * of the seller's last offer (a first offer has no handling until the seller chooses one). One product opens its Offer; several open
+ * the quick entry table. A product the seller already sells is shown, not selectable.
  */
 export function AddOfferDialog({
   open,
@@ -145,8 +141,10 @@ export function AddOfferDialog({
   const [problems, setProblems] = useState<
     readonly { productId: string; name: string; key: string }[]
   >([]);
-  const [madeDrafts, setMadeDrafts] = useState(0);
-  const [condition, setCondition] = useState<string | null>(null);
+  // Drafts made by an earlier try that had refusals: a later try opens them together.
+  const [madeIds, setMadeIds] = useState<readonly string[]>([]);
+  const madeDrafts = madeIds.length;
+  const [defaults, setDefaults] = useState<OfferDefaults | null>(null);
   const [conditionFailed, setConditionFailed] = useState(false);
   const requestId = useRef(0);
   const busy = useRef(false);
@@ -169,21 +167,18 @@ export function AddOfferDialog({
     return result.body;
   }, []);
 
-  // Opening reads the Market's conditions once (the default of a new draft Offer); a failed read
-  // can be tried again.
+  // Opening reads once what a new draft starts with (the Market's conditions and the seller's
+  // last offer); a failed read can be tried again.
   const loadCondition = useCallback(async () => {
     setConditionFailed(false);
-    const result = await callApi<ProductOptions>('GET', 'catalog/seller/products/options');
-    if (result.ok) {
-      const chosen = defaultCondition(result.body.conditions);
-      if (chosen === null) setConditionFailed(true);
-      else setCondition(chosen);
-    } else if (result.failure.status === 401) window.location.assign('/session-ended');
-    else setConditionFailed(true);
+    const answer = await loadOfferDefaults();
+    if (answer === 'signed-out') window.location.assign('/session-ended');
+    else if (answer === 'failed') setConditionFailed(true);
+    else setDefaults(answer);
   }, []);
   useEffect(() => {
-    if (open && condition === null) void loadCondition();
-  }, [open, condition, loadCondition]);
+    if (open && defaults === null) void loadCondition();
+  }, [open, defaults, loadCondition]);
 
   // The search follows the text after a short pause, and the page; closed, nothing is read.
   useEffect(() => {
@@ -228,19 +223,18 @@ export function AddOfferDialog({
   }
 
   async function sell() {
-    if (busy.current || picked.size === 0 || condition === null) return;
+    if (busy.current || picked.size === 0 || defaults === null) return;
     busy.current = true;
     setSaving(true);
     setProblems([]);
     const created: { productId: string; offerId: string }[] = [];
     const refused: { productId: string; name: string; key: string }[] = [];
     for (const product of picked.values()) {
-      const result = await callApi<Created>(
-        'POST',
-        'catalog/seller/offers',
-        draftOfferBody(product, condition),
-        csrfToken,
-      );
+      const { result, handlingSignedOut } = await createDraftOffer(product, defaults, csrfToken);
+      if (handlingSignedOut) {
+        window.location.assign('/session-ended');
+        return;
+      }
       if (result.ok) created.push({ productId: product.productId, offerId: result.body.offerId });
       else if (result.failure.status === 401) {
         window.location.assign('/session-ended');
@@ -258,13 +252,12 @@ export function AddOfferDialog({
     busy.current = false;
     setSaving(false);
     if (refused.length === 0) {
-      if (created.length === 1) navigate(`/offers/${created[0]?.offerId ?? ''}`);
-      else navigate('/offers?view=drafts');
+      navigate(afterSellPath([...madeIds, ...created.map((item) => item.offerId)]));
       return;
     }
     // The dialog stays open: what was created leaves the picks, what was refused stays to be seen.
     setProblems(refused);
-    setMadeDrafts((before) => before + created.length);
+    setMadeIds((before) => [...before, ...created.map((item) => item.offerId)]);
     setPicked((current) => {
       const next = new Map(current);
       for (const { productId } of created) next.delete(productId);
@@ -275,8 +268,8 @@ export function AddOfferDialog({
   const count = picked.size;
   const lastPage = answer === null ? 1 : Math.max(1, Math.ceil(answer.total / answer.pageSize));
   const note = useMemo(
-    () => (condition === null ? t('note-loading') : count === 0 ? t('note-pick') : undefined),
-    [condition, count, t],
+    () => (defaults === null ? t('note-loading') : count === 0 ? t('note-pick') : undefined),
+    [defaults, count, t],
   );
 
   return (
@@ -293,10 +286,7 @@ export function AddOfferDialog({
           <Button variant="secondary" disabled={saving} onClick={onClose}>
             {t('cancel')}
           </Button>
-          <Button
-            onClick={() => void sell()}
-            disabled={count === 0 || condition === null || saving}
-          >
+          <Button onClick={() => void sell()} disabled={count === 0 || defaults === null || saving}>
             {saving ? t('saving') : count > 1 ? t('sell-these', { count }) : t('sell-this')}
           </Button>
         </>
@@ -389,7 +379,7 @@ export function AddOfferDialog({
               ))}
             </ul>
             {madeDrafts > 0 ? (
-              <Button variant="link" onClick={() => navigate('/offers?view=drafts')}>
+              <Button variant="link" onClick={() => navigate(afterSellPath(madeIds))}>
                 {t('open-drafts', { count: madeDrafts })}
               </Button>
             ) : null}

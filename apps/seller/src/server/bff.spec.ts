@@ -618,6 +618,23 @@ describe('relay allowlist for stock locations', () => {
     });
     expect((await relay(config, read, units, upstream)).status).toBe(404);
   });
+  it('relays a handling write by UUID only as a PUT, and refuses other shapes', async () => {
+    const upstream = upstreamOk();
+    const handling = ['catalog', 'seller', 'offers', ID, 'handling'];
+    expect((await relay(config, put(handling.join('/')), handling, upstream)).status).toBe(200);
+    const bad = [
+      ['catalog', 'seller', 'offers', 'x', 'handling'],
+      ['catalog', 'seller', 'offers', ID, 'handling', 'x'],
+    ];
+    for (const path of bad) {
+      expect((await relay(config, put(path.join('/')), path, upstream)).status).toBe(404);
+    }
+    const read = new Request(`http://seller.localhost:3001/api/${handling.join('/')}`, {
+      method: 'GET',
+      headers: sameOrigin,
+    });
+    expect((await relay(config, read, handling, upstream)).status).toBe(404);
+  });
   it('relays a size request by UUID, and refuses other shapes', async () => {
     const upstream = upstreamOk();
     const send = (path: string[]) =>

@@ -169,7 +169,7 @@ describe('On the platform', () => {
     const button = within(await region()).getByRole('button', { name: sellName(1) });
     fireEvent.click(button);
     fireEvent.click(button);
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/offers/offer-9'));
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/offers/offer-9?new=1#sizes'));
     const posts = call.mock.calls.filter((entry) => entry[0] === 'POST');
     // A double click creates one draft.
     expect(posts).toHaveLength(1);

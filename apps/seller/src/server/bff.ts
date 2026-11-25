@@ -202,6 +202,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/seller/saved-filters/:id',
     // The SKU and the selling switch of the sell units of an offer (variants V5).
     'catalog/seller/offers/:id/sell-units',
+    // How the goods of an offer are handled: a new draft starts with the last offer's (or Sealed
+    // original), and the edit page changes it (Offer page PR 5). The API judges key and state.
+    'catalog/seller/offers/:id/handling',
     // Put an Offer on one of the seller's shelves, or take it off (categories C9b).
     'catalog/seller/offers/:id/shelf',
     'inventory/seller/offers/:id/variants/:id/sources/:id/stock',

@@ -17,7 +17,6 @@ import { useRouter } from 'next/navigation';
 import { Fragment, useEffect, useId, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { callApi } from '../api/client.ts';
-import { priceProblemOf } from '../price/errors.ts';
 import { formatMinor, inputOf, minorOf } from '../price/money.ts';
 import {
   customerPaysMinor,
@@ -25,11 +24,8 @@ import {
   lastEstimateFor,
   useReceiveEstimates,
 } from '../price/receive-estimates.ts';
-import type { PriceWritten } from '../price/types.ts';
-import { levelsProblemOf } from '../stock/levels-errors.ts';
-import type { StockSet } from '../stock/levels-types.ts';
 import type { SourceView } from '../stock/types.ts';
-import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
+import { useGuardedCall } from '../step-up/step-up.tsx';
 import {
   increasedBy,
   savedPriceText,
@@ -48,7 +44,9 @@ import {
 } from './sell-unit-logic.ts';
 import { CHECKBOX, SkuField } from './sku-field.tsx';
 import { SizeDetails, sizeTabsOf, type ReceiveView, type SizeTab } from './size-details.tsx';
+import { focusFirstPrice, moveOnEnter } from './grid-keys.ts';
 import { SizeRequests } from './size-requests.tsx';
+import { sendSizeWrites } from './size-writes.ts';
 import type { SizeRequestsData } from './size-request-logic.ts';
 import { LastSizeHint, SizesYouSell } from './sizes-you-sell.tsx';
 import { VariantFileTools } from './variant-file-tools.tsx';
@@ -88,6 +86,7 @@ export function VariantsTable({
   fileModel = null,
   sizeRequests = null,
   canEstimate = false,
+  focusPrice = false,
 }: {
   readonly offerId: string;
   readonly rows: readonly TableRow[];
@@ -115,6 +114,8 @@ export function VariantsTable({
    * ledger key. Shown only with the price columns.
    */
   readonly canEstimate?: boolean;
+  /** A draft just created with "Sell this" (Offer page PR 5): the cursor starts on a price. */
+  readonly focusPrice?: boolean;
 }) {
   const t = useTranslations();
   const showPrice = marketCurrency !== null;
@@ -158,6 +159,12 @@ export function VariantsTable({
     if (focusTick > 0)
       regionRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
   }, [focusTick]);
+  // Only when the page opens; a refresh after Save does not move the cursor.
+  const focusOnOpen = useRef(focusPrice);
+  useEffect(() => {
+    if (focusOnOpen.current) focusFirstPrice(regionRef.current);
+    focusOnOpen.current = false;
+  }, []);
   function updateFade() {
     const el = regionRef.current;
     if (el === null) return;
@@ -290,77 +297,32 @@ export function VariantsTable({
     const stockLeft = { ...stockDrafts };
     const skuLeft = { ...skuDrafts };
     const sellingLeft = { ...sellingDrafts };
-    const seen = { ...versions };
-    let done = 0;
-    let stopped = false;
-    let waitSeconds: number | null = null;
-    for (const write of plan.writes) {
-      const row = rows.find((item) => item.variantId === write.variantId);
-      if (row === undefined) continue;
-      if (write.kind === 'price') {
-        const key = `price:${write.variantId}`;
-        const expectedVersion =
-          key in seen ? (seen[key] ?? null) : (row.price?.seriesVersion ?? null);
-        const result = await guarded<PriceWritten>(
-          'PUT',
-          `pricing/seller/offers/${offerId}/variants/${write.variantId}/regular-price`,
-          { amount: write.amount, currency, expectedVersion },
-          csrfToken,
-        );
-        if (isStepUpCancelled(result)) {
-          stopped = true;
-          break;
-        }
-        if (!result.ok) {
-          if (result.failure.status === 401) {
-            flushSync(() => setLeaving(true));
-            window.location.assign('/session-ended');
-            return;
-          }
-          if (result.failure.code === 'request.throttled') {
-            // Stop here: this cell and every one after it stay drafts, nothing is retried.
-            waitSeconds = result.failure.details?.retryAfterSeconds ?? 60;
-            found[write.variantId] = t('catalog.variants-table.throttled-cell');
-            stopped = true;
-            break;
-          }
-          found[write.variantId] = t(`price.error.${priceProblemOf(result.failure)}`);
-          continue;
-        }
-        seen[key] = result.body.seriesVersion;
-        delete priceLeft[write.variantId];
-        done += 1;
-      } else {
-        const key = stockKey(write.variantId, write.sourceId);
-        const vkey = `stock:${key}`;
-        const expectedVersion =
-          vkey in seen ? (seen[vkey] ?? null) : (row.stock[write.sourceId]?.version ?? null);
-        const result = await callApi<StockSet>(
-          'PUT',
-          `inventory/seller/offers/${offerId}/variants/${write.variantId}/sources/${write.sourceId}/stock`,
-          { onHand: write.onHand, expectedVersion },
-          csrfToken,
-        );
-        if (!result.ok) {
-          if (result.failure.status === 401) {
-            flushSync(() => setLeaving(true));
-            window.location.assign('/session-ended');
-            return;
-          }
-          if (result.failure.code === 'request.throttled') {
-            waitSeconds = result.failure.details?.retryAfterSeconds ?? 60;
-            found[key] = t('catalog.variants-table.throttled-cell');
-            stopped = true;
-            break;
-          }
-          found[key] = t(`stock.levels.error.${levelsProblemOf(result.failure)}`);
-          continue;
-        }
-        seen[vkey] = result.body.version;
-        delete stockLeft[key];
-        done += 1;
-      }
+    const sent = await sendSizeWrites({
+      offerId,
+      rows,
+      writes: plan.writes,
+      currency,
+      versions,
+      csrfToken,
+      guarded,
+      messages: {
+        throttledCell: t('catalog.variants-table.throttled-cell'),
+        price: (problem) => t(`price.error.${problem}`),
+        stock: (problem) => t(`stock.levels.error.${problem}`),
+      },
+    });
+    if (sent.signedOut) {
+      flushSync(() => setLeaving(true));
+      window.location.assign('/session-ended');
+      return;
     }
+    Object.assign(found, sent.found);
+    for (const id of sent.savedPrices) delete priceLeft[id];
+    for (const key of sent.savedStocks) delete stockLeft[key];
+    const seen = sent.seen;
+    let done = sent.done;
+    const stopped = sent.stopped;
+    const waitSeconds = sent.waitSeconds;
     if (sendUnits && !stopped) {
       const changes = unitsPlan.changes;
       const result = await callApi<{ changedVariantIds: string[] }>(
@@ -726,6 +688,7 @@ export function VariantsTable({
               <table
                 className="w-full table-fixed text-start text-sm"
                 style={{ minWidth: `${tableRem}rem` }}
+                onKeyDown={moveOnEnter}
               >
                 <colgroup>
                   {canBulk ? <col style={{ width: '2.5rem' }} /> : null}

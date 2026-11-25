@@ -10,6 +10,16 @@ export function exponentOf(currency: string): number {
 }
 
 /** Minor units as a currency amount in the Market's locale, e.g. "1999" and AUD as "$19.99". */
+/** The currency's sign in `locale` ("$", "NZ$", "RM"), for a price field's prefix. */
+export function currencySign(currency: string, locale: string): string {
+  try {
+    const parts = new Intl.NumberFormat(locale, { style: 'currency', currency }).formatToParts(0);
+    return parts.find((part) => part.type === 'currency')?.value ?? currency;
+  } catch {
+    return currency;
+  }
+}
+
 export function formatMinor(amount: string, currency: string, locale: string): string {
   const value = Number(amount) / 10 ** exponentOf(currency);
   return numberFormat(locale, { style: 'currency', currency }).format(value);

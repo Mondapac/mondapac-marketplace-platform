@@ -13,6 +13,7 @@ export const HELP_REGISTRY: HelpRegistry = {
     { route: '/offers/[offerId]/prices', slug: 'offers-offerId-prices' },
     { route: '/offers/[offerId]/stock', slug: 'offers-offerId-stock' },
     { route: '/offers/[offerId]/edit', slug: 'offers-offerId-edit' },
+    { route: '/offers/new', slug: 'offers-new' },
     { route: '/products', slug: 'products' },
     { route: '/products/new', slug: 'products-new' },
     { route: '/products/[productId]', slug: 'products-productId' },
