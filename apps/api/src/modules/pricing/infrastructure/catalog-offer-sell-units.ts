@@ -43,6 +43,13 @@ export class CatalogOfferSellUnits implements OfferSellUnitsSource {
           deleted,
           // A deleted Offer has no priceable Variant, whatever the answer lists (P-1).
           priceableVariantIds: new Set(deleted ? [] : offer.sellUnits.map((u) => u.variantId)),
+          liveVariantIds: new Set(
+            offer.status === 'published' && offer.listed
+              ? offer.sellUnits
+                  .filter((u) => u.state === 'published' && u.selling)
+                  .map((u) => u.variantId)
+              : [],
+          ),
         }),
       );
     }

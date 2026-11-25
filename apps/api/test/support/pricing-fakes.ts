@@ -48,7 +48,20 @@ import {
   type HoldSort,
   type HoldViewCounts,
 } from '../../src/modules/pricing/domain/hold-list';
-import { PriceSeries } from '../../src/modules/pricing/domain/price-series';
+import { effectiveRegular, PriceSeries } from '../../src/modules/pricing/domain/price-series';
+import type {
+  FirstPriceCheck,
+  FirstPriceCheckStore,
+  PendingRecheck,
+  Recheck,
+  ReferenceBusinesses,
+  ReferenceSettings,
+  ReferenceSettingsSource,
+  VariantKey,
+  VariantPriceReader,
+  VariantRegularPrice,
+} from '../../src/modules/pricing/application/ports/first-price-reference';
+import type { FirstPriceReferencePorts } from '../../src/modules/pricing/application/reference/variant-reference';
 import type { SpecialPriceRecord } from '../../src/modules/pricing/domain/special-price';
 import type {
   PriceSeriesState,
@@ -144,6 +157,7 @@ function specialHoldView(state: PriceSeriesState, record: SpecialPriceRecord): P
       variantId: state.variantId,
       sellerId: state.sellerId,
       amount: record.amount,
+      basis: 'jump',
       anchorRecordId: reference.recordId,
       anchorAmount: reference.amount,
       direction: 'down',
@@ -154,11 +168,8 @@ function specialHoldView(state: PriceSeriesState, record: SpecialPriceRecord): P
 }
 
 function holdView(state: PriceSeriesState, record: RegularPriceRecord): PendingHoldView[] {
-  if (
-    record.status !== 'PENDING_REVIEW' ||
-    record.anchor === null ||
-    record.heldDirection === null
-  ) {
+  const measured = record.anchor?.amount ?? record.reference?.amount ?? null;
+  if (record.status !== 'PENDING_REVIEW' || measured === null || record.heldDirection === null) {
     return [];
   }
   return [
@@ -170,8 +181,9 @@ function holdView(state: PriceSeriesState, record: RegularPriceRecord): PendingH
       variantId: state.variantId,
       sellerId: state.sellerId,
       amount: record.amount,
-      anchorRecordId: record.anchor.recordId,
-      anchorAmount: record.anchor.amount,
+      basis: record.anchor === null ? 'reference' : 'jump',
+      anchorRecordId: record.anchor?.recordId ?? null,
+      anchorAmount: measured,
       direction: record.heldDirection,
       submittedAt: record.submittedAt,
       window: null,
@@ -559,13 +571,16 @@ export class FakeOfferSellUnits implements OfferSellUnitsSource {
   put(
     market: MarketContext,
     offerId: Id<'Offer'>,
-    view: Omit<PricedOfferView, 'priceableVariantIds'> & {
+    view: Omit<PricedOfferView, 'priceableVariantIds' | 'liveVariantIds'> & {
       readonly priceableVariantIds: readonly Id<'Variant'>[];
+      /** The Variants on sale now (R4 reference); none when absent. */
+      readonly liveVariantIds?: readonly Id<'Variant'>[];
     },
   ): void {
     this.offers.set(`${market.marketId}|${offerId}`, {
       ...view,
       priceableVariantIds: new Set(view.priceableVariantIds),
+      liveVariantIds: new Set(view.liveVariantIds ?? []),
     });
   }
 
@@ -581,5 +596,103 @@ export class FakeOfferSellUnits implements OfferSellUnitsSource {
       if (view !== undefined) found.set(id, view);
     }
     return Promise.resolve(found);
+  }
+}
+
+/**
+ * The R4 ports in memory (ADR-0051): prices read from the series fake, a set of eligible sellers,
+ * the Market's two settings, and the stored checks.
+ */
+export class InMemoryFirstPriceReference
+  implements VariantPriceReader, FirstPriceCheckStore, ReferenceBusinesses, ReferenceSettingsSource
+{
+  readonly checks: (FirstPriceCheck & { market: string; recheck: Recheck | null })[] = [];
+  readonly eligible = new Set<string>();
+  current: ReferenceSettings = { referenceSellers: 3, priceBandPercent: 50 };
+  settingsFail: Error | null = null;
+  businessesFail: Error | null = null;
+  readonly eligibilityCalls: (readonly string[])[] = [];
+
+  constructor(private readonly series: InMemoryPriceSeries) {}
+
+  get ports(): FirstPriceReferencePorts {
+    return { prices: this, checks: this, businesses: this, settings: this };
+  }
+
+  settings(): Promise<ReferenceSettings> {
+    if (this.settingsFail !== null) return Promise.reject(this.settingsFail);
+    return Promise.resolve(this.current);
+  }
+
+  eligibleSellers(
+    _context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<ReadonlySet<Id<'Seller'>>> {
+    this.eligibilityCalls.push([...sellerIds]);
+    if (this.businessesFail !== null) return Promise.reject(this.businessesFail);
+    return Promise.resolve(new Set(sellerIds.filter((id) => this.eligible.has(id))));
+  }
+
+  regularPricesInForce(
+    market: MarketContext,
+    key: VariantKey,
+    now: Temporal.Instant,
+  ): Promise<readonly VariantRegularPrice[]> {
+    const prices: VariantRegularPrice[] = [];
+    for (const state of this.series.rows.values()) {
+      if (state.marketId !== market.marketId || state.retiredAt !== null) continue;
+      if (state.productId !== key.productId || state.variantId !== key.variantId) continue;
+      const record = effectiveRegular(state, now);
+      if (record === null) continue;
+      prices.push({
+        seriesId: state.id,
+        offerId: state.offerId,
+        sellerId: state.sellerId,
+        amountMinor: record.amount.amount,
+      });
+    }
+    return Promise.resolve(prices.sort((a, b) => a.seriesId.localeCompare(b.seriesId)));
+  }
+
+  record(market: MarketContext, check: FirstPriceCheck): Promise<void> {
+    if (this.checks.some((c) => c.recordId === check.recordId)) {
+      return Promise.reject(new Error('first_price_checks: duplicate record id'));
+    }
+    this.checks.push({ ...check, market: market.marketId, recheck: null });
+    return Promise.resolve();
+  }
+
+  pendingRechecks(market: MarketContext, key: VariantKey): Promise<readonly PendingRecheck[]> {
+    return Promise.resolve(
+      this.checks
+        .filter(
+          (c) =>
+            c.market === market.marketId &&
+            c.productId === key.productId &&
+            c.variantId === key.variantId &&
+            c.recheck === null &&
+            (c.outcome === 'no-reference' || c.outcome === 'reference-unavailable'),
+        )
+        .map((c) => ({
+          recordId: c.recordId,
+          seriesId: c.seriesId,
+          offerId: c.offerId,
+          sellerId: c.sellerId,
+          variantId: c.variantId,
+        })),
+    );
+  }
+
+  markRechecked(market: MarketContext, recheck: Recheck): Promise<boolean> {
+    const check = this.checks.find(
+      (c) => c.market === market.marketId && c.recordId === recheck.recordId,
+    );
+    if (check === undefined || check.recheck !== null) return Promise.resolve(false);
+    check.recheck = recheck;
+    if (recheck.outcome === 'outside') {
+      (check as { postReviewReason: FirstPriceCheck['postReviewReason'] }).postReviewReason =
+        'recheck-outside';
+    }
+    return Promise.resolve(true);
   }
 }

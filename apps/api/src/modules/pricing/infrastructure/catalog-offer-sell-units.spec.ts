@@ -69,8 +69,39 @@ describe.each(['AU', 'ZZ'])('CatalogOfferSellUnits in market %s', (code) => {
       productId: answer.productId,
       deleted: false,
       priceableVariantIds: new Set([variant]),
+      liveVariantIds: new Set(),
     });
     expect(calls).toEqual([{ context, ids: [id] }]);
+  });
+
+  it('calls a Variant live only on a published, listed Offer with a published unit on sale (R4)', async () => {
+    const [live, off, proposed] = [
+      ids.next<'Variant'>(),
+      ids.next<'Variant'>(),
+      ids.next<'Variant'>(),
+    ];
+    const units = [
+      { variantId: live, state: 'published' as const, selling: true, variantSku: null },
+      { variantId: off, state: 'published' as const, selling: false, variantSku: null },
+      { variantId: proposed, state: 'proposed' as const, selling: true, variantSku: null },
+    ];
+    const published = { ...offer('published', []), listed: true, sellUnits: units };
+    const unlisted = { ...published, listed: false };
+    const pending = { ...published, status: 'pending-first-publish' as const };
+    const [a, b, c] = [ids.next<'Offer'>(), ids.next<'Offer'>(), ids.next<'Offer'>()];
+    const { source } = facade(
+      ok(
+        new Map([
+          [a, published],
+          [b, unlisted],
+          [c, pending],
+        ]),
+      ),
+    );
+    const views = await source.sellUnitsOf(context, [a, b, c]);
+    expect(views.get(a)?.liveVariantIds).toEqual(new Set([live]));
+    expect(views.get(b)?.liveVariantIds).toEqual(new Set());
+    expect(views.get(c)?.liveVariantIds).toEqual(new Set());
   });
 
   it('gives a deleted Offer no priceable Variant, whatever the answer lists', async () => {
