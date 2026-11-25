@@ -102,7 +102,7 @@ describe('Add offer: create failures', () => {
     fireEvent.click(sell);
     fireEvent.click(sell);
     release(undefined);
-    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/offers/o1'));
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/offers/o1?new=1#sizes'));
     expect(call.mock.calls.filter(([method]) => method === 'POST')).toHaveLength(1);
   });
 

@@ -25,10 +25,14 @@ export async function generateMetadata() {
  */
 export default async function OfferPage({
   params,
+  searchParams,
 }: {
   readonly params: Promise<{ offerId: string }>;
+  readonly searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { offerId } = await params;
+  // "Sell this" opens a new draft with `?new=1`: the cursor starts on the first price.
+  const isNew = (await searchParams).new === '1';
   if (!isUuid(offerId)) notFound();
   const t = await getTranslations();
   const locale = await getLocale();
@@ -77,6 +81,7 @@ export default async function OfferPage({
               sizeRequests={sizes.sizeRequests}
               fileModel={sizes.fileModel}
               canEstimate={canEstimateReceive(keys)}
+              focusPrice={isNew}
             />
           )
         }

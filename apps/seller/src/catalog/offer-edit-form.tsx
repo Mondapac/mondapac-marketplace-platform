@@ -36,8 +36,13 @@ export function descriptionWith(
   return { ...kept, ...descriptionOf(edited) };
 }
 
+/** How the goods are handled (`PUT catalog/seller/offers/:id/handling`), in the API's order. */
+export const HANDLINGS = ['SEALED_ORIGINAL', 'REPACKED', 'PREPARED', 'FRESH'] as const;
+
 interface OfferFields {
   readonly conditionCode: string;
+  /** Empty while the offer has none recorded. */
+  readonly handling: string;
   readonly sellerSku: string;
   readonly description: Readonly<Record<string, string>>;
 }
@@ -45,6 +50,7 @@ interface OfferFields {
 function fieldsOf(offer: OfferView, locales: readonly string[]): OfferFields {
   return {
     conditionCode: offer.conditionCode,
+    handling: offer.handling ?? '',
     sellerSku: offer.sellerSku,
     description: Object.fromEntries(
       locales.map((locale) => [locale, offer.description[locale] ?? '']),
@@ -65,13 +71,14 @@ export function OfferEditForm({
   const locales = options.locales.supported;
   const [saved, setSaved] = useState<OfferFields>(() => fieldsOf(offer, locales));
   const [conditionCode, setConditionCode] = useState(saved.conditionCode);
+  const [handling, setHandling] = useState(saved.handling);
   const [sellerSku, setSellerSku] = useState(saved.sellerSku);
   const [description, setDescription] = useState<Record<string, string>>(saved.description);
   const [leaving, setLeaving] = useState(false);
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<ReturnType<typeof offerEditProblemOf> | null>(null);
   const busy = useRef(false);
-  const current: OfferFields = { conditionCode, sellerSku, description };
+  const current: OfferFields = { conditionCode, handling, sellerSku, description };
   const dirty = JSON.stringify(current) !== JSON.stringify(saved);
   const guard = useUnsavedChangesGuard(
     dirty && !leaving,
@@ -86,6 +93,7 @@ export function OfferEditForm({
 
   function discard() {
     setConditionCode(saved.conditionCode);
+    setHandling(saved.handling);
     setSellerSku(saved.sellerSku);
     setDescription(saved.description);
     setProblem(null);
@@ -102,23 +110,41 @@ export function OfferEditForm({
     busy.current = true;
     setPending(true);
     setProblem(null);
-    const result = await callApi<{ changedFields: readonly string[] }>(
-      'PUT',
-      `catalog/seller/offers/${offer.offerId}`,
-      {
-        sellerSku,
-        conditionCode,
-        description: descriptionWith(offer.description, description, locales),
-      },
-      csrfToken,
-    );
+    // The offer's own fields and its handling are two routes; only what changed is sent.
+    let reached = saved;
+    const offerChanged =
+      conditionCode !== saved.conditionCode ||
+      sellerSku !== saved.sellerSku ||
+      JSON.stringify(description) !== JSON.stringify(saved.description);
+    let result: Awaited<ReturnType<typeof callApi>> = { ok: true, status: 200, body: null };
+    if (offerChanged) {
+      result = await callApi<{ changedFields: readonly string[] }>(
+        'PUT',
+        `catalog/seller/offers/${offer.offerId}`,
+        {
+          sellerSku,
+          conditionCode,
+          description: descriptionWith(offer.description, description, locales),
+        },
+        csrfToken,
+      );
+      if (result.ok) reached = { ...current, handling: saved.handling };
+    }
+    if (result.ok && handling !== saved.handling && handling !== '') {
+      result = await callApi<{ changedFields: readonly string[] }>(
+        'PUT',
+        `catalog/seller/offers/${offer.offerId}/handling`,
+        { handling },
+        csrfToken,
+      );
+      if (result.ok) reached = { ...reached, handling };
+    }
     busy.current = false;
     setPending(false);
-    if (result.ok) {
-      // What was sent is now the saved state: the bar hides and leaving asks nothing.
-      setSaved(current);
-      toast.success(t('catalog.offer-edit.saved'));
-    } else if (result.failure.status === 401) {
+    // What the server took is now the saved state: the bar hides when nothing else is left.
+    setSaved(reached);
+    if (result.ok) toast.success(t('catalog.offer-edit.saved'));
+    else if (result.failure.status === 401) {
       flushSync(() => setLeaving(true));
       window.location.assign('/session-ended');
     } else setProblem(offerEditProblemOf(result.failure));
@@ -138,6 +164,19 @@ export function OfferEditForm({
           error={fieldError('conditionCode')}
           options={conditions.map((code) => ({ value: code, label: readable(code) }))}
           onChange={(event) => setConditionCode(event.target.value)}
+        />
+        <Select
+          name="handling"
+          label={t('catalog.offer.handling')}
+          help={t('catalog.offer-edit.handling-help')}
+          value={handling}
+          placeholder={t('catalog.offer-edit.handling-choose')}
+          error={fieldError('handling')}
+          options={HANDLINGS.map((code) => ({
+            value: code,
+            label: t(`catalog.offer.handling-value.${code}`),
+          }))}
+          onChange={(event) => setHandling(event.target.value)}
         />
         <TextField
           name="sellerSku"

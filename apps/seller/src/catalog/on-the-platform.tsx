@@ -9,16 +9,14 @@ import { callApi } from '../api/client.ts';
 import { numberFormat } from '../shared/intl.ts';
 import {
   AddOfferDialog,
+  afterSellPath,
   createErrorKey,
-  defaultCondition,
-  draftOfferBody,
   searchPath,
-  type Created,
   type PlatformProduct,
   type PlatformSearchAnswer,
 } from './add-offer-dialog.tsx';
+import { createDraftOffer, loadOfferDefaults } from './draft-offers.ts';
 import { productThumbSrc } from './product-thumb.ts';
-import type { ProductOptions } from './types.ts';
 
 /** The rows the panel shows; "See all" opens the full search for the rest. */
 export const ON_THE_PLATFORM_ROWS = 5;
@@ -92,31 +90,32 @@ export function OnThePlatform({
     });
   }, []);
 
-  /** Creates the draft Offer and opens it; the condition is the Market's default for a new one. */
+  /**
+   * Creates the draft Offer and opens it with the cursor on the first price; the condition and
+   * handling are those of the seller's last offer, else the Market default and Sealed original.
+   */
   async function sell(product: PlatformProduct) {
     if (busy.current) return;
     busy.current = true;
     mark(product.productId, { state: 'saving' });
-    const options = await callApi<ProductOptions>('GET', 'catalog/seller/products/options');
-    if (!options.ok && options.failure.status === 401) {
+    const defaults = await loadOfferDefaults();
+    if (defaults === 'signed-out') {
       window.location.assign('/session-ended');
       return;
     }
-    const condition = options.ok ? defaultCondition(options.body.conditions) : null;
-    if (condition === null) {
+    if (defaults === 'failed') {
       busy.current = false;
       mark(product.productId, { state: 'refused', key: 'settings' });
       return;
     }
-    const result = await callApi<Created>(
-      'POST',
-      'catalog/seller/offers',
-      draftOfferBody(product, condition),
-      csrfToken,
-    );
+    const { result, handlingSignedOut } = await createDraftOffer(product, defaults, csrfToken);
     busy.current = false;
+    if (handlingSignedOut) {
+      window.location.assign('/session-ended');
+      return;
+    }
     if (result.ok) {
-      router.push(`/offers/${result.body.offerId}`);
+      router.push(afterSellPath([result.body.offerId]));
       return;
     }
     if (result.failure.status === 401) {

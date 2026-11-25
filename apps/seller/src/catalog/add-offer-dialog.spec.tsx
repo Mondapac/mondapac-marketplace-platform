@@ -102,7 +102,7 @@ describe('Add offer dialog', () => {
     const sell = await screen.findByRole('button', { name: 'Sell this' });
     await waitFor(() => expect((sell as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(sell);
-    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/offers/offer-1'));
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/offers/offer-1?new=1#sizes'));
     expect(call).toHaveBeenCalledWith(
       'POST',
       'catalog/seller/offers',
@@ -114,12 +114,54 @@ describe('Add offer dialog', () => {
       },
       'csrf',
     );
+    // No earlier offer has a handling: the draft starts as Sealed original.
+    expect(call).toHaveBeenCalledWith(
+      'PUT',
+      'catalog/seller/offers/offer-1/handling',
+      { handling: 'SEALED_ORIGINAL' },
+      'csrf',
+    );
   });
 
-  it('creates one draft for each product of "Sell these" and opens the Drafts tab', async () => {
-    const two = product({ productId: 'x2', productCode: 'P-2', name: 'Lamb' });
+  it('starts a draft with the condition and handling of the last offer that has them', async () => {
     call.mockImplementation((method, path) => {
-      if (method === 'POST') return ok({ offerId: 'o' });
+      if (method === 'POST') return ok({ offerId: 'offer-1' });
+      if (method === 'PUT') return ok({ changedFields: ['handling'] });
+      if (path.includes('options')) return ok({ conditions: ['new', 'used'] });
+      if (path.startsWith('catalog/seller/offers'))
+        return ok({
+          items: [
+            { conditionCode: 'new', handling: null },
+            { conditionCode: 'used', handling: 'REPACKED' },
+          ],
+        });
+      return ok(answer([product()]));
+    });
+    const navigate = open();
+    fireEvent.click(await screen.findByLabelText(/Beef mince/));
+    const sell = await screen.findByRole('button', { name: 'Sell this' });
+    await waitFor(() => expect((sell as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(sell);
+    await waitFor(() => expect(navigate).toHaveBeenCalled());
+    expect(call).toHaveBeenCalledWith(
+      'POST',
+      'catalog/seller/offers',
+      expect.objectContaining({ conditionCode: 'used' }),
+      'csrf',
+    );
+    expect(call).toHaveBeenCalledWith(
+      'PUT',
+      'catalog/seller/offers/offer-1/handling',
+      { handling: 'REPACKED' },
+      'csrf',
+    );
+  });
+
+  it('creates one draft for each product of "Sell these" and opens the quick entry table', async () => {
+    const two = product({ productId: 'x2', productCode: 'P-2', name: 'Lamb' });
+    let next = 0;
+    call.mockImplementation((method, path) => {
+      if (method === 'POST') return ok({ offerId: `o${(next += 1)}` });
       return path.includes('options') ? ok({ conditions: ['new'] }) : ok(answer([product(), two]));
     });
     const navigate = open();
@@ -128,7 +170,7 @@ describe('Add offer dialog', () => {
     const sell = await screen.findByRole('button', { name: 'Sell these (2)' });
     await waitFor(() => expect((sell as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(sell);
-    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/offers?view=drafts'));
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/offers/new?ids=o1,o2'));
     expect(call.mock.calls.filter(([method]) => method === 'POST')).toHaveLength(2);
   });
 
