@@ -14,6 +14,12 @@ import { createTestApp } from './support/test-app';
 import { AI_GATEWAY_CONTROLS } from '../src/platform/ai/gateway-controls';
 import { SELLER_AI_SWITCH } from '../src/platform/ai/seller-ai-switch';
 import { testAppConfig } from './support/test-config';
+import type { MarketId } from '@mondapac/shared-kernel';
+import { AiModelChoices } from '../src/platform/ai/model-choices';
+import { ChangeAiModels } from '../src/modules/settings/application/use-cases/change-ai-models.use-case';
+import { ViewAiModels } from '../src/modules/settings/application/use-cases/view-ai-models.use-case';
+
+const MARKET_AU = 'AU' as MarketId;
 
 describe('AI Gateway wiring (platform-ai.md section 4; ADR-0019 decision 7)', () => {
   let app: NestExpressApplication | undefined;
@@ -33,6 +39,16 @@ describe('AI Gateway wiring (platform-ai.md section 4; ADR-0019 decision 7)', ()
     expect(registry.sealed).toBe(true);
     expect(() => registry.register('catalog', [])).toThrow('sealed');
   });
+
+  it.each(['api', 'worker'] as const)(
+    'gives settings the model choices of the global AiModule in the %s role (G4b)',
+    async (role) => {
+      ({ app } = await createTestApp({ env: { APP_ROLE: role } }));
+      expect(app.get(ChangeAiModels)).toBeInstanceOf(ChangeAiModels);
+      expect(app.get(ViewAiModels)).toBeInstanceOf(ViewAiModels);
+      expect(app.get(AiModelChoices).options(MARKET_AU).write).toEqual(expect.any(Array));
+    },
+  );
 
   it('fails boot when no module provides the seller switch', async () => {
     @Module({})

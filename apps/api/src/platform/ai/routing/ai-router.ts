@@ -134,9 +134,15 @@ export class AiRouter {
     return this.catalogue.families();
   }
 
-  /** The most expensive route price of a family per token (input and output), or null. */
-  familyCost(family: string): number | null {
-    const rows = this.catalogue.routesOf(family);
+  /**
+   * The most expensive price per token (input and output) of a family's routes that meet every
+   * condition but the evaluation in the Market for the task type, as `plan` prices them; null with
+   * none (Mohammad, G4b review 3).
+   */
+  familyCost(marketId: MarketId, task: CapabilityTask, family: string): number | null {
+    const rows = this.catalogue
+      .routesOf(family)
+      .filter((row) => this.#rowProblem(marketId, task, row) === null);
     return rows.length === 0 ? null : costliest(rows.map((row) => ({ row, price: priceOf(row) })));
   }
 

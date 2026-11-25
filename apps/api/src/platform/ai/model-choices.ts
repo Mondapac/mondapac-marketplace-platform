@@ -33,6 +33,9 @@ export interface ModelChoiceCheck {
  * (Hassan's check, the Market's region, a key, not retired, evaluated; ADR-0052 decision 3). The
  * saver model meets the same checks and is cheaper than model 1. The router checks every route
  * again on each call, so a list that went stale (a retired model, a key removed) only skips it.
+ * These checks are the page's: two admins saving the list and the saver model at once, or a
+ * review that restores one of them, can leave a pair they would refuse; the router still puts a
+ * saver model first only when it is usable and cheaper (Hassan 1 and 3, Mohammad 4, G4b review).
  *
  * Reads code and configuration only (the catalogue, the evaluation passes, the Market's residency
  * and keys): no store, no model call, no secret in its answer. This file calls no model, so
@@ -89,8 +92,8 @@ export class AiModelChoices {
     if (first === undefined) return 'saver-without-list';
     const problem = this.router.familyProblem(marketId, task, specs, saver);
     if (problem !== null) return problem;
-    const saverCost = this.router.familyCost(saver);
-    const firstCost = this.router.familyCost(first);
+    const saverCost = this.router.familyCost(marketId, task, saver);
+    const firstCost = this.router.familyCost(marketId, task, first);
     if (saverCost === null || firstCost === null || saverCost >= firstCost) {
       return 'saver-not-cheaper';
     }

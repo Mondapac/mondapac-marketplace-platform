@@ -1462,6 +1462,22 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       expect(store.history).toHaveLength(0);
     });
 
+    it('writes nothing for a save of the values in force, and asks the code when any value changes', async () => {
+      proofLeft = false;
+      expect((await change({ changes: [set('ai-saver-percent', '80')] })).ok).toBe(true);
+      expect(store.history).toHaveLength(0);
+      expect(audit.entries.filter((entry) => entry.action.startsWith('settings.ai-'))).toEqual([]);
+      expect(review.opened).toEqual([]);
+      // A save of the values in force with one real change spends the code.
+      expect(
+        await change({ changes: [set('ai-saver-percent', '80'), set('ai-models-chat', 'fam-a')] }),
+      ).toEqual({
+        ok: false,
+        error: { code: 'second-factor.required', actionKey: 'settings.ai-models.change' },
+      });
+      expect(store.history).toHaveLength(0);
+    });
+
     it('saves a list, a saver model and the threshold; audited by count; the gateway reads them', async () => {
       proofLeft = true;
       const saved = await change({
@@ -1610,6 +1626,33 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       });
       expect(reverted).toBe('reverted');
       expect((await controls()).models.lists).toEqual({});
+    });
+
+    it('restores one setting of a rejected pair alone; the router, not the page, then decides (Hassan 1)', async () => {
+      review.review('marketplace');
+      proofLeft = true;
+      expect(
+        (
+          await change({
+            changes: [set('ai-models-write', 'fam-a'), set('ai-saver-write', 'fam-cheap')],
+            note: 'Cheaper fallback',
+          })
+        ).ok,
+      ).toBe(true);
+      // The reviewer rejects only the list: the saver model stays with no list to go before.
+      expect(
+        await new SettingsReverter(deps).revert(adminCtx(), {
+          requestId: id<'SystemRequest'>(0x5e5),
+          subjectRef: 'ai-models-write',
+          before: { value: 'none' },
+          after: { value: 'fam-a' },
+        }),
+      ).toBe('reverted');
+      expect((await controls()).models).toEqual({
+        lists: {},
+        savers: { write: 'fam-cheap' },
+        saverAtPercent: 80,
+      });
     });
 
     it('reads a stored value the definition does not allow as no list and a 50 % threshold', async () => {

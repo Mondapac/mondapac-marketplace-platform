@@ -187,7 +187,7 @@ number so the partner team can work in parallel (G6).
   or Australia's profile (`au.anthropic.…`), never a cross-region profile (`global.`, `apac.` …).
   A checked-in Anthropic API row records no region until the adapter sends a region control. The
   adapter never follows a redirect.
-- Until G4 a task's priority list is the one family the module's tier names (`ASSISTANT_MODEL_FAST`
+- A task type without a Market list (G4b settings) uses, until G4d, the one family the module's tier names (`ASSISTANT_MODEL_FAST`
   or `_BALANCED`, now a catalogue family; a name outside the catalogue is logged as an error and
   that tier is off, the API still boots, R8). The router
   expands it to its usable rows, provider route first, at most 3 attempts. Market residency and the
@@ -376,7 +376,12 @@ settings/admin/ai-gateway/emergency-stop` (protected key `settings.ai-gateway.ma
   lists with the caps; a task type with a list uses it, and only a task type without one still
   uses the family the module's tier names (the `tier` option goes in G4d). Saver mode uses the
   task type's saver model at the Market's threshold. Market configuration `aiRouting` keeps only
-  the residency.
+  the residency. The page's list and saver rules are advisory for a pair: two admins saving the list
+  and the saver model at once, or a review that restores only one of them, can leave a pair the
+  page would refuse; the router enforces on every call (a saver model goes first only when usable
+  and cheaper than the first usable model, priced like the plan: the family's routes usable in the
+  Market). The view key shows each family's problem (`no-key`, `not-checked` …) to Viewer staff;
+  no key value or route detail (Hassan G4b review, informational).
 
 ## 9. Security (Hassan)
 

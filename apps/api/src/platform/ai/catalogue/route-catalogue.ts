@@ -61,7 +61,8 @@ export function priceOf(row: RouteRow): ModelTokenPrice {
 }
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
-const FAMILY = /^[a-z0-9][a-z0-9.-]{0,79}$/;
+/** At most 20 characters, so a Market's list of 3 fits one setting value (G4b, Mohammad 1). */
+const FAMILY = /^[a-z0-9][a-z0-9.-]{0,19}$/;
 const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}$/;
 const REGION = /^[a-z]{2}(?:-[a-z]+)+-\d$/;
 /**
