@@ -57,6 +57,8 @@ import { PurgeWriteRefusalThrottles } from './application/use-cases/purge-write-
 import { SetRegularPrice } from './application/use-cases/set-regular-price.use-case';
 import { SetSpecialPrice } from './application/use-cases/set-special-price.use-case';
 import { WithdrawSpecialPrice } from './application/use-cases/withdraw-special-price.use-case';
+import { ViewTypicalPrices } from './application/use-cases/view-typical-prices.use-case';
+import { SellerTypicalPricesController } from './presentation/seller-typical-prices.controller';
 import { ViewOfferPrices } from './application/use-cases/view-offer-prices.use-case';
 import { PRICING_PERMISSIONS } from './contracts/permissions';
 import { PRICING_STEP_UP_ACTIONS } from './contracts/step-up';
@@ -177,6 +179,7 @@ function holdListUseCaseProvider<U>(type: HoldListUseCaseClass<U>): FactoryProvi
     SellerRegularPriceController,
     SellerSpecialPriceController,
     SellerOfferPricesController,
+    SellerTypicalPricesController,
     AdminPriceHoldController,
   ],
   providers: [
@@ -245,6 +248,13 @@ function holdListUseCaseProvider<U>(type: HoldListUseCaseClass<U>): FactoryProvi
       offers: true,
       policies: true,
       clock: true,
+    }),
+    useCaseProvider(ViewTypicalPrices, {
+      unitOfWork: true,
+      counters: true,
+      offers: true,
+      clock: true,
+      reference: true,
     }),
     useCaseProvider(EffectivePricesQuery, { unitOfWork: true, series: true, clock: true }),
     useCaseProvider(EffectivePricesSystemQuery, { unitOfWork: true, series: true, clock: true }),
