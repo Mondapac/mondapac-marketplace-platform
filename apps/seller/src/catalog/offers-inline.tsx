@@ -291,6 +291,10 @@ export function useOffersInline({
     const savedPrices: Record<string, string[]> = {};
     const savedStocks: Record<string, string[]> = {};
     const seenAll: Record<string, Readonly<Record<string, number | null>>> = {};
+    const stalePrice = t('price.error.stale');
+    const staleStock = t('catalog.offers.inline.stock-stale');
+    const stalePrices: Record<string, string[]> = {};
+    const staleStocks: Record<string, string[]> = {};
     let done = 0;
     let stopped = false;
     let waitSeconds: number | null = null;
@@ -307,7 +311,8 @@ export function useOffersInline({
         messages: {
           throttledCell: t('catalog.variants-table.throttled-cell'),
           price: (problem) => t(`price.error.${problem}`),
-          stock: (problem) => t(`stock.levels.error.${problem}`),
+          stock: (problem) =>
+            problem === 'stale' ? staleStock : t(`stock.levels.error.${problem}`),
         },
       });
       if (sent.signedOut) {
@@ -317,6 +322,10 @@ export function useOffersInline({
       }
       for (const [key, message] of Object.entries(sent.found)) {
         found[errorKey(offerId, key)] = message;
+        // A cell changed elsewhere: its draft goes, so it shows the stored value read again
+        // below, with this message, and a new value is typed on the current version.
+        if (message === stalePrice) (stalePrices[offerId] ??= []).push(key);
+        if (message === staleStock) (staleStocks[offerId] ??= []).push(key);
       }
       savedPrices[offerId] = [...sent.savedPrices];
       savedStocks[offerId] = [...sent.savedStocks];
@@ -329,11 +338,20 @@ export function useOffersInline({
       }
     }
     // The saved values are read again first, so a saved cell never shows its old value.
-    if (done > 0) await read(idsKey);
+    const stale = Object.keys(stalePrices).length + Object.keys(staleStocks).length > 0;
+    if (done > 0 || stale) await read(idsKey);
     busy.current = false;
     setSaving(false);
-    const leftPrices = withoutSaved(priceDraftsRef.current, savedPrices, sentPrices);
-    const leftStocks = withoutSaved(stockDraftsRef.current, savedStocks, sentStocks);
+    const leftPrices = withoutSaved(
+      withoutSaved(priceDraftsRef.current, savedPrices, sentPrices),
+      stalePrices,
+      sentPrices,
+    );
+    const leftStocks = withoutSaved(
+      withoutSaved(stockDraftsRef.current, savedStocks, sentStocks),
+      staleStocks,
+      sentStocks,
+    );
     setPriceDrafts(leftPrices);
     setStockDrafts(leftStocks);
     setBases((old) => basesAfterSave(old, seenAll, leftPrices, leftStocks));

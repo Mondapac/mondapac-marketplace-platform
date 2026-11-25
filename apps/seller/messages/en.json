@@ -1631,7 +1631,8 @@
         "keys": "Type a price or stock and press Enter to move down. Nothing is saved until you press Save.",
         "read-failed": "Prices and stock can't be shown right now. Reload the page to try again.",
         "stopped": "Saved {done}. The confirmation was cancelled, so the rest are kept as drafts.",
-        "failed-elsewhere": "Not saved on another page: {names}. Go back to that page to see why."
+        "failed-elsewhere": "Not saved on another page: {names}. Go back to that page to see why.",
+        "stock-stale": "This stock changed somewhere else. We reloaded it; check the number and save again."
       }
     },
     "offer": {

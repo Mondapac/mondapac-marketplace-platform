@@ -300,27 +300,25 @@ describe('prices and stock in the Offer list', () => {
     expect(screen.queryByLabelText('Price of Beef mince')).toBeNull();
   });
 
-  it('keeps sending the version a cell was typed at, even after a read brings a newer one', async () => {
+  it('keeps the version a cell was typed at, and drops a cell changed elsewhere for retyping', async () => {
     let priceReads = 0;
     call.mockImplementation(((method: string, path: string) => {
       if (method === 'PUT' && path.includes('/regular-price')) {
-        return Promise.resolve({
-          ok: false,
-          failure: { status: 409, code: 'pricing.series-version-mismatch' },
-        });
+        return Promise.resolve(
+          priceReads === 1
+            ? { ok: false, failure: { status: 409, code: 'conflict.stale' } }
+            : ok({ status: 'accepted', seriesVersion: 10 }),
+        );
       }
       if (method === 'PUT') return Promise.resolve(ok({ status: 'accepted', version: 3 }));
       if (path.startsWith('pricing/seller/offer-prices')) {
         priceReads += 1;
         // Someone else changes the price after the first read: the series moves to version 9.
-        const version = priceReads === 1 ? 4 : 9;
+        const [version, amount] = priceReads === 1 ? [4, '1790'] : [9, '1850'];
         return Promise.resolve(
           ok({
             ...PRICES,
-            offers: PRICES.offers.map((offer) => ({
-              ...offer,
-              variants: offer.variants.map((v) => ({ ...v, seriesVersion: version })),
-            })),
+            offers: [{ offerId: O1, variants: [{ ...price(V1, amount), seriesVersion: version }] }],
           }),
         );
       }
@@ -331,23 +329,62 @@ describe('prices and stock in the Offer list', () => {
     fireEvent.change(await screen.findByLabelText('Price of Beef mince'), {
       target: { value: '16.90' },
     });
-    fireEvent.change(screen.getByLabelText('Stock of Beef mince'), { target: { value: '60' } });
 
-    act(() => {
-      fireEvent.click(screen.getByRole('button', { name: 'Save 2 changes' }));
-    });
-    // The stock saves, the price is refused; the list is read again (version 9 now).
-    await waitFor(() => expect(priceReads).toBe(2));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Save 1 change' })).toBeTruthy());
     act(() => {
       fireEvent.click(screen.getByRole('button', { name: 'Save 1 change' }));
     });
 
-    await waitFor(() => expect(puts()).toHaveLength(3));
-    const prices = puts().filter(([, path]) => path.includes('/regular-price'));
-    expect(prices.map((put) => (put[2] as { expectedVersion: number }).expectedVersion)).toEqual([
-      4, 4,
+    // Refused as changed elsewhere: sent with the version it was typed at, then read again.
+    await waitFor(() =>
+      expect(screen.getByLabelText<HTMLInputElement>('Price of Beef mince').value).toBe('18.50'),
+    );
+    expect(screen.getByLabelText('Price of Beef mince').getAttribute('aria-invalid')).toBe('true');
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    fireEvent.change(screen.getByLabelText('Price of Beef mince'), { target: { value: '17.00' } });
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save 1 change' }));
+    });
+
+    await waitFor(() => expect(puts()).toHaveLength(2));
+    expect(puts().map((put) => (put[2] as { expectedVersion: number }).expectedVersion)).toEqual([
+      4, 9,
     ]);
+  });
+
+  it('keeps a value typed while a save runs, with the version it was typed at', async () => {
+    let release: (value: unknown) => void = () => undefined;
+    serve();
+    const served = call.getMockImplementation();
+    call.mockImplementation(((method: string, path: string, ...rest: unknown[]) => {
+      if (method === 'PUT' && path.includes('/regular-price')) {
+        return new Promise((resolve) => {
+          release = () => resolve(ok({ status: 'accepted', seriesVersion: 5 }));
+        });
+      }
+      return (served as (...args: unknown[]) => unknown)(method, path, ...rest);
+    }) as never);
+    mount();
+    fireEvent.change(await screen.findByLabelText('Price of Beef mince'), {
+      target: { value: '16.90' },
+    });
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save 1 change' }));
+    });
+    await waitFor(() => expect(puts()).toHaveLength(1));
+
+    // Typed while the price is on its way: the stock draft survives the end of the save.
+    fireEvent.change(screen.getByLabelText('Stock of Beef mince'), { target: { value: '7' } });
+    await act(async () => {
+      release(undefined);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save 1 change' })).toBeTruthy());
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save 1 change' }));
+    });
+    await waitFor(() => expect(puts()).toHaveLength(2));
+    expect(puts()[1]?.[2]).toEqual({ onHand: 7, expectedVersion: 2 });
   });
 
   it('counts only the sizes still sold when stock is not shown', async () => {
