@@ -35,6 +35,9 @@ class FakeReader implements OfferStockReader {
   read() {
     return Promise.reject(new Error('not used'));
   }
+  readMany() {
+    return Promise.reject(new Error('not used'));
+  }
   listLowStock(
     _m: MarketContext,
     sellerId: Id<'Seller'>,

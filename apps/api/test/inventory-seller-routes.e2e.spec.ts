@@ -13,6 +13,7 @@ import { ListLowStock } from '../src/modules/inventory/application/use-cases/lis
 import { ListSources } from '../src/modules/inventory/application/use-cases/list-sources.use-case';
 import { ReorderSources } from '../src/modules/inventory/application/use-cases/reorder-sources.use-case';
 import { ViewOfferStock } from '../src/modules/inventory/application/use-cases/view-offer-stock.use-case';
+import { ViewOffersStock } from '../src/modules/inventory/application/use-cases/view-offers-stock.use-case';
 import { SetStockLevel } from '../src/modules/inventory/application/use-cases/set-stock-level.use-case';
 import { SELLER_INVENTORY_STATUS } from '../src/modules/inventory/presentation/seller-inventory.controller';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
@@ -91,7 +92,9 @@ describe('seller inventory routes over HTTP', () => {
           .overrideProvider(ViewOfferStock)
           .useValue(stub('view-stock'))
           .overrideProvider(ListLowStock)
-          .useValue(stub('low-stock')),
+          .useValue(stub('low-stock'))
+          .overrideProvider(ViewOffersStock)
+          .useValue(stub('view-offers-stock')),
     }));
   }
   const marketOf = (code: string) => testMarketContext(code, PLATFORM_TENANT_ID);
@@ -302,6 +305,55 @@ describe('seller inventory routes over HTTP', () => {
         variants: [{ variantId: VARIANT, sources: [cell] }],
       });
       expect(calls).toEqual([{ name: 'view-stock', input: { offerId: OFFER } }]);
+    });
+
+    it('reads the stock of several Offers with the raw offerIds, and maps refusals (PR 8)', async () => {
+      await boot();
+      await seeded(code);
+      const session = sessionOf(code);
+      const cell = {
+        variantId: VARIANT,
+        sourceId: SOURCE,
+        onHand: 5,
+        held: 2,
+        version: 3,
+        retired: false,
+      };
+      next = ok({
+        offers: [
+          { offerId: OFFER, variants: [{ variantId: VARIANT, sources: [{ ...cell, extra: 1 }] }] },
+        ],
+      });
+
+      const read = await call(
+        'get',
+        code,
+        `/inventory/seller/offer-stock?offerIds=${OFFER}`,
+        session,
+      );
+
+      expect(read.status).toBe(200);
+      expect(read.headers['cache-control']).toBe('no-store');
+      expect(read.body).toEqual({
+        offers: [{ offerId: OFFER, variants: [{ variantId: VARIANT, sources: [cell] }] }],
+      });
+      expect(calls).toEqual([{ name: 'view-offers-stock', input: { offerIds: OFFER } }]);
+
+      next = err({ code: 'validation.failed', fields: [{ path: 'offerIds', code: 'format' }] });
+      const invalid = await call('get', code, '/inventory/seller/offer-stock?offerIds=x', session);
+      expect(invalid.status).toBe(400);
+      next = err({ code: 'inventory.not-ready' });
+      expect(
+        (await call('get', code, '/inventory/seller/offer-stock?offerIds=x', session)).status,
+      ).toBe(409);
+      next = err({ code: 'access.denied' });
+      expect(
+        (await call('get', code, '/inventory/seller/offer-stock?offerIds=x', session)).status,
+      ).toBe(403);
+      next = err({ code: 'access.unauthenticated' });
+      expect((await call('get', code, '/inventory/seller/offer-stock?offerIds=x', {})).status).toBe(
+        401,
+      );
     });
 
     it('lists low stock with its query, serialises the instant, and maps refusals', async () => {

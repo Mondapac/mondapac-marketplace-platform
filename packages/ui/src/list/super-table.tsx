@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { Fragment, type KeyboardEvent, type ReactNode } from 'react';
 import { CARD_TABLE } from '../data/card-table.ts';
 import { SelectBox } from '../form/select-box.tsx';
 import { Menu, type MenuItem } from '../overlay/menu.tsx';
@@ -63,6 +63,13 @@ export interface SuperTableProps<Row> {
     readonly label: (name: string) => string;
     readonly items: (row: Row) => readonly MenuItem[];
   };
+  /**
+   * Content shown in a full-width row right under a row (an opened row of sub-rows, such as the
+   * sizes of an Offer); null for none. `rowId` + "-more" is its id, for an `aria-controls`.
+   */
+  readonly expanded?: (row: Row) => ReactNode;
+  /** Keys pressed in the table's fields, such as Enter moving down a column of fields. */
+  readonly onKeyDown?: (event: KeyboardEvent<HTMLTableElement>) => void;
   /** Shown in place of the rows when there are none, under the column headers. */
   readonly empty?: ReactNode;
   /**
@@ -89,6 +96,8 @@ export function SuperTable<Row>({
   selection,
   actions,
   empty,
+  expanded,
+  onKeyDown,
   skeletonRows,
   minWidthClass = 'lg:min-w-160',
 }: SuperTableProps<Row>) {
@@ -149,7 +158,7 @@ export function SuperTable<Row>({
           </span>
         </label>
       ) : null}
-      <table className={`${CARD_TABLE.table} ${minWidthClass}`}>
+      <table className={`${CARD_TABLE.table} ${minWidthClass}`} onKeyDown={onKeyDown}>
         <caption className="sr-only">{caption}</caption>
         <thead className={CARD_TABLE.head}>
           <tr>
@@ -194,40 +203,49 @@ export function SuperTable<Row>({
             const id = rowId(row);
             const name = rowName(row);
             const items = actions?.items(row) ?? [];
+            const more = expanded?.(row) ?? null;
             return (
-              <tr
-                key={id}
-                className={`${CARD_TABLE.row} max-lg:relative ${isOn(row) ? 'bg-selected' : ''}`}
-              >
-                {selection === undefined || state === undefined ? null : (
-                  <td className={SELECT_CELL}>
-                    <SelectBox
-                      label={selection.labels.row(name)}
-                      checked={isOn(row)}
-                      disabled={state.full && !isOn(row)}
-                      onChange={() => state.toggleRow(id)}
-                    />
-                  </td>
+              <Fragment key={id}>
+                <tr
+                  className={`${CARD_TABLE.row} max-lg:relative ${isOn(row) ? 'bg-selected' : ''}`}
+                >
+                  {selection === undefined || state === undefined ? null : (
+                    <td className={SELECT_CELL}>
+                      <SelectBox
+                        label={selection.labels.row(name)}
+                        checked={isOn(row)}
+                        disabled={state.full && !isOn(row)}
+                        onChange={() => state.toggleRow(id)}
+                      />
+                    </td>
+                  )}
+                  {columns.map((column) => (
+                    <td
+                      key={column.id}
+                      className={cellClass(column)}
+                      {...(column.primary === true || column.corner === true
+                        ? {}
+                        : { 'data-label': column.header })}
+                    >
+                      {column.cell(row)}
+                    </td>
+                  ))}
+                  {actions === undefined ? null : (
+                    <td className={CARD_TABLE.actions}>
+                      {items.length === 0 ? null : (
+                        <Menu label={actions.label(name)} items={[...items]} />
+                      )}
+                    </td>
+                  )}
+                </tr>
+                {more === null ? null : (
+                  <tr id={`${id}-more`} className="bg-muted max-lg:block">
+                    <td colSpan={count} className="px-4 py-3 max-lg:block">
+                      {more}
+                    </td>
+                  </tr>
                 )}
-                {columns.map((column) => (
-                  <td
-                    key={column.id}
-                    className={cellClass(column)}
-                    {...(column.primary === true || column.corner === true
-                      ? {}
-                      : { 'data-label': column.header })}
-                  >
-                    {column.cell(row)}
-                  </td>
-                ))}
-                {actions === undefined ? null : (
-                  <td className={CARD_TABLE.actions}>
-                    {items.length === 0 ? null : (
-                      <Menu label={actions.label(name)} items={[...items]} />
-                    )}
-                  </td>
-                )}
-              </tr>
+              </Fragment>
             );
           })}
         </tbody>

@@ -35,6 +35,7 @@ import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { AvailabilitySystemQuery } from './application/use-cases/availability-system.use-case';
 import { AvailabilityQuery } from './application/use-cases/availability.use-case';
 import { ViewOfferStock } from './application/use-cases/view-offer-stock.use-case';
+import { ViewOffersStock } from './application/use-cases/view-offers-stock.use-case';
 import { ListLowStock } from './application/use-cases/list-low-stock.use-case';
 import { SetStockLevel } from './application/use-cases/set-stock-level.use-case';
 import { INVENTORY_EVENTS } from './domain/events';
@@ -165,6 +166,13 @@ function useCaseProvider<D, U>(
       clock: true,
     }),
     useCaseProvider(ViewOfferStock, {
+      unitOfWork: true,
+      inventories: true,
+      offerStock: true,
+      offers: true,
+      clock: true,
+    }),
+    useCaseProvider(ViewOffersStock, {
       unitOfWork: true,
       inventories: true,
       offerStock: true,

@@ -54,6 +54,9 @@ class FakeReader implements OfferStockReader {
     this.calls += 1;
     return Promise.resolve(this.snapshot);
   }
+  readMany() {
+    return Promise.reject(new Error('not used'));
+  }
   listLowStock() {
     return Promise.reject(new Error('not used'));
   }
