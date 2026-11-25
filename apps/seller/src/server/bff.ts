@@ -55,6 +55,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The prices and the stock of one page of the Offer list, for its price and stock cells
     // (query: `offerIds`, at most 100; Offer page PR 8). The API answers only the seller's own.
     'pricing/seller/offer-prices',
+    // The range other businesses sell each size of one own Offer in (Offer page PR 9); no query.
+    'pricing/seller/offers/:id/typical-prices',
     'inventory/seller/offer-stock',
     // The export of the order list as a CSV file (ordering): the list's own filter.
     'ordering/seller/orders/export',

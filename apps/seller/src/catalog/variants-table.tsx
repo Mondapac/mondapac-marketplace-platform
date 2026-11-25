@@ -5,6 +5,7 @@ import {
   Banner,
   Button,
   Card,
+  FieldStatus,
   Icon,
   SaveBar,
   Select,
@@ -52,6 +53,7 @@ import {
   type TableRow,
 } from './variants-table-logic.ts';
 import { SizeCost } from './size-cost.tsx';
+import { unusualOf, useTypicalPrices } from '../price/typical.ts';
 import { SizeSpecial } from './size-special.tsx';
 import { unitProblemOf, variantOfPath } from './sell-unit-errors.ts';
 import {
@@ -108,6 +110,7 @@ export function VariantsTable({
   sizeRequests = null,
   canEstimate = false,
   canViewCost = false,
+  canViewTypical = false,
   focusPrice = false,
 }: {
   readonly offerId: string;
@@ -141,6 +144,11 @@ export function VariantsTable({
    * false hides the tab. Costs are read only when the seller presses "Show costs".
    */
   readonly canViewCost?: boolean;
+  /**
+   * The "Typical price" range and the unusual-price note (Offer page PR 9): the seller holds the
+   * price view key. Shown only with the price columns; nothing is read without it.
+   */
+  readonly canViewTypical?: boolean;
   /** A draft just created with "Sell this" (Offer page PR 5): the cursor starts on a price. */
   readonly focusPrice?: boolean;
 }) {
@@ -191,6 +199,18 @@ export function VariantsTable({
     ]),
   );
   const estimates = useReceiveEstimates(offerId, customerPays, showReceive);
+  // "Typical price" (Offer page PR 9): the range other businesses sell each size in, when the API
+  // gives one. It informs the price field and the Price tab; it never stops a save.
+  const typical = useTypicalPrices(offerId, canViewTypical && showPrice);
+  const unusualOfRow = (row: TableRow) =>
+    row.price?.retired === true
+      ? null
+      : unusualOf(
+          typical.get(row.variantId),
+          currency,
+          priceDrafts[row.variantId],
+          row.price?.inForce?.amount ?? null,
+        );
   // After a failed save the first invalid field takes focus, so its message is read out.
   useEffect(() => {
     if (focusTick > 0)
@@ -1112,6 +1132,15 @@ export function VariantsTable({
                                       inputMode="decimal"
                                       value={priceText(row)}
                                       error={errors[row.variantId]}
+                                      status={
+                                        unusualOfRow(row) === null ? undefined : (
+                                          <FieldStatus tone="info">
+                                            {t(
+                                              `catalog.variants-table.unusual.${unusualOfRow(row)}`,
+                                            )}
+                                          </FieldStatus>
+                                        )
+                                      }
                                       onChange={(event) =>
                                         setPriceDrafts({
                                           ...priceDrafts,
@@ -1255,6 +1284,14 @@ export function VariantsTable({
                                   sources={sources}
                                   stockDrafts={stockDrafts}
                                   receive={showReceive ? receiveView(row) : null}
+                                  typical={
+                                    typical.has(row.variantId)
+                                      ? {
+                                          range: typical.get(row.variantId)!,
+                                          unusual: unusualOfRow(row),
+                                        }
+                                      : null
+                                  }
                                   special={
                                     <SizeSpecial
                                       id={`${detailsId}-special`}
