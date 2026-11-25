@@ -10,6 +10,7 @@ import {
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
 import { unusedChangeTrail } from '../support/change-trail-fakes';
+import { EvaluationRunRouter } from '../support/ai-routes';
 import { inMemoryAiUsage } from '../support/in-memory-ai-usage';
 import { FakeUnitOfWork } from '../support/pricing-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../support/test-config';
@@ -17,10 +18,12 @@ import { AnthropicMessagesProvider } from '../../src/platform/ai/anthropic-messa
 import { ModelGateway } from '../../src/platform/ai/model-gateway';
 import { checkedInCatalogue } from '../../src/platform/ai/catalogue';
 import { EvaluationResults } from '../../src/platform/ai/evaluations/evaluation-results';
-import { AiRouter } from '../../src/platform/ai/routing/ai-router';
 import { AiGateway } from '../../src/platform/ai/ai-gateway';
 import { CapabilityRegistry } from '../../src/platform/ai/capability-registry';
-import { ASSISTANT_AI_CAPABILITIES } from '../../src/modules/assistant/contracts/ai-capabilities';
+import {
+  ASSISTANT_AI_CAPABILITIES,
+  BUYER_CHAT,
+} from '../../src/modules/assistant/contracts/ai-capabilities';
 import type { ModelRequest } from '../../src/platform/ai/model-provider';
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
@@ -135,6 +138,8 @@ const EXPECTED_TOOLS: Readonly<Record<string, readonly string[]>> = {
 const REQUIRED_MARKETS = ['AU', 'ZZ'];
 const MARKET_KEYS =
   /^[A-Z][A-Z0-9_]{1,7}=[A-Za-z0-9_-]{20,500}(,[A-Z][A-Z0-9_]{1,7}=[A-Za-z0-9_-]{20,500})*$/;
+const MARKET_BEDROCK_KEYS =
+  /^[A-Z][A-Z0-9_]{1,7}=[A-Za-z0-9+/=_-]{20,2000}(,[A-Z][A-Z0-9_]{1,7}=[A-Za-z0-9+/=_-]{20,2000})*$/;
 const MARKET_MODELS =
   /^[A-Z][A-Z0-9_]{1,7}=[A-Za-z0-9][A-Za-z0-9._:/@-]{0,99}(,[A-Z][A-Z0-9_]{1,7}=[A-Za-z0-9][A-Za-z0-9._:/@-]{0,99})*$/;
 /** Contact details and links the synthetic seller texts carry. */
@@ -421,14 +426,16 @@ function configFromEnvironment(): { config: AppConfig; tier: ModelTier; markets:
     }
   };
   check('ASSISTANT_MODEL_API_KEY', MARKET_KEYS);
+  check('AI_BEDROCK_API_KEY', MARKET_BEDROCK_KEYS);
   check('ASSISTANT_MODEL_FAST', MARKET_MODELS);
   check('ASSISTANT_MODEL_BALANCED', MARKET_MODELS);
   const read = (variable: string) =>
     parseMarketValues(env[variable] || undefined, TEST_MARKET_IDS, variable);
   const keys = read('ASSISTANT_MODEL_API_KEY');
+  const bedrockKeys = read('AI_BEDROCK_API_KEY');
   const fast = read('ASSISTANT_MODEL_FAST');
   const balanced = read('ASSISTANT_MODEL_BALANCED');
-  const issues = [keys, fast, balanced].flatMap((parsed) => parsed.issues);
+  const issues = [keys, bedrockKeys, fast, balanced].flatMap((parsed) => parsed.issues);
   if (issues.length > 0) throw new Error(`evaluation configuration: ${issues.join('; ')}`);
   const tierName = env.ASSISTANT_EVAL_TIER ?? 'fast';
   if (!(MODEL_TIERS as readonly string[]).includes(tierName)) {
@@ -436,14 +443,16 @@ function configFromEnvironment(): { config: AppConfig; tier: ModelTier; markets:
   }
   const tier = tierName as ModelTier;
   const models = tier === 'fast' ? fast.values : balanced.values;
-  const markets = Object.keys(keys.values).filter((market) => Object.hasOwn(models, market));
+  // A Market is evaluated when it names a model; whether a route of it is usable (a key, a region
+  // of the Market, a recorded check) is the router's answer, read below (Mohammad, G3 review 2).
+  const markets = Object.keys(models);
   // Prices come from the route catalogue; the budget is counted in memory and not tested here.
   const config = {
     aiKillSwitch: false,
     assistantModels: {
       apiKeys: keys.values,
       models: { fast: fast.values, balanced: balanced.values },
-      bedrockApiKeys: {},
+      bedrockApiKeys: bedrockKeys.values,
     },
   } as unknown as AppConfig;
   return { config, tier, markets };
@@ -452,7 +461,7 @@ function configFromEnvironment(): { config: AppConfig; tier: ModelTier; markets:
 const shownText = (sentences: readonly string[]) => sentences.join(' ').toLowerCase();
 
 describe(`buyer assistant real-model evaluation (${EVALUATION_VERSION})`, () => {
-  const { config, tier, markets } = configFromEnvironment();
+  const { config, tier, markets: named } = configFromEnvironment();
   const registry = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
   const gate = createUseCaseGate(registry, { check: () => Promise.resolve({ allowed: true }) });
   const catalogue = checkedInCatalogue();
@@ -465,9 +474,19 @@ describe(`buyer assistant real-model evaluation (${EVALUATION_VERSION})`, () => 
   // An evaluation run (ADR-0052 decision 3, the one exception): a catalogue row without a
   // recorded pass may be used, when it meets every other condition (no retention and no training
   // recorded, a region of the Market, a key, not retired). Synthetic data only.
-  const router = new AiRouter(catalogue, new EvaluationResults([]), gateway, registry, clock, {
-    evaluationRun: true,
-  });
+  // The exception lives in a router built under test/ only (Hassan, G3 review 3).
+  const router = new EvaluationRunRouter(
+    catalogue,
+    new EvaluationResults([]),
+    gateway,
+    registry,
+    clock,
+  );
+  const chat = ASSISTANT_AI_CAPABILITIES.find((spec) => spec.id === BUYER_CHAT)!;
+  // Only a Market with a usable route is evaluated; the test below fails when AU or ZZ has none.
+  const markets = named.filter(
+    (market) => router.plan(market as MarketContext['marketId'], chat, tier).length > 0,
+  );
   const aiGateway = new AiGateway(
     gateway,
     capabilities,
@@ -478,7 +497,7 @@ describe(`buyer assistant real-model evaluation (${EVALUATION_VERSION})`, () => 
   );
   const reportDir = process.env.ASSISTANT_EVAL_REPORT_DIR ?? join(tmpdir(), 'assistant-eval');
 
-  it('evaluates both Market fixtures (AU and ZZ), each with a key and a model', () => {
+  it('evaluates both Market fixtures (AU and ZZ), each with a usable route and a model', () => {
     expect([...markets].sort()).toEqual(expect.arrayContaining(REQUIRED_MARKETS));
   });
 

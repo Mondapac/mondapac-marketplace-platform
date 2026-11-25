@@ -73,10 +73,11 @@ export interface ModelCredentials {
 
 /**
  * How a call failed, as far as the router needs to know (design section 6): it moves to the next
- * route on `rate-limited`, `server` and `network`, never on `client` (a request the provider
- * refuses would be refused by the same model on another route).
+ * route on `rate-limited`, `server`, `network` and `route` (the route refuses its key or does not
+ * serve the model: 401, 403, 404), never on `client` (a request the provider cannot take, 400, 413,
+ * 422, would be refused by the same model on another route).
  */
-export type ProviderFailure = 'rate-limited' | 'server' | 'network' | 'client';
+export type ProviderFailure = 'rate-limited' | 'server' | 'network' | 'route' | 'client';
 
 /** The error an adapter throws; it carries the kind only, never provider text. */
 export class ModelProviderError extends Error {

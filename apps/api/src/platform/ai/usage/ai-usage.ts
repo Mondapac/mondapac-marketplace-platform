@@ -37,6 +37,11 @@ export interface SettledCall {
   readonly provider: string;
   readonly model: string;
   readonly attempt: number;
+  /**
+   * The route is not the plan's first one (a fallback, also when the breaker skipped the first
+   * route; Mohammad, G3 review 5).
+   */
+  readonly fallback: boolean;
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly inputPicoUsd: number;
@@ -276,13 +281,14 @@ export class AiUsage {
       async () => {
         const taken = await this.store.takeReservation(market, reservation.id);
         if (call !== null) {
+          const { fallback, ...row } = call;
           const first = await this.store.addCall(market, {
             id: reservation.id,
             day,
             capability: scope.capability,
             sellerId: scope.sellerId,
             guest: scope.guest,
-            ...call,
+            ...row,
           });
           // The call's row is there already: this call was settled before, nothing more to count.
           if (!first) return ok(null);
@@ -292,7 +298,7 @@ export class AiUsage {
             sellerId: scope.sellerId,
             calls: 1,
             failures: call.outcome === 'ok' ? 0 : 1,
-            fallbacks: call.attempt > 1 ? 1 : 0,
+            fallbacks: fallback ? 1 : 0,
             refusals: 0,
             inputTokens: call.inputTokens,
             outputTokens: call.outputTokens,

@@ -68,14 +68,18 @@ export class ModelGateway {
     if (this.#killed) {
       this.#logger.warn({ msg: 'ai.kill-switch.set', detail: 'every AI capability is off' });
     }
-    // A tier naming a model outside the catalogue is a configuration error: fail boot (R7).
+    // A tier naming a model outside the catalogue is a configuration error. It is logged and the
+    // tier is off (`modelOf` answers null): an AI setting never stops the host from booting (R8;
+    // Mohammad, G3 review 7).
     for (const tier of AI_MODEL_TIERS) {
       for (const [market, name] of Object.entries(this.#config.models[tier])) {
         if (this.catalogue.familyOf(name) === null) {
-          throw new Error(
-            `ASSISTANT_MODEL_${tier.toUpperCase()}: ${market} names a model that is not in the ` +
-              'AI route catalogue (apps/api/src/platform/ai/catalogue)',
-          );
+          this.#logger.error({
+            msg: 'ai.model.unknown',
+            detail:
+              `ASSISTANT_MODEL_${tier.toUpperCase()}: ${market} names a model that is not in the ` +
+              'AI route catalogue (apps/api/src/platform/ai/catalogue); the tier is off',
+          });
         }
       }
     }
@@ -89,6 +93,11 @@ export class ModelGateway {
   /** Whether the Market has a key for Anthropic's own API (the admin screen shows set or not). */
   keyConfigured(marketId: MarketId): boolean {
     return this.#keyOf(marketId, 'anthropic-api') !== null;
+  }
+
+  /** Whether a call on the route can be sent now: no kill switch, and the Market holds its key. */
+  callable(marketId: MarketId, route: RouteKind): boolean {
+    return !this.#killed && this.#keyOf(marketId, route) !== null;
   }
 
   /** Whether the Market has the server key of a route. */
@@ -133,6 +142,8 @@ export class ModelGateway {
       const kind = error instanceof ModelProviderError ? error.kind : 'network';
       return {
         ok: false,
+        // `route` (a key or model the route refuses) is an outage of that route: the next route
+        // is tried (Mohammad, G3 review 1). Only a request the provider cannot take is `rejected`.
         failure:
           kind === 'rate-limited' ? 'rate-limited' : kind === 'client' ? 'rejected' : 'unavailable',
       };

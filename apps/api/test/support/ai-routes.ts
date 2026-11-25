@@ -10,7 +10,7 @@ import {
   type EvaluationPass,
 } from '../../src/platform/ai/evaluations/evaluation-results';
 import type { ModelGateway } from '../../src/platform/ai/model-gateway';
-import { AiRouter, type RouterOptions } from '../../src/platform/ai/routing/ai-router';
+import { AiRouter } from '../../src/platform/ai/routing/ai-router';
 import type { MarketRegistry } from '../../src/platform/market-config/market-registry';
 
 /** Hassan's check as a test row records it. */
@@ -81,7 +81,17 @@ export function testRouter(
   models: ModelGateway,
   markets: MarketRegistry,
   clock: Clock,
-  options: RouterOptions = {},
 ): AiRouter {
-  return new AiRouter(catalogue, evaluations, models, markets, clock, options);
+  return new AiRouter(catalogue, evaluations, models, markets, clock);
+}
+
+/**
+ * The router of an evaluation run (ADR-0052 decision 3, the one exception): a row that meets every
+ * other condition may be used without a recorded evaluation pass. It lives under test/ so the API
+ * can never build it (Hassan, G3 review 3).
+ */
+export class EvaluationRunRouter extends AiRouter {
+  protected override evaluationPassed(): boolean {
+    return true;
+  }
 }

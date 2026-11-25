@@ -25,20 +25,27 @@ export class CircuitBreaker {
 
   constructor(private readonly clock: Clock) {}
 
-  /** Whether a call may use the route now; takes the trial call when the pause is over. */
+  /**
+   * Whether a call may use the route now; takes the trial call when the pause is over. Ask it only
+   * right before the call is sent, so a taken trial is always reported (Mohammad, G3 review 4).
+   */
   allow(marketId: string, routeId: string): boolean {
+    if (!this.ready(marketId, routeId)) return false;
+    const state = this.#states.get(keyOf(marketId, routeId));
+    if (state !== undefined && state.openUntil !== null) state.trialAt = this.clock.now();
+    return true;
+  }
+
+  /** Whether {@link allow} would let a call through now, without taking the trial call. */
+  ready(marketId: string, routeId: string): boolean {
     const state = this.#states.get(keyOf(marketId, routeId));
     if (state === undefined || state.openUntil === null) return true;
     const now = this.clock.now();
     if (Temporal.Instant.compare(now, state.openUntil) < 0) return false;
-    if (
-      state.trialAt !== null &&
-      Temporal.Instant.compare(now, state.trialAt.add(BREAKER_OPEN_FOR)) < 0
-    ) {
-      return false;
-    }
-    state.trialAt = now;
-    return true;
+    return (
+      state.trialAt === null ||
+      Temporal.Instant.compare(now, state.trialAt.add(BREAKER_OPEN_FOR)) >= 0
+    );
   }
 
   /** Whether the route is set aside now (for the monitoring page), without taking a trial. */

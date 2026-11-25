@@ -21,15 +21,6 @@ export interface PlannedRoute {
   readonly price: ModelTokenPrice;
 }
 
-export interface RouterOptions {
-  /**
-   * An evaluation or playground run (ADR-0052 decision 3, the one exception): a row may be used
-   * without a recorded evaluation pass, as long as it meets every other condition. Only the
-   * real-model evaluation harness sets it; the API never does.
-   */
-  readonly evaluationRun?: boolean;
-}
-
 /**
  * The AI Gateway's router (docs/design/domain/platform-ai.md section 6; ADR-0052 decisions 2 to 5).
  * For a capability in a Market it builds the ordered list of routes a call may try: the task's
@@ -53,7 +44,6 @@ export class AiRouter {
     private readonly models: ModelGateway,
     private readonly markets: MarketRegistry,
     private readonly clock: Clock,
-    private readonly options: RouterOptions = {},
   ) {
     this.breaker = new CircuitBreaker(clock);
   }
@@ -111,10 +101,16 @@ export class AiRouter {
         return false;
       }
     }
-    return (
-      this.options.evaluationRun === true ||
-      this.evaluations.passed(spec.id, row.provider, row.family, spec.promptVersion)
-    );
+    return this.evaluationPassed(spec, row);
+  }
+
+  /**
+   * The evaluation gate. The one exception (ADR-0052 decision 3: an evaluation run may use a row
+   * without a pass) is a subclass under test/eval only, never an option the API could set
+   * (Hassan, G3 review 3).
+   */
+  protected evaluationPassed(spec: CapabilitySpec, row: RouteRow): boolean {
+    return this.evaluations.passed(spec.id, row.provider, row.family, spec.promptVersion);
   }
 }
 

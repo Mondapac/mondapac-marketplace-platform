@@ -96,19 +96,27 @@ describe('ModelGateway (ADR-0019 R7, R8; ADR-0052)', () => {
     expect(gateway.modelOf(AU, 'fast')).toBe('model-fast');
   });
 
-  it('fails boot for a tier naming a model outside the catalogue (R7)', () => {
-    expect(
-      () =>
-        new ModelGateway(
-          configOf({
-            apiKeys: {},
-            models: { fast: { AU: 'some-preview-model' }, balanced: {} },
-            bedrockApiKeys: {},
-          }),
-          new ScriptedProvider(() => Promise.resolve(TURN)),
-          checkedInCatalogue(),
-        ),
-    ).toThrow(/ASSISTANT_MODEL_FAST: AU names a model that is not in the AI route catalogue/);
+  it('logs a tier naming a model outside the catalogue and keeps that tier off, booting (R7, R8)', () => {
+    const errors: unknown[] = [];
+    jest.spyOn(Logger.prototype, 'error').mockImplementation((message: unknown) => {
+      errors.push(message);
+    });
+    const gateway = new ModelGateway(
+      configOf({
+        apiKeys: {},
+        models: { fast: { AU: 'some-preview-model' }, balanced: {} },
+        bedrockApiKeys: {},
+      }),
+      new ScriptedProvider(() => Promise.resolve(TURN)),
+      checkedInCatalogue(),
+    );
+    expect(gateway.modelOf(AU, 'fast')).toBeNull();
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ msg: 'ai.model.unknown' });
+    expect(JSON.stringify(errors[0])).toMatch(
+      /ASSISTANT_MODEL_FAST: AU names a model that is not in the/,
+    );
+    expect(JSON.stringify(errors)).not.toContain('some-preview-model');
   });
 
   it('calls nothing for a Market without the route key (fail closed)', async () => {
@@ -161,6 +169,7 @@ describe('ModelGateway (ADR-0019 R7, R8; ADR-0052)', () => {
     [new ModelProviderError('rate-limited'), 'rate-limited'],
     [new ModelProviderError('server'), 'unavailable'],
     [new ModelProviderError('network'), 'unavailable'],
+    [new ModelProviderError('route'), 'unavailable'],
     [new ModelProviderError('client'), 'rejected'],
     [new Error(`bad key ${KEY} for "hi"`), 'unavailable'],
   ])('turns %s into %s and logs no provider text or key', async (error, failure) => {
@@ -257,8 +266,12 @@ describe('AnthropicMessagesProvider', () => {
   });
 
   it.each([
-    [401, 'client'],
     [400, 'client'],
+    [413, 'client'],
+    [422, 'client'],
+    [401, 'route'],
+    [403, 'route'],
+    [404, 'route'],
     [429, 'rate-limited'],
     [500, 'server'],
     [529, 'server'],
@@ -274,6 +287,20 @@ describe('AnthropicMessagesProvider', () => {
       expect((failure as Error).message).not.toContain(KEY);
     },
   );
+
+  it('never follows a redirect (the key and the data would go to another host)', async () => {
+    const { sent, provider } = answering(200, {
+      content: [{ type: 'text', text: 'Hello' }],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 5, output_tokens: 3 },
+    });
+    await provider.call(
+      { apiKey: KEY, model: 'm', route: 'anthropic-api', region: null },
+      REQUEST,
+      signal,
+    );
+    expect(sent[0]!.init.redirect).toBe('error');
+  });
 
   it('throws network when the request does not reach the provider', async () => {
     const provider = new AnthropicMessagesProvider(() => Promise.reject(new Error('ECONNRESET')));

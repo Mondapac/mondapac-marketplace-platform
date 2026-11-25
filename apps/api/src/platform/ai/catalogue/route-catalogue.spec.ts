@@ -49,6 +49,18 @@ describe('the AI route catalogue (ADR-0052 decision 2)', () => {
     ['a zero price', { inputUsdPerMTok: 0 }],
     ['a retirement that is not a day', { retiresOn: 'soon' }],
     [
+      'a cross-region Bedrock profile',
+      { id: 'bedrock-mantle/apac.anthropic.m', route: 'bedrock-mantle', model: 'apac.anthropic.m' },
+    ],
+    [
+      'a global Bedrock profile',
+      {
+        id: 'bedrock-mantle/global.anthropic.m',
+        route: 'bedrock-mantle',
+        model: 'global.anthropic.m',
+      },
+    ],
+    [
       'a check without a reviewer',
       {
         dataTerms: {
@@ -64,6 +76,27 @@ describe('the AI route catalogue (ADR-0052 decision 2)', () => {
     expect(() => new RouteCatalogue([testRoute('m', 'anthropic-api', overrides as never)])).toThrow(
       /AI route catalogue/,
     );
+  });
+
+  it('takes the Australian Bedrock profile', () => {
+    expect(
+      () =>
+        new RouteCatalogue([
+          testRoute('m', 'bedrock-mantle', {
+            id: 'bedrock-mantle/au.anthropic.m',
+            model: 'au.anthropic.m',
+          }),
+        ]),
+    ).not.toThrow();
+  });
+
+  it('refuses a checked-in anthropic-api row with a region (no region control on that route yet)', () => {
+    expect(() => checkedInCatalogue([testRoute('m', 'anthropic-api')])).toThrow(
+      /records no region until the adapter pins one/,
+    );
+    expect(() =>
+      checkedInCatalogue([testRoute('m', 'anthropic-api', { region: null })]),
+    ).not.toThrow();
   });
 
   it('refuses a row listed twice', () => {

@@ -57,6 +57,7 @@ const settled = (cost: number): SettledCall => ({
   provider: 'anthropic',
   model: 'model-fast',
   attempt: 1,
+  fallback: false,
   inputTokens: 10,
   outputTokens: 5,
   inputPicoUsd: 1_000_000,
@@ -350,6 +351,18 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
 
     it('falls back to the second route: two call rows, one fallback counted (G3)', async () => {
       const context = adminContext(market);
+      // Tests share the day rows: the count must rise by exactly one (Mojtaba, G3 review nit 5).
+      const fallbacks = async () =>
+        Number(
+          (
+            await sql.query<{ total: string | null }>(
+              `SELECT SUM(fallbacks) AS total FROM platform.ai_usage_days
+                WHERE market_id = $1 AND capability = 'catalog.description-writer.admin'`,
+              [market.marketId],
+            )
+          ).rows[0]!.total ?? 0,
+        );
+      const before = await fallbacks();
       const call = jest.spyOn(provider, 'call').mockImplementation((credentials) =>
         credentials.route === 'anthropic-api'
           ? Promise.reject(new ModelProviderError('server'))
@@ -375,12 +388,7 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
         [2, 'ok', 'anthropic.model-fast'],
         [1, 'unavailable', 'model-fast'],
       ]);
-      const days = await sql.query<{ fallbacks: number }>(
-        `SELECT fallbacks FROM platform.ai_usage_days
-          WHERE market_id = $1 AND capability = 'catalog.description-writer.admin'`,
-        [market.marketId],
-      );
-      expect(days.rows[0]!.fallbacks).toBeGreaterThanOrEqual(1);
+      expect(await fallbacks()).toBe(before + 1);
     });
   });
 

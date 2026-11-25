@@ -37,11 +37,19 @@ function targetOf(credentials: ModelCredentials): { url: string; auth: Record<st
   }
 }
 
-/** The kind of a non-200 answer: 429 is a rate limit, 5xx (529 included) a server error. */
+/** The answers that say the request itself cannot be taken, on any route. */
+const REQUEST_REFUSED = new Set([400, 413, 422]);
+
+/**
+ * The kind of a non-200 answer: 429 is a rate limit, 5xx (529 included) a server error, 400, 413
+ * and 422 a request the provider cannot take, and any other answer (401, 403, 404: a key the route
+ * refuses or a model it does not serve) an outage of that route (Mohammad, G3 review 1).
+ */
 function failureOf(status: number): ModelProviderError {
   if (status === 429) return new ModelProviderError('rate-limited');
   if (status >= 500) return new ModelProviderError('server');
-  return new ModelProviderError('client');
+  if (REQUEST_REFUSED.has(status)) return new ModelProviderError('client');
+  return new ModelProviderError('route');
 }
 
 /** The fetch this adapter uses; tests pass their own, so nothing leaves the process. */
@@ -102,6 +110,9 @@ export class AnthropicMessagesProvider implements ModelProvider {
       response = await this.fetchFn(target.url, {
         method: 'POST',
         signal,
+        // A redirect is never followed: it would resend the key and the data to another host,
+        // perhaps outside the route's region (Hassan, G3 review 2). It fails as `network`.
+        redirect: 'error',
         headers: {
           'content-type': 'application/json',
           ...target.auth,

@@ -40,6 +40,16 @@ describe('CircuitBreaker (design section 6)', () => {
     expect(breaker.open('AU', ROUTE)).toBe(false);
   });
 
+  it('ready() answers like allow() without taking the trial call', () => {
+    for (let index = 0; index < BREAKER_FAILURES; index += 1) breaker.failed('AU', ROUTE);
+    expect(breaker.ready('AU', ROUTE)).toBe(false);
+    clock.advance(BREAKER_OPEN_FOR);
+    expect(breaker.ready('AU', ROUTE)).toBe(true);
+    expect(breaker.ready('AU', ROUTE)).toBe(true);
+    expect(breaker.allow('AU', ROUTE)).toBe(true);
+    expect(breaker.ready('AU', ROUTE)).toBe(false);
+  });
+
   it('frees a trial that never reported after another pause', () => {
     for (let index = 0; index < BREAKER_FAILURES; index += 1) breaker.failed('AU', ROUTE);
     clock.advance(BREAKER_OPEN_FOR);

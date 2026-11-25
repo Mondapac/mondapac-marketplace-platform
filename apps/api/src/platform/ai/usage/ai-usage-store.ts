@@ -144,7 +144,7 @@ export interface UsageDelta {
   readonly calls: number;
   readonly failures: number;
   readonly refusals: number;
-  /** 1 when this call was a fallback attempt (attempt > 1), else 0. */
+  /** 1 when this call went to a route after the plan's first one (a fallback), else 0. */
   readonly fallbacks: number;
   readonly inputTokens: number;
   readonly outputTokens: number;

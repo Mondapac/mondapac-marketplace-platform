@@ -303,16 +303,22 @@ export class AiGateway {
     let attempt = 0;
     let spent = 0;
     let last: 'timeout' | 'unavailable' | 'rate-limited' | null = null;
+    const { breaker } = this.router;
     for (const [index, { row, price: rowPrice }] of plan.entries()) {
-      // A route the breaker set aside is skipped; the next one is tried straight away.
-      if (!this.router.breaker.allow(marketId, row.id)) continue;
+      // A route the breaker set aside, or one the Market has no key for, is skipped before any
+      // budget is held (Mojtaba, G3 review nit 3); the next one is tried straight away.
+      if (!breaker.ready(marketId, row.id)) continue;
+      if (!this.models.callable(marketId, row.route)) continue;
       // The first attempt always goes; a fallback only with MIN_ATTEMPT_MS left. With a fallback
-      // still behind it, an attempt takes a share of the time left, so the fallback has some.
+      // that can be tried now still behind it, an attempt takes a share of the time left, so the
+      // fallback has some (Mohammad, G3 review 6).
       const remaining = Math.floor(deadline - performance.now());
       if (attempt > 0 && remaining < MIN_ATTEMPT_MS) break;
       const share = Math.floor(remaining * ATTEMPT_SHARE_WITH_FALLBACK);
-      const attemptMs =
-        index < plan.length - 1 && share >= MIN_ATTEMPT_MS ? share : Math.max(1, remaining);
+      const fallbackBehind = plan
+        .slice(index + 1)
+        .some((next) => breaker.ready(marketId, next.row.id));
+      const attemptMs = fallbackBehind && share >= MIN_ATTEMPT_MS ? share : Math.max(1, remaining);
       attempt += 1;
 
       let reservation;
@@ -333,9 +339,13 @@ export class AiGateway {
         break;
       }
 
+      // The trial call (if any) is taken only now, right before the call is sent, so it is always
+      // reported (Mohammad, G3 review 4). Another call may have taken it meanwhile.
       const occurredAt = this.clock.now();
       const started = performance.now();
-      const call = await this.models.complete(marketId, row, sent, attemptMs);
+      const call = breaker.allow(marketId, row.id)
+        ? await this.models.complete(marketId, row, sent, attemptMs)
+        : ({ ok: false, failure: 'not-configured' } as const);
       const latencyMs = Math.max(0, Math.round(performance.now() - started));
       if (!call.ok && call.failure === 'not-configured') {
         await this.usage.settle(market, reservation, null);
@@ -355,6 +365,7 @@ export class AiGateway {
         provider: row.provider,
         model: row.model,
         attempt,
+        fallback: index > 0,
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
         inputPicoUsd: rowPrice.inputPicoUsd,
@@ -364,7 +375,7 @@ export class AiGateway {
         outcome: call.ok ? 'ok' : call.failure,
       });
       if (call.ok) {
-        this.router.breaker.succeeded(marketId, row.id);
+        breaker.succeeded(marketId, row.id);
         return {
           ok: true,
           turn: call.turn,
@@ -378,7 +389,10 @@ export class AiGateway {
         return { ok: false, reason: 'unavailable', costMicroUsd: spent };
       }
       last = call.failure;
-      if (this.router.breaker.failed(marketId, row.id)) {
+      // Only a failure of the route itself counts toward the breaker: a timeout may be a slow
+      // request (one caller can send three), and is cut early when a fallback waits (Hassan, G3
+      // review 5; Mohammad, G3 review 6).
+      if (call.failure !== 'timeout' && breaker.failed(marketId, row.id)) {
         this.#logger.warn({ msg: 'ai.route.set-aside', marketId, route: row.id });
       }
     }

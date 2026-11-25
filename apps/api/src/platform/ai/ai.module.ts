@@ -46,7 +46,7 @@ export class AiModule {
       imports: [sellerAiSwitchProvider],
       providers: [
         { provide: MODEL_PROVIDER, useValue: new AnthropicMessagesProvider() },
-        { provide: AI_ROUTE_CATALOGUE, useFactory: checkedInCatalogue },
+        { provide: AI_ROUTE_CATALOGUE, useFactory: () => checkedInCatalogue() },
         {
           provide: AI_EVALUATION_RESULTS,
           useFactory: () => new EvaluationResults(EVALUATION_PASSES),

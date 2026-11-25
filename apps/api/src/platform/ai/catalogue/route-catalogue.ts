@@ -64,6 +64,12 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const FAMILY = /^[a-z0-9][a-z0-9.-]{0,79}$/;
 const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}$/;
 const REGION = /^[a-z]{2}(?:-[a-z]+)+-\d$/;
+/**
+ * A Bedrock model id processed in the called region only: the in-region id, or Australia's
+ * inference profile. A cross-region profile (`global.`, `apac.`, `us.` …) may process the data
+ * outside the host's region, so it is refused (Hassan, G3 review 1).
+ */
+const BEDROCK_MODEL = /^(?:au\.)?anthropic\./;
 
 /** Why a row is invalid, or null. Checked once, when the catalogue is loaded. */
 export function routeRowProblem(row: RouteRow): string | null {
@@ -71,6 +77,9 @@ export function routeRowProblem(row: RouteRow): string | null {
   if (!(ROUTE_KINDS as readonly string[]).includes(row.route)) return `${row.id}: unknown route`;
   if (!FAMILY.test(row.family)) return `${row.id}: the family is lowercase a-z 0-9 . -`;
   if (!MODEL.test(row.model)) return `${row.id}: invalid model id`;
+  if (row.route === 'bedrock-mantle' && !BEDROCK_MODEL.test(row.model)) {
+    return `${row.id}: a Bedrock model id is "anthropic." or "au.anthropic." (no cross-region profile)`;
+  }
   if (row.region !== null && !REGION.test(row.region)) return `${row.id}: invalid region`;
   for (const price of [row.inputUsdPerMTok, row.outputUsdPerMTok]) {
     if (!Number.isFinite(price) || price <= 0 || price > 1000) {

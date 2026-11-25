@@ -320,7 +320,7 @@ const envSchema = z.object({
     .optional(),
   // The model family of each tier the admin may choose, per Market, until the priority lists move to
   // settings (G4): a catalogue family (claude-haiku-5-5) or the exact model id of one of its rows.
-  // A name outside the catalogue fails boot (ModelGateway).
+  // A name outside the catalogue is logged and that tier is off (ModelGateway; R8).
   ASSISTANT_MODEL_FAST: z
     .string()
     .regex(

@@ -583,6 +583,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
         provider: 'anthropic',
         model: 'model-fast',
         attempt: 1,
+        fallback: false,
         inputTokens: 10,
         outputTokens: 10,
         inputPicoUsd: 1,
@@ -604,6 +605,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
         provider: 'anthropic',
         model: 'model-fast',
         attempt: 1,
+        fallback: false,
         inputTokens: 10,
         outputTokens: 10,
         inputPicoUsd: 1,
@@ -866,6 +868,8 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
         await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
       ).toMatchObject({ ok: true, route: { route: 'bedrock-mantle', attempt: 1 } });
       expect(routed.routes).toEqual(['bedrock-mantle']);
+      // The route the call used is not the plan's first: it is counted as a fallback.
+      expect(store.usage.at(-1)?.fallbacks).toBe(1);
 
       // After the pause one call tries the route again; a success closes it.
       clock.advance(BREAKER_OPEN_FOR);
@@ -876,6 +880,52 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
       ).toMatchObject({ ok: true, route: { route: 'anthropic-api' } });
       expect(router.breaker.open('AU', PRIMARY)).toBe(false);
       expect(router.breaker.open('AU', FALLBACK)).toBe(false);
+    });
+
+    it('moves on when a route refuses its key or model (401, 403, 404), and counts it', async () => {
+      routed.answer = (route) =>
+        route === 'anthropic-api'
+          ? Promise.reject(new ModelProviderError('route'))
+          : Promise.resolve(TURN);
+      const gateway = routedGateway();
+      expect(
+        await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
+      ).toMatchObject({ ok: true, route: { route: 'bedrock-mantle', attempt: 2 } });
+      for (let index = 1; index < BREAKER_FAILURES; index += 1) {
+        await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' });
+      }
+      expect(router.breaker.open('AU', PRIMARY)).toBe(true);
+    });
+
+    it('never sets a route aside for timeouts (a slow request is not an outage)', async () => {
+      routed.answer = (route, signal) =>
+        route === 'anthropic-api'
+          ? new Promise((_resolve, reject) =>
+              signal.addEventListener('abort', () => reject(new Error())),
+            )
+          : Promise.resolve(TURN);
+      const gateway = routedGateway();
+      const failed = jest.spyOn(router.breaker, 'failed');
+      expect(
+        await gateway.run('alpha.slow-writer', adminContext(), REQUEST, { tier: 'fast' }),
+      ).toMatchObject({ ok: true, route: { attempt: 2 } });
+      expect(failed).not.toHaveBeenCalled();
+    });
+
+    it('gives the first route all the time when the fallback is set aside', async () => {
+      routed.answer = (route) =>
+        route === 'bedrock-mantle'
+          ? Promise.reject(new ModelProviderError('server'))
+          : Promise.reject(new ModelProviderError('client'));
+      const gateway = routedGateway();
+      for (let index = 0; index < BREAKER_FAILURES; index += 1) {
+        router.breaker.failed('AU', FALLBACK);
+      }
+      const complete = jest.spyOn(ModelGateway.prototype, 'complete');
+      await gateway.run('alpha.slow-writer', adminContext(), REQUEST, { tier: 'fast' });
+      expect(complete).toHaveBeenCalledTimes(1);
+      // No usable fallback behind it: no share is kept back (Mohammad, G3 review 6).
+      expect(complete.mock.calls[0]![3]).toBeGreaterThan(SLOW.timeoutMs * 0.9);
     });
 
     it('answers unavailable without a call when every route is set aside', async () => {

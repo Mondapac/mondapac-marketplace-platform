@@ -175,17 +175,30 @@ number so the partner team can work in parallel (G6).
   the Anthropic API rows have no region recorded, so no route is usable and every capability is off
   until Hassan records a row. Evaluation passes live in `evaluations/results.ts` (empty), bound to
   capability, provider, family and prompt version; a pass of a family holds on each of its routes.
+  The one exception (an evaluation run may use a row without a pass) is a router subclass under
+  `test/` only, so the API cannot build it.
+- Region pinning (Hassan, G3 review): a Bedrock row's model id is the in-region id (`anthropic.…`)
+  or Australia's profile (`au.anthropic.…`), never a cross-region profile (`global.`, `apac.` …).
+  A checked-in Anthropic API row records no region until the adapter sends a region control. The
+  adapter never follows a redirect.
 - Until G4 a task's priority list is the one family the module's tier names (`ASSISTANT_MODEL_FAST`
-  or `_BALANCED`, now a catalogue family; a name outside the catalogue fails boot). The router
+  or `_BALANCED`, now a catalogue family; a name outside the catalogue is logged as an error and
+  that tier is off, the API still boots, R8). The router
   expands it to its usable rows, provider route first, at most 3 attempts. Market residency and the
   saver model are Market configuration `aiRouting` until G4 and INTL-53.
-- An attempt moves to the next route on a timeout, a server error, no answer or a rate limit; never
-  on a provider refusal of the request (`rejected`) or a model refusal. Each attempt reserves before
-  it is sent (call id = reservation id), at the dearest route of the plan, and is recorded with its
-  attempt number; a fallback attempt counts in `ai_usage_days.fallbacks`. With a fallback left, an
-  attempt may take two thirds of the time left; a fallback needs 250 ms left of the run's timeout.
-- The circuit breaker is per API instance, per Market and route: 3 failures in a row set the route
-  aside for 2 minutes, then one trial call (FE-20261125-ai-gateway-shared-breaker).
+- An attempt moves to the next route on a timeout, a server error, no answer, a rate limit, or a
+  route that refuses its key or model (401, 403, 404); never on a request the provider cannot take
+  (400, 413, 422: `rejected`) or a model refusal. Each attempt reserves before it is sent (call id =
+  reservation id), at the dearest route of the plan, and is recorded with its attempt number; a call
+  on a route after the plan's first (also when the breaker skipped the first) counts in
+  `ai_usage_days.fallbacks`. Routes without a key, or set aside, are skipped before any budget is
+  held. With a fallback that can be tried now, an attempt takes two thirds of the time left; a
+  fallback needs 250 ms left of the run's timeout.
+- The circuit breaker is per API instance, per Market and route: 3 route failures in a row (server
+  error, no answer, rate limit, refused key or model; never a timeout, which may be one slow
+  request) set the route aside for 2 minutes, then one trial call, taken right before it is sent
+  (FE-20261125-ai-gateway-shared-breaker). When `status` says on but every route is set aside, `run`
+  answers `unavailable`.
 - Saver mode reads the Market's month counter (held, which includes spent) against its month cap;
   the saver model goes first only when it is usable and cheaper than the first model.
 - The second adapter is the same Messages adapter with Bedrock's regional host and a Bedrock API key
@@ -365,10 +378,15 @@ the guarded `prisma.tx(market)` client. Each table has an explicit GRANT and `do
   with `NULLS NOT DISTINCT`.
 - **Auto-off and once-a-day notice.** The columns that live in `spend_days` today move to
   `ai_budget_counters`, where the caps are counted (G7).
-- **Expected load.** Every call updates its Market's day and month rows, so one Market takes a few
-  hundred reserve and settle units a second before those rows queue (Mojtaba's estimate); the
-  launch expects well under 10 calls a second per Market. Above that, split the Market rows into
-  shards (G3 reviews this with retries).
+- **Expected load (reviewed with retries in G3, Mojtaba).** Every attempt reserves and settles on
+  its Market's day and month rows: 2 units an attempt, up to 3 attempts a run, so at most 6 units a
+  run (saver mode adds one lock-free read). The rows take about 300 to 500 units a second before
+  they queue, which is about 50 to 80 runs a second in the worst case (every run using 3 attempts);
+  the launch expects well under 10 runs a second per Market (at most about 60 units a second). No
+  sharding now. Split the Market rows into shards when lock waits on `ai_budget_counters` show up or
+  `ai.usage.settle-failed` errors are logged. Later (G4 or after): on a zero-cost failure (a server
+  error or a rate limit), keep the reservation for the next attempt instead of releasing it and
+  reserving again, which removes 2 units per fallback.
 - **Moving `spend_days` in four steps (G7):** create the new table and backfill it; write to both;
   switch the readers (the buyer assistant's cap and its statistics page) through a gateway port;
   drop the old table in a later release, with a full `down.sql`. The "cap reached" event and the
@@ -424,3 +442,7 @@ the guarded `prisma.tx(market)` client. Each table has an explicit GRANT and `do
 | FE-20261125-ai-gateway-region-check | Compare a provider-reported processing region with the route row; a mismatch fails the call and alerts |
 | FE-20261125-ai-gateway-shared-breaker | One circuit-breaker state shared by all API instances, shown on the AI Gateway page |
 | FE-20261125-ai-gateway-bedrock-price | Record the Bedrock Sydney price in the catalogue rows before the route is turned on |
+| FE-20261125-ai-gateway-bedrock-endpoint-check | Confirm the Bedrock Mantle endpoint, model id and key length with AWS before the row gets its check |
+| FE-20261125-ai-gateway-bad-answer-cost | Count a billed 200 answer without content at its worst-case cost, not 0 |
+| FE-20261125-ai-gateway-keep-reservation | Keep a reservation for the next attempt after a zero-cost failure (2 hot-row units less per fallback) |
+| FE-20261125-ai-gateway-saver-model-check | Check a Market's `saverModel` against the catalogue at boot |
