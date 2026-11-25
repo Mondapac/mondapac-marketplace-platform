@@ -18,7 +18,7 @@ export const PLATFORM_SEARCH_MAX_PAGE = 200;
 /** Barcodes pasted at once. */
 export const PLATFORM_SEARCH_MAX_BARCODES = 200;
 
-const KEYS = new Set(['q', 'barcodes', 'page']);
+const KEYS = new Set(['q', 'barcodes', 'page', 'notSelling']);
 
 export interface OwnPlatformProductSearchInput {
   /** Free text: name, product code, brand, category or a barcode. */
@@ -26,6 +26,11 @@ export interface OwnPlatformProductSearchInput {
   /** A pasted list of barcodes (an array of strings); answers `barcodeResults` as well. */
   readonly barcodes?: unknown;
   readonly page?: unknown;
+  /**
+   * `true` leaves out the products the seller already sells, and counts without them (the
+   * "On the platform" panel under the Products list). Default `false`.
+   */
+  readonly notSelling?: unknown;
 }
 
 export type BarcodeStatus = 'found' | 'already-selling' | 'not-allowed' | 'not-found' | 'invalid';
@@ -101,7 +106,7 @@ export class OwnPlatformProductSearch extends UseCase<
     // Asked before the read unit: the scope opens a unit of its own (units do not nest).
     const allowed = await this.deps.sellerCategories.allowedCategoryIdsForSeller(context, sellerId);
     if (!allowed.ok) return err({ code: 'access.unavailable' });
-    const { text, page, lines } = parsed.value;
+    const { text, page, lines, notSelling } = parsed.value;
     const typed = text === null ? null : normalizeGtin(text);
     const gtins = typed !== null && typed.ok ? [typed.value] : [];
     const read = await this.deps.unitOfWork.run(
@@ -113,6 +118,7 @@ export class OwnPlatformProductSearch extends UseCase<
           locale,
           text,
           gtins,
+          notSelling,
           offset: (page - 1) * PLATFORM_SEARCH_PAGE_SIZE,
           limit: PLATFORM_SEARCH_PAGE_SIZE,
         });
@@ -166,6 +172,7 @@ function hasControlCharacter(text: string): boolean {
 interface ParsedSearch {
   readonly text: string | null;
   readonly page: number;
+  readonly notSelling: boolean;
   readonly lines: readonly { readonly input: string; readonly gtin: string | null }[];
 }
 
@@ -194,6 +201,11 @@ function parse(input: OwnPlatformProductSearchInput): Result<ParsedSearch, Valid
     }
     page = value as number;
   }
+  let notSelling = false;
+  if (input.notSelling !== undefined) {
+    if (typeof input.notSelling !== 'boolean') return invalid('notSelling', 'type');
+    notSelling = input.notSelling;
+  }
   const lines: { input: string; gtin: string | null }[] = [];
   if (input.barcodes !== undefined) {
     if (!Array.isArray(input.barcodes)) return invalid('barcodes', 'type');
@@ -212,7 +224,7 @@ function parse(input: OwnPlatformProductSearchInput): Result<ParsedSearch, Valid
       });
     }
   }
-  return ok({ text, page, lines });
+  return ok({ text, page, notSelling, lines });
 }
 
 export type { Id };

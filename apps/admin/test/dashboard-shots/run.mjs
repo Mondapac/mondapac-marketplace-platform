@@ -41,14 +41,27 @@ const views = [
   ['admin-dashboard-empty', 'empty', [1280]],
   ['admin-dashboard-custom', 'custom', [1280, 375]],
   ['admin-dashboard-custom-refused', 'custom-bad', [1280, 375]],
+  // Dashboards v2 phase 2 cards: full (above), every card short of data, every card failed.
+  ['admin-dashboard-p2-not-enough', 'p2-thin', [1280, 768, 375]],
+  ['admin-dashboard-p2-failed', 'p2-failed', [1280, 375]],
+  // Drill-down: keyboard focus on a status link of Orders by status, and a pointer on a day of
+  // the revenue chart (its link column; the tooltip and marker show the hovered day).
+  ['admin-dashboard-drill-focus', 'full', [1280, 375], 'drill-focus'],
+  ['admin-dashboard-drill-hover', 'full', [1280], 'drill-hover'],
+  // A phone: the first tap on a day shows it, with the tooltip's "View orders" link.
+  ['admin-dashboard-drill-tap', 'full', [375], 'drill-tap'],
 ];
+// SHOTS_ONLY: a comma-separated list of view names to take (all when unset).
+const only = process.env.SHOTS_ONLY?.split(',');
 for (const scheme of ['light', 'dark']) {
-  for (const [name, scenario, widths] of views) {
+  for (const [name, scenario, widths, action] of views) {
+    if (only !== undefined && !only.includes(name)) continue;
     for (const width of widths) {
       const ctx = await browser.newContext({
         viewport: { width, height: 900 },
         colorScheme: scheme,
         deviceScaleFactor: 1,
+        hasTouch: action === 'drill-tap',
       });
       const page = await ctx.newPage();
       await page.goto(`http://localhost:${port}/?s=${scenario}`);
@@ -58,11 +71,34 @@ for (const scheme of ['light', 'dark']) {
       );
       await page.getByRole('heading', { name: 'Dashboard' }).waitFor();
       await page.waitForTimeout(500);
+      if (action === 'drill-focus') {
+        // A Tab first, so the browser shows focus as it does for a keyboard user.
+        await page.keyboard.press('Tab');
+        await page.getByRole('link', { name: /^View orders: Delivered/ }).focus();
+        await page.waitForTimeout(200);
+      }
+      if (action === 'drill-hover') {
+        const day = page.locator('svg a[data-point-link]').nth(4);
+        await day.scrollIntoViewIfNeeded();
+        await day.hover();
+        await page.waitForTimeout(200);
+      }
+      if (action === 'drill-tap') {
+        const day = page.locator('svg a[data-point-link]').nth(4);
+        await day.scrollIntoViewIfNeeded();
+        await day.tap();
+        await page.waitForTimeout(200);
+      }
       const over = await page.evaluate(
         () => globalThis.document.documentElement.scrollWidth > globalThis.innerWidth,
       );
       console.log(name, width, scheme, 'horizontal overflow:', over);
-      await page.screenshot({ path: join(out, `${name}-${width}-${scheme}.png`), fullPage: true });
+      // A pointer state is taken in the viewport: a full-page capture resizes it and drops hover.
+      const pointer = action === 'drill-hover' || action === 'drill-tap';
+      await page.screenshot({
+        path: join(out, `${name}-${width}-${scheme}.png`),
+        fullPage: !pointer,
+      });
       await ctx.close();
     }
   }

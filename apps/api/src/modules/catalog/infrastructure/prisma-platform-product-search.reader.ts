@@ -35,6 +35,7 @@ export class PrismaPlatformProductSearchReader implements PlatformProductSearchR
     if (query.allowedCategoryIds.size === 0) return { rows: [], total: 0 };
     const tx = this.prisma.tx(market);
     const allowed = [...query.allowedCategoryIds];
+    const { sellerId } = query;
     const inScope: Prisma.CatalogProductWhereInput = {
       publishedRevision: { is: { categories: { some: { categoryId: { in: allowed } } } } },
     };
@@ -88,10 +89,25 @@ export class PrismaPlatformProductSearchReader implements PlatformProductSearchR
         });
       }
     }
+    // "Already selling" is the same test as `alreadySelling` below: a not-deleted Offer of the seller.
+    const notSelling: Prisma.CatalogProductWhereInput[] = query.notSelling
+      ? [
+          {
+            offers: {
+              none: { marketId: market.marketId, sellerId, status: { not: 'deleted' } },
+            },
+          },
+        ]
+      : [];
     const where: Prisma.CatalogProductWhereInput = {
       // The Market guard wants `marketId` at the top of the filter, not only inside an AND.
       marketId: market.marketId,
-      AND: [sellableBase(market), inScope, ...(clauses.length > 0 ? [{ OR: clauses }] : [])],
+      AND: [
+        sellableBase(market),
+        inScope,
+        ...notSelling,
+        ...(clauses.length > 0 ? [{ OR: clauses }] : []),
+      ],
     };
     const [total, found] = await Promise.all([
       tx.catalogProduct.count({ where }),

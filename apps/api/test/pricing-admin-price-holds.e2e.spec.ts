@@ -7,6 +7,7 @@ import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-ro
 import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
+import { FIRST_PRICE_REFERENCE } from '../src/modules/pricing/application/reference/variant-reference';
 import { PRICE_SERIES_REPOSITORY } from '../src/modules/pricing/application/ports/price-series.repository';
 import { priceAmount } from '../src/modules/pricing/domain/price-amount';
 import { PriceSeries } from '../src/modules/pricing/domain/price-series';
@@ -20,6 +21,7 @@ import { UNIT_OF_WORK } from '../src/platform/unit-of-work/unit-of-work';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
 import {
   FakeUnitOfWork,
+  InMemoryFirstPriceReference,
   InMemoryPriceSeries,
   RecordingAuditWriter,
   RecordingOutbox,
@@ -93,6 +95,9 @@ describe('admin price holds over HTTP (integration, pricing slice 4)', () => {
           .useValue(new FakeUnitOfWork())
           .overrideProvider(PRICE_SERIES_REPOSITORY)
           .useValue(series)
+          // R4's reads and checks in memory, on the same series (no database here).
+          .overrideProvider(FIRST_PRICE_REFERENCE)
+          .useValue(new InMemoryFirstPriceReference(series).ports)
           .overrideProvider(AUDIT_WRITER)
           .useValue(audit)
           .overrideProvider(OUTBOX_WRITER)

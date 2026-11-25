@@ -10,7 +10,13 @@ import { serverGet, type ServerGet } from '../../server/server-fetch.ts';
 import type { SellerSession } from '../../server/session.ts';
 import type { Widget } from '../types.ts';
 import { periodQuery, type Selection } from './range.ts';
-import { KPIS_PATH, NET_EARNINGS_PATH, type SellerKpis, type SellerNetEarnings } from './types.ts';
+import {
+  KPIS_PATH,
+  NET_EARNINGS_PATH,
+  SELLER_GOAL_MANAGE_PERMISSION,
+  type SellerKpis,
+  type SellerNetEarnings,
+} from './types.ts';
 
 export interface SellerKpiSources {
   /**
@@ -31,6 +37,11 @@ export interface SellerKpiSources {
   readonly netEarnings: DashboardSource<Widget<SellerNetEarnings> | null> | null;
   /** The estimated next payout (the earnings key too); null like `netEarnings`. */
   readonly nextPayout: DashboardSource<Widget<NextPayout> | null> | null;
+  /**
+   * What the Monthly goal card (from the KPI read) needs to edit the goal: whether the session holds
+   * `reporting.seller-goal.manage`, and the CSRF token of the write. Absent: the card is read-only.
+   */
+  readonly goal?: { readonly canManage: boolean; readonly csrfToken: string };
 }
 
 function widgetOf<T>(answer: ServerGet<T>): Widget<T> {
@@ -84,5 +95,9 @@ export function startSellerKpis(
   for (const read of [kpis, health, categories, netEarnings, nextPayout]) {
     read?.catch(() => undefined);
   }
-  return { refused, kpis, categories, health, netEarnings, nextPayout };
+  const goal = {
+    canManage: session.permissionKeys.includes(SELLER_GOAL_MANAGE_PERMISSION),
+    csrfToken: session.csrfToken,
+  };
+  return { refused, kpis, categories, health, netEarnings, nextPayout, goal };
 }

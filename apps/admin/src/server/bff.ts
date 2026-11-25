@@ -182,6 +182,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'promotions/admin/free-shipping',
     // The editable Market settings (settings; List paging), read again after a conflict.
     'settings/admin/market-settings',
+    // The Market's monthly revenue target (settings; dashboards v2, phase 2): its version and
+    // review flag, read when the dashboard's target dialog opens.
+    'settings/admin/monthly-revenue-target',
     // The Blog posts super list of the Market (blog; query: `view`, `status`, the filters, `q`,
     // `sort`, `direction`, `page`, `pageSize`, or `cursor` and `limit`), read only, and its export
     // as a file.
@@ -295,6 +298,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'customers/admin/account-deletion-settings',
     // One editable Market setting (settings): code, value and `expectedVersion`.
     'settings/admin/market-settings',
+    // The Market's monthly revenue target (settings): `{target, expectedVersion, note?}`;
+    // refused in an acting-as session (judged by the API).
+    'settings/admin/monthly-revenue-target',
     // One AI setting (settings): code, value and `expectedVersion`; protected key
     // `settings.ai.manage`, so it may ask a fresh two-step code.
     'settings/admin/ai',

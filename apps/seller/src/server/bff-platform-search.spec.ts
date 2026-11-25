@@ -34,7 +34,9 @@ describe('relay of the platform product search', () => {
     const upstream = upstreamOk();
     const response = await relay(
       config,
-      get('?q=beef&barcodes=4006381333931,96385074&page=2&sellerId=other&marketId=ZZ&x=1'),
+      get(
+        '?q=beef&barcodes=4006381333931,96385074&page=2&notSelling=true&sellerId=other&marketId=ZZ&x=1',
+      ),
       search,
       upstream,
     );
@@ -45,12 +47,14 @@ describe('relay of the platform product search', () => {
       q: 'beef',
       barcodes: '4006381333931,96385074',
       page: '2',
+      notSelling: 'true',
     });
   });
 
   it.each([
     ['page=abc'],
     ['page=1234'],
+    ['notSelling=yes'],
     ['barcodes=%3Cscript%3E'],
     [`barcodes=${'1'.repeat(4001)}`],
   ])('does not forward a value of the wrong shape (%s)', async (query) => {

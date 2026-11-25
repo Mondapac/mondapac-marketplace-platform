@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-seller-on-the-platform-thumbnail",
+  "area": "seller",
+  "title": "تصویر کوچک محصول در بخش On the platform",
+  "desc": "در بخش On the platform زیر لیست Products (PR 2 صفحهٔ Offer) تصویر کوچک محصول نشان داده نمی‌شود، چون جستجوی platform-search شناسهٔ تصویر برنمی‌گرداند. پس از PR 3 (تصویر کوچک در لیست Offers) همان ListThumb با primaryImageId به این بخش و پنجرهٔ Add offer اضافه شود.",
+  "src": "design/seller/offer-page/final/offer-page-final-v2-fa.html بخش ۳؛ PR 2 صفحهٔ Offer",
+  "date": "2026-11-25",
+  "trig": "پس از ادغام PR 3 صفحهٔ Offer",
+  "prio": "پایین",
+  "status": "موکول"
+}

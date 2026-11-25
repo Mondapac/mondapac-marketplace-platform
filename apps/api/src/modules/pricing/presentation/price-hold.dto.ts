@@ -77,9 +77,18 @@ export class PriceHoldRow {
     type: HoldMoney,
     description:
       'The price it was measured against. For a special: the larger of the regular price and ' +
-      'the regular jump anchor.',
+      'the regular jump anchor. For basis `reference`: the median of the other live Offers on ' +
+      'the Variant (R4), rounded half up.',
   })
   anchorAmount!: HoldMoney;
+
+  @ApiProperty({
+    enum: ['jump', 'reference'],
+    description:
+      "`jump`: measured against the series' own earlier price. `reference`: a first price " +
+      'measured against the median of the other live Offers on the Variant (R4, ADR-0051).',
+  })
+  basis!: 'jump' | 'reference';
 
   @ApiProperty({ enum: ['up', 'down'] })
   direction!: 'up' | 'down';

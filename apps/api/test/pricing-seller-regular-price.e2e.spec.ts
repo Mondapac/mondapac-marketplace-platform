@@ -8,6 +8,7 @@ import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { OFFER_SELL_UNITS_SOURCE } from '../src/modules/pricing/application/ports/offer-sell-units';
+import { FIRST_PRICE_REFERENCE } from '../src/modules/pricing/application/reference/variant-reference';
 import { PRICE_SERIES_REPOSITORY } from '../src/modules/pricing/application/ports/price-series.repository';
 import { WRITE_RATE_COUNTER_REPOSITORY } from '../src/modules/pricing/application/ports/write-rate-counter.repository';
 import { WRITE_REFUSAL_THROTTLE_REPOSITORY } from '../src/modules/pricing/application/ports/write-refusal-throttle.repository';
@@ -22,6 +23,7 @@ import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
 import {
   FakeOfferSellUnits,
   FakeUnitOfWork,
+  InMemoryFirstPriceReference,
   InMemoryPriceSeries,
   InMemoryRefusalThrottles,
   InMemoryWriteRateCounters,
@@ -88,6 +90,9 @@ describe('seller regular price over HTTP (integration, pricing slice 1 part 3c)'
           .useValue(new FakeUnitOfWork())
           .overrideProvider(PRICE_SERIES_REPOSITORY)
           .useValue(series)
+          // R4's reads and checks in memory, on the same series (no database here).
+          .overrideProvider(FIRST_PRICE_REFERENCE)
+          .useValue(new InMemoryFirstPriceReference(series).ports)
           .overrideProvider(WRITE_REFUSAL_THROTTLE_REPOSITORY)
           .useValue(new InMemoryRefusalThrottles())
           .overrideProvider(WRITE_RATE_COUNTER_REPOSITORY)

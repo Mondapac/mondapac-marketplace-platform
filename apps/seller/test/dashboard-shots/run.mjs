@@ -47,9 +47,21 @@ const views = [
   ['seller-dashboard-export-menu', 'full', [1280, 768, 375, 360], 'export'],
   // The download is refused (403): one toast, then the Export button goes away.
   ['seller-dashboard-export-denied', 'denied', [1280, 375], 'denied'],
+  // Dashboards v2 phase 2: the Monthly goal card with no goal yet (forecast not enough data),
+  // failed, read-only, and its Edit goal dialog open.
+  ['seller-dashboard-goal-none', 'goal-none', [1280, 768, 375]],
+  ['seller-dashboard-goal-failed', 'goal-failed', [1280, 375]],
+  ['seller-dashboard-goal-read-only', 'goal-read-only', [1280]],
+  ['seller-dashboard-goal-dialog', 'full', [1280, 375], 'goal'],
+  // Drill-down: keyboard focus on the Paid orders card link. The seller orders list reads no
+  // filter from the address yet, so the link stays the plain list (FE-20261125-dashboard-drill-seller-orders).
+  ['seller-dashboard-drill-focus', 'full', [1280, 375], 'drill-focus'],
 ];
+// SHOTS_ONLY: a comma-separated list of view names to take (all when unset).
+const only = process.env.SHOTS_ONLY?.split(',');
 for (const scheme of ['light', 'dark']) {
   for (const [name, scenario, widths, action] of views) {
+    if (only !== undefined && !only.includes(name)) continue;
     for (const width of widths) {
       const ctx = await browser.newContext({
         viewport: { width, height: 900 },
@@ -68,6 +80,15 @@ for (const scheme of ['light', 'dark']) {
         await page.getByRole('button', { name: 'Export' }).click();
         await page.getByRole('menuitem', { name: /CSV/ }).click();
         await page.getByText(/can't export this report/).waitFor();
+        await page.waitForTimeout(200);
+      }
+      if (action === 'goal') {
+        await page.getByRole('button', { name: 'Edit goal' }).click();
+        await page.waitForTimeout(200);
+      }
+      if (action === 'drill-focus') {
+        await page.keyboard.press('Tab');
+        await page.locator('[data-kpi-card] a[href="/orders"]').first().focus();
         await page.waitForTimeout(200);
       }
       if (action === 'export') {

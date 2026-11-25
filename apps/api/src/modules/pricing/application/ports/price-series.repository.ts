@@ -30,7 +30,14 @@ export interface PendingHoldView {
   readonly variantId: Id<'Variant'>;
   readonly sellerId: Id<'Seller'>;
   readonly amount: PriceAmount;
-  readonly anchorRecordId: Id<'RegularPriceRecord'>;
+  /**
+   * What the held price was measured against: `jump` the series' own anchor record, `reference`
+   * the Variant's reference price (R4, a first price; ADR-0051).
+   */
+  readonly basis: 'jump' | 'reference';
+  /** The anchor record; null for a `reference` hold, which has no record to point at. */
+  readonly anchorRecordId: Id<'RegularPriceRecord'> | null;
+  /** The amount it was measured against: the anchor's, or the reference (median) for R4. */
   readonly anchorAmount: PriceAmount;
   readonly direction: 'up' | 'down';
   readonly submittedAt: Temporal.Instant;

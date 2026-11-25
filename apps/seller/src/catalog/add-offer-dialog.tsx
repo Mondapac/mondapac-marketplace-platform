@@ -89,8 +89,22 @@ export function createErrorKey(code: string): string {
   }
 }
 
-interface Created {
+/** The created draft Offer (`POST catalog/seller/offers`). */
+export interface Created {
   readonly offerId: string;
+}
+
+/**
+ * The body that creates one draft Offer on a platform product. The product code is unique in the
+ * Market, so it is a free SKU to start from.
+ */
+export function draftOfferBody(product: PlatformProduct, condition: string) {
+  return {
+    productId: product.productId,
+    sellerSku: product.productCode,
+    conditionCode: condition,
+    description: {},
+  };
 }
 
 /**
@@ -104,15 +118,18 @@ export function AddOfferDialog({
   csrfToken,
   onClose,
   navigate,
+  initialText = '',
 }: {
   readonly open: boolean;
   readonly csrfToken: string;
+  /** The search the dialog opens with ("See all" under the Products list passes its search). */
+  readonly initialText?: string;
   readonly onClose: () => void;
   /** Where to go after the drafts exist (a page address of this panel). */
   readonly navigate: (path: string) => void;
 }) {
   const t = useTranslations('catalog.addOffer');
-  const [text, setText] = useState('');
+  const [text, setText] = useState(initialText);
   const [page, setPage] = useState(1);
   const [answer, setAnswer] = useState<PlatformSearchAnswer | null>(null);
   const [loading, setLoading] = useState(false);
@@ -219,13 +236,7 @@ export function AddOfferDialog({
       const result = await callApi<Created>(
         'POST',
         'catalog/seller/offers',
-        {
-          productId: product.productId,
-          // The product code is unique in the Market, so it is a free SKU to start from.
-          sellerSku: product.productCode,
-          conditionCode: condition,
-          description: {},
-        },
+        draftOfferBody(product, condition),
         csrfToken,
       );
       if (result.ok) created.push({ productId: product.productId, offerId: result.body.offerId });
