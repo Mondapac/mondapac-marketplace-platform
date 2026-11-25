@@ -26,7 +26,7 @@ const isSource = (path: string) => /\.tsx?$/u.test(path) && !/\.spec\.tsx?$/u.te
 const sources = [join(root, 'src'), join(root, 'app')].flatMap((dir) => files(dir, isSource));
 
 /** Pages that only redirect: they show nothing, so they have no Help text. */
-const REDIRECT_ONLY = new Set(['/security', '/offer-reviews']);
+const REDIRECT_ONLY = new Set(['/security', '/offer-reviews', '/offers/[offerId]/variants']);
 
 describe('page header', () => {
   it('puts no line of text under the page title (what a page is for lives in the Help panel)', () => {

@@ -93,7 +93,7 @@ describe('StockLevels', () => {
   it('saves a changed level with the version it read, then uses the new version', async () => {
     call.mockResolvedValue(stored(20, 4));
     mount();
-    expect(screen.getByText('2 units held in checkouts')).toBeTruthy();
+    expect(screen.getByText('2 units held for checkouts and orders')).toBeTruthy();
     const input = screen.getByLabelText('Units in stock at Warehouse');
     fireEvent.change(input, { target: { value: '20' } });
     pressSave();

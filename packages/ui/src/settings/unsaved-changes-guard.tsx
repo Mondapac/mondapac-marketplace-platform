@@ -53,6 +53,12 @@ export function leavesPage(click: ClickInfo, here: URL): boolean {
  * dialog (Stay, which has focus, or Leave). Render the returned `dialog` once in the page. Leaving by the browser's
  * back button is covered by the browser prompt only.
  */
+/**
+ * Set while one guard's confirmed Leave runs, and kept once confirmed: a page with two forms has
+ * two guards, and the seller confirms leaving once, not once per form.
+ */
+const shared = { bypass: false, confirmed: false };
+
 export function useUnsavedChangesGuard(
   dirty: boolean,
   labels: LeaveLabels,
@@ -72,13 +78,14 @@ export function useUnsavedChangesGuard(
   useLayoutEffect(() => {
     if (!dirty) return;
     confirmed.current = false;
+    shared.confirmed = false;
     const onUnload = (event: BeforeUnloadEvent) => {
-      if (confirmed.current) return;
+      if (confirmed.current || shared.confirmed) return;
       event.preventDefault();
       event.returnValue = '';
     };
     const onClick = (event: MouseEvent) => {
-      if (bypass.current || !(event.target instanceof Element)) return;
+      if (bypass.current || shared.bypass || !(event.target instanceof Element)) return;
       const anchor = event.target.closest('a[href]');
       if (!(anchor instanceof HTMLAnchorElement)) return;
       const info: ClickInfo = {
@@ -91,7 +98,8 @@ export function useUnsavedChangesGuard(
       if (!leavesPage(info, new URL(window.location.href))) return;
       // Capture phase: the router's own handler never sees this click.
       event.preventDefault();
-      event.stopPropagation();
+      // Immediate: a second guard on the same page (a second form) does not open its own dialog.
+      event.stopImmediatePropagation();
       setTarget(anchor);
     };
     window.addEventListener('beforeunload', onUnload);
@@ -107,11 +115,14 @@ export function useUnsavedChangesGuard(
     setTarget(null);
     if (anchor === null) return;
     confirmed.current = true;
+    shared.confirmed = true;
     bypass.current = true;
+    shared.bypass = true;
     try {
       anchor.click();
     } finally {
       bypass.current = false;
+      shared.bypass = false;
     }
   }
 
