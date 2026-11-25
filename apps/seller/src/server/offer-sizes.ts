@@ -22,59 +22,46 @@ import {
   PRICE_VIEW_PERMISSION,
   type OfferPricesView,
 } from '../price/types.ts';
-import { SETUP_ROOT } from '../setup/steps.ts';
 import { STOCK_EDIT_PERMISSION, type StockLevelsView } from '../stock/levels-types.ts';
 import { STOCK_VIEW_PERMISSION, type SourcesView } from '../stock/types.ts';
 import { serverGet } from './server-fetch.ts';
-import { requireSession, type SellerSession } from './session.ts';
 
-export type VariantsPage =
-  | {
-      readonly kind: 'ok';
-      readonly session: SellerSession;
-      readonly offer: OfferView;
-      /** The Market currency of the prices; null when the seller may not see prices. */
-      readonly currency: string | null;
-      readonly rows: readonly TableRow[];
-      readonly sources: SourcesView['sources'];
-      /** The SKU and Selling columns (variants V5); null when the seller may not view the catalog. */
-      readonly units: {
-        readonly productScope: 'PLATFORM' | 'SELLER';
-        readonly sellerSku: string;
-      } | null;
-      /** Request a size and the seller's requests (variants V7); null when the product cannot take any. */
-      readonly sizeRequests: SizeRequestsData | null;
-      /** What the variant file reads and writes; null without the key to read the product. */
-      readonly fileModel: FileModel | null;
-    }
-  | { readonly kind: 'no-access'; readonly session: SellerSession }
-  | { readonly kind: 'not-found'; readonly session: SellerSession }
-  | { readonly kind: 'unavailable' };
+/** What the offer's sizes table needs: its rows, locations, units, size requests and file. */
+export interface OfferSizes {
+  /** The Market currency of the prices; null when the seller may not see prices. */
+  readonly currency: string | null;
+  readonly rows: readonly TableRow[];
+  readonly sources: SourcesView['sources'];
+  /** The SKU and Selling columns (variants V5); null when the seller may not view the catalog. */
+  readonly units: {
+    readonly productScope: 'PLATFORM' | 'SELLER';
+    readonly sellerSku: string;
+  } | null;
+  /** Request a size and the seller's requests (variants V7); null when the product cannot take any. */
+  readonly sizeRequests: SizeRequestsData | null;
+  /** What the variant file reads and writes; null without the key to read the product. */
+  readonly fileModel: FileModel | null;
+}
 
 /**
- * The session, the offer and, for what the seller may see, its prices and stock levels, joined per
- * variant for the offer's variants table. The variant names are the published label of the unit, else come from the product's draft
- * when the seller may read it; otherwise a row is named by its position.
+ * For the one-page offer (Offer page PR 3), after the offer itself was read: its prices, stock
+ * levels and sell units, as far as `permissionKeys` may see them, joined per variant. The variant
+ * names are the published label of the unit, else come from the product's draft when the seller
+ * may read it; otherwise a row is named by its position. `unavailable` when one of those reads
+ * fails: the page then shows the offer and says only the sizes could not be read. A signed-out
+ * read goes to the session-ended page.
  */
-export async function loadVariantsPage(
-  offerId: string,
+export async function loadOfferSizes(
+  offer: OfferView,
+  permissionKeys: readonly string[],
   locale: string,
   fallbackName: (number: number) => string,
-): Promise<VariantsPage> {
-  const gate = await requireSession();
-  if (gate.kind === 'unavailable') return { kind: 'unavailable' };
-  const { session } = gate;
-  if (session.sellerAccessState !== 'approved') redirect(SETUP_ROOT);
-  const keys = session.permissionKeys;
+): Promise<OfferSizes | 'unavailable'> {
+  const keys = permissionKeys;
+  const offerId = offer.offerId;
   const canPrice = keys.includes(PRICE_VIEW_PERMISSION);
   const canStock = keys.includes(STOCK_VIEW_PERMISSION);
   const canUnits = keys.includes(VIEW_PERMISSION);
-  if (!canPrice && !canStock && !canUnits) return { kind: 'no-access', session };
-
-  const offer = await serverGet<OfferView>(`catalog/seller/offers/${offerId}`);
-  if (offer.kind === 'signed-out') redirect('/session-ended');
-  if (offer.kind === 'not-found') return { kind: 'not-found', session };
-  if (offer.kind !== 'ok') return { kind: 'unavailable' };
   const [prices, stock, sources, product, units, requests] = await Promise.all([
     canPrice
       ? serverGet<OfferPricesView>(`pricing/seller/offers/${offerId}/prices`)
@@ -84,7 +71,7 @@ export async function loadVariantsPage(
       : Promise.resolve(null),
     canStock ? serverGet<SourcesView>('inventory/seller/sources') : Promise.resolve(null),
     canUnits
-      ? serverGet<ProductView>(`catalog/seller/products/${offer.body.productId}`)
+      ? serverGet<ProductView>(`catalog/seller/products/${offer.productId}`)
       : Promise.resolve(null),
     canUnits
       ? serverGet<OfferSellUnitsView>(`catalog/seller/offers/${offerId}/sell-units`)
@@ -97,8 +84,7 @@ export async function loadVariantsPage(
   const reads = [prices, stock, sources, units];
   if (requests?.kind === 'signed-out') redirect('/session-ended');
   if (reads.some((item) => item?.kind === 'signed-out')) redirect('/session-ended');
-  if (reads.some((item) => item?.kind === 'not-found')) return { kind: 'not-found', session };
-  if (reads.some((item) => item !== null && item.kind !== 'ok')) return { kind: 'unavailable' };
+  if (reads.some((item) => item !== null && item.kind !== 'ok')) return 'unavailable';
   const priceBody = prices?.kind === 'ok' ? prices.body : null;
   const stockBody = stock?.kind === 'ok' ? stock.body : null;
 
@@ -136,9 +122,6 @@ export async function loadVariantsPage(
   }));
   const sourceList = sources?.kind === 'ok' ? sources.body.sources : [];
   return {
-    kind: 'ok',
-    session,
-    offer: offer.body,
     currency: priceBody?.currency ?? null,
     rows,
     sources: sourceList,
