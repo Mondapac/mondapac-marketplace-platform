@@ -100,6 +100,7 @@ export function OrdersList({
   zone,
   customerAccountId,
   title,
+  initialQuery = DEFAULT_QUERY,
 }: {
   readonly paging?: ListPaging;
   readonly accountId: string;
@@ -115,6 +116,8 @@ export function OrdersList({
   readonly customerAccountId?: string;
   /** The page's h1: the buttons then sit in its row (the Orders page). Left out inside a tab. */
   readonly title?: string;
+  /** The query a link opened the page on (a dashboard card's `?status=`); the plain list when left out. */
+  readonly initialQuery?: Query;
 }) {
   const t = useTranslations('orders');
   const ts = useTranslations('sales-lists');
@@ -137,7 +140,7 @@ export function OrdersList({
     forgetSaved,
     reset,
   } = useSuperListQuery<Query>({
-    defaultQuery: DEFAULT_QUERY,
+    defaultQuery: initialQuery,
     forView,
     withView,
     searchOf,
