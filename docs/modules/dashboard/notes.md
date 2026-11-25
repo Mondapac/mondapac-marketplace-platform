@@ -457,3 +457,47 @@ and the dialog says the goal can only be set by the store owner signed in as the
 new-versus-returning and product funnel cards have no API yet and are not built. Built in code first
 under speed mode (FE-20261125-dashboards-phase2-cards-figma-backport). Screenshots:
 `apps/admin/test/dashboard-shots`, `apps/seller/test/dashboard-shots` (not part of CI).
+
+## Drill-down (dashboards v2, phase 2)
+
+A click on an admin dashboard figure opens the Orders list on the matching filter (the URL
+filters of PR 1331). Every address is built by one pure helper, `ordersHref` in
+`apps/admin/src/orders/orders-link.ts`: it writes only the names and values the list's own reader
+takes (`status`, `fulfilment`, `paymentState`, `placed`, `from`/`to` as real yyyy-mm-dd days, from
+the list's constants), drops any other value and a backwards range, and encodes with
+`URLSearchParams`. No text from an answer and no id of a person reaches an address.
+
+| Element | Opens |
+|---|---|
+| GMV and Seller orders paid cards | `/orders?from=<period from>&to=<period to>` |
+| Orders by status: Delivered, Shipped, To ship (legend row and table row) | `/orders?fulfilment=<delivered\|shipped\|to-ship>&from=&to=` |
+| Orders by status: Cancelled | `/orders?status=cancelled&from=&to=` |
+| Orders by status: card action "Orders" | `/orders?from=&to=` |
+| Revenue chart, GMV and Orders measures: a day (pointer column, Enter on the focused chart, table row) | `/orders?from=<day>&to=<day>` |
+| Revenue chart action "View orders" | `/orders?from=&to=` |
+| Work queue: Failed customer payments | `/orders?status=cancelled` |
+
+How it is built: `ShareBar` (packages/ui) takes `href` and `linkLabel` per part; a linked legend
+row is an `<a>` with the same grid, so the layout does not move. `LineAreaChart` takes `href` and
+`linkLabel` per point: a transparent column per day is a link for a pointer (out of the tab order,
+so a long range adds no tab stops), Enter on the focused chart follows the active day's link (the
+live text says so), and in "View as table" each day is a focusable link. Names: "View orders:
+Delivered, placed 16 Nov - 22 Nov" and "View orders placed on 21 Nov". The names hold no count on
+purpose: the KPI counts seller orders by their paid Market day, the list shows orders by their
+placed day on the admin's clock, so the list is the closest match, not the same number
+(FE-20261125-dashboard-drill-paid-day).
+
+Not linked (no matching list filter, so no link is invented):
+
+- Orders by state rows: no delivery-state filter (FE-20261125-dashboard-drill-orders-by-state).
+- Discount cost order count: no discounted or promotion filter
+  (FE-20261125-dashboard-drill-discounted-orders).
+- Orders by status Refunded part and the Refunded chart measure: no refund filter on the list, and
+  the Refunds list reads no filter from the address (FE-20261125-dashboard-drill-refunded-orders).
+- Sales by category: no category filter (FE-20261125-dashboard-drill-category).
+- Failed customer payments opens every cancelled order, not only payment failures of the last 24
+  hours (FE-20261125-dashboard-drill-failed-payments).
+- Monthly target, shopping funnel, abandoned carts, zero-result searches, net revenue, average
+  order: no list of their items exists; a zero-result text never goes into an address.
+- Seller dashboard: the seller orders list reads no filter from the address (only `view=board`), so
+  its cards and sales chart keep their plain links (FE-20261125-dashboard-drill-seller-orders).
