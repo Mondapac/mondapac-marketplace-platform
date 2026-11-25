@@ -1,4 +1,4 @@
--- Reverses 20261125110000_catalog_offer_pending_change_emergency_stop. Development and CI only:
+-- Reverses 20261125140100_catalog_offer_pending_change_emergency_stop. Development and CI only:
 -- it fails while a change holds the reason `emergency-stop` (changes are never deleted).
 SET lock_timeout = '5s';
 SET statement_timeout = '60s';

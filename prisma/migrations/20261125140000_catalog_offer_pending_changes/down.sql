@@ -1,4 +1,4 @@
--- Reverses 20261125100000_catalog_offer_pending_changes. Development and CI only: every pending
+-- Reverses 20261125140000_catalog_offer_pending_changes. Development and CI only: every pending
 -- change and every `edit` referral is lost; Offers keep their live values.
 -- The DISABLE/DELETE/ENABLE runs inside the migration transaction: if the DELETE fails, the
 -- DISABLE rolls back with it. Do not run these statements by hand outside a transaction.
