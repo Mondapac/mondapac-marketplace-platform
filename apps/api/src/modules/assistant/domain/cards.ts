@@ -22,7 +22,7 @@ export type AssistantCard =
        * when pricing could not be read, and then the card shows none. Never from model text.
        */
       readonly price: Money | null;
-      /** The regular price, only while `price` is a special. */
+      /** The regular price, only while `price` is a special and the Market's was-price rule allows showing it; otherwise null. */
       readonly regularPrice: Money | null;
       readonly taxInclusive: boolean | null;
       /** True when the Offer has Variants at different prices: `price` is then a "from" price. */

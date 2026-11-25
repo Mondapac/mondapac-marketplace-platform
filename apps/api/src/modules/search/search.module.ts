@@ -11,6 +11,7 @@ import { EngagementModule } from '../engagement';
 import { InventoryModule } from '../inventory';
 import { OrderingModule } from '../ordering';
 import { PricingModule } from '../pricing';
+import { PromotionsModule } from '../promotions';
 import { ReviewsModule } from '../reviews';
 import { SellersModule } from '../sellers';
 import { CATEGORY_SUBTREE_SOURCE } from './application/ports/category-subtree';
@@ -39,11 +40,13 @@ import { SELL_UNIT_STATES } from './application/ports/sell-unit-states';
 import { OFFER_VARIANT_READER } from './application/ports/offer-variant.reader';
 import { SHELF_DOCUMENTS_READER } from './application/ports/shelf-documents.reader';
 import { SHELF_SOURCES } from './application/ports/shelf-sources';
+import { WAS_PRICE_CHECK } from './application/ports/was-price-check';
 import { PRODUCT_DETAIL_SOURCES } from './application/ports/product-detail-sources';
 import { PUBLISHED_VARIANTS } from './application/ports/published-variants';
 import type { ProductDetailDependencies } from './application/product-detail-dependencies';
 import type { RecommendationDependencies } from './application/recommendation-dependencies';
 import type { ShelfDependencies } from './application/shelf-dependencies';
+import type { SpecialsDependencies } from './application/specials-dependencies';
 import { ListBoughtTogether } from './application/use-cases/list-bought-together.use-case';
 import { ListBestsellers } from './application/use-cases/list-bestsellers.use-case';
 import { ListForYouGuest } from './application/use-cases/list-for-you-guest.use-case';
@@ -191,19 +194,24 @@ const SHELF_PORTS: readonly [keyof ShelfDependencies, InjectionToken][] = [
   ['categories', CATEGORY_SUBTREE_SOURCE],
 ];
 
-/** The two shelf use cases share their own dependency object. */
-function shelfProvider<U>(
-  type: new (gate: UseCaseGate, deps: ShelfDependencies) => U,
+/** The specials shelf adds the Market's was-price rule (owned by promotions) to the shelf ports. */
+const SPECIALS_PORTS: readonly [keyof SpecialsDependencies, InjectionToken][] = [
+  ...SHELF_PORTS,
+  ['wasPrice', WAS_PRICE_CHECK],
+];
+
+/** The shelf use cases share their own dependency object. */
+function shelfProvider<U, D extends ShelfDependencies = ShelfDependencies>(
+  type: new (gate: UseCaseGate, deps: D) => U,
+  ports: readonly [keyof D, InjectionToken][] = SHELF_PORTS as readonly [keyof D, InjectionToken][],
 ): FactoryProvider<U> {
   return {
     provide: type,
-    inject: [USE_CASE_GATE, ...SHELF_PORTS.map(([, token]) => token)],
+    inject: [USE_CASE_GATE, ...ports.map(([, token]) => token)],
     useFactory: (gate: UseCaseGate, ...values: unknown[]) =>
       new type(
         gate,
-        Object.fromEntries(
-          SHELF_PORTS.map(([name], index) => [name, values[index]]),
-        ) as unknown as ShelfDependencies,
+        Object.fromEntries(ports.map(([name], index) => [name, values[index]])) as unknown as D,
       ),
   };
 }
@@ -327,6 +335,7 @@ function productDetailProvider<U>(
     SellersModule,
     OrderingModule,
     PricingModule,
+    PromotionsModule,
     InventoryModule,
     EngagementModule,
     CertificationModule,
@@ -347,7 +356,7 @@ function productDetailProvider<U>(
       useCaseProvider(type as UseCaseClass<unknown>),
     ),
     shelfProvider(ListBestsellers),
-    shelfProvider(ListSpecials),
+    shelfProvider(ListSpecials, SPECIALS_PORTS),
     shelfProvider(ListBoughtTogether),
     recommendationProvider(ListForYou),
     recommendationProvider(ListForYouGuest),

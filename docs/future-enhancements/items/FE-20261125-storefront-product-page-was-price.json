@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-storefront-product-page-was-price",
+  "area": "storefront",
+  "title": "قیمت Was در صفحهٔ محصول",
+  "desc": "صفحهٔ محصول (product-detail) امروز قیمت عادی کنار قیمت ویژه را نمی‌فرستد. وقتی اضافه شود باید فقط با قاعدهٔ Market از promotions.wasPriceEligible (AU ۲۸ از ۹۰ روز) فرستاده شود، مثل شلف specials.",
+  "src": "docs/modules/search/search.md (Was price)",
+  "date": "2026-11-25",
+  "trig": "وقتی صفحهٔ محصول قیمت عادی کنار ویژه را نشان دهد",
+  "prio": "متوسط",
+  "status": "موکول"
+}
