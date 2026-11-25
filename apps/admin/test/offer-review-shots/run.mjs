@@ -74,6 +74,19 @@ const filterBy = async (page, rows) => {
     index += 1;
   }
 };
+// A view of the list's views bar: a tab, a button, or (on a phone) a select of the views.
+const clickView = async (page, name) => {
+  for (const role of ['tab', 'button', 'radio']) {
+    const target = page.getByRole(role, { name, exact: true });
+    if ((await target.count()) > 0 && (await target.first().isVisible())) {
+      await target.first().click();
+      return;
+    }
+  }
+  await page
+    .getByRole('combobox', { name: 'Post-publication review views' })
+    .selectOption({ label: name });
+};
 const views = {
   first: {
     ready: 'Medjool dates 500 g',
@@ -170,16 +183,60 @@ const views = {
     },
   },
   banner: { ready: 'Emergency stop is on', steps: { banner: async () => undefined } },
+  // The post-publication review (slice 6): ONLY=after WIDTHS=1280,768,375 SCALE=1.
+  after: {
+    ready: 'Medjool dates 500 g',
+    steps: {
+      list: async () => undefined,
+      'all-view': async (page) => {
+        await clickView(page, 'All');
+        await page.getByText('Sumac 100 g', { exact: true }).first().waitFor();
+      },
+      drawer: async (page) => {
+        await openDrawer(page, 'Review Lamb shoulder, halal');
+      },
+      'drawer-taken-down': async (page) => {
+        await clickView(page, 'All');
+        await openDrawer(page, 'Review Sumac 100 g');
+        await page.getByText('Claims halal on the label without a certificate.').waitFor();
+      },
+      'take-down': async (page) => {
+        await openDrawer(page, 'Review Medjool dates 500 g');
+        await page.getByRole('button', { name: 'Take down…' }).click();
+        const dialog = page.getByRole('dialog', { name: 'Take this offer down?' });
+        await dialog.waitFor();
+        await dialog.getByRole('combobox').selectOption('description-claim');
+        await dialog.getByRole('checkbox').check();
+        await dialog.getByRole('textbox').fill('Claims halal on the label without a certificate.');
+      },
+      filters: async (page) => {
+        await filterBy(page, [['Reason', 'Price: no reference']]);
+        await page.waitForTimeout(300);
+      },
+      'bulk-results': async (page) => {
+        for (const name of ['Medjool dates 500 g', 'Lamb shoulder, halal', 'Tahini 450 g']) {
+          await page.getByRole('checkbox', { name: `Select ${name}` }).click();
+        }
+        await page.getByRole('button', { name: 'Bulk action' }).click();
+        await page.getByRole('menuitem', { name: 'Approve ticked…' }).click();
+        const dialog = page.getByRole('dialog', { name: 'Approve 3 offers?' });
+        await dialog.getByRole('button', { name: 'Approve 3 offers' }).click();
+        await page.getByText('Skipped rows').first().waitFor();
+      },
+    },
+  },
 };
+const widths = (process.env.WIDTHS ?? '1280,375').split(',').map(Number);
+const scale = Number(process.env.SCALE ?? '2');
 for (const [view, { ready, steps }] of Object.entries(views)) {
   if (process.env.ONLY && process.env.ONLY !== view) continue;
   for (const scheme of ['light', 'dark']) {
-    for (const width of [1280, 375]) {
+    for (const width of widths) {
       for (const [step, act] of Object.entries(steps)) {
         const ctx = await browser.newContext({
           viewport: { width, height: 900 },
           colorScheme: scheme,
-          deviceScaleFactor: 2,
+          deviceScaleFactor: scale,
         });
         const page = await ctx.newPage();
         await page.goto(`http://localhost:${port}/?view=${view}`);
@@ -198,7 +255,9 @@ for (const [view, { ready, steps }] of Object.entries(views)) {
           path: join(out, `${view}-${step}-${width}-${scheme}.png`),
           ...(step === 'header'
             ? { clip: { x: 0, y: 0, width, height: 160 } }
-            : { fullPage: ['list', 'card', 'table', 'filters', 'banner'].includes(step) }),
+            : {
+                fullPage: ['list', 'card', 'table', 'filters', 'banner', 'all-view'].includes(step),
+              }),
         });
         await ctx.close();
       }

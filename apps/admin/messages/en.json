@@ -18456,6 +18456,21 @@
                 "href": "/settings/offer-review/categories"
               }
             ]
+          },
+          {
+            "label": "After publication",
+            "text": "Offers already on sale that were sampled at their first publication, or whose first price had no reference or fell outside the band on re-check. Selling goes on while a row is open.",
+            "points": [
+              "Approve closes the check; tick rows to approve them together. Rows that changed or were decided are skipped and named.",
+              "Take down puts the offer off sale as Changes needed with a reason and a note. Tick misconduct only for a deliberate breach: the seller loses Trusted.",
+              "Sample ×2 means the seller became Trusted less than 30 days ago, so the sampling rate was doubled."
+            ],
+            "related": [
+              {
+                "label": "Offer review settings",
+                "href": "/settings/offer-review"
+              }
+            ]
           }
         ]
       }
@@ -18583,12 +18598,14 @@
       "tabs": "Offer review queue",
       "tab": {
         "first": "First publications",
-        "edits": "Edits"
+        "edits": "Edits",
+        "after": "After publication"
       },
       "tab-count": "{tab} ({count})",
       "count-live": "{count, plural, one {# row waits for review} other {# rows wait for review}}",
       "no-access": "You don't have access to the offer review queue. It needs the {permission} permission.",
-      "back": "Back to edits"
+      "back": "Back to edits",
+      "count-live-after": "{count, plural, one {# offer on sale waits for a check} other {# offers on sale wait for a check}}"
     },
     "reason": {
       "label": "Why it waits",
@@ -18903,7 +18920,8 @@
         "throttled": "Too many requests. Wait a moment and try again.",
         "csrf": "Your session could not be checked. Reload the page and try again.",
         "unavailable": "The decision could not be sent. Nothing changed. Try again.",
-        "unknown": "Something went wrong. Try again."
+        "unknown": "Something went wrong. Try again.",
+        "not-live": "This offer is no longer on sale."
       }
     },
     "drawer": {
@@ -19114,6 +19132,209 @@
         "body": "This edit does not exist, or belongs to another market."
       },
       "unavailable": "The review could not be loaded. Try again later."
+    },
+    "post": {
+      "title": "After publication",
+      "search": {
+        "label": "Search offers after publication",
+        "placeholder": "Product name, code or store",
+        "invalid": "Enter at least 2 characters."
+      },
+      "tabs": "Post-publication review views",
+      "tab": {
+        "open": "Open",
+        "approved": "Approved",
+        "taken-down": "Taken down",
+        "all": "All"
+      },
+      "filter": {
+        "title": "Filter offers after publication",
+        "name": {
+          "reasons": "Reason",
+          "age": "Open longer than",
+          "sellerId": "Store",
+          "categoryId": "Category"
+        },
+        "age": {
+          "older-24h": "24 hours",
+          "older-48h": "48 hours",
+          "older-7d": "7 days"
+        }
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "opened": "Opened",
+          "decided": "Decided"
+        },
+        "opened": {
+          "first": "Oldest first",
+          "second": "Newest first"
+        },
+        "decided": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        }
+      },
+      "sorted": "Sorted by {field}, {order}",
+      "col": {
+        "offer": "Offer",
+        "seller": "Seller",
+        "reasons": "Why it is checked",
+        "status": "Status",
+        "opened": "Opened",
+        "decided": "Decided"
+      },
+      "chip-search": "Search: {text}",
+      "loading": "Loading offers after publication",
+      "match": "{count, plural, one {# offer matches} other {# offers match}}",
+      "range": "{from}–{to} of {total}",
+      "too-many": "More than {limit} offers match. Add a filter to see the rest.",
+      "no-access": "Your role cannot see the post-publication review.",
+      "error": {
+        "stale": "Changed since you opened it. Reload to see the latest version.",
+        "gone": "This check is already decided or no longer in the list.",
+        "not-live": "This offer is no longer on sale, so it cannot be taken down. You can still approve to close the check.",
+        "own": "You cannot decide an offer that your own account submitted. Another admin must decide it.",
+        "denied": "You do not have access to this decision (Approve needs catalog.product.approve; Take down also needs catalog.product.delete).",
+        "claim": "Something went wrong. Try again.",
+        "tag": "Something went wrong. Try again.",
+        "seller": "Something went wrong. Try again.",
+        "invalid": "Check the reason and the note and try again.",
+        "throttled": "Too many requests. Wait a moment and try again.",
+        "csrf": "Your session could not be checked. Reload the page and try again.",
+        "unavailable": "The decision could not be sent. Nothing changed. Try again.",
+        "unknown": "Something went wrong. Try again.",
+        "reload": "Reload"
+      },
+      "empty": {
+        "title": "Nothing to check after publication.",
+        "body": "Sampled offers and offers whose first price had no reference show here once they are on sale.",
+        "no-match": "No rows match",
+        "no-match-help": "Change the filters, or clear them."
+      },
+      "select": {
+        "page": "Select all offers on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# offer selected} other {# offers selected}}",
+        "all": "{count, plural, one {The # matching offer is selected} other {All # matching offers are selected}}",
+        "all-open": "All matching offers are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "actions": {
+        "header": "Actions",
+        "for": "Actions for {name}",
+        "open": "Open review…",
+        "seller": "Open the seller"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# offer selected} other {# offers selected}}",
+        "all-open": "All matching offers selected",
+        "export": "Export…",
+        "approve-menu": "Approve ticked…",
+        "title": "Approve {count, plural, one {# offer} other {# offers}}?",
+        "body": "{count, plural, one {The ticked offer stays on sale and its check is closed.} other {The # ticked offers stay on sale and their checks are closed.}} The seller is not told.",
+        "confirm": "Approve {count, plural, one {# offer} other {# offers}}",
+        "skipped": {
+          "stale": "{name}: changed since the list was read. Open it to decide.",
+          "not-open": "{name}: already decided.",
+          "not-found": "{name}: no longer in the list.",
+          "own": "{name}: your own account submitted this offer. Another admin must decide it.",
+          "other": "{name}: could not be approved. Open it to decide."
+        }
+      },
+      "export": {
+        "title": "Export offers after publication",
+        "body": "The file holds every row the current view and filters match. It lists codes and labels only, never a note, a price or a median. Ticked rows don’t change what is exported.",
+        "legend": "File format",
+        "csv": "CSV",
+        "csv-help": "Plain text. Opens in any spreadsheet or tool.",
+        "xlsx": "XLSX",
+        "xlsx-help": "An Excel workbook. Every cell is plain text, so nothing runs as a formula.",
+        "confirm": "Export",
+        "cancel": "Cancel",
+        "pending": "Preparing the file",
+        "done": "File downloaded",
+        "too-large": "More than {max} rows match. Narrow the filter and export again.",
+        "unavailable": "The file could not be made. Try again in a moment."
+      },
+      "open-named": "Review {name}",
+      "seller-unnamed": "Unnamed store",
+      "misconduct-short": "Misconduct",
+      "status": {
+        "open": "Open",
+        "approved": "Approved",
+        "taken-down": "Taken down"
+      },
+      "reason": {
+        "label": "Why it is checked",
+        "sample": "Sample",
+        "sample-doubled": "Sample ×2",
+        "price-no-reference": "Price: no reference",
+        "price-reference-unavailable": "Price: reference unavailable",
+        "price-recheck-outside": "Price: outside band on re-check"
+      },
+      "detail": {
+        "seller": "Store",
+        "seller-unnamed": "Unnamed store",
+        "why": "Why it is checked",
+        "sample-rate": "Sampled at",
+        "sample-rate-value": "{percent}%",
+        "sample-rate-doubled": "{percent}% (doubled: Trusted less than 30 days)",
+        "opened": "Opened",
+        "sku": "SKU",
+        "offer-status-label": "Offer now",
+        "offer-unlisted": "{status}, not listed",
+        "offer-status": {
+          "published": "On sale",
+          "changes-needed": "Changes needed",
+          "pending-review": "Waiting for review",
+          "paused": "Paused",
+          "draft": "Draft",
+          "withdrawn": "Withdrawn"
+        },
+        "version": "Version",
+        "version-value": "Version {version}",
+        "selling-continues": "The offer stays on sale while this check is open.",
+        "decided-approved": "Approved {at}. The check is closed.",
+        "decided-taken-down": "Taken down {at}. The seller was told to fix it and submit again.",
+        "decision-reason": "Reason",
+        "misconduct": "Misconduct",
+        "misconduct-yes": "Yes, the seller lost Trusted",
+        "no": "No",
+        "note-saved": "Note:",
+        "note": "Note (optional)",
+        "note-help": "Kept with the check for admins. The seller does not see it. At most 2000 characters.",
+        "note-counter": "{count} / {max}",
+        "note-too-long": "The note can have at most {max} characters.",
+        "approve": "Approve",
+        "take-down": "Take down…",
+        "done-approve": "Approved. The check is closed.",
+        "view-only": "You can view this check but not decide. Deciding needs catalog.product.approve; taking down also needs catalog.product.delete."
+      },
+      "take-down": {
+        "title": "Take this offer down?",
+        "body": "The offer goes off sale and becomes Changes needed. Removed from open carts; orders already placed still ship. The seller is told to fix and submit again.",
+        "reason": "Reason the seller sees",
+        "misconduct": "This is misconduct (seller loses Trusted)",
+        "misconduct-help": "Only for a deliberate breach. The seller goes back to a short probation.",
+        "note": "Note",
+        "note-help": "Required, 1 to 2000 characters. Kept for admins; the seller sees the reason only.",
+        "note-counter": "{count} / {max}",
+        "note-required": "Write a note before you take the offer down.",
+        "note-too-long": "The note can have at most {max} characters.",
+        "cancel": "Cancel",
+        "confirm": "Take down",
+        "done": "Taken down. The seller is told.",
+        "done-misconduct": "Taken down. The seller is told and is no longer Trusted."
+      }
     }
   }
 }

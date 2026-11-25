@@ -139,7 +139,7 @@ export const HELP_REGISTRY: HelpRegistry = {
     {
       slug: 't-offer-reviews',
       routes: ['/offer-reviews'],
-      tabs: [{ label: 'First publications' }, { label: 'Edits' }],
+      tabs: [{ label: 'First publications' }, { label: 'Edits' }, { label: 'After publication' }],
     },
     {
       slug: 't-review',

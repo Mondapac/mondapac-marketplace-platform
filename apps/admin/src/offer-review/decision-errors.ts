@@ -5,6 +5,7 @@ export interface DecisionProblem {
   readonly key:
     | 'stale'
     | 'gone'
+    | 'not-live'
     | 'own'
     | 'denied'
     | 'claim'
@@ -27,6 +28,12 @@ const BY_CODE: Readonly<Record<string, DecisionProblem['key']>> = {
   'offer.not-pending-review': 'gone',
   'offer.not-found': 'gone',
   'offer-change.own-submission': 'own',
+  // The post-publication review (slice 6): a decided or unknown row, an Offer no longer on sale
+  // (Take down only; Approve still closes the row) and the admin's own submission.
+  'post-review.not-open': 'gone',
+  'post-review.not-found': 'gone',
+  'offer.not-live': 'not-live',
+  'post-review.own-submission': 'own',
   'access.denied': 'denied',
   'claim-text.refused': 'claim',
   'claim.tag-not-allowed': 'tag',

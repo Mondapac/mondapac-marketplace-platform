@@ -52,6 +52,7 @@ export function BulkDecideDialog({
   describeSkipped,
   ready = true,
   confirmVariant = 'destructive-solid',
+  sendAction = true,
   csrfToken,
   onClose,
   onFinished,
@@ -82,6 +83,11 @@ export function BulkDecideDialog({
   readonly ready?: boolean;
   /** The confirm button: red by default (a rejection); a plain approval is the primary button. */
   readonly confirmVariant?: 'primary' | 'destructive-solid';
+  /**
+   * The body names the decision as `action` (default). A route that does one thing only (the
+   * post-publication bulk approve) takes closed bodies without it: pass false.
+   */
+  readonly sendAction?: boolean;
   readonly csrfToken: string;
   /** Closed without a decision, or after the answer was read. */
   readonly onClose: () => void;
@@ -105,7 +111,11 @@ export function BulkDecideDialog({
     const result = await callApi<BulkAnswer>(
       'POST',
       endpoint,
-      { action, items: rows.map((row) => toItem(row)), ...extraBody },
+      {
+        ...(sendAction ? { action } : {}),
+        items: rows.map((row) => toItem(row)),
+        ...extraBody,
+      },
       csrfToken,
     );
     busy.current = false;

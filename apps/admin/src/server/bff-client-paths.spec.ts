@@ -83,6 +83,9 @@ const files = [
   // reload of one held edit. The flag dialogs build their paths in helpers, so bff.spec.ts checks them.
   path.join(src, 'offer-review', 'detail.tsx'),
   path.join(src, 'offer-review', 'queue.tsx'),
+  // The post-publication review (slice 6): approve, take down and the row's own read.
+  path.join(src, 'offer-review', 'post-review-detail.tsx'),
+  path.join(src, 'offer-review', 'take-down-dialog.tsx'),
   path.join(src, 'step-up', 'step-up.tsx'),
 ];
 const CALL = /(?:callApi|guarded)(?:<[^(]*>)?\(\s*'(GET|PUT|POST|DELETE)',\s*(['`])([^'`]+)\2/g;
@@ -164,6 +167,9 @@ describe('every path the wallet, dispute, review moderation, account deletion, s
         'POST catalog/admin/offers/:id/approve',
         'POST catalog/admin/offers/:id/request-changes',
         'GET catalog/admin/offer-changes/:id',
+        'POST catalog/admin/offer-post-reviews/:id/approve',
+        'POST catalog/admin/offer-post-reviews/:id/take-down',
+        'GET catalog/admin/offer-post-reviews/:id',
         'POST ordering/admin/orders/:id/cancel',
         'POST ordering/admin/orders/:id/notes',
         'POST ordering/admin/orders/:id/seller-orders/:id/refunds',

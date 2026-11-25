@@ -5618,6 +5618,71 @@ describe('relay of the Offer review queue (risk-based Offer approval slice 5)', 
     }
   });
 
+  it.each([
+    ['GET', 'catalog/admin/offer-post-reviews'],
+    ['GET', 'catalog/admin/offer-post-reviews/export'],
+    ['GET', `catalog/admin/offer-post-reviews/${id}`],
+    ['POST', `catalog/admin/offer-post-reviews/${id}/approve`],
+    ['POST', `catalog/admin/offer-post-reviews/${id}/take-down`],
+    ['POST', 'catalog/admin/offer-post-reviews/bulk-approve'],
+  ])('relays the post-publication review route %s %s (slice 6)', async (method, path) => {
+    expect((await sendOffer(method, path)).status).toBe(200);
+  });
+
+  it.each([
+    ['PUT', `catalog/admin/offer-post-reviews/${id}/approve`],
+    ['POST', `catalog/admin/offer-post-reviews/${id}/reject`],
+    ['POST', 'catalog/admin/offer-post-reviews/nope/take-down'],
+    ['POST', 'catalog/admin/offer-post-reviews/bulk-take-down'],
+    ['POST', 'catalog/admin/offer-post-reviews'],
+    ['DELETE', `catalog/admin/offer-post-reviews/${id}`],
+  ])(
+    'refuses the post-publication review route %s %s without calling the API',
+    async (method, path) => {
+      const { status, upstream } = await sendOffer(method, path);
+      expect(status).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    },
+  );
+
+  it('passes the post-publication list and export keys in their shapes, and drops the rest', async () => {
+    const from = '2026-11-01T00:00:00Z';
+    const { upstream } = await sendOffer(
+      'GET',
+      `catalog/admin/offer-post-reviews?status=taken-down&reasons=sample,price-recheck-outside&sellerId=${id}&categoryId=${id}&openedFrom=${from}&openedTo=${from}&q=oil&page=2&pageSize=25&paging=pages&sort=decided&direction=desc&note=x`,
+    );
+    expect(Object.fromEntries(new URL(upstream.mock.calls[0]?.[0] as string).searchParams)).toEqual(
+      {
+        status: 'taken-down',
+        reasons: 'sample,price-recheck-outside',
+        sellerId: id,
+        categoryId: id,
+        openedFrom: from,
+        openedTo: from,
+        q: 'oil',
+        page: '2',
+        pageSize: '25',
+        paging: 'pages',
+        sort: 'decided',
+        direction: 'desc',
+      },
+    );
+    const bad = await sendOffer(
+      'GET',
+      'catalog/admin/offer-post-reviews?status=closed&reasons=probation&sellerId=nope&page=21&pageSize=51&sort=submitted',
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/catalog/admin/offer-post-reviews',
+    );
+    const file = await sendOffer(
+      'GET',
+      `catalog/admin/offer-post-reviews/export?format=xlsx&status=all&reasons=sample&openedTo=${from}&sort=opened&page=2`,
+    );
+    expect(file.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/offer-post-reviews/export?format=xlsx&status=all&reasons=sample&openedTo=${encodeURIComponent(from)}`,
+    );
+  });
+
   it.each(['catalog/admin/review-queue', 'catalog/admin/review-queue/export'])(
     'passes the first-publication reason and category filters of %s, in their shapes',
     async (path) => {

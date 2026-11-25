@@ -38,12 +38,13 @@ export const DANGER_REASONS: ReadonlySet<string> = new Set(['emergency-stop', 'c
 
 export const NOTE_MAX = 2000;
 
-export type QueueTab = 'first' | 'edits';
+/** First publications, Edits and (slice 6) After publication: the post-publication review. */
+export type QueueTab = 'first' | 'edits' | 'after';
 export const parseTab = (
   raw: Readonly<Record<string, string | readonly string[] | undefined>>,
-): QueueTab => (raw['tab'] === 'edits' ? 'edits' : 'first');
+): QueueTab => (raw['tab'] === 'edits' ? 'edits' : raw['tab'] === 'after' ? 'after' : 'first');
 export const tabHref = (tab: QueueTab): string =>
-  tab === 'edits' ? `${OFFERS_PATH}?tab=edits` : OFFERS_PATH;
+  tab === 'first' ? OFFERS_PATH : `${OFFERS_PATH}?tab=${tab}`;
 export const changeHref = (changeId: string): string => `${OFFERS_PATH}/${changeId}`;
 
 /** An Offer waiting for its first publication (apps/api ReviewQueueRowDto). */

@@ -82,6 +82,54 @@ const editRows = [
   edit(2, 'Lamb shoulder, halal', ['contact-text'], { fields: ['description'] }),
   edit(3, 'Tahini 450 g', ['full-review', 'sensitive-category'], { storeName: 'Corner Pantry' }),
 ];
+// The post-publication review (slice 6): every reason chip, a doubled sample, an approved and a
+// taken-down row. The mock answers each view (`status`) with its own rows.
+const post = (n: number, name: string, reasons: string[], over: object = {}) => ({
+  id: id(400 + n),
+  version: n,
+  status: 'open',
+  reasons,
+  samplePercent: reasons.includes('sample') ? 5 : null,
+  sampleDoubled: false,
+  openedAt: `2026-11-2${n}T01:00:00.000Z`,
+  decidedAt: null,
+  decision: null,
+  offer: { id: id(100 + n), status: 'published', listed: true, sellerSku: `SKU-${n}` },
+  product: { id: id(200 + n), name },
+  sellerId: id(10),
+  storeName: 'Date Palace',
+  actions: { approve: true, takeDown: true },
+  ...over,
+});
+const postRows = [
+  post(1, 'Medjool dates 500 g', ['sample']),
+  post(2, 'Lamb shoulder, halal', ['sample'], {
+    samplePercent: 10,
+    sampleDoubled: true,
+    storeName: 'Corner Pantry',
+    sellerId: id(11),
+  }),
+  post(3, 'Tahini 450 g', ['price-no-reference']),
+  post(4, 'Rose water 250 ml', ['price-reference-unavailable', 'sample']),
+  post(5, 'Baklava assorted box', ['price-recheck-outside']),
+  post(6, 'Saffron 1 g', ['sample'], {
+    openedAt: '2026-11-20T01:00:00.000Z',
+    status: 'approved',
+    decidedAt: '2026-11-25T02:10:00.000Z',
+    decision: { reasonCode: null, misconduct: false },
+    actions: { approve: false, takeDown: false },
+  }),
+  post(7, 'Sumac 100 g', ['price-recheck-outside'], {
+    openedAt: '2026-11-19T01:00:00.000Z',
+    status: 'taken-down',
+    decidedAt: '2026-11-25T03:40:00.000Z',
+    decision: { reasonCode: 'description-claim', misconduct: true },
+    offer: { id: id(107), status: 'changes-needed', listed: false, sellerSku: 'SKU-7' },
+    actions: { approve: false, takeDown: false },
+    storeName: 'Corner Pantry',
+    sellerId: id(11),
+  }),
+];
 const paged = (items: unknown[], extra: object = {}) => ({
   items,
   nextAfterId: null,
@@ -133,12 +181,38 @@ const categories = {
 };
 window.fetch = ((input: string) => {
   const path = input.replace(/^\/api\//, '').split('?')[0]!;
+  const query = new URLSearchParams(input.split('?')[1] ?? '');
   let body: unknown = { code: 'not-found' };
   let status = 200;
   if (path === 'catalog/admin/review-queue') {
     body = paged(firstRows, {
       totals: { 'product-revision': 4, 'offer-first-publication': firstRows.length },
     });
+  } else if (path === 'catalog/admin/offer-post-reviews') {
+    const wanted = query.get('status') ?? 'open';
+    const rows = wanted === 'all' ? postRows : postRows.filter((row) => row.status === wanted);
+    body = paged(rows, { totalOpen: postRows.filter((row) => row.status === 'open').length });
+  } else if (path === 'catalog/admin/offer-post-reviews/bulk-approve') {
+    body = {
+      counts: { done: 2, skipped: 1, failed: 0 },
+      results: [
+        { id: id(401), outcome: 'done', name: 'Medjool dates 500 g' },
+        {
+          id: id(402),
+          outcome: 'skipped',
+          reason: 'post-review.not-open',
+          name: 'Lamb shoulder, halal',
+        },
+        { id: id(403), outcome: 'done', name: 'Tahini 450 g' },
+      ],
+    };
+  } else if (path.startsWith('catalog/admin/offer-post-reviews/')) {
+    const found = postRows.find((row) => row.id === path.split('/').pop());
+    body =
+      found === undefined
+        ? body
+        : { ...found, note: 'Claims halal on the label without a certificate.' };
+    status = found === undefined ? 404 : 200;
   } else if (path === 'catalog/admin/offer-changes') {
     body = paged(editRows, { totalPending: editRows.length });
   } else if (path === 'catalog/categories') {
@@ -168,7 +242,12 @@ const where = {
   csrfToken: 'tok',
   zone: 'Australia/Brisbane',
 } as const;
-const keys = ['catalog.product.view', 'catalog.product.approve', 'sellers.seller.view'];
+const keys = [
+  'catalog.product.view',
+  'catalog.product.approve',
+  'catalog.product.delete',
+  'sellers.seller.view',
+];
 const title = <PageHeader title="Offer reviews" className="mb-4" />;
 const content =
   view === 'seller' ? (
@@ -209,7 +288,7 @@ const content =
     <>
       {title}
       <OfferReviewQueue
-        tab={view === 'edits' ? 'edits' : 'first'}
+        tab={view === 'edits' ? 'edits' : view === 'after' ? 'after' : 'first'}
         {...where}
         permissionKeys={keys}
         canDecide

@@ -29,9 +29,9 @@ import {
 } from './types.ts';
 
 // The routes search product name, product code and store name by 2 to 100 characters.
-const SEARCH = { max: 100, accepts: (text: string) => [...text].length >= 2 };
+export const SEARCH = { max: 100, accepts: (text: string) => [...text].length >= 2 };
 
-const AGE_PRESETS = ['older-24h', 'older-48h', 'older-7d'] as const;
+export const AGE_PRESETS = ['older-24h', 'older-48h', 'older-7d'] as const;
 const AGE_HOURS: Readonly<Record<string, number>> = {
   'older-24h': 24,
   'older-48h': 48,
@@ -39,7 +39,7 @@ const AGE_HOURS: Readonly<Record<string, number>> = {
 };
 
 /** "Waiting longer than N hours" is a window that ends N hours ago; read at each load. */
-function ageRange(preset: string): { readonly from: string; readonly to: string } | null {
+export function ageRange(preset: string): { readonly from: string; readonly to: string } | null {
   const hours = AGE_HOURS[preset];
   return hours === undefined
     ? null
@@ -80,7 +80,7 @@ const SORTS = (t: (key: string) => string) =>
  * (the stores with rows in the queue) and the platform category. A field with no options yet is
  * left out, as on the Products list.
  */
-function sharedFields(
+export function sharedFields(
   label: (key: string) => string,
   reasons: readonly FilterOption[],
   sellers: readonly FilterOption[],
@@ -103,7 +103,7 @@ function sharedFields(
  * Waiting since: how long it has waited ("3d 4h") first, the moment it was submitted after it, and
  * the full date and time as the hover text.
  */
-function Waiting({ since, zone }: { readonly since: string; readonly zone: string }) {
+export function Waiting({ since, zone }: { readonly since: string; readonly zone: string }) {
   const t = useTranslations('offer-review.age');
   const locale = useLocale();
   const age = waitingAge(since, new Date());
@@ -127,7 +127,7 @@ function Waiting({ since, zone }: { readonly since: string; readonly zone: strin
 }
 
 /** A name that opens the decision drawer: a real button, so the keyboard reaches it. */
-function OpenName({
+export function OpenName({
   name,
   detail,
   label,
