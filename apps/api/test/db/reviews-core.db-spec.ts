@@ -810,7 +810,7 @@ describe.each(TEST_MARKETS)('reviews in market %s (database)', (code) => {
       bought(second, productB, ids.next<'Seller'>());
       await submit(first, productA, { rating: 5 });
       const gone = await submit(second, productB, { rating: 2 });
-      const diff = (after: typeof before) =>
+      const diff = (after: Awaited<ReturnType<typeof count>>) =>
         after.ok
           ? {
               reviews: after.value[0]!.reviews - before.value[0]!.reviews,

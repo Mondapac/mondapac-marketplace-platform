@@ -2,4 +2,4 @@
 SET lock_timeout = '5s';
 SET statement_timeout = '60s';
 
-DROP INDEX "reviews"."product_reviews_market_published_idx";
+DROP INDEX IF EXISTS "reviews"."product_reviews_market_published_idx";
