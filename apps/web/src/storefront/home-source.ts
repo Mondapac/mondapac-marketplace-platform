@@ -185,6 +185,9 @@ export function cardOf(
     category: (typeof firstCategory === 'string' ? slugs.get(firstCategory) : undefined) ?? '',
     ...(price === undefined ? {} : { price }),
     ...(wasPrice === undefined ? {} : { wasPrice }),
+    // An item of the specials shelf (it carries the special's end) is on special even when the
+    // was-price rule withholds the regular price: the pill says so, no saving is shown.
+    ...(price !== undefined && typeof item.specialEndsAt === 'string' ? { onSpecial: true } : {}),
     certifications: [],
     ...(imageUrl === undefined ? {} : { imageUrl }),
     ...(imageUrl === undefined || imageSet === undefined ? {} : { imageSet }),

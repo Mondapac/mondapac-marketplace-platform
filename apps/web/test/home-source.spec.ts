@@ -199,6 +199,7 @@ describe('home source: real data', () => {
           category: 'meat',
           price: { amount: 2290, currency: 'AUD' },
           wasPrice: { amount: 2490, currency: 'AUD' },
+          onSpecial: true,
           certifications: [],
         },
       ],
@@ -314,6 +315,9 @@ describe('home source: checks on each answer', () => {
     const card = cardOf({ ...SPECIAL, regularPrice: null }, new Map([[MEAT, 'meat']]));
     expect(card?.price).toEqual({ amount: 2290, currency: 'AUD' });
     expect(card?.wasPrice).toBeUndefined();
+    expect(card?.onSpecial).toBe(true);
+    // A best seller (no special end) is never marked on special.
+    expect(cardOf(BESTSELLER, new Map([[MEAT, 'meat']]))?.onSpecial).toBeUndefined();
   });
 
   it('shows no card for a price without tax, and no regular price in another currency', () => {

@@ -11,7 +11,8 @@ import { CardPhoto } from './card-photo.tsx';
 export function ProductCard({ product }: { readonly product: ShelfCard }) {
   const t = useTranslations('home');
   const locale = useLocale();
-  const special = product.wasPrice !== undefined;
+  // A special in force (the specials shelf), with or without a "was" price the rule allows.
+  const special = product.onSpecial === true || product.wasPrice !== undefined;
   const { price } = product;
   // A search result a filter narrowed to one variant opens on it (variants V8).
   const href =
