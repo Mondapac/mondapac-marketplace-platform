@@ -167,6 +167,11 @@ export class InMemoryOfferPendingChanges implements OfferPendingChangeRepository
   countPending(market: MarketContext, filter: OfferChangeQueueFilter = {}) {
     return Promise.resolve(this.#kept(market, filter).length);
   }
+
+  pendingSellerIds(market: MarketContext, limit: number) {
+    const ids = new Set(this.#kept(market, {}).map((row) => row.sellerId));
+    return Promise.resolve([...ids].sort().slice(0, limit));
+  }
 }
 
 /** An {@link OfferEditReview} over memory, recording referrals and audit rows. */

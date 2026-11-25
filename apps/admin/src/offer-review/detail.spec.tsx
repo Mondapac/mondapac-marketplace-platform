@@ -325,7 +325,6 @@ describe('ReviewDetail of a first publication', () => {
 describe('DecisionDrawer', () => {
   it('asks before closing with a note typed, and closes without asking otherwise', () => {
     const onClose = vi.fn();
-    const confirm = vi.spyOn(window, 'confirm');
     const subject: Subject = { kind: 'edit', row: change() };
     render(
       wrap(
@@ -341,21 +340,39 @@ describe('DecisionDrawer', () => {
         />,
       ),
     );
-    const dialog = screen.getByRole('dialog', { hidden: true });
-    expect(
-      within(dialog).getByRole('heading', { name: 'Offer review', hidden: true }),
-    ).toBeTruthy();
+    const confirm = vi.spyOn(window, 'confirm');
+    const panel = screen
+      .getAllByRole('dialog', { hidden: true })
+      .find((dialog) =>
+        within(dialog).queryByRole('heading', { name: 'Offer review', hidden: true }),
+      );
+    expect(panel).toBeTruthy();
+    // The confirm Dialog shows its title and buttons only while it is open.
+    const asking = () =>
+      screen
+        .getAllByRole('dialog', { hidden: true })
+        .find((dialog) =>
+          within(dialog).queryByRole('heading', { name: 'Discard what you typed?', hidden: true }),
+        );
+    const isOpen = () => asking() !== undefined;
+    expect(isOpen()).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Close', hidden: true }));
     expect(onClose).toHaveBeenCalledTimes(1);
-    expect(confirm).not.toHaveBeenCalled();
+    expect(isOpen()).toBe(false);
     fireEvent.change(screen.getByRole('textbox', { name: /Note to the seller/, hidden: true }), {
       target: { value: 'half written' },
     });
-    confirm.mockReturnValueOnce(false);
+    // Typed text: Close asks in the library's confirm Dialog, never the browser's prompt.
     fireEvent.click(screen.getByRole('button', { name: 'Close', hidden: true }));
     expect(onClose).toHaveBeenCalledTimes(1);
-    confirm.mockReturnValueOnce(true);
+    expect(isOpen()).toBe(true);
+    expect(within(asking()!).getByText('The note or reason you typed is not saved.')).toBeTruthy();
+    fireEvent.click(within(asking()!).getByRole('button', { name: 'Keep editing', hidden: true }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(isOpen()).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Close', hidden: true }));
+    fireEvent.click(within(asking()!).getByRole('button', { name: 'Discard', hidden: true }));
     expect(onClose).toHaveBeenCalledTimes(2);
+    expect(confirm).not.toHaveBeenCalled();
   });
 });

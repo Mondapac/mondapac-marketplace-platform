@@ -97,6 +97,7 @@ describe.each(['AU', 'ZZ'] as const)('review queue bulk decide in market %s', (c
           ),
       } as unknown as OfferRepository,
       queueFacts: {
+        pendingFirstPublicationsWithReasons: () => Promise.resolve([]),
         firstPublicationReasons: (_m: MarketContext, wanted: readonly string[]) =>
           Promise.resolve(
             new Map<string, readonly OfferReviewReason[]>(

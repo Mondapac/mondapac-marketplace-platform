@@ -157,6 +157,17 @@ export class ProductRevisionRowDto {
  * The whole queue per kind, whatever the filters (also `sellerId`): the counts of the queue's tabs.
  * The number of rows a filtered list holds is `total`.
  */
+/** One store of a review list's seller filter options. */
+export class QueueSellerDto {
+  @ApiProperty({ format: 'uuid' }) sellerId!: string;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'The public store name; null when sellers cannot say.',
+  })
+  storeName!: string | null;
+}
+
 export class ReviewQueueTotals {
   @ApiProperty({ name: 'product-revision', description: 'Pending product revisions.' })
   'product-revision'!: number;
@@ -217,6 +228,17 @@ export class ReviewQueueList {
       'False with no `q`.',
   })
   searchCapped!: boolean;
+
+  @ApiProperty({
+    type: [QueueSellerDto],
+    description:
+      'The stores with a row of the kinds `kind` keeps, whatever the other filters (the seller ' +
+      'filter options): named stores by name, then unnamed ones by id; at most 100.',
+  })
+  sellers!: QueueSellerDto[];
+
+  @ApiProperty({ description: 'More stores have rows than `sellers` holds (100).' })
+  sellersCapped!: boolean;
 }
 
 export class OfferDecided {}

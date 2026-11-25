@@ -154,12 +154,15 @@ export class OfferReviewController {
       'product revisions, oldest submit first, keyset-paged: send `nextAfterId` of the previous ' +
       'page as `afterId`, with the same filters. `limit` is 1 to 50 (default 25). `kind` keeps ' +
       'one kind; `sellerId` one seller; `firstPublication` and `hasImages` keep product ' +
-      'revisions only (refused with kind=offer-first-publication); `submittedFrom` (inclusive) and ' +
+      'revisions only (refused with kind=offer-first-publication); `reasons` and `categoryId` keep ' +
+      'Offers only (refused with kind=product-revision or a product revision filter); ' +
+      '`submittedFrom` (inclusive) and ' +
       '`submittedTo` (exclusive) keep the rows submitted in that window; `q` keeps the rows whose ' +
       'product name, product code or seller store name contains the text (any case; both kinds). ' +
       'Every filter composes with the others. `total` counts what the filters keep; `totals` is ' +
       'the whole queue per kind, whatever the filters. `searchCapped` is true when the store ' +
-      'names of `q` matched more stores than can be searched (narrow the search).',
+      'names of `q` matched more stores than can be searched (narrow the search). `sellers` ' +
+      'lists the stores with rows of the kinds `kind` keeps (the seller filter options).',
   })
   @ApiQuery({
     name: 'afterId',
@@ -192,6 +195,18 @@ export class OfferReviewController {
     description:
       'Product revisions only: the pending revision lists a photo (any state, as the row field) ' +
       'or none.',
+  })
+  @ApiQuery({
+    name: 'reasons',
+    required: false,
+    description:
+      'Offers only: comma-separated review reasons; Offers whose latest first-publication ' +
+      `decision carries any of them. Any of: ${OFFER_REVIEW_REASONS.join(', ')}.`,
+  })
+  @ApiQuery({
+    name: 'categoryId',
+    required: false,
+    description: "Offers only: a platform category of the product's published revision (uuid).",
   })
   @ApiQuery({
     name: 'submittedFrom',
@@ -237,7 +252,8 @@ export class OfferReviewController {
     summary: 'Export the review queue as a file',
     description:
       'Needs catalog.product.view. The rows of the review queue for the same filters ' +
-      '(`kind`, `sellerId`, `firstPublication`, `hasImages`, `submittedFrom`, `submittedTo` and ' +
+      '(`kind`, `sellerId`, `firstPublication`, `hasImages`, `reasons`, `categoryId`, ' +
+      '`submittedFrom`, `submittedTo` and ' +
       'the search text `q`), oldest submit first. `format` is csv (the default) or xlsx, with the same ' +
       'columns: kind, product_code, product_name, seller_id, store_name, seller_sku, ' +
       'first_publication, reasons, required_checks, has_images, warnings, submitted_at. At most ' +
@@ -251,6 +267,8 @@ export class OfferReviewController {
   @ApiQuery({ name: 'sellerId', required: false })
   @ApiQuery({ name: 'firstPublication', required: false, enum: ['true', 'false'] })
   @ApiQuery({ name: 'hasImages', required: false, enum: ['true', 'false'] })
+  @ApiQuery({ name: 'reasons', required: false, description: 'Offers only, as on the list.' })
+  @ApiQuery({ name: 'categoryId', required: false, description: 'Offers only, as on the list.' })
   @ApiQuery({
     name: 'submittedFrom',
     required: false,

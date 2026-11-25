@@ -121,8 +121,11 @@ describe.each(TEST_MARKETS)(
     const unit = <T>(work: () => Promise<T>) =>
       persistence.unitOfWork.run(market, async () => ({ ok: true as const, value: await work() }));
 
-    /** A published Offer with handling SEALED_ORIGINAL on a PLATFORM product. */
-    async function liveOffer(): Promise<Id<'Offer'>> {
+    /**
+     * A published Offer with handling SEALED_ORIGINAL on a PLATFORM product; with `waiting`, one
+     * submitted for review instead (pending-first-publish).
+     */
+    async function liveOffer(waiting = false): Promise<Id<'Offer'>> {
       const product = Product.create({
         id: uuid7() as Id<'Product'>,
         marketId: market.marketId,
@@ -158,7 +161,7 @@ describe.each(TEST_MARKETS)(
       });
       await unit(async () => {
         const offer = (await offers.findById(market, offerId))!;
-        offer.submit({ approvalRequired: false, now: T0 });
+        offer.submit({ approvalRequired: waiting, now: T0 });
         await offers.save(market, offer, seller);
       });
       return offerId;
@@ -576,6 +579,90 @@ describe.each(TEST_MARKETS)(
         expect(read.value.byStore).toEqual([idA, idB, idC]);
         expect(read.value.underscore).toEqual([idB]);
         expect(read.value.wildcard).toEqual([]);
+      });
+
+      it('filters waiting Offers by latest reasons, category and ids; offers the queue sellers', async () => {
+        const categoryId = await category();
+        const [a, b] = [await liveOffer(true), await liveOffer(true)];
+        await publish(a, `Sumac ${uuid7().slice(-8)}`, categoryId);
+        const store = new PrismaOfferReviewReferralStore(persistence.service, ids);
+        const facts = new PrismaOfferReviewQueueFacts(persistence.service);
+        const reader = new PrismaOwnCatalogReader(persistence.service);
+        const referral = {
+          sellerId,
+          trigger: 'first-publication' as const,
+          policyVersion: 3,
+          decidedAt: T0,
+        };
+        // a was held for handling first, then for probation: only the latest decision counts.
+        await unit(() =>
+          store.record(market, { ...referral, offerId: a, offerVersion: 2, reasons: ['handling'] }),
+        );
+        await unit(() =>
+          store.record(market, {
+            ...referral,
+            offerId: a,
+            offerVersion: 3,
+            reasons: ['probation'],
+          }),
+        );
+        await unit(() =>
+          store.record(market, { ...referral, offerId: b, offerVersion: 3, reasons: ['handling'] }),
+        );
+        const live = await liveOffer();
+        await unit(() => changes.insert(market, propose(live)));
+        const page = { after: null, limit: 500 };
+        const read = await unit(async () => ({
+          handling: await facts.pendingFirstPublicationsWithReasons(market, ['handling']),
+          probation: await facts.pendingFirstPublicationsWithReasons(market, ['probation']),
+          none: await facts.pendingFirstPublicationsWithReasons(market, []),
+          inCategory: (
+            await offers.listPendingReview(market, page, { offerIds: [a, b], categoryId })
+          ).map((offer) => offer.state.id as string),
+          countInCategory: await reader.pendingReviewCount(market, {
+            offerIds: [a, b],
+            categoryId,
+          }),
+          byIds: (await offers.listPendingReview(market, page, { offerIds: [b] })).map(
+            (offer) => offer.state.id as string,
+          ),
+          noIds: await reader.pendingReviewCount(market, { offerIds: [] }),
+          offerSellers: await reader.pendingQueueSellerIds(
+            market,
+            { offers: true, revisions: false },
+            1000,
+          ),
+          noKinds: await reader.pendingQueueSellerIds(
+            market,
+            { offers: false, revisions: false },
+            1000,
+          ),
+          changeSellers: await changes.pendingSellerIds(market, 1000),
+        }));
+        if (!read.ok) throw new Error('read failed');
+        expect(read.value.handling).toContain(b);
+        expect(read.value.handling).not.toContain(a);
+        expect(read.value.probation).toContain(a);
+        expect(read.value.probation).not.toContain(b);
+        expect(read.value.none).toEqual([]);
+        expect(read.value.inCategory).toEqual([a]);
+        expect(read.value.countInCategory).toBe(1);
+        expect(read.value.byIds).toEqual([b]);
+        expect(read.value.noIds).toBe(0);
+        expect(read.value.offerSellers).toContain(sellerId);
+        expect(read.value.noKinds).toEqual([]);
+        expect(read.value.changeSellers).toContain(sellerId);
+        // The other Market sees none of it (canary).
+        const other = marketOf(otherMarketOf(code));
+        const across = await persistence.unitOfWork.run(other, async () => ({
+          ok: true as const,
+          value: {
+            reasons: await facts.pendingFirstPublicationsWithReasons(other, ['handling']),
+            sellers: await changes.pendingSellerIds(other, 1000),
+          },
+        }));
+        expect(across.ok && across.value.reasons).not.toContain(b);
+        expect(across.ok && across.value.sellers).not.toContain(sellerId);
       });
 
       it('lists through the use case with the live values next to the proposed ones', async () => {

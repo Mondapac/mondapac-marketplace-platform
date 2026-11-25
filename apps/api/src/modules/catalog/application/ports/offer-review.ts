@@ -95,6 +95,17 @@ export interface OfferReviewQueueFacts {
     offerIds: readonly Id<'Offer'>[],
   ): Promise<ReadonlyMap<string, readonly OfferReviewReason[]>>;
 
+  /**
+   * The Offers of the Market waiting for their first publication whose latest `first-publication`
+   * referral carries any of `reasons` (the queue's `reasons` filter). The latest referral decides,
+   * so a reason of an earlier submit never matches. The pending rows are a work list: the read
+   * walks their referrals, never the Market's whole history.
+   */
+  pendingFirstPublicationsWithReasons(
+    market: MarketContext,
+    reasons: readonly OfferReviewReason[],
+  ): Promise<readonly Id<'Offer'>[]>;
+
   /** The distinct type codes of each Offer's open (not removed) tags, sorted; an Offer with none is left out. */
   openTagTypes(
     market: MarketContext,

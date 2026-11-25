@@ -38,6 +38,8 @@ const KEYS = [
   'sellerId',
   'firstPublication',
   'hasImages',
+  'reasons',
+  'categoryId',
   'submittedFrom',
   'submittedTo',
   'q',
@@ -65,7 +67,7 @@ type Cell = string | number;
 
 /**
  * `catalog.review-queue-export` (super list 13): the rows the Product review queue shows for the
- * same filters (`kind`, `sellerId`, `firstPublication`, `hasImages`, `submittedFrom`,
+ * same filters (`kind`, `sellerId`, `firstPublication`, `hasImages`, `reasons`, `categoryId`, `submittedFrom`,
  * `submittedTo`, and the search text `q`), oldest submit first, as
  * CSV (default) or XLSX. The rows are read through the queue's own use case with its keyset cursor, so the
  * filter, the order and the access rule cannot drift from the list; a queue longer than

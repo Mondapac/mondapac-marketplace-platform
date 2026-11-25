@@ -18621,7 +18621,10 @@
       "filter": {
         "title": "Filter first publications",
         "name": {
-          "submitted": "Submitted"
+          "submitted": "Submitted",
+          "reasons": "Reason",
+          "sellerId": "Store",
+          "categoryId": "Category"
         }
       },
       "sort": {
@@ -18718,7 +18721,9 @@
         "title": "Filter edits",
         "name": {
           "reasons": "Reason",
-          "age": "Waiting longer than"
+          "age": "Waiting longer than",
+          "sellerId": "Store",
+          "categoryId": "Category"
         },
         "age": {
           "older-24h": "24 hours",
@@ -18892,7 +18897,10 @@
     "drawer": {
       "title": "Offer review",
       "close": "Close",
-      "discard": "Discard what you typed?"
+      "discard": "Discard what you typed?",
+      "discard-body": "The note or reason you typed is not saved.",
+      "discard-keep": "Keep editing",
+      "discard-confirm": "Discard"
     },
     "diff": {
       "live": "Live",

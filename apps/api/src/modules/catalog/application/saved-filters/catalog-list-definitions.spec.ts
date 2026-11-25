@@ -13,6 +13,7 @@ import { CategoryProposalList } from '../use-cases/category-proposal-list.use-ca
 import { OwnAttributeSuggestionsList } from '../use-cases/own-attribute-suggestions-list.use-case';
 import { OwnTopicSuggestionsList } from '../use-cases/own-topic-suggestions-list.use-case';
 import { ProductsMissingDetailsList } from '../use-cases/products-missing-details-list.use-case';
+import { AdminOfferChangesList } from '../use-cases/admin-offer-changes-list.use-case';
 import { ReviewQueueList } from '../use-cases/review-queue-list.use-case';
 import { TopicList } from '../use-cases/topic-list.use-case';
 import { TopicSuggestionList } from '../use-cases/topic-suggestion-list.use-case';
@@ -34,7 +35,7 @@ const fieldsOf = (list: ListDefinition, payload: unknown) => {
 const UUID = '0199aaaa-0000-7000-8000-000000000001';
 
 describe('the catalog phase 2 saved-filter lists', () => {
-  it('registers the eleven admin lists and the two seller lists, each in the audit vocabulary', () => {
+  it('registers the twelve admin lists and the two seller lists, each in the audit vocabulary', () => {
     expect(CATALOG_PHASE2_LISTS.map((list) => list.listKey)).toEqual([
       'admin.catalog.variants',
       'admin.catalog.variant-requests',
@@ -47,6 +48,7 @@ describe('the catalog phase 2 saved-filter lists', () => {
       'admin.catalog.tag-suggestions',
       'admin.catalog.category-proposals',
       'admin.catalog.review-queue',
+      'admin.catalog.offer-changes',
       'seller.catalog.attribute-suggestions',
       'seller.catalog.topic-suggestions',
     ]);
@@ -72,6 +74,7 @@ describe('the catalog phase 2 saved-filter lists', () => {
       ['admin.catalog.tag-suggestions', TopicSuggestionList],
       ['admin.catalog.category-proposals', CategoryProposalList],
       ['admin.catalog.review-queue', ReviewQueueList],
+      ['admin.catalog.offer-changes', AdminOfferChangesList],
       ['seller.catalog.attribute-suggestions', OwnAttributeSuggestionsList],
       ['seller.catalog.topic-suggestions', OwnTopicSuggestionsList],
     ];
@@ -435,6 +438,70 @@ describe('the catalog phase 2 saved-filter lists', () => {
           direction: 'asc',
         }),
       ).toEqual([{ path: 'payload.filters.hasImages', code: 'not-allowed' }]);
+    });
+    it('keeps the Offer filters reasons and categoryId of first publications', () => {
+      const payload = {
+        v: 1,
+        filters: {
+          kind: 'offer-first-publication',
+          sellerId: UUID,
+          reasons: 'probation',
+          categoryId: UUID,
+        },
+        sort: 'submitted',
+        direction: 'asc',
+      };
+      expect(list.parsePayload(payload)).toEqual({ ok: true, value: payload });
+    });
+    it('refuses Offer filters the queue refuses', () => {
+      const base = { sort: 'submitted', direction: 'asc' };
+      expect(fieldsOf(list, { v: 1, filters: { reasons: 'nope' }, ...base })).toEqual([
+        { path: 'payload.filters.reasons', code: 'value' },
+      ]);
+      expect(fieldsOf(list, { v: 1, filters: { categoryId: 'x' }, ...base })).toEqual([
+        { path: 'payload.filters.categoryId', code: 'format' },
+      ]);
+      expect(
+        fieldsOf(list, {
+          v: 1,
+          filters: { kind: 'product-revision', reasons: 'probation' },
+          ...base,
+        }),
+      ).toEqual([{ path: 'payload.filters.reasons', code: 'not-allowed' }]);
+      expect(
+        fieldsOf(list, { v: 1, filters: { hasImages: 'true', categoryId: UUID }, ...base }),
+      ).toEqual([{ path: 'payload.filters.categoryId', code: 'not-allowed' }]);
+    });
+  });
+
+  describe('admin.catalog.offer-changes', () => {
+    const list = byKey('admin.catalog.offer-changes');
+    const base = { sort: 'submitted', direction: 'asc' };
+    it('keeps the reasons, the age preset, the seller, the category and the search text', () => {
+      const payload = {
+        v: 1,
+        q: 'Dates Co',
+        filters: { reasons: 'handling', age: 'older-48h', sellerId: UUID, categoryId: UUID },
+        ...base,
+      };
+      expect(list.parsePayload(payload)).toEqual({ ok: true, value: payload });
+      expect(list.viewKey).toBe('catalog.product.view');
+      expect(list.shareKey).toBe(CATALOG_SAVED_FILTER_SHARE.key);
+    });
+    it('refuses what the list refuses', () => {
+      expect(fieldsOf(list, { v: 1, filters: { age: 'older-1y' }, ...base })).toEqual([
+        { path: 'payload.filters.age', code: 'enum' },
+      ]);
+      expect(fieldsOf(list, { v: 1, filters: { reasons: 'handling,x' }, ...base })).toEqual([
+        { path: 'payload.filters.reasons', code: 'value' },
+      ]);
+      expect(fieldsOf(list, { v: 1, filters: { sellerId: 'abc' }, ...base })).toEqual([
+        { path: 'payload.filters.sellerId', code: 'format' },
+      ]);
+      expect(fieldsOf(list, { v: 1, filters: { submittedFrom: 'x' }, ...base })).not.toBeNull();
+      expect(fieldsOf(list, { v: 1, q: 'a', ...base })).toEqual([
+        { path: 'payload.q', code: 'length' },
+      ]);
     });
   });
 

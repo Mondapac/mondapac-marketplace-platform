@@ -218,6 +218,7 @@ describe('admin product revision review over HTTP (integration)', () => {
           })
           .overrideProvider(OFFER_REVIEW_QUEUE_FACTS)
           .useValue({
+            pendingFirstPublicationsWithReasons: () => Promise.resolve([]),
             firstPublicationReasons: () => Promise.resolve(new Map()),
             openTagTypes: () => Promise.resolve(new Map()),
           })
@@ -234,6 +235,7 @@ describe('admin product revision review over HTTP (integration)', () => {
           })
           .overrideProvider(OWN_CATALOG_READER)
           .useValue({
+            pendingQueueSellerIds: () => Promise.resolve([]),
             pendingReviewCount: (_m: MarketContext, filter: { sellerId?: string } = {}) =>
               Promise.resolve(
                 [...offers.values()].filter(

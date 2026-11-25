@@ -179,6 +179,7 @@ describe('admin Offer review over HTTP (integration)', () => {
           })
           .overrideProvider(OWN_CATALOG_READER)
           .useValue({
+            pendingQueueSellerIds: () => Promise.resolve([]),
             pendingReviewCount: () => Promise.resolve(1),
             pendingRevisionCount: () => Promise.resolve(0),
             listPendingRevisions: () => Promise.resolve([]),
@@ -203,6 +204,7 @@ describe('admin Offer review over HTTP (integration)', () => {
           .useValue({ flagsOf: () => Promise.resolve(FLAGS_OFF) })
           .overrideProvider(OFFER_REVIEW_QUEUE_FACTS)
           .useValue({
+            pendingFirstPublicationsWithReasons: () => Promise.resolve([]),
             firstPublicationReasons: (_m: MarketContext, wanted: readonly string[]) =>
               Promise.resolve(
                 new Map(
@@ -509,6 +511,29 @@ describe('admin Offer review over HTTP (integration)', () => {
       expect((second.body as { nextAfterId: unknown }).nextAfterId).toBeNull();
       expect((await get(code, '/review-queue?afterId=nope', session)).status).toBe(400);
       expect((await get(code, '/review-queue?limit=0', session)).status).toBe(400);
+    });
+
+    it('takes the Offer filters reasons and categoryId, refused for product revisions (slice 5)', async () => {
+      await boot();
+      await seeded(code);
+      waiting(code, 1);
+      const session = sessionOf(code, VIEWER, 1);
+      const category = '01990000-0000-7000-8000-0000000000c1';
+      const kept = await get(
+        code,
+        `/review-queue?kind=offer-first-publication&reasons=probation,handling&categoryId=${category}`,
+        session,
+      );
+      expect(kept.status).toBe(200);
+      expect(kept.body).toMatchObject({ sellers: [], sellersCapped: false });
+      expect(
+        (await get(code, '/review-queue?kind=product-revision&reasons=probation', session)).status,
+      ).toBe(400);
+      expect((await get(code, '/review-queue?reasons=nope', session)).status).toBe(400);
+      expect((await get(code, '/review-queue?categoryId=x', session)).status).toBe(400);
+      expect(
+        (await get(code, '/review-queue/export?reasons=probation', session).buffer(true)).status,
+      ).toBe(200);
     });
 
     it('exports the queue as CSV and XLSX with the list filters, and refuses a bad request', async () => {

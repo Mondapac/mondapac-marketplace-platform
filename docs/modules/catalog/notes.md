@@ -368,3 +368,13 @@ settings (mode `all`).
   (sellers facade `offerReviewStoppedSellerCount`, needs `sellers.seller.view`) and categories
   have their stop on; a part that cannot be read is null.
 - First-publication reject is deferred (Hadi's decision 1; FE-20261125-offer-first-publication-reject).
+- **Super list gaps closed** (CLAUDE.md rule 14): the review queue takes the Offer filters
+  `reasons` (Offers whose latest first-publication referral carries any of them; resolved in the
+  read unit to the waiting Offer ids, so an earlier submit's reasons never match) and
+  `categoryId` (the product's published revision); both keep Offers only and are refused
+  (`not-allowed`) with `kind=product-revision` or a revision filter, and the export takes them
+  too. Both lists answer `sellers` (the stores with rows of the kinds kept, whatever the other
+  filters; at most 100, `sellersCapped` beyond) as the seller filter's options; the panel takes
+  the category options from `catalog/categories`, as the Products list. The Edits list has saved
+  filters of its own (`admin.catalog.offer-changes`: `reasons`, `age` preset, `sellerId`,
+  `categoryId`, `q`); `admin.catalog.review-queue` also keeps `reasons` and `categoryId`.

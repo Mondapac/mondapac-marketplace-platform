@@ -185,6 +185,17 @@ export class PrismaOfferPendingChangeRepository implements OfferPendingChangeRep
       where: queueWhere(market, filter),
     });
   }
+
+  async pendingSellerIds(market: MarketContext, limit: number): Promise<readonly Id<'Seller'>[]> {
+    // GROUP BY over the pending rows only (the queue index leads with market_id, status).
+    const groups = await this.prisma.tx(market).catalogOfferPendingChange.groupBy({
+      by: ['sellerId'],
+      where: { marketId: market.marketId, status: 'pending' },
+      orderBy: { sellerId: 'asc' },
+      take: limit,
+    });
+    return groups.map((group) => group.sellerId as Id<'Seller'>);
+  }
 }
 
 /**

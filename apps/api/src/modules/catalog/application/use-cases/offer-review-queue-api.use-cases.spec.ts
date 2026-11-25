@@ -336,6 +336,25 @@ describe.each([
       expect(counted.ok && [counted.value.total, counted.value.totalPending]).toEqual([2, 3]);
     });
 
+    it('offers the stores with a pending change as the seller options, whatever the filters', async () => {
+      const r = rig();
+      r.held(1, { seller: SELLER_B });
+      r.held(2);
+      r.held(3);
+      r.held(4, { seller: SELLER_B, target: otherMarket });
+      const result = await r.list.execute(adminContext(), { sellerId: SELLER_A, page: 2 });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      // By store name: Dates Co (A) before Rice Co (B); each store once.
+      expect(result.value.sellers).toEqual([
+        { sellerId: SELLER_A, storeName: 'Dates Co' },
+        { sellerId: SELLER_B, storeName: 'Rice Co' },
+      ]);
+      expect(result.value.sellersCapped).toBe(false);
+      const other = await r.list.execute(adminContext(otherMarket), {});
+      expect(other.ok && other.value.sellers.map((s) => s.sellerId)).toEqual([SELLER_B]);
+    });
+
     it('searches with the review queue rules: name, code or a matched store; reports a capped search', async () => {
       const r = rig({ storeMatches: [SELLER_B], capped: true });
       const a = r.held(1, { name: 'Saffron threads' });

@@ -13,6 +13,7 @@ import type {
   PagedFilterField,
   PagedListConfig,
 } from '../shared/paged-list/types.ts';
+import { useCategoryOptions, useSellerOptions, type FilterOption } from './filter-options.ts';
 import { ReasonChips } from './reason-chips.tsx';
 import {
   API_CHANGES,
@@ -54,6 +55,30 @@ const SORTS = (t: (key: string) => string) =>
       defaultDirection: 'asc' as const,
     },
   ] as const;
+
+/**
+ * The filters both lists share: the review reasons, then `between` (a list's own fields), the store
+ * (the stores with rows in the queue) and the platform category. A field with no options yet is
+ * left out, as on the Products list.
+ */
+function sharedFields(
+  label: (key: string) => string,
+  reasons: readonly FilterOption[],
+  sellers: readonly FilterOption[],
+  categories: readonly FilterOption[],
+  between: readonly PagedFilterField[] = [],
+): PagedFilterField[] {
+  return [
+    { id: 'reasons', label: label('reasons'), options: reasons },
+    ...between,
+    ...(sellers.length === 0
+      ? []
+      : [{ id: 'sellerId', label: label('sellerId'), options: sellers }]),
+    ...(categories.length === 0
+      ? []
+      : [{ id: 'categoryId', label: label('categoryId'), options: categories }]),
+  ];
+}
 
 /** A name that opens the decision drawer: a real button, so the keyboard reaches it. */
 function OpenName({
@@ -234,7 +259,20 @@ export function FirstPublicationsList({
     range: { from: 'submittedFrom', to: 'submittedTo' },
     zone,
   });
-  const fields = useMemo(() => [submitted.field], [submitted.field]);
+  const sellers = useSellerOptions(t('seller-unnamed'));
+  const categories = useCategoryOptions();
+  const fields = useMemo(
+    () => [
+      submitted.field,
+      ...sharedFields(
+        (key) => t(`filter.name.${key}`),
+        REVIEW_REASONS.map((code) => ({ value: code, label: tr(code) })),
+        sellers.options,
+        categories,
+      ),
+    ],
+    [submitted.field, t, tr, sellers.options, categories],
+  );
   return (
     <PagedSuperList
       config={config}
@@ -247,6 +285,7 @@ export function FirstPublicationsList({
       refreshKey={refresh + refreshKey}
       onAnswer={(answer: PagedAnswer<FirstRow>) => {
         onRows(answer.items);
+        sellers.take(answer);
         const totals = (answer as unknown as { totals?: Record<string, number> }).totals;
         const count = totals?.['offer-first-publication'];
         if (typeof count === 'number') onCount(count);
@@ -271,10 +310,10 @@ const AGE_HOURS: Readonly<Record<string, number>> = {
 };
 
 /**
- * Held edits of live Offers: a super list over `catalog/admin/offer-changes` with the reason, age
- * filters and search of the route. No bulk decision (Hadi's decision 3): each edit is opened and
- * decided with its Live | Proposed diff. Saved filters are not offered yet (the lists registry
- * has no key for this list).
+ * Held edits of live Offers: a super list over `catalog/admin/offer-changes` with the reason, age,
+ * store and category filters and the search of the route, and saved filters (registry list
+ * `admin.catalog.offer-changes`). No bulk decision (Hadi's decision 3): each edit is opened and
+ * decided with its Live | Proposed diff.
  */
 export function EditsList({
   paging,
@@ -364,24 +403,29 @@ export function EditsList({
       columnDefs,
       rowActions,
       icon: 'package',
+      savedKey: 'admin.catalog.offer-changes',
     }),
     [t, columnDefs, rowActions],
   );
+  const sellers = useSellerOptions(t('seller-unnamed'));
+  const categories = useCategoryOptions();
   const fields: readonly PagedFilterField[] = useMemo(
-    () => [
-      {
-        id: 'reasons',
-        label: t('filter.name.reasons'),
-        options: REVIEW_REASONS.map((code) => ({ value: code, label: tr(code) })),
-      },
-      {
-        id: 'age',
-        label: t('filter.name.age'),
-        range: { from: 'submittedFrom', to: 'submittedTo' },
-        options: AGE_PRESETS.map((value) => ({ value, label: t(`filter.age.${value}`) })),
-      },
-    ],
-    [t, tr],
+    () =>
+      sharedFields(
+        (key) => t(`filter.name.${key}`),
+        REVIEW_REASONS.map((code) => ({ value: code, label: tr(code) })),
+        sellers.options,
+        categories,
+        [
+          {
+            id: 'age',
+            label: t('filter.name.age'),
+            range: { from: 'submittedFrom', to: 'submittedTo' },
+            options: AGE_PRESETS.map((value) => ({ value, label: t(`filter.age.${value}`) })),
+          },
+        ],
+      ),
+    [t, tr, sellers.options, categories],
   );
   // "Waiting longer than N hours" is a window that ends N hours ago; read at each load.
   const dateRange = useCallback((preset: string) => {
@@ -405,6 +449,7 @@ export function EditsList({
       refreshKey={refreshKey}
       onAnswer={(answer: PagedAnswer<ChangeRow>) => {
         onRows(answer.items);
+        sellers.take(answer);
         const pending = (answer as unknown as { totalPending?: number }).totalPending;
         if (typeof pending === 'number') onCount(pending);
       }}

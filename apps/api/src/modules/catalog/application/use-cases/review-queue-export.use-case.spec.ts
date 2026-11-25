@@ -112,6 +112,8 @@ describe.each(['AU', 'ZZ'] as const)('review queue export in market %s', (code) 
           total: null,
           totals: { 'product-revision': 0, 'offer-first-publication': 0 },
           searchCapped: capped,
+          sellers: [],
+          sellersCapped: false,
         } satisfies ReviewQueueListOutput,
       } as Result<ReviewQueueListOutput, ReviewQueueListFailure>);
     },

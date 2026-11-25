@@ -4,15 +4,17 @@ import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 
-const { inner } = vi.hoisted(() => ({
+const { inner, savedReads } = vi.hoisted(() => ({
   inner: vi.fn<(method: string, path: string, ...rest: unknown[]) => Promise<unknown>>(),
+  savedReads: [] as string[],
 }));
 // Saved filters are served apart from the queue's own calls the tests count.
 vi.mock('../api/client.ts', () => ({
-  callApi: (method: string, path: string, ...rest: unknown[]) =>
-    path.startsWith('lists/admin/saved-filters')
-      ? Promise.resolve({ ok: true, status: 200, body: { items: [], canShare: false } })
-      : inner(method, path, ...rest),
+  callApi: (method: string, path: string, ...rest: unknown[]) => {
+    if (!path.startsWith('lists/admin/saved-filters')) return inner(method, path, ...rest);
+    savedReads.push(path);
+    return Promise.resolve({ ok: true, status: 200, body: { items: [], canShare: false } });
+  },
 }));
 
 import { OfferReviewQueue } from './queue.tsx';
@@ -124,6 +126,7 @@ async function bulk(item: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  savedReads.length = 0;
   HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
     this.setAttribute('open', '');
   };
@@ -274,6 +277,87 @@ describe('first publications tab', () => {
     mount('first');
     expect(await screen.findByText(/could not be loaded/)).toBeTruthy();
     expect(screen.getByRole('button', { name: /Try again|Retry/ })).toBeTruthy();
+  });
+});
+
+const CATEGORY = '0190a000-0000-7000-8000-0000000000c1';
+const categories = {
+  ok: true,
+  status: 200,
+  body: { categories: [{ id: CATEGORY, name: 'Pantry', depth: 0 }] },
+} as never;
+const sellers = [
+  { sellerId: SELLER_A, storeName: 'Date Palace' },
+  { sellerId: SELLER_B, storeName: null },
+];
+/** Picks one condition in the filter panel and applies it. */
+async function filterBy(field: string, value: string) {
+  fireEvent.click(await screen.findByRole('button', { name: /^Filter/ }));
+  fireEvent.change(await screen.findByLabelText('Field'), { target: { value: field } });
+  fireEvent.change(screen.getByLabelText('Value'), { target: { value } });
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+}
+const lastAsked = (prefix: string) =>
+  new URLSearchParams(String(reads(prefix).at(-1)?.[1]).split('?')[1]);
+
+describe('seller, category and reason filters', () => {
+  it('filters first publications by reason, store and category, with the stores of the answer', async () => {
+    call.mockImplementation((_m: string, path: string) =>
+      Promise.resolve(
+        path === 'catalog/categories'
+          ? categories
+          : page([row(1)], {
+              totals: { 'product-revision': 0, 'offer-first-publication': 1 },
+              sellers,
+            }),
+      ),
+    );
+    mount('first');
+    await screen.findByText('Dates 1');
+    await filterBy('reasons', 'certificate-badge');
+    await waitFor(() =>
+      expect(lastAsked('catalog/admin/review-queue').get('reasons')).toBe('certificate-badge'),
+    );
+    await filterBy('sellerId', SELLER_B);
+    await waitFor(() =>
+      expect(lastAsked('catalog/admin/review-queue').get('sellerId')).toBe(SELLER_B),
+    );
+    // A store sellers cannot name shows with its short id.
+    expect(
+      await screen.findByRole('button', { name: /Remove filter Store is .*0190a000/ }),
+    ).toBeTruthy();
+    await filterBy('categoryId', CATEGORY);
+    await waitFor(() =>
+      expect(lastAsked('catalog/admin/review-queue').get('categoryId')).toBe(CATEGORY),
+    );
+    expect(lastAsked('catalog/admin/review-queue').get('kind')).toBe('offer-first-publication');
+    expect(savedReads.some((path) => path.endsWith('listKey=admin.catalog.review-queue'))).toBe(
+      true,
+    );
+  });
+
+  it('filters held edits by store and category and has saved filters of their own', async () => {
+    call.mockImplementation((_m: string, path: string) =>
+      Promise.resolve(
+        path === 'catalog/categories' ? categories : page([edit(1)], { totalPending: 1, sellers }),
+      ),
+    );
+    mount('edits');
+    await screen.findByText('Dates 1');
+    await waitFor(() =>
+      expect(savedReads).toContain('lists/admin/saved-filters?listKey=admin.catalog.offer-changes'),
+    );
+    await filterBy('sellerId', SELLER_A);
+    await waitFor(() =>
+      expect(lastAsked('catalog/admin/offer-changes').get('sellerId')).toBe(SELLER_A),
+    );
+    expect(
+      await screen.findByRole('button', { name: /Remove filter Store is Date Palace/ }),
+    ).toBeTruthy();
+    await filterBy('categoryId', CATEGORY);
+    await waitFor(() =>
+      expect(lastAsked('catalog/admin/offer-changes').get('categoryId')).toBe(CATEGORY),
+    );
   });
 });
 

@@ -72,6 +72,10 @@ export interface QueueTextSearch {
 
 export interface OfferQueueFilter {
   readonly sellerId?: Id<'Seller'>;
+  /** Offers whose product's published revision names this platform category. */
+  readonly categoryId?: Id<'Category'>;
+  /** These Offers only (the resolved `reasons` filter); an empty list keeps none. */
+  readonly offerIds?: readonly Id<'Offer'>[];
   readonly search?: QueueTextSearch;
   /** Submitted at or after this instant (inclusive). */
   readonly submittedFrom?: Temporal.Instant | null;
@@ -338,6 +342,17 @@ export interface OwnCatalogReader {
    * seller when `filter.sellerId` is given.
    */
   pendingReviewCount(market: MarketContext, filter?: OfferQueueFilter): Promise<number>;
+
+  /**
+   * The sellers with a row in the review queue (the seller filter's options), whatever the other
+   * filters: of Offers waiting for their first publication when `offers`, of SELLER products with a
+   * pending revision when `revisions`. Distinct, by id, at most `limit`.
+   */
+  pendingQueueSellerIds(
+    market: MarketContext,
+    kinds: { readonly offers: boolean; readonly revisions: boolean },
+    limit: number,
+  ): Promise<readonly Id<'Seller'>[]>;
 
   /** How many SELLER products hold a pending revision (the review queue) that `filter` keeps. */
   pendingRevisionCount(market: MarketContext, filter?: RevisionQueueFilter): Promise<number>;

@@ -53,6 +53,7 @@ describe.each(['AU', 'ZZ'] as const)('review queue submitted range in market %s'
         },
       } as never,
       ownReader: {
+        pendingQueueSellerIds: () => Promise.resolve([]),
         pendingReviewCount: (_m: MarketContext, filter?: unknown) => {
           offerCounts.push(filter);
           return Promise.resolve(filter === undefined ? 7 : 1);
@@ -73,6 +74,7 @@ describe.each(['AU', 'ZZ'] as const)('review queue submitted range in market %s'
       gtinRegistry: { duplicatesOf: () => Promise.resolve([]) },
       productApproveProbe: { probe: () => Promise.resolve(false) } as never,
       queueFacts: {
+        pendingFirstPublicationsWithReasons: () => Promise.resolve([]),
         firstPublicationReasons: () => Promise.resolve(new Map()),
         openTagTypes: () => Promise.resolve(new Map()),
       },

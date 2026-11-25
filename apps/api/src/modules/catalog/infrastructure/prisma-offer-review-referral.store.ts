@@ -69,6 +69,35 @@ export class PrismaOfferReviewQueueFacts implements OfferReviewQueueFacts {
     return found;
   }
 
+  async pendingFirstPublicationsWithReasons(
+    market: MarketContext,
+    reasons: readonly OfferReviewReason[],
+  ): Promise<readonly Id<'Offer'>[]> {
+    if (reasons.length === 0) return [];
+    // Every first-publication referral of the Offers that wait now (the relation filter keeps the
+    // pending rows; the unique `(market_id, offer_id, offer_version, trigger)` orders each Offer's
+    // own), then the latest per Offer decides.
+    const rows = await this.prisma.tx(market).catalogOfferReviewReferral.findMany({
+      where: {
+        marketId: market.marketId,
+        trigger: 'first-publication',
+        offer: { is: { marketId: market.marketId, status: 'pending-first-publish' } },
+      },
+      select: { offerId: true, reasons: true },
+      orderBy: [{ offerId: 'asc' }, { offerVersion: 'desc' }],
+    });
+    const wanted = new Set<string>(reasons);
+    const seen = new Set<string>();
+    const matched: Id<'Offer'>[] = [];
+    for (const row of rows) {
+      if (seen.has(row.offerId)) continue;
+      seen.add(row.offerId);
+      if (row.reasons.some((reason) => wanted.has(reason)))
+        matched.push(row.offerId as Id<'Offer'>);
+    }
+    return matched;
+  }
+
   async openTagTypes(
     market: MarketContext,
     offerIds: readonly Id<'Offer'>[],

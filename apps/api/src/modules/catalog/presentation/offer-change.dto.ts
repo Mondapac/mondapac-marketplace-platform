@@ -6,6 +6,7 @@ import {
   OFFER_PENDING_CHANGE_STATUSES,
 } from '../domain/offer-pending-change';
 import { OFFER_REVIEW_REASONS, SELLER_REVIEW_REASONS } from '../domain/offer-review-policy';
+import { QueueSellerDto } from './offer-review.dto';
 
 // Bodies and answers of the held changes of live Offers (risk-based Offer approval, slice 2c).
 // Ids, codes, the seller's own proposed content and the reviewer's note to the seller.
@@ -159,6 +160,15 @@ export class OfferChangesListDto {
     description: 'The store names of q matched more stores than can be searched: narrow it.',
   })
   searchCapped!: boolean;
+  @ApiProperty({
+    type: [QueueSellerDto],
+    description:
+      'The stores with a pending change, whatever the filters (the seller filter options): ' +
+      'named stores by name, then unnamed ones by id; at most 100.',
+  })
+  sellers!: QueueSellerDto[];
+  @ApiProperty({ description: 'More stores have a pending change than `sellers` holds (100).' })
+  sellersCapped!: boolean;
 }
 
 /** The active Offer review stops (the admin stop banner). */

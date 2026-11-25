@@ -12,7 +12,8 @@ import {
 } from '../../../../platform/list-query';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_PRODUCT_VIEW } from '../../contracts/permissions';
-import { OFFER_REVIEW_REASONS, type OfferReviewReason } from '../../domain/offer-review-policy';
+import type { OfferReviewReason } from '../../domain/offer-review-policy';
+import { parseOfferReviewReasons } from '../offer-changes/review-reasons-filter';
 import {
   adminOfferChangeRows,
   readAdminOfferChangeFacts,
@@ -28,7 +29,12 @@ import type { OfferRepository } from '../ports/offer.repository';
 import type { OwnCatalogReader, QueueTextSearch } from '../ports/own-catalog.reader';
 import type { SellerNamesReader } from '../ports/seller-names.reader';
 import type { StoreNameSearch } from '../ports/store-name-search';
-import { parseQueueSearch } from './review-queue-list.use-case';
+import {
+  parseQueueSearch,
+  queueSellersOf,
+  REVIEW_QUEUE_SELLERS_MAX,
+  type QueueSeller,
+} from './review-queue-list.use-case';
 
 export const OFFER_CHANGES_SORTS = ['submitted'] as const;
 export const OFFER_CHANGES_PAGE_DEFAULT = 25;
@@ -84,6 +90,10 @@ export interface AdminOfferChangesListOutput {
   readonly totalPending: number;
   /** The store-name part of `q` matched more stores than `sellers` answers: narrow the search. */
   readonly searchCapped: boolean;
+  /** The stores with a pending change, whatever the filters (the seller filter's options). */
+  readonly sellers: readonly QueueSeller[];
+  /** More stores have a pending change than the options hold (100): the others are not offered. */
+  readonly sellersCapped: boolean;
 }
 
 export type AdminOfferChangesListFailure =
@@ -116,33 +126,10 @@ interface ParsedFilter {
 
 const absent = (value: unknown): boolean => value === undefined || value === null || value === '';
 
-/** `reasons`: an array of codes or one comma-separated text; each a known review reason. */
-function parseReasons(
-  value: unknown,
-): Result<readonly OfferReviewReason[] | null, ChangeValidationFailure> {
-  if (absent(value)) return ok(null);
-  const raw =
-    typeof value === 'string'
-      ? value.split(',')
-      : Array.isArray(value)
-        ? (value as unknown[])
-        : null;
-  if (raw === null || raw.length === 0 || raw.length > OFFER_REVIEW_REASONS.length * 2) {
-    return invalid('reasons', 'type');
-  }
-  const picked = new Set<OfferReviewReason>();
-  for (const item of raw) {
-    const known = OFFER_REVIEW_REASONS.find((reason) => reason === item);
-    if (known === undefined) return invalid('reasons', 'value');
-    picked.add(known);
-  }
-  return ok([...picked]);
-}
-
 function parseFilter(
   record: Readonly<Record<string, unknown>>,
 ): Result<ParsedFilter, ChangeValidationFailure> {
-  const reasons = parseReasons(record['reasons']);
+  const reasons = parseOfferReviewReasons(record['reasons']);
   if (!reasons.ok) return reasons;
   const ids: { sellerId?: Id<'Seller'>; categoryId?: Id<'Category'> } = {};
   for (const key of ['sellerId', 'categoryId'] as const) {
@@ -312,6 +299,10 @@ export class AdminOfferChangesList extends UseCase<
           after = { submittedAt: anchor.state.submittedAt, id: anchor.state.id };
         }
         const totalPending = await deps.pendingChanges.countPending(market);
+        const sellerIds = await deps.pendingChanges.pendingSellerIds(
+          market,
+          REVIEW_QUEUE_SELLERS_MAX + 1,
+        );
         const total = !pagesMode
           ? null
           : filtered
@@ -335,14 +326,20 @@ export class AdminOfferChangesList extends UseCase<
         const pageSize = paged === null ? limit : paged.pageSize;
         const shown = rows.slice(0, pageSize);
         const facts = await readAdminOfferChangeFacts(deps, market, shown, locale);
-        return ok({ rows, shown, facts, total, totalPending });
+        return ok({ rows, shown, facts, total, totalPending, sellerIds });
       },
       { readOnly: true },
     );
     if (!read.ok) return err({ code: 'access.unavailable' });
     if (read.value === null) return invalid('afterId', 'unknown');
-    const { rows, shown, facts, total, totalPending } = read.value;
+    const { rows, shown, facts, total, totalPending, sellerIds } = read.value;
     const items = await adminOfferChangeRows(deps, context, shown, facts);
+    const sellersCapped = sellerIds.length > REVIEW_QUEUE_SELLERS_MAX;
+    const sellers = await queueSellersOf(
+      context,
+      deps.sellerNames,
+      sellerIds.slice(0, REVIEW_QUEUE_SELLERS_MAX),
+    );
     const hasMore = rows.length > shown.length;
     const last = shown[shown.length - 1];
     if (paged === null) {
@@ -356,6 +353,8 @@ export class AdminOfferChangesList extends UseCase<
         total: null,
         totalPending,
         searchCapped,
+        sellers,
+        sellersCapped,
       });
     }
     const hasNext = pagesMode ? offset + paged.pageSize < (total ?? 0) : hasMore;
@@ -369,6 +368,8 @@ export class AdminOfferChangesList extends UseCase<
       total,
       totalPending,
       searchCapped,
+      sellers,
+      sellersCapped,
     });
   }
 }

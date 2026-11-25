@@ -72,6 +72,9 @@ export interface OfferPendingChangeRepository {
 
   /** How many `pending` changes of the Market the filter keeps. */
   countPending(market: MarketContext, filter?: OfferChangeQueueFilter): Promise<number>;
+
+  /** The sellers with a `pending` change (the seller filter's options): distinct, by id, at most `limit`. */
+  pendingSellerIds(market: MarketContext, limit: number): Promise<readonly Id<'Seller'>[]>;
 }
 
 export const OFFER_PENDING_CHANGE_REPOSITORY = Symbol('CATALOG_OFFER_PENDING_CHANGE_REPOSITORY');
