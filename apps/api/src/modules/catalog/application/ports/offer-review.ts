@@ -79,6 +79,13 @@ export interface OfferReviewReferralStore {
 }
 export const OFFER_REVIEW_REFERRAL_STORE = Symbol('CATALOG_OFFER_REVIEW_REFERRAL_STORE');
 
+/** The latest first-publication decision of the policy about one Offer (slice 5). */
+export interface FirstPublicationDecision {
+  /** The Offer's version after the submit the decision is about. */
+  readonly offerVersion: number;
+  readonly reasons: readonly OfferReviewReason[];
+}
+
 /**
  * What the review queue reads about Offers waiting for their first publication (slice 5): the
  * reasons of each Offer's latest `first-publication` referral (the queue's reason chips and the
@@ -87,13 +94,14 @@ export const OFFER_REVIEW_REFERRAL_STORE = Symbol('CATALOG_OFFER_REVIEW_REFERRAL
  */
 export interface OfferReviewQueueFacts {
   /**
-   * The reasons of the latest `first-publication` referral of each Offer (highest Offer version);
-   * an Offer with no such referral is left out of the map.
+   * The latest `first-publication` referral of each Offer (highest Offer version): its reasons and
+   * the Offer version it decided (a bulk approval accepts the reasons only for the version it
+   * approves, Hassan L2). An Offer with no such referral is left out of the map.
    */
   firstPublicationReasons(
     market: MarketContext,
     offerIds: readonly Id<'Offer'>[],
-  ): Promise<ReadonlyMap<string, readonly OfferReviewReason[]>>;
+  ): Promise<ReadonlyMap<string, FirstPublicationDecision>>;
 
   /**
    * The Offers of the Market waiting for their first publication whose latest `first-publication`

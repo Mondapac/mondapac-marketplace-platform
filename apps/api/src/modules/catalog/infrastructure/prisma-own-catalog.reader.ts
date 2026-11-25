@@ -728,13 +728,15 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
   ): Promise<readonly Id<'Seller'>[]> {
     const tx = this.prisma.tx(market);
     const found = new Set<string>();
-    // GROUP BY over the few queue rows (the partial queue indexes pick them), lowest ids first.
+    // GROUP BY over the queue rows only, with no ORDER BY or LIMIT (Sajad B1): an ordered,
+    // limited group pulls the plan onto a (market_id, seller_id, ...) index of the whole table,
+    // which never stops early while the queue has fewer sellers than the limit. Unordered, the
+    // partial queue index picks the rows and a hash aggregate groups them; the few groups are
+    // sorted and capped here. The work follows the queue's length, not the Market's Offers.
     if (kinds.offers) {
       const groups = await tx.catalogOffer.groupBy({
         by: ['sellerId'],
         where: { marketId: market.marketId, status: 'pending-first-publish' },
-        orderBy: { sellerId: 'asc' },
-        take: limit,
       });
       for (const group of groups) found.add(group.sellerId);
     }
@@ -742,8 +744,6 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
       const groups = await tx.catalogProduct.groupBy({
         by: ['ownerSellerId'],
         where: pendingRevisionsWhere(market, {}),
-        orderBy: { ownerSellerId: 'asc' },
-        take: limit,
       });
       for (const group of groups) if (group.ownerSellerId !== null) found.add(group.ownerSellerId);
     }

@@ -16,6 +16,9 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import { OFFER_CHANGE_REASONS, PRODUCT_CHANGE_REASONS } from '../../domain/events';
 import type { OfferReviewReason } from '../../domain/offer-review-policy';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
+import type { CategoryOfferReviewFlagsStore } from '../ports/category-offer-review-flags.store';
+import type { CategoryPathsReader } from '../ports/category-paths.reader';
+import type { FirstPublicationDecision } from '../ports/offer-review';
 import type { OfferRepository } from '../ports/offer.repository';
 import type { OwnCatalogReader } from '../ports/own-catalog.reader';
 import type { OfferApprove } from './offer-approve.use-case';
@@ -53,14 +56,42 @@ describe.each(['AU', 'ZZ'] as const)('review queue bulk decide in market %s', (c
     readonly sellerId?: string;
     readonly reasons?: readonly OfferReviewReason[] | null;
     readonly tagTypes?: readonly string[];
+    /** The Offer's version now (default 1). */
+    readonly version?: number;
+    /** The Offer version its latest first-publication referral decided (default: `version`). */
+    readonly decidedVersion?: number;
+    /** The Offer is not in the Market (findManyByIds leaves it out). */
+    readonly missing?: true;
+    /** The published categories of the Offer's product. */
+    readonly categories?: readonly string[];
+  }
+  /** The R0 stops as read now (Hassan M1); `fail` makes one read fail. */
+  interface Stops {
+    readonly market?: boolean;
+    readonly sellers?: readonly string[];
+    /** The categories with their stop on. */
+    readonly categories?: readonly string[];
+    /** The category tree: each category's ancestors, root first. */
+    readonly tree?: Readonly<Record<string, readonly string[]>>;
+    readonly fail?: 'market' | 'seller' | 'category';
   }
   const SELLER = ids.next<'Seller'>() as string;
   function setup(
     answer: (action: string, input: Record<string, unknown>) => Answer = () => ok({}),
     allow = true,
     facts: Readonly<Record<string, Facts>> = {},
-    options: { readonly failRead?: boolean } = {},
+    options: { readonly failRead?: boolean; readonly stops?: Stops } = {},
   ) {
+    const stops = options.stops ?? {};
+    const flagged = stops.categories ?? [];
+    // A category's live path: its ancestors, then itself.
+    const pathOf = (categoryId: string): readonly string[] => [
+      ...(Object.entries(stops.tree ?? {}).find(([id]) => id === categoryId)?.[1] ?? []),
+      categoryId,
+    ];
+    const productCategories = new Map<string, readonly string[]>(
+      Object.entries(facts).map(([id, f]) => [`p-${id}`, f.categories ?? []]),
+    );
     const calls: { action: string; input: Record<string, unknown> }[] = [];
     const single = (action: string) => ({
       execute: (_c: CallContext, input: Record<string, unknown>): Promise<Answer> => {
@@ -87,24 +118,32 @@ describe.each(['AU', 'ZZ'] as const)('review queue bulk decide in market %s', (c
           return work();
         },
       } as unknown as UnitOfWork,
-      // Every Offer exists (an R1 row of one seller) unless the test says otherwise.
+      // Every Offer exists (an R1 row of one seller, version 1) unless the test says otherwise.
       offers: {
         findManyByIds: (_m: MarketContext, wanted: readonly string[]) =>
           Promise.resolve(
-            wanted.map((id) => ({
-              state: { id, sellerId: facts[id]?.sellerId ?? SELLER, productId: `p-${id}` },
-            })),
+            wanted
+              .filter((id) => facts[id]?.missing !== true)
+              .map((id) => ({
+                state: {
+                  id,
+                  sellerId: facts[id]?.sellerId ?? SELLER,
+                  productId: `p-${id}`,
+                  version: facts[id]?.version ?? 1,
+                },
+              })),
           ),
       } as unknown as OfferRepository,
       queueFacts: {
         pendingFirstPublicationsWithReasons: () => Promise.resolve([]),
         firstPublicationReasons: (_m: MarketContext, wanted: readonly string[]) =>
           Promise.resolve(
-            new Map<string, readonly OfferReviewReason[]>(
+            new Map<string, FirstPublicationDecision>(
               wanted.flatMap((id) => {
                 const reasons: readonly OfferReviewReason[] | null =
                   facts[id]?.reasons === undefined ? ['probation'] : facts[id].reasons;
-                return reasons === null ? [] : [[id, reasons] as const];
+                const offerVersion = facts[id]?.decidedVersion ?? facts[id]?.version ?? 1;
+                return reasons === null ? [] : [[id, { offerVersion, reasons }] as const];
               }),
             ),
           ),
@@ -120,6 +159,41 @@ describe.each(['AU', 'ZZ'] as const)('review queue bulk decide in market %s', (c
       policy: {
         locales: () => ({ default: 'en', allowed: ['en'] }),
       } as unknown as CatalogMarketPolicy,
+      stops: {
+        marketStop: () => Promise.resolve(stops.fail === 'market' ? null : stops.market === true),
+        stoppedSellerCount: () => Promise.resolve(null),
+      },
+      sellerFlags: {
+        flagsOf: (_c: CallContext, sellerId: string) => {
+          if (stops.fail === 'seller') return Promise.resolve(null);
+          const flag = (on: boolean) => ({ on, at: null });
+          return Promise.resolve({
+            trustedFromStart: flag(false),
+            fullReview: flag(false),
+            reviewStop: flag((stops.sellers ?? []).includes(sellerId)),
+          });
+        },
+      },
+      categoryFlags: {
+        listFlagged: () =>
+          stops.fail === 'category'
+            ? Promise.reject(new Error('down'))
+            : Promise.resolve([
+                // An "always review" category never stops a row.
+                { categoryId: 'c-sensitive', alwaysReview: true, reviewStop: false },
+                ...flagged.map((categoryId) => ({
+                  categoryId,
+                  alwaysReview: false,
+                  reviewStop: true,
+                })),
+              ]),
+        publishedCategoryIds: (_m: MarketContext, productId: string) =>
+          Promise.resolve(productCategories.get(productId) ?? []),
+      } as unknown as CategoryOfferReviewFlagsStore,
+      categoryPaths: {
+        livePathsMany: (_m: MarketContext, sets: readonly (readonly string[])[]) =>
+          Promise.resolve(sets.map((set) => set.map(pathOf))),
+      } as unknown as CategoryPathsReader,
     });
     return { useCase, calls };
   }
@@ -359,7 +433,7 @@ describe.each(['AU', 'ZZ'] as const)('review queue bulk decide in market %s', (c
       const result = await useCase.execute(context('admin'), {
         kind: 'offer',
         action: 'approve',
-        items: [r1, r6, both, r0, r3, r5, r7, all].map((id) => ({ id, version: 2 })),
+        items: [r1, r6, both, r0, r3, r5, r7, all].map((id) => ({ id, version: 1 })),
       });
       expect(result.ok && result.value.counts).toEqual({ done: 3, skipped: 5, failed: 0 });
       expect(calls.map((c) => c.input['offerId'])).toEqual([r1, r6, both]);
@@ -445,22 +519,169 @@ describe.each(['AU', 'ZZ'] as const)('review queue bulk decide in market %s', (c
       expect(calls.map((c) => c.input['offerId'])).toEqual([r1]);
     });
 
-    it('fails closed on an Offer with no stored decision, and leaves an unknown Offer to its use case', async () => {
-      const [a, b] = [offer(), offer()];
-      const { useCase, calls } = setup(() => ok({}), true, { [a]: { reasons: null } });
+    it('fails closed on an Offer with no stored decision, and skips an unknown Offer unrun (Hassan L1)', async () => {
+      const [a, b, c] = [offer(), offer(), offer()];
+      const { useCase, calls } = setup(() => ok({}), true, {
+        [a]: { reasons: null },
+        [b]: { missing: true },
+      });
       const result = await useCase.execute(context('admin'), {
         kind: 'offer',
         action: 'approve',
-        items: [a, b].map((id) => ({ id, version: 1 })),
+        items: [a, b, c].map((id) => ({ id, version: 1 })),
       });
-      expect(result.ok && result.value.results[0]).toEqual({
-        id: a,
+      expect(result.ok && result.value.results).toEqual([
+        {
+          id: a,
+          outcome: 'skipped',
+          reason: 'review.reasons-unknown',
+          name: nameOf(a),
+          blockers: [],
+        },
+        { id: b, outcome: 'skipped', reason: 'offer.not-found', name: null },
+        { id: c, outcome: 'done', name: nameOf(c) },
+      ]);
+      expect(calls.map((call) => call.input['offerId'])).toEqual([c]);
+    });
+
+    it('accepts the stored reasons only for the version approved and the version now (Hassan L2)', async () => {
+      const [stale, older, moved, fine] = [offer(), offer(), offer(), offer()];
+      const { useCase, calls } = setup(() => ok({}), true, {
+        // The admin saw version 1, the Offer is at 2 now and its decision is about 2.
+        [stale]: { version: 2 },
+        // The latest decision is about an earlier version than the Offer's now.
+        [older]: { version: 3, decidedVersion: 2 },
+        // The decision is about the version now, but the admin saw another one.
+        [moved]: { version: 5 },
+        [fine]: { version: 4 },
+      });
+      const result = await useCase.execute(context('admin'), {
+        kind: 'offer',
+        action: 'approve',
+        items: [
+          { id: stale, version: 1 },
+          { id: older, version: 3 },
+          { id: moved, version: 4 },
+          { id: fine, version: 4 },
+        ],
+      });
+      expect(result.ok && result.value.results.map((r) => [r.id, r.outcome, r.reason])).toEqual([
+        [stale, 'skipped', 'review.reasons-unknown'],
+        [older, 'skipped', 'review.reasons-unknown'],
+        [moved, 'skipped', 'review.reasons-unknown'],
+        [fine, 'done', undefined],
+      ]);
+      expect(calls).toEqual([{ action: 'offer-approve', input: { offerId: fine, version: 4 } }]);
+    });
+
+    describe('R0 stops read now, not at submit (Hassan M1)', () => {
+      const stopped = (id: string) => ({
+        id,
         outcome: 'skipped',
-        reason: 'review.reasons-unknown',
-        name: nameOf(a),
-        blockers: [],
+        reason: 'review.bulk-not-allowed',
+        name: nameOf(id),
+        blockers: ['emergency-stop'],
       });
-      expect(calls.map((c) => c.input['offerId'])).toEqual([b]);
+
+      it('skips every row while the Market emergency stop is on', async () => {
+        const [r1, r2] = [offer(), offer()];
+        const type = code === 'AU' ? 'halal' : 'zz-cert';
+        const { useCase, calls } = setup(
+          () => ok({}),
+          true,
+          {
+            [r1]: { reasons: ['probation'] },
+            [r2]: { reasons: ['certificate-badge'], tagTypes: [type] },
+          },
+          { stops: { market: true } },
+        );
+        const result = await useCase.execute(context('admin'), {
+          kind: 'offer',
+          action: 'approve',
+          items: [r1, r2].map((id) => ({ id, version: 1 })),
+        });
+        expect(result.ok && result.value.results).toEqual([stopped(r1), stopped(r2)]);
+        expect(calls).toEqual([]);
+      });
+
+      it('skips the R1 and R2 rows of a seller stopped after the submit, and goes on with the rest', async () => {
+        const [r1, r2, other] = [offer(), offer(), offer()];
+        const stoppedSeller = ids.next<'Seller'>() as string;
+        const type = code === 'AU' ? 'halal' : 'zz-cert';
+        const { useCase, calls } = setup(
+          () => ok({}),
+          true,
+          {
+            [r1]: { reasons: ['probation'], sellerId: stoppedSeller },
+            [r2]: { reasons: ['certificate-badge'], tagTypes: [type], sellerId: stoppedSeller },
+            [other]: { reasons: ['probation'] },
+          },
+          { stops: { sellers: [stoppedSeller] } },
+        );
+        const result = await useCase.execute(context('admin'), {
+          kind: 'offer',
+          action: 'approve',
+          items: [r1, r2, other].map((id) => ({ id, version: 1 })),
+        });
+        expect(result.ok && result.value.results).toEqual([
+          stopped(r1),
+          stopped(r2),
+          { id: other, outcome: 'done', name: nameOf(other) },
+        ]);
+        expect(calls.map((call) => call.input['offerId'])).toEqual([other]);
+      });
+
+      it('skips a row whose product sits under a stopped category, by inheritance', async () => {
+        const [child, direct, free] = [offer(), offer(), offer()];
+        const root = ids.next<'Category'>() as string;
+        const leaf = ids.next<'Category'>() as string;
+        const elsewhere = ids.next<'Category'>() as string;
+        const { useCase, calls } = setup(
+          () => ok({}),
+          true,
+          {
+            [child]: { categories: [leaf] },
+            [direct]: { categories: [root] },
+            [free]: { categories: [elsewhere] },
+          },
+          // The stop is on the root; the leaf's path is root -> leaf.
+          { stops: { categories: [root], tree: { [leaf]: [root] } } },
+        );
+        const result = await useCase.execute(context('admin'), {
+          kind: 'offer',
+          action: 'approve',
+          items: [child, direct, free].map((id) => ({ id, version: 1 })),
+        });
+        expect(result.ok && result.value.results).toEqual([
+          stopped(child),
+          stopped(direct),
+          { id: free, outcome: 'done', name: nameOf(free) },
+        ]);
+        expect(calls.map((call) => call.input['offerId'])).toEqual([free]);
+      });
+
+      it.each(['market', 'seller', 'category'] as const)(
+        'refuses the whole approval when the %s stop cannot be read, deciding nothing',
+        async (fail) => {
+          const { useCase, calls } = setup(() => ok({}), true, {}, { stops: { fail } });
+          const result = await useCase.execute(context('admin'), {
+            kind: 'offer',
+            action: 'approve',
+            items: [{ id: offer(), version: 1 }],
+          });
+          expect(result).toEqual({ ok: false, error: { code: 'access.unavailable' } });
+          expect(calls).toEqual([]);
+          // A send-back reads no stop: it goes on.
+          const a = offer();
+          const sent = await useCase.execute(context('admin'), {
+            kind: 'offer',
+            action: 'request-changes',
+            reasonCode: OFFER_CHANGE_REASONS[0],
+            items: [{ id: a, version: 1 }],
+          });
+          expect(sent.ok && sent.value.counts.done).toBe(1);
+        },
+      );
     });
 
     it('sends any row back with the one reason code, whatever its reasons', async () => {

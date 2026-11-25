@@ -1,11 +1,15 @@
 import type { Id, IdGenerator, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
+  FirstPublicationDecision,
   OfferReviewQueueFacts,
   OfferReviewReferral,
   OfferReviewReferralStore,
 } from '../application/ports/offer-review';
 import type { OfferReviewReason } from '../domain/offer-review-policy';
+
+/** Offer ids per referral read of the `reasons` filter (bind parameters stay far below the limit). */
+const REFERRAL_READ_CHUNK = 1000;
 
 /**
  * {@link OfferReviewReferralStore} over Prisma: one insert into `catalog.offer_review_referrals`
@@ -48,8 +52,8 @@ export class PrismaOfferReviewQueueFacts implements OfferReviewQueueFacts {
   async firstPublicationReasons(
     market: MarketContext,
     offerIds: readonly Id<'Offer'>[],
-  ): Promise<ReadonlyMap<string, readonly OfferReviewReason[]>> {
-    const found = new Map<string, readonly OfferReviewReason[]>();
+  ): Promise<ReadonlyMap<string, FirstPublicationDecision>> {
+    const found = new Map<string, FirstPublicationDecision>();
     if (offerIds.length === 0) return found;
     const rows = await this.prisma.tx(market).catalogOfferReviewReferral.findMany({
       where: {
@@ -57,13 +61,19 @@ export class PrismaOfferReviewQueueFacts implements OfferReviewQueueFacts {
         offerId: { in: [...new Set(offerIds)] },
         trigger: 'first-publication',
       },
-      select: { offerId: true, reasons: true },
+      select: { offerId: true, offerVersion: true, reasons: true },
       orderBy: [{ offerId: 'asc' }, { offerVersion: 'desc' }],
     });
     // The first row of each Offer is its latest decision.
     for (const row of rows) {
       if (!found.has(row.offerId)) {
-        found.set(row.offerId, Object.freeze([...row.reasons]) as readonly OfferReviewReason[]);
+        found.set(
+          row.offerId,
+          Object.freeze({
+            offerVersion: row.offerVersion,
+            reasons: Object.freeze([...row.reasons]) as readonly OfferReviewReason[],
+          }),
+        );
       }
     }
     return found;
@@ -74,28 +84,37 @@ export class PrismaOfferReviewQueueFacts implements OfferReviewQueueFacts {
     reasons: readonly OfferReviewReason[],
   ): Promise<readonly Id<'Offer'>[]> {
     if (reasons.length === 0) return [];
-    // Every first-publication referral of the Offers that wait now (the relation filter keeps the
-    // pending rows; the unique `(market_id, offer_id, offer_version, trigger)` orders each Offer's
-    // own), then the latest per Offer decides.
-    const rows = await this.prisma.tx(market).catalogOfferReviewReferral.findMany({
-      where: {
-        marketId: market.marketId,
-        trigger: 'first-publication',
-        offer: { is: { marketId: market.marketId, status: 'pending-first-publish' } },
-      },
-      select: { offerId: true, reasons: true },
-      orderBy: [{ offerId: 'asc' }, { offerVersion: 'desc' }],
+    const tx = this.prisma.tx(market);
+    // Sajad B2: the read is driven by the queue, never the Market's referral history. First the
+    // waiting Offers (the partial queue index), then their referrals in chunks through the unique
+    // `(market_id, offer_id, offer_version, trigger)`, latest first; the latest per Offer decides.
+    const pending = await tx.catalogOffer.findMany({
+      where: { marketId: market.marketId, status: 'pending-first-publish' },
+      select: { id: true },
     });
     const wanted = new Set<string>(reasons);
-    const seen = new Set<string>();
     const matched: Id<'Offer'>[] = [];
-    for (const row of rows) {
-      if (seen.has(row.offerId)) continue;
-      seen.add(row.offerId);
-      if (row.reasons.some((reason) => wanted.has(reason)))
-        matched.push(row.offerId as Id<'Offer'>);
+    for (let from = 0; from < pending.length; from += REFERRAL_READ_CHUNK) {
+      const chunk = pending.slice(from, from + REFERRAL_READ_CHUNK).map((offer) => offer.id);
+      const rows = await tx.catalogOfferReviewReferral.findMany({
+        where: {
+          marketId: market.marketId,
+          offerId: { in: chunk },
+          trigger: 'first-publication',
+        },
+        select: { offerId: true, reasons: true },
+        orderBy: [{ offerId: 'asc' }, { offerVersion: 'desc' }],
+      });
+      let previous: string | null = null;
+      for (const row of rows) {
+        if (row.offerId === previous) continue;
+        previous = row.offerId;
+        if (row.reasons.some((reason) => wanted.has(reason))) {
+          matched.push(row.offerId as Id<'Offer'>);
+        }
+      }
     }
-    return matched;
+    return matched.sort();
   }
 
   async openTagTypes(

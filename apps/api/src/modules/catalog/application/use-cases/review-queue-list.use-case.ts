@@ -755,7 +755,7 @@ export class ReviewQueueList extends UseCase<
         conditionCode: state.conditionCode,
         description: state.description,
         handling: state.handling,
-        reasons: offerReasons.get(state.id) ?? [],
+        reasons: offerReasons.get(state.id)?.reasons ?? [],
         tagTypes: offerTagTypes.get(state.id) ?? [],
         submittedAt: isoOf(state.submittedAt),
         actions,

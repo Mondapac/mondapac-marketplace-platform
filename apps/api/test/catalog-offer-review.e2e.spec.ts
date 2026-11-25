@@ -117,6 +117,8 @@ describe('admin Offer review over HTTP (integration)', () => {
   /** The first-publication reasons and tag types of Offers (the queue's chips, slice 5). */
   let firstReasons: Map<string, readonly OfferReviewReason[]>;
   let tagTypes: Map<string, readonly string[]>;
+  /** The Market's emergency stop as the settings facade answers it. */
+  let marketStop: boolean;
   const http = () => request(app.getHttpServer());
 
   async function boot() {
@@ -208,8 +210,19 @@ describe('admin Offer review over HTTP (integration)', () => {
             firstPublicationReasons: (_m: MarketContext, wanted: readonly string[]) =>
               Promise.resolve(
                 new Map(
+                  // Each decision is about the Offer's version now (the submit's).
                   wanted.flatMap((offerId) =>
-                    firstReasons.has(offerId) ? [[offerId, firstReasons.get(offerId)!]] : [],
+                    firstReasons.has(offerId)
+                      ? [
+                          [
+                            offerId,
+                            {
+                              offerVersion: offers.get(offerId)?.state.version ?? 1,
+                              reasons: firstReasons.get(offerId)!,
+                            },
+                          ],
+                        ]
+                      : [],
                   ),
                 ),
               ),
@@ -225,10 +238,11 @@ describe('admin Offer review over HTTP (integration)', () => {
                 { categoryId: PRODUCT, alwaysReview: true, reviewStop: true, version: 1 },
                 { categoryId: SELLER, alwaysReview: true, reviewStop: false, version: 1 },
               ]),
+            publishedCategoryIds: () => Promise.resolve([]),
           })
           .overrideProvider(OFFER_REVIEW_STOPS_READER)
           .useValue({
-            marketStop: () => Promise.resolve(true),
+            marketStop: () => Promise.resolve(marketStop),
             stoppedSellerCount: () => Promise.resolve(2),
           })
           .overrideProvider(AUDIT_WRITER)
@@ -422,6 +436,7 @@ describe('admin Offer review over HTTP (integration)', () => {
     standings = new InMemorySellerReviewStandings();
     firstReasons = new Map();
     tagTypes = new Map();
+    marketStop = false;
   });
   afterEach(async () => {
     await app.close();
@@ -954,6 +969,7 @@ describe('admin Offer review over HTTP (integration)', () => {
     it('answers the stop banner counts, and 401 or 403 without a session or the key', async () => {
       await boot();
       await seeded(code);
+      marketStop = true;
       const stops = await get(code, '/offer-review/stops', sessionOf(code, VIEWER, 1));
       expect(stops.status).toBe(200);
       expect(stops.headers['cache-control']).toBe('no-store');
@@ -1005,6 +1021,37 @@ describe('admin Offer review over HTTP (integration)', () => {
       });
       expect(offers.get(r3.state.id)!.state.status).toBe('pending-first-publish');
       expect(saved.map((s) => s.offer.state.id)).toEqual([r1.state.id, r6.state.id]);
+    });
+
+    it('skips every row of a bulk approval while the Market emergency stop is on (Hassan M1)', async () => {
+      await boot();
+      await seeded(code);
+      const r1 = waiting(code, 1);
+      firstReasons.set(r1.state.id, ['probation']);
+      marketStop = true;
+
+      const response = await post(
+        code,
+        '/review-queue/bulk-decide',
+        sessionOf(code, MODERATOR, 1),
+        { kind: 'offer', action: 'approve', items: [{ id: r1.state.id, version: 4 }] },
+      );
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        action: 'approve',
+        counts: { done: 0, skipped: 1, failed: 0 },
+        results: [
+          {
+            id: r1.state.id,
+            outcome: 'skipped',
+            reason: 'review.bulk-not-allowed',
+            name: 'Dates',
+            blockers: ['emergency-stop'],
+          },
+        ],
+      });
+      expect(offers.get(r1.state.id)!.state.status).toBe('pending-first-publish');
+      expect(saved).toEqual([]);
     });
 
     it('approves a held change: its fields go live in one edit, admin actor, audited', async () => {

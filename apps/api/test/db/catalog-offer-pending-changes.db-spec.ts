@@ -725,7 +725,9 @@ describe.each(TEST_MARKETS)(
           tags: await facts.openTagTypes(market, [offerId]),
         }));
         if (!read.ok) throw new Error('read failed');
-        expect([...read.value.reasons]).toEqual([[offerId, ['handling', 'full-review']]]);
+        expect([...read.value.reasons]).toEqual([
+          [offerId, { offerVersion: 3, reasons: ['handling', 'full-review'] }],
+        ]);
         expect(read.value.tags.get(offerId)).toBeUndefined();
         const other = marketOf(otherMarketOf(code));
         const across = await persistence.unitOfWork.run(other, async () => ({
