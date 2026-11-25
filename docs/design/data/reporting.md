@@ -16,6 +16,7 @@ notes: `docs/modules/reporting/notes.md`.
 | `ledger_entries` | `(market_id, entry_id)` | one per commission, refund-commission and seller-cashback ledger row (PR 4 of dashboards v2) | about 160k (1.5 lines per seller order, plus refunds and cashback) |
 | `daily_ledger` | `(market_id, market_day, seller_id, currency, kind)` | one per active seller, day and ledger kind | about 1.2 × `daily_seller_sales` (commission every day, the other kinds rarely) |
 | `daily_engagement` | `(market_id, market_day)` | one per Market day (dashboards v2, phase 2: the shopping funnel) | 365 per Market |
+| `daily_abandoned_carts` | `(market_id, market_day)` | one per Market day (dashboards v2, phase 2: abandoned carts) | 365 per Market |
 
 `seller_orders` also holds `delivery_method` and `delivery_state` (a region code of at most 3
 characters, never a postcode; migration `20261124010000_reporting_seller_orders_delivery`): nullable
@@ -41,6 +42,16 @@ snapshot job, at least 2 h after the Market day ends (`createMany` with skip-dup
 role has SELECT and INSERT only, no UPDATE or DELETE, so a customer's opt-out or erasure never needs
 to touch it. No account, guest, offer or seller column.
 
+`daily_abandoned_carts` (migration `20261125040000_reporting_daily_abandoned_carts`, dashboards v2
+phase 2): per Market day `cart_count` (active carts, guest or signed-in, with at least one line, no
+order mark, last changed at least 24 h before the day's end) and their approximate value
+`approx_value_amount` (bigint minor units) and `approx_value_currency` (the Market's currency; both
+null when a line was in another currency; CHECK: both or neither, amount >= 0, `cart_count >= 0`),
+and `recorded_at`. Written once by the hourly snapshot job on the next Market day, at least 2 h
+after the day ends, from the carts as they are then (`createMany` with skip-duplicates on the
+primary key); only yesterday is ever written, so a day missed while the worker was down has no row.
+The application role has SELECT and INSERT only. No cart, account, guest, offer or seller column.
+
 All rows are small (under 200 bytes), so even 10x this volume stays under a few GB with indexes.
 
 ## Access paths
@@ -56,6 +67,10 @@ All rows are small (under 200 bytes), so even 10x this volume stays under a few 
   `ledger_entries (market_id, market_day, seller_id)`.
 - Shopping funnel: the snapshot's look-back (28 days) and the read of a period and the one before
   are primary key ranges on `(market_id, market_day)`.
+- Abandoned carts: the snapshot's check of yesterday and the read of a period and the one before
+  are primary key lookups and ranges on `(market_id, market_day)`. The count itself is cart's: its
+  lines (`cart_lines (market_id, cart_id, ...)` unique index) of the carts selected on
+  `carts (market_id, last_changed_at)`, at most 20,000 lines per read.
 - Ledger readiness (7 days): `seller_orders (market_id, paid_day, seller_id)` and
   `ledger_entries (market_id, market_day, seller_id)`, filtered on kind; then the seller orders
   not paid in the window by primary key. `ledger_entries (market_id, seller_order_id)` serves
@@ -71,6 +86,9 @@ All rows are small (under 200 bytes), so even 10x this volume stays under a few 
   and engagement's retention purge (guests 30 days, accounts 12 months). It is aggregate only and
   kept as long as the dashboards show history (custom ranges reach 13 months); a lost row stays
   lost, a down migration loses the history beyond the 28-day look-back.
+- `daily_abandoned_carts` is NOT rebuildable either: a cart's state at a past day's end cannot be
+  read again (carts change and are purged: guests after 7 days, signed-in after 90). Aggregate only,
+  kept as long as the dashboards show history; a down migration loses all past days.
 - `inbox` rows have no purge yet, the same as the other modules' inboxes; the shared inbox
   retention, when it is added, covers this one too.
 - Revisit partitioning `sales_entries` and the rollups by `market_day` when a table passes about

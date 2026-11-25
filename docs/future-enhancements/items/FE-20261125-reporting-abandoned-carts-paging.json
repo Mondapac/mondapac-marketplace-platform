@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-reporting-abandoned-carts-paging",
+  "area": "infra",
+  "title": "شمارش سبدهای رهاشده بیش از ۲۰٬۰۰۰ ردیف سبد",
+  "desc": "cart.count-abandoned-carts در یک خواندن حداکثر ۲۰٬۰۰۰ ردیف سبد (cart_lines) را می‌خواند و ارزش تقریبی را در حافظه جمع می‌کند؛ بیشتر از آن، روز نوشته نمی‌شود (هرگز عدد کم ثبت نمی‌شود) و آن روز در همان فرایند دوباره پرسیده نمی‌شود. در حجم بالا: COUNT(DISTINCT cart_id) و SUM(quantity * price_at_add_amount) به تفکیک ارز در خود SQL (کوئری خام با بازبینی حسن) یا صفحه‌بندی بر اساس شناسهٔ ردیف.",
+  "src": "apps/api/src/modules/cart/application/use-cases/count-abandoned-carts.use-case.ts",
+  "date": "2026-11-25",
+  "trig": "وقتی لاگ reporting.abandoned-carts-snapshot.day-failed با cart.abandoned-too-large دیده شود یا ردیف‌های سبدهای بی‌تغییر یک بازار به ۱۰٬۰۰۰ برسد",
+  "prio": "پایین",
+  "status": "موکول"
+}
