@@ -18,7 +18,13 @@ import { Fragment, useEffect, useId, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { callApi } from '../api/client.ts';
 import { priceProblemOf } from '../price/errors.ts';
-import { formatMinor, inputOf } from '../price/money.ts';
+import { formatMinor, inputOf, minorOf } from '../price/money.ts';
+import {
+  customerPaysMinor,
+  estimateFor,
+  lastEstimateFor,
+  useReceiveEstimates,
+} from '../price/receive-estimates.ts';
 import type { PriceWritten } from '../price/types.ts';
 import { levelsProblemOf } from '../stock/levels-errors.ts';
 import type { StockSet } from '../stock/levels-types.ts';
@@ -41,7 +47,7 @@ import {
   type UnitRow,
 } from './sell-unit-logic.ts';
 import { CHECKBOX, SkuField } from './sku-field.tsx';
-import { SizeDetails, sizeTabsOf, type SizeTab } from './size-details.tsx';
+import { SizeDetails, sizeTabsOf, type ReceiveView, type SizeTab } from './size-details.tsx';
 import { SizeRequests } from './size-requests.tsx';
 import type { SizeRequestsData } from './size-request-logic.ts';
 import { LastSizeHint, SizesYouSell } from './sizes-you-sell.tsx';
@@ -51,7 +57,16 @@ import type { CellChange, FileModel } from './variant-file.ts';
 type Bulk = 'price' | 'increase' | 'stock';
 
 /** Column widths in rem. Inputs are w-28 (price), w-24 (stock) and w-40 (SKU) inside p-2 cells. */
-const COL = { variant: 8, onSale: 6, price: 8, special: 7, stock: 7, sku: 11, details: 7 } as const;
+const COL = {
+  variant: 8,
+  onSale: 6,
+  price: 8,
+  special: 7,
+  receive: 7,
+  stock: 7,
+  sku: 11,
+  details: 7,
+} as const;
 
 const unitError = (name: string): string => `catalog.variants-table.units.error.${name}`;
 
@@ -72,6 +87,7 @@ export function VariantsTable({
   csrfToken,
   fileModel = null,
   sizeRequests = null,
+  canEstimate = false,
 }: {
   readonly offerId: string;
   readonly rows: readonly TableRow[];
@@ -94,6 +110,11 @@ export function VariantsTable({
   readonly fileModel?: FileModel | null;
   /** Request a size and the seller's requests (variants V7); null when the product takes none. */
   readonly sizeRequests?: SizeRequestsData | null;
+  /**
+   * "You receive (est.)" (Offer page PR 4): the seller holds the price view key and the seller
+   * ledger key. Shown only with the price columns.
+   */
+  readonly canEstimate?: boolean;
 }) {
   const t = useTranslations();
   const showPrice = marketCurrency !== null;
@@ -123,6 +144,15 @@ export function VariantsTable({
   const [sizeTab, setSizeTab] = useState<SizeTab>('price');
   const [regionWidth, setRegionWidth] = useState<number | null>(null);
   const regionRef = useRef<HTMLDivElement>(null);
+  // "You receive (est.)": for what a customer pays now, the typed price included (not saved).
+  const showReceive = canEstimate && showPrice;
+  const customerPays = Object.fromEntries(
+    rows.map((row) => [
+      row.variantId,
+      showReceive ? customerPaysMinor(row.price, priceDrafts[row.variantId], currency) : null,
+    ]),
+  );
+  const estimates = useReceiveEstimates(offerId, customerPays, showReceive);
   // After a failed save the first invalid field takes focus, so its message is read out.
   useEffect(() => {
     if (focusTick > 0)
@@ -448,6 +478,60 @@ export function VariantsTable({
     );
   }
 
+  /**
+   * The "You receive (est.)" cell: "≈ amount" once the estimate for the row's price is read; while
+   * a newly typed price is read, the last number stays, muted, so it does not blink to a dash.
+   */
+  function receiveCell(variantId: string) {
+    const amount = customerPays[variantId] ?? null;
+    const estimate = estimateFor(estimates, variantId, amount);
+    const shown = estimate ?? (amount === null ? null : lastEstimateFor(estimates, variantId));
+    if (shown === null) return <Dash />;
+    return (
+      <span
+        className={estimate === null ? 'text-fg-muted' : undefined}
+        aria-busy={estimate === null}
+      >
+        {t('catalog.variants-table.receive.value', {
+          amount: formatMinor(shown.youReceiveMinor, currency, locale),
+        })}
+        {shown.taxInclusive ? null : (
+          <span className="block text-xs text-fg-muted">
+            {t('catalog.variants-table.receive.before-tax')}
+          </span>
+        )}
+      </span>
+    );
+  }
+
+  /** What the open Details' Price tab shows of "You receive (est.)" for one size. */
+  function receiveView(row: TableRow): ReceiveView | null {
+    // A size no longer sold has nothing to estimate.
+    if (row.price?.retired === true) return null;
+    const amount = customerPays[row.variantId] ?? null;
+    const draft = priceDrafts[row.variantId];
+    const typed =
+      draft !== undefined && minorOf(draft, currency) !== (row.price?.inForce?.amount ?? null);
+    const source: ReceiveView['source'] =
+      row.price?.special?.state === 'running'
+        ? 'special'
+        : amount === null
+          ? draft !== undefined && draft.trim() !== ''
+            ? 'unfinished'
+            : 'none'
+          : typed
+            ? 'typed'
+            : 'saved';
+    return {
+      estimate: estimateFor(estimates, row.variantId, amount),
+      source,
+      state:
+        estimates.kind === 'unavailable' || estimates.kind === 'no-category'
+          ? estimates.kind
+          : 'ready',
+    };
+  }
+
   if (rows.length === 0) {
     return (
       <div id="sizes" className="scroll-mt-4">
@@ -465,6 +549,7 @@ export function VariantsTable({
     1 +
     (showUnits ? 2 : 0) +
     (showPrice ? 2 : 0) +
+    (showReceive ? 1 : 0) +
     sources.length +
     (showDetails ? 1 : 0);
   function toggleDetails(variantId: string) {
@@ -480,6 +565,7 @@ export function VariantsTable({
     COL.variant +
     (showUnits ? COL.onSale + COL.sku : 0) +
     (showPrice ? COL.price + COL.special : 0) +
+    (showReceive ? COL.receive : 0) +
     sources.length * COL.stock +
     (showDetails ? COL.details : 0);
 
@@ -651,6 +737,7 @@ export function VariantsTable({
                       <col style={{ width: `${COL.special}rem` }} />
                     </>
                   ) : null}
+                  {showReceive ? <col style={{ width: `${COL.receive}rem` }} /> : null}
                   {sources.map((source) => (
                     <col key={source.id} style={{ width: `${COL.stock}rem` }} />
                   ))}
@@ -689,12 +776,17 @@ export function VariantsTable({
                     {showPrice ? (
                       <>
                         <th scope="col" className="p-2 font-medium">
-                          {t('price.field', { currency })}
+                          {t('catalog.variants-table.your-price')}
                         </th>
                         <th scope="col" className="p-2 font-medium">
                           {t('price.special.title')}
                         </th>
                       </>
+                    ) : null}
+                    {showReceive ? (
+                      <th scope="col" className="p-2 font-medium">
+                        {t('catalog.variants-table.receive.column')}
+                      </th>
                     ) : null}
                     {sources.map((source) => (
                       <th key={source.id} scope="col" className="p-2 font-medium">
@@ -843,6 +935,9 @@ export function VariantsTable({
                               </td>
                             </>
                           ) : null}
+                          {showReceive ? (
+                            <td className="p-2 tabular-nums">{receiveCell(row.variantId)}</td>
+                          ) : null}
                           {sources.map((source) => {
                             const cell = row.stock[source.id];
                             const key = stockKey(row.variantId, source.id);
@@ -873,8 +968,9 @@ export function VariantsTable({
                                   <span>{cell.onHand}</span>
                                 )}
                                 {cell === undefined || cell.held === 0 ? null : (
-                                  <span className="mt-1 block text-fg-muted">
-                                    {t('stock.levels.held', { count: cell.held })}
+                                  // Short, so the row stays low; the Stock tab explains it.
+                                  <span className="mt-1 block text-xs text-fg-muted">
+                                    {t('catalog.variants-table.held-stock', { count: cell.held })}
                                   </span>
                                 )}
                               </td>
@@ -955,6 +1051,7 @@ export function VariantsTable({
                                   }
                                   sources={sources}
                                   stockDrafts={stockDrafts}
+                                  receive={showReceive ? receiveView(row) : null}
                                 />
                               </div>
                             </td>
@@ -974,6 +1071,29 @@ export function VariantsTable({
               />
             ) : null}
           </div>
+          {showPrice ? (
+            <p className="text-sm text-fg-muted">
+              {/* The tax convention comes from the Market's answer, never assumed. */}
+              {t(
+                estimates.kind === 'ready' && estimates.taxInclusive !== null
+                  ? estimates.taxInclusive
+                    ? 'catalog.variants-table.price-note-inclusive'
+                    : 'catalog.variants-table.price-note-exclusive'
+                  : 'catalog.variants-table.price-note',
+                { currency },
+              )}
+            </p>
+          ) : null}
+          {showReceive && (estimates.kind === 'unavailable' || estimates.kind === 'no-category') ? (
+            <p className="text-sm text-fg-muted" role="status">
+              {t(`catalog.variants-table.receive.${estimates.kind}`)}
+            </p>
+          ) : null}
+          {showReceive ? (
+            <p className="text-sm text-fg-muted">
+              {t('catalog.variants-table.receive.promotions')}
+            </p>
+          ) : null}
           {showUnits ? (
             <div className="flex flex-col gap-2 text-sm text-fg-muted">
               {onlyOneLeft && units.productScope !== 'PLATFORM' ? (

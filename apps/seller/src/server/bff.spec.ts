@@ -1145,6 +1145,33 @@ describe('relay of the seller payout routes', () => {
     );
   });
 
+  it('forwards the receive-estimate lines of an offer in their shape only (Offer page PR 4)', async () => {
+    const send = async (query: string) => {
+      const upstream = upstreamOk();
+      const path = ['pricing', 'seller', 'offers', ID, 'receive-estimates'];
+      await relay(
+        config,
+        new Request(`http://seller.localhost:3001/api/${path.join('/')}?${query}`, {
+          method: 'GET',
+          headers: { host: 'seller.localhost:3001' },
+        }),
+        path,
+        upstream,
+      );
+      return upstream.mock.calls[0]?.[0];
+    };
+    const base = `http://api.test/pricing/seller/offers/${ID}/receive-estimates`;
+    // Twenty pairs are longer than the usual cap and still cross.
+    const twenty = Array.from({ length: 20 }, () => `${ID}:9999999999999`).join(',');
+    expect(await send(`lines=${twenty}&rateBps=1`)).toBe(
+      `${base}?lines=${encodeURIComponent(twenty)}`,
+    );
+    // Out of shape, or more than twenty pairs: dropped (the API then refuses the missing key).
+    expect(await send(`lines=${ID}:0`)).toBe(base);
+    expect(await send(`lines=${ID}:15.90`)).toBe(base);
+    expect(await send(`lines=${twenty},${ID}:1`)).toBe(base);
+  });
+
   it('forwards the earnings list filters, sort and page, and the export keys, in their shapes only', async () => {
     const send = async (path: string[], query: string) => {
       const upstream = upstreamOk();

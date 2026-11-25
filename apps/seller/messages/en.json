@@ -2209,7 +2209,21 @@
         }
       },
       "explicit-save": "Prices and stock are saved with the button, not automatically.",
-      "unavailable": "Sizes, prices and stock can't be shown right now. Try again later."
+      "unavailable": "Sizes, prices and stock can't be shown right now. Try again later.",
+      "receive": {
+        "column": "You receive (est.)",
+        "value": "≈ {amount}",
+        "before-tax": "before tax",
+        "for": "You receive (est.) for {variant}",
+        "unavailable": "“You receive” can’t be worked out right now. Your prices are not affected.",
+        "promotions": "More offers (codes, buy-one-get-one, free delivery) are set in Promotions. They are not counted in “You receive”.",
+        "no-category": "“You receive” shows once the product is published in the catalogue."
+      },
+      "your-price": "Your price",
+      "price-note": "Prices are in {currency}.",
+      "held-stock": "{count} held",
+      "price-note-inclusive": "Prices are in {currency} and include tax.",
+      "price-note-exclusive": "Prices are in {currency}, before tax."
     },
     "suggestions": {
       "title": "Value suggestions",
@@ -3064,6 +3078,23 @@
         "unsaved": "Typed: {value}, not saved yet",
         "help": "Change stock in the row above. Units held for checkouts and orders that are not sent yet set the lowest stock you can save.",
         "link": "Stock by location"
+      },
+      "receive": {
+        "title": "What you receive",
+        "customer-pays": "Customer pays",
+        "special": "Special price, running",
+        "typed": "The price you typed, not saved yet",
+        "commission": "Platform commission",
+        "commission-value": "− {amount}",
+        "you-receive": "You receive (est.)",
+        "you-receive-value": "≈ {amount}",
+        "note": "The most the commission can be. Your payout statement has the final amount.",
+        "none": "Set a price to see what you receive.",
+        "pending": "Working it out…",
+        "unavailable": "Can’t be worked out right now. Try again later.",
+        "note-before-tax": "Before tax. The most the commission can be. Your payout statement has the final amount.",
+        "unfinished": "Type a full price to see what you receive.",
+        "no-category": "Shows once the product is published in the catalogue."
       }
     }
   },
