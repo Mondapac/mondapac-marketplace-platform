@@ -286,6 +286,25 @@ describe.each(TEST_MARKETS)('pricing price series in market %s (database integra
     expect(byVariant.map((s) => s.state.id)).toEqual([b.state.id]);
   });
 
+  it('finds the series of several Offers in one read, only in its own Market (Offer list, PR 8)', async () => {
+    const productId = ids.next<'Product'>();
+    const first = ids.next<'Offer'>();
+    const second = ids.next<'Offer'>();
+    const left = ids.next<'Offer'>();
+    const a = created({ offerId: first, productId });
+    const b = created({ offerId: second, productId });
+    const c = created({ offerId: left, productId });
+    for (const one of [a, b, c]) await inUnit(() => series.add(market, one), serializable);
+
+    const found = await inUnit(() => series.findByOffers(market, [first, second]));
+    const none = await inUnit(() => series.findByOffers(market, []));
+    const there = await inUnit(() => series.findByOffers(other, [first, second]), undefined, other);
+
+    expect(found.map((s) => s.state.id).sort()).toEqual([a.state.id, b.state.id].sort());
+    expect(none).toEqual([]);
+    expect(there).toEqual([]);
+  });
+
   describe('retirement tombstones (pricing-data 3.6; Hassan finding 3)', () => {
     it('records each tombstone once: skipDuplicates reports the inserted count (spike S1 d)', async () => {
       const offerId = ids.next<'Offer'>();

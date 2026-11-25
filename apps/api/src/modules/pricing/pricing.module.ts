@@ -75,6 +75,7 @@ import { FacadeOwnCommission } from './infrastructure/facade-own-commission';
 import { SellerReceiveEstimatesController } from './presentation/seller-receive-estimates.controller';
 import { SellerTypicalPricesController } from './presentation/seller-typical-prices.controller';
 import { ViewOfferPrices } from './application/use-cases/view-offer-prices.use-case';
+import { ViewOffersPrices } from './application/use-cases/view-offers-prices.use-case';
 import { PRICING_PERMISSIONS } from './contracts/permissions';
 import { PRICING_STEP_UP_ACTIONS } from './contracts/step-up';
 import { PRICING_FACADE } from './contracts/pricing.facade';
@@ -84,6 +85,7 @@ import { PricingFacadeImplementation } from './presentation/pricing.facade';
 import { AdminPriceHoldController } from './presentation/admin-price-hold.controller';
 import { catalogRetirementSubscriptions } from './presentation/subscribers/catalog-retirement.subscriptions';
 import { SellerOfferPricesController } from './presentation/seller-offer-prices.controller';
+import { SellerOffersPricesController } from './presentation/seller-offers-prices.controller';
 import { SellerRegularPriceController } from './presentation/seller-regular-price.controller';
 import { SellerSpecialPriceController } from './presentation/seller-special-price.controller';
 import { pricingProviders } from './infrastructure/pricing-providers';
@@ -203,6 +205,7 @@ function holdListUseCaseProvider<U>(type: HoldListUseCaseClass<U>): FactoryProvi
     SellerRegularPriceController,
     SellerSpecialPriceController,
     SellerOfferPricesController,
+    SellerOffersPricesController,
     SellerOfferCostsController,
     SellerTypicalPricesController,
     SellerReceiveEstimatesController,
@@ -287,6 +290,13 @@ function holdListUseCaseProvider<U>(type: HoldListUseCaseClass<U>): FactoryProvi
       clock: true,
     }),
     useCaseProvider(ViewOfferPrices, {
+      unitOfWork: true,
+      series: true,
+      offers: true,
+      policies: true,
+      clock: true,
+    }),
+    useCaseProvider(ViewOffersPrices, {
       unitOfWork: true,
       series: true,
       offers: true,

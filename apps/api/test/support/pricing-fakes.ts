@@ -232,6 +232,17 @@ export class InMemoryPriceSeries implements PriceSeriesRepository {
     );
   }
 
+  findByOffers(
+    market: MarketContext,
+    offerIds: readonly Id<'Offer'>[],
+  ): Promise<readonly PriceSeries[]> {
+    return Promise.resolve(
+      this.inMarket(market)
+        .filter((state) => offerIds.includes(state.offerId))
+        .map((state) => PriceSeries.restore(state)),
+    );
+  }
+
   findByProductVariant(
     market: MarketContext,
     productId: Id<'Product'>,

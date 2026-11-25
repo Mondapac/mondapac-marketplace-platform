@@ -20,7 +20,8 @@ import {
 } from '../../../platform/call-context/route-population.decorator';
 import { ViewOfferPrices } from '../application/use-cases/view-offer-prices.use-case';
 import { fail } from './http-answers';
-import { OfferPricesBody } from './offer-prices.dto';
+import { OfferPricesBody, type VariantPriceBody } from './offer-prices.dto';
+import type { VariantPriceView } from '../application/use-cases/view-offer-prices.use-case';
 
 const ERROR = { type: Object };
 
@@ -76,45 +77,50 @@ export class SellerOfferPricesController {
     return {
       offerId: result.value.offerId,
       currency: result.value.currency,
-      variants: result.value.variants.map((variant) => ({
-        variantId: variant.variantId,
-        seriesVersion: variant.seriesVersion,
-        currency: variant.currency,
-        inForce:
-          variant.inForce === null
-            ? null
-            : {
-                amount: variant.inForce.amount,
-                effectiveFrom: variant.inForce.effectiveFrom.toString(),
-              },
-        held:
-          variant.held === null
-            ? null
-            : {
-                amount: variant.held.amount,
-                submittedAt: variant.held.submittedAt.toString(),
-                direction: variant.held.direction,
-              },
-        special:
-          variant.special === null
-            ? null
-            : {
-                amount: variant.special.amount,
-                startsAt: variant.special.startsAt.toString(),
-                endsAt: variant.special.endsAt.toString(),
-                state: variant.special.state,
-              },
-        heldSpecial:
-          variant.heldSpecial === null
-            ? null
-            : {
-                amount: variant.heldSpecial.amount,
-                startsAt: variant.heldSpecial.startsAt.toString(),
-                endsAt: variant.heldSpecial.endsAt.toString(),
-                submittedAt: variant.heldSpecial.submittedAt.toString(),
-              },
-        retired: variant.retired,
-      })),
+      variants: result.value.variants.map(variantPriceBody),
     };
   }
+}
+
+/** One Variant's prices as the seller routes answer them (instants as ISO strings). */
+export function variantPriceBody(variant: VariantPriceView): VariantPriceBody {
+  return {
+    variantId: variant.variantId,
+    seriesVersion: variant.seriesVersion,
+    currency: variant.currency,
+    inForce:
+      variant.inForce === null
+        ? null
+        : {
+            amount: variant.inForce.amount,
+            effectiveFrom: variant.inForce.effectiveFrom.toString(),
+          },
+    held:
+      variant.held === null
+        ? null
+        : {
+            amount: variant.held.amount,
+            submittedAt: variant.held.submittedAt.toString(),
+            direction: variant.held.direction,
+          },
+    special:
+      variant.special === null
+        ? null
+        : {
+            amount: variant.special.amount,
+            startsAt: variant.special.startsAt.toString(),
+            endsAt: variant.special.endsAt.toString(),
+            state: variant.special.state,
+          },
+    heldSpecial:
+      variant.heldSpecial === null
+        ? null
+        : {
+            amount: variant.heldSpecial.amount,
+            startsAt: variant.heldSpecial.startsAt.toString(),
+            endsAt: variant.heldSpecial.endsAt.toString(),
+            submittedAt: variant.heldSpecial.submittedAt.toString(),
+          },
+    retired: variant.retired,
+  };
 }

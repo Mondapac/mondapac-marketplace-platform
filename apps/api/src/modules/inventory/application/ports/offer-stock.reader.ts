@@ -54,6 +54,20 @@ export interface OfferStockReader {
   ): Promise<OfferStockSnapshot>;
 
   /**
+   * {@link read} for several Offers of one seller in a fixed number of statements (the Offer
+   * list, Offer page PR 8). Every asked Offer has an entry, with no items where it has none.
+   */
+  readMany(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    offers: readonly {
+      readonly offerId: Id<'Offer'>;
+      readonly variantIds: readonly Id<'Variant'>[];
+    }[],
+    now: Temporal.Instant,
+  ): Promise<ReadonlyMap<Id<'Offer'>, OfferStockSnapshot>>;
+
+  /**
    * The seller's sell units whose signal is `low` or `out` (`status` keeps one), most recently
    * changed first. Returns up to `limit` signals; the caller pages on the last one.
    */

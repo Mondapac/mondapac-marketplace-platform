@@ -27,7 +27,14 @@ import { EditSource } from '../application/use-cases/edit-source.use-case';
 import { ListLowStock } from '../application/use-cases/list-low-stock.use-case';
 import { ListSources } from '../application/use-cases/list-sources.use-case';
 import { ReorderSources } from '../application/use-cases/reorder-sources.use-case';
-import { ViewOfferStock } from '../application/use-cases/view-offer-stock.use-case';
+import {
+  ViewOfferStock,
+  type OfferStockView,
+} from '../application/use-cases/view-offer-stock.use-case';
+import {
+  MAX_LIST_OFFERS,
+  ViewOffersStock,
+} from '../application/use-cases/view-offers-stock.use-case';
 import { SetStockLevel } from '../application/use-cases/set-stock-level.use-case';
 import { closedBody, fail } from './http-answers';
 
@@ -93,6 +100,7 @@ export class SellerInventoryController {
     private readonly setStockLevel: SetStockLevel,
     private readonly viewOfferStock: ViewOfferStock,
     private readonly listLowStock: ListLowStock,
+    private readonly viewOffersStock: ViewOffersStock,
   ) {}
 
   @Get('sources')
@@ -204,20 +212,32 @@ export class SellerInventoryController {
       context,
       response,
       await this.viewOfferStock.execute(context, { offerId }),
-      (view) => ({
-        offerId: view.offerId,
-        variants: view.variants.map((variant) => ({
-          variantId: variant.variantId,
-          sources: variant.sources.map((cell) => ({
-            variantId: cell.variantId,
-            sourceId: cell.sourceId,
-            onHand: cell.onHand,
-            held: cell.held,
-            version: cell.version,
-            retired: cell.retired,
-          })),
-        })),
-      }),
+      offerStockBody,
+    );
+  }
+
+  @Get('offer-stock')
+  @ApiOperation({
+    summary: 'Read the stock of several own Offers at once (the Offer list)',
+    description:
+      "Each Offer as GET offers/:offerId/stock answers it; an Offer that is not the seller's own, " +
+      'deleted, retired or unknown is left out.',
+  })
+  @ApiQuery({
+    name: 'offerIds',
+    description: `Offer ids, comma separated: 1 to ${MAX_LIST_OFFERS}, each once.`,
+  })
+  async viewOffersStockRoute(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Query('offerIds') offerIds: unknown,
+  ): Promise<unknown> {
+    return this.answer(
+      'view-offers-stock',
+      context,
+      response,
+      await this.viewOffersStock.execute(context, { offerIds }),
+      (view) => ({ offers: view.offers.map(offerStockBody) }),
     );
   }
 
@@ -341,4 +361,22 @@ export class SellerInventoryController {
       correlationId: context.correlationId,
     });
   }
+}
+
+/** One Offer's stock as the seller routes answer it. */
+function offerStockBody(view: OfferStockView) {
+  return {
+    offerId: view.offerId,
+    variants: view.variants.map((variant) => ({
+      variantId: variant.variantId,
+      sources: variant.sources.map((cell) => ({
+        variantId: cell.variantId,
+        sourceId: cell.sourceId,
+        onHand: cell.onHand,
+        held: cell.held,
+        version: cell.version,
+        retired: cell.retired,
+      })),
+    })),
+  };
 }
