@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-offer-review-policy-settings-page",
+  "area": "admin",
+  "title": "صفحهٔ ویرایش عددهای سیاست تأیید Offer",
+  "desc": "حالت بازبینی، N دورهٔ آزمایشی، بازهٔ قیمت، نرخ نمونه‌گیری و دسته‌های همیشه‌بازبینی در راه‌اندازی پیکربندی Market در کد هستند؛ صفحهٔ ویرایش ادمین با مجوز جدا و Audit بعداً.",
+  "src": "design/catalog/offer-approval/offer-approval-design-fa.html (بازبینی حسن، محمد، هادی)",
+  "date": "2026-11-25",
+  "trig": "بعد از نوشتن ADR تنظیم‌های Market قابل ویرایش ادمین",
+  "prio": "متوسط",
+  "status": "موکول"
+}
