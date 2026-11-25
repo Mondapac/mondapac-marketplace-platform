@@ -4,7 +4,7 @@ import { Banner, Button, TextField } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRef } from 'react';
 import type { CostsState } from '../price/cost.ts';
-import { exponentOf, formatMinor, minorOf } from '../price/money.ts';
+import { formatMinor, minorOf } from '../price/money.ts';
 import { profitOf } from '../price/cost.ts';
 
 /**
