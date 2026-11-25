@@ -26,7 +26,6 @@ import {
   SAFE_OFFER_REVIEW_SETTINGS,
   type OfferReviewInputs,
   type OfferReviewReferralStore,
-  type OfferReviewSettings,
 } from './ports/offer-review';
 
 /**
@@ -50,8 +49,8 @@ export function isWatched(change: WatchedChange): boolean {
 }
 
 export interface OfferEditReviewDependencies {
-  /** The Market's review settings, read outside any unit. */
-  readonly inputs: Pick<OfferReviewInputs, 'settings'>;
+  /** The Market's review settings and the seller's and product's facts, read outside any unit. */
+  readonly inputs: Pick<OfferReviewInputs, 'settings' | 'facts'>;
   readonly referrals: OfferReviewReferralStore;
   readonly pendingChanges: OfferPendingChangeRepository;
   readonly audit: AuditWriter;
@@ -70,26 +69,37 @@ export class OfferEditReview {
   /**
    * The policy's verdict on this watched change of this Offer: its reasons (empty means apply at
    * once), sealed so that only a verdict made here can become a clearance
-   * (the application's clearance file). Outside any unit. Any failure to read the settings is the safe
-   * answer (mode `all`): the change is held, never published by default.
+   * (the application's clearance file). Outside any unit. The Market's stop, the seller's stop and
+   * a stop of the product's category (or an ancestor) all hold it (R0), and an "always review"
+   * category holds it outside mode `off` (R7). Any failure to read the settings is the safe answer
+   * (mode `all`); facts read with a failure (`degraded`) also judge the edit in mode `all`, with
+   * no invented stop: the change is held, never published by default.
    */
   async verdict(
     context: CallContext,
-    offerId: Id<'Offer'>,
+    subject: {
+      readonly offerId: Id<'Offer'>;
+      readonly sellerId: Id<'Seller'>;
+      readonly productId: Id<'Product'>;
+    },
     change: WatchedChange,
   ): Promise<ReviewPolicyVerdict> {
-    let settings: OfferReviewSettings;
-    try {
-      settings = await this.deps.inputs.settings(context);
-    } catch {
-      settings = SAFE_OFFER_REVIEW_SETTINGS;
-    }
-    return policyVerdict(offerId, {
-      mode: settings.mode,
-      certificateBadges: settings.certificateBadges,
-      // R0 on edits (owner decision 2026-11-25): the Market's stop. The seller and category stops
-      // join here when the review facts are read (slice 4; today they are never on).
-      emergencyStop: settings.emergencyStop,
+    const [settings, facts] = await Promise.all([
+      this.deps.inputs.settings(context).catch(() => SAFE_OFFER_REVIEW_SETTINGS),
+      this.deps.inputs
+        .facts(context, { sellerId: subject.sellerId, productId: subject.productId })
+        .catch(() => null),
+    ]);
+    const degraded = facts === null || facts.degraded === true;
+    return policyVerdict(subject.offerId, {
+      mode: degraded ? SAFE_OFFER_REVIEW_SETTINGS.mode : settings.mode,
+      certificateBadges: degraded
+        ? SAFE_OFFER_REVIEW_SETTINGS.certificateBadges
+        : settings.certificateBadges,
+      // R0 on edits (owner decision 2026-11-25): the Market's stop, the seller's or a category's.
+      emergencyStop: settings.emergencyStop || facts?.emergencyStop === true,
+      // R7 on edits (owner answer 4, slice 4). Full review (R6) never holds an edit.
+      sensitiveCategory: facts === null || facts.sensitiveCategory,
       ...change,
     });
   }

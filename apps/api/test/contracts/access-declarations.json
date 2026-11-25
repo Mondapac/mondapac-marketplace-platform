@@ -1008,6 +1008,12 @@
     "whenSellerNotApproved": "allow"
   },
   { "name": "sellers.my-file-withdraw", "rule": "permissions", "whenSellerNotApproved": "allow" },
+  {
+    "name": "sellers.offer-review-flags",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  { "name": "sellers.offer-review-flags-system", "rule": "system" },
   { "name": "sellers.operating-zones", "rule": "anonymous" },
   { "name": "sellers.own-zone-read", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "sellers.pickup-postcodes", "rule": "anonymous" },

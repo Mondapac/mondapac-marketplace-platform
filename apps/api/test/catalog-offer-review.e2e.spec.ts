@@ -14,6 +14,8 @@ import { ALLOWED_PRODUCT_TYPES_READER } from '../src/modules/catalog/application
 import { CLAIM_EVALUATOR } from '../src/modules/catalog/application/ports/claim-evaluator';
 import { OFFER_PENDING_CHANGE_REPOSITORY } from '../src/modules/catalog/application/ports/offer-pending-change.repository';
 import { OFFER_REPOSITORY } from '../src/modules/catalog/application/ports/offer.repository';
+import { SELLER_OFFER_REVIEW_FLAGS_READER } from '../src/modules/catalog/application/ports/seller-offer-review-flags.reader';
+import { SELLER_REVIEW_STANDING_REPOSITORY } from '../src/modules/catalog/application/ports/seller-review-standing.repository';
 import { ClaimQueryBuilder } from '../src/modules/catalog/application/tags/claim-query-builder';
 import { OfferPendingChange } from '../src/modules/catalog/domain/offer-pending-change';
 import { AUDIT_WRITER } from '../src/platform/audit/audit-writer';
@@ -36,6 +38,7 @@ import { OUTBOX_WRITER } from '../src/platform/events/outbox-writer';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { UNIT_OF_WORK } from '../src/platform/unit-of-work/unit-of-work';
 import { InMemoryOfferPendingChanges } from './support/catalog-offer-edit-review-fakes';
+import { FLAGS_OFF, InMemorySellerReviewStandings } from './support/catalog-seller-review-fakes';
 import {
   FakeClaimEvaluator,
   FixedFactsClaimQueryBuilder,
@@ -106,6 +109,7 @@ describe('admin Offer review over HTTP (integration)', () => {
   let audits: { action: string }[];
   let evaluator: FakeClaimEvaluator;
   let claimFacts: FixedFactsClaimQueryBuilder;
+  let standings: InMemorySellerReviewStandings;
   const http = () => request(app.getHttpServer());
 
   async function boot() {
@@ -180,6 +184,10 @@ describe('admin Offer review over HTTP (integration)', () => {
           .useValue({ isEligible: () => Promise.resolve(eligible) })
           .overrideProvider(OFFER_PENDING_CHANGE_REPOSITORY)
           .useValue(pendingChanges)
+          .overrideProvider(SELLER_REVIEW_STANDING_REPOSITORY)
+          .useValue(standings)
+          .overrideProvider(SELLER_OFFER_REVIEW_FLAGS_READER)
+          .useValue({ flagsOf: () => Promise.resolve(FLAGS_OFF) })
           .overrideProvider(AUDIT_WRITER)
           .useValue({
             record: (_c: unknown, entry: { action: string }) => {
@@ -368,6 +376,7 @@ describe('admin Offer review over HTTP (integration)', () => {
       throw new Error('no claim was expected');
     }, []);
     claimFacts = new FixedFactsClaimQueryBuilder(null);
+    standings = new InMemorySellerReviewStandings();
   });
   afterEach(async () => {
     await app.close();
@@ -517,6 +526,15 @@ describe('admin Offer review over HTTP (integration)', () => {
       });
       expect(saved[0]!.offer.pendingHistory).toMatchObject({ changeKind: 'publication-approved' });
       expect(events.map((e) => e.type)).toEqual(['catalog.offer-published.v1']);
+      // The approval counts toward the seller's probation, in the decision's unit (slice 4).
+      expect(standings.credits).toEqual([
+        expect.objectContaining({
+          sellerId: SELLER,
+          epoch: 1,
+          offerId: offer.state.id,
+          marketId: code,
+        }),
+      ]);
     });
 
     it('refuses a decision from a Viewer or a holder of no key, storing nothing', async () => {
@@ -627,6 +645,12 @@ describe('admin Offer review over HTTP (integration)', () => {
         type: 'catalog.offer-changes-requested.v1',
         payload: { offerId: offer.state.id, sellerId: SELLER, reasonCode: 'description-claim' },
       });
+      // The send-back is one Changes needed in a row of the seller's standing (slice 4).
+      expect(standings.rows.get(`${code}|${SELLER}`)).toMatchObject({
+        epoch: 1,
+        consecutiveChangesNeeded: 1,
+      });
+      expect(standings.credits).toEqual([]);
     });
 
     it('refuses a bad reason, an unknown field, a missing version and a bad id, storing nothing', async () => {
@@ -783,6 +807,9 @@ describe('admin Offer review over HTTP (integration)', () => {
         decidedByAccountId: MODERATOR,
       });
       expect(audits.map((a) => a.action)).toContain('catalog.offer-change.approved');
+      // An approved edit is not a first publication: no credit, no standing (Sajad G1).
+      expect(standings.credits).toEqual([]);
+      expect(standings.locks).toBe(0);
 
       const again = await post(
         code,

@@ -445,6 +445,23 @@ import {
 } from '../application/ports/offer-pending-change.repository';
 import { PrismaOfferPendingChangeRepository } from './prisma-offer-pending-change.repository';
 import { OfferEditReview } from '../application/offer-edit-review';
+import { SellerReviewProbation } from '../application/seller-review-probation';
+import {
+  SELLER_REVIEW_STANDING_REPOSITORY,
+  type SellerReviewStandingRepository,
+} from '../application/ports/seller-review-standing.repository';
+import { PrismaSellerReviewStandingRepository } from './prisma-seller-review-standing.repository';
+import {
+  CATEGORY_OFFER_REVIEW_FLAGS_STORE,
+  type CategoryOfferReviewFlagsStore,
+} from '../application/ports/category-offer-review-flags.store';
+import { PrismaCategoryOfferReviewFlagsStore } from './prisma-category-offer-review-flags.store';
+import {
+  SELLER_OFFER_REVIEW_FLAGS_READER,
+  type SellerOfferReviewFlagsReader,
+} from '../application/ports/seller-offer-review-flags.reader';
+import { SellersOfferReviewFlagsReader } from './sellers-offer-review-flags.reader';
+import { UNIT_OF_WORK, type UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import { AUDIT_WRITER, type AuditWriter } from '../../../platform/audit/audit-writer';
 
 export const catalogProviders: readonly Provider[] = [
@@ -467,10 +484,65 @@ export const catalogProviders: readonly Provider[] = [
       new FacadeDescriptionWriterSwitches(settings),
   },
   {
+    provide: SELLER_REVIEW_STANDING_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SellerReviewStandingRepository =>
+      new PrismaSellerReviewStandingRepository(prisma),
+  },
+  {
+    provide: CATEGORY_OFFER_REVIEW_FLAGS_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CategoryOfferReviewFlagsStore =>
+      new PrismaCategoryOfferReviewFlagsStore(prisma),
+  },
+  {
+    provide: SELLER_OFFER_REVIEW_FLAGS_READER,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): SellerOfferReviewFlagsReader =>
+      new SellersOfferReviewFlagsReader(sellers),
+  },
+  {
     provide: OFFER_REVIEW_INPUTS,
-    inject: [SETTINGS_FACADE],
-    useFactory: (settings: SettingsFacade): OfferReviewInputs =>
-      new FacadeOfferReviewInputs(settings),
+    inject: [
+      SETTINGS_FACADE,
+      SELLER_OFFER_REVIEW_FLAGS_READER,
+      UNIT_OF_WORK,
+      SELLER_REVIEW_STANDING_REPOSITORY,
+      CATEGORY_OFFER_REVIEW_FLAGS_STORE,
+      CATEGORY_PATHS_READER,
+    ],
+    useFactory: (
+      settings: SettingsFacade,
+      sellerFlags: SellerOfferReviewFlagsReader,
+      unitOfWork: UnitOfWork,
+      standings: SellerReviewStandingRepository,
+      categoryFlags: CategoryOfferReviewFlagsStore,
+      categoryPaths: CategoryPathsReader,
+    ): OfferReviewInputs =>
+      new FacadeOfferReviewInputs({
+        settings,
+        sellerFlags,
+        unitOfWork,
+        standings,
+        categoryFlags,
+        categoryPaths,
+      }),
+  },
+  {
+    provide: SellerReviewProbation,
+    inject: [
+      SELLER_REVIEW_STANDING_REPOSITORY,
+      SELLER_OFFER_REVIEW_FLAGS_READER,
+      OFFER_REVIEW_INPUTS,
+      AUDIT_WRITER,
+    ],
+    useFactory: (
+      standings: SellerReviewStandingRepository,
+      sellerFlags: SellerOfferReviewFlagsReader,
+      inputs: OfferReviewInputs,
+      audit: AuditWriter,
+    ): SellerReviewProbation =>
+      new SellerReviewProbation({ standings, sellerFlags, inputs, audit }),
   },
   {
     provide: OFFER_REVIEW_REFERRAL_STORE,

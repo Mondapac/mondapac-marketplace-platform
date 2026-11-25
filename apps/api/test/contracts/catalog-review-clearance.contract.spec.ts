@@ -164,7 +164,8 @@ describe('catalog review clearance (slice 2c bypass guard)', () => {
     for (const file of SELLER_COMMANDS) {
       const text = files.find((f) => f.file === file)!.text;
       expect([file, /clearanceFromPolicy\(verdict\)/.test(text)]).toEqual([file, true]);
-      expect([file, /editReview\.verdict\(context, offerId,/.test(text)]).toEqual([file, true]);
+      expect([file, /editReview\.verdict\(context, subject,/.test(text)]).toEqual([file, true]);
+      expect([file, /const subject = \{ offerId, sellerId/.test(text)]).toEqual([file, true]);
     }
   });
 
@@ -204,6 +205,7 @@ describe('catalog review clearance (slice 2c bypass guard)', () => {
       mode: 'risk-based',
       certificateBadges: 'review',
       emergencyStop: false,
+      sensitiveCategory: false,
       addedBadgeTypes: [],
     } as const;
 

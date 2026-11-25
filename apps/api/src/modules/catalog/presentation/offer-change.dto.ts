@@ -5,12 +5,13 @@ import {
   OFFER_CHANGE_SUPERSEDED_CAUSES,
   OFFER_PENDING_CHANGE_STATUSES,
 } from '../domain/offer-pending-change';
-import { OFFER_REVIEW_REASONS } from '../domain/offer-review-policy';
+import { OFFER_REVIEW_REASONS, SELLER_REVIEW_REASONS } from '../domain/offer-review-policy';
 
 // Bodies and answers of the held changes of live Offers (risk-based Offer approval, slice 2c).
 // Ids, codes, the seller's own proposed content and the reviewer's note to the seller.
 
-export class OfferChangeViewDto {
+/** What the admin and seller views of a held change share (no reasons). */
+abstract class OfferChangeBaseDto {
   @ApiProperty({ format: 'uuid' }) changeId!: string;
   @ApiProperty({ format: 'uuid' }) offerId!: string;
   @ApiProperty({ enum: OFFER_PENDING_CHANGE_STATUSES }) status!: string;
@@ -31,8 +32,6 @@ export class OfferChangeViewDto {
   proposedHandling!: string | null;
   @ApiProperty({ type: [String], description: 'Requested certification type codes.' })
   proposedTagTypes!: string[];
-  @ApiProperty({ enum: OFFER_REVIEW_REASONS, isArray: true, description: 'Never empty.' })
-  reasons!: string[];
   @ApiProperty() policyVersion!: number;
   @ApiProperty({ description: 'The Offer version the change was made against.' })
   baseOfferVersion!: number;
@@ -47,6 +46,27 @@ export class OfferChangeViewDto {
   decisionNote!: string | null;
   @ApiProperty({ enum: OFFER_CHANGE_SUPERSEDED_CAUSES, nullable: true, type: String })
   supersededCause!: string | null;
+}
+
+/** A held change as the reviewer reads it: the full reason codes. */
+export class OfferChangeViewDto extends OfferChangeBaseDto {
+  @ApiProperty({ enum: OFFER_REVIEW_REASONS, isArray: true, description: 'Never empty.' })
+  reasons!: string[];
+}
+
+/**
+ * A held change as its seller reads it: the reasons about the seller's own content, and every
+ * other reason once as `held-for-review` (Hadi's decision on Hassan S1, PR #1358).
+ */
+export class OwnOfferChangeViewDto extends OfferChangeBaseDto {
+  @ApiProperty({
+    enum: SELLER_REVIEW_REASONS,
+    isArray: true,
+    description:
+      'Never empty. certificate-badge, handling and contact-text name what in the change is ' +
+      'checked; held-for-review stands for every other reason.',
+  })
+  reasons!: string[];
 }
 
 export class OfferChangeListItemDto extends OfferChangeViewDto {

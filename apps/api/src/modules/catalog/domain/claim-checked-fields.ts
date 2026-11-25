@@ -357,6 +357,17 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
     noCustomerText:
       'a held change; its description goes live only through the approval, which claim-checks it',
   },
+  // Risk-based Offer approval slice 4: the probation counter and the category flags. Counts,
+  // instants, ids and booleans; the admin's reason lives in the change logs, never here.
+  SellerReviewStandingState: { noCustomerText: 'counts, an epoch, instants and ids; no text' },
+  SellerReviewStanding: { noCustomerText: 'counts, an epoch, instants and ids; no text' },
+  StandingFacts: { noCustomerText: 'counts and instants of a standing; no text' },
+  TrustFlags: { noCustomerText: 'a boolean and an instant of a seller flag' },
+  TrustStatus: { noCustomerText: 'a derived status, counts and an instant; no text' },
+  FlagSwitch: { noCustomerText: 'a boolean, an instant and an account id' },
+  CategoryOfferReviewFlagsState: { noCustomerText: 'booleans, instants and ids of a category' },
+  CategoryOfferReviewFlags: { noCustomerText: 'booleans, instants and ids of a category' },
+  FlaggedCategory: { noCustomerText: 'a category id and two booleans' },
   ReviewClearance: { noCustomerText: 'a marker of the review policy or an approval; no text' },
   WriterEvaluationCase: { noCustomerText: 'synthetic evaluation data used in tests' },
   WriterDetail: { noCustomerText: 'form data sent to the writer, never saved by it' },

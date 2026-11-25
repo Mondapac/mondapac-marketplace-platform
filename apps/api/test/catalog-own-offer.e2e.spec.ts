@@ -214,12 +214,16 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
           .overrideProvider(OFFER_REVIEW_INPUTS)
           .useValue({
             settings: () => Promise.resolve(reviewSettings),
+            probationOffers: () => Promise.resolve(10),
             facts: () =>
               Promise.resolve({
                 emergencyStop: false,
                 probation: false,
                 fullReview: false,
                 sensitiveCategory: false,
+                degraded: false,
+                stampTrust: false,
+                probationOffers: 10,
               }),
           })
           .overrideProvider(OFFER_PENDING_CHANGE_REPOSITORY)

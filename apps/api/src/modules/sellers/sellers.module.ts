@@ -12,6 +12,7 @@ import {
   AUTHORISATION_CHECK,
   registerPermissions,
   registerStepUpActions,
+  STEP_UP_CONSUMER,
   USE_CASE_GATE,
   type UseCaseGate,
 } from '../../platform/authz';
@@ -148,6 +149,14 @@ import { AiAccess } from './application/use-cases/ai-access.use-case';
 import { ChangeAiAccessUseCase } from './application/use-cases/change-ai-access.use-case';
 import { ViewAiAccessUseCase } from './application/use-cases/view-ai-access.use-case';
 import { AiAccessSettingController } from './presentation/ai-access-setting.controller';
+import { OFFER_REVIEW_FLAGS_REPOSITORY } from './application/ports/offer-review-flags.repository';
+import { ChangeOfferReviewFullReviewUseCase } from './application/use-cases/change-offer-review-full-review.use-case';
+import { ChangeOfferReviewStopUseCase } from './application/use-cases/change-offer-review-stop.use-case';
+import { ChangeOfferReviewTrustUseCase } from './application/use-cases/change-offer-review-trust.use-case';
+import { OfferReviewFlagsSystem } from './application/use-cases/offer-review-flags-system.use-case';
+import { OfferReviewFlags } from './application/use-cases/offer-review-flags.use-case';
+import { ViewOfferReviewFlagsUseCase } from './application/use-cases/view-offer-review-flags.use-case';
+import { SellerOfferReviewFlagsController } from './presentation/offer-review-flags.controller';
 import { CATEGORY_PROPOSALS_SETTING_REPOSITORY } from './application/ports/category-proposals-setting.repository';
 import { MayProposeCategoriesSystem } from './application/use-cases/may-propose-categories-system.use-case';
 import { MayProposeCategories } from './application/use-cases/may-propose-categories.use-case';
@@ -294,6 +303,8 @@ const PORT = {
   blogAccess: BLOG_ACCESS_REPOSITORY,
   categoryProposalsSetting: CATEGORY_PROPOSALS_SETTING_REPOSITORY,
   aiAccessSetting: AI_ACCESS_SETTING_REPOSITORY,
+  offerReviewFlags: OFFER_REVIEW_FLAGS_REPOSITORY,
+  stepUp: STEP_UP_CONSUMER,
   businessActivities: SELLER_BUSINESS_ACTIVITY_REPOSITORY,
   activityDirectory: BUSINESS_ACTIVITY_DIRECTORY,
   sellerCultures: SELLER_CULTURE_REPOSITORY,
@@ -341,6 +352,16 @@ function useCaseProvider<D, U>(
       new type(gate, Object.fromEntries(names.map((name, index) => [name, values[index]])) as D),
   };
 }
+
+/** The ports of the three Offer review flag changes (SEL-25, risk-based Offer approval slice 4). */
+const OFFER_REVIEW_FLAG_CHANGE_PORTS = {
+  unitOfWork: true,
+  offerReviewFlags: true,
+  audit: true,
+  stepUp: true,
+  clock: true,
+  ids: true,
+} as const;
 
 /** The ports of the may-sell contract (slice 9). */
 const SELLING_ELIGIBILITY_PORTS = {
@@ -413,6 +434,7 @@ const REVIEW_DECISION_PORTS = {
     BlogAccessController,
     CategoryProposalsSettingController,
     AiAccessSettingController,
+    SellerOfferReviewFlagsController,
     SellerActivitiesController,
     SellerOwnCulturesController,
     SellerCulturesAdminController,
@@ -881,6 +903,14 @@ const REVIEW_DECISION_PORTS = {
       clock: true,
     }),
     useCaseProvider(ViewAiAccessUseCase, { unitOfWork: true, aiAccessSetting: true }),
+    // SEL-25, the Offer review flags (risk-based Offer approval slice 4): the read pair behind
+    // `offerReviewFlagsOf`, the admin's read and the three changes.
+    useCaseProvider(OfferReviewFlags, { unitOfWork: true, offerReviewFlags: true }),
+    useCaseProvider(OfferReviewFlagsSystem, { unitOfWork: true, offerReviewFlags: true }),
+    useCaseProvider(ViewOfferReviewFlagsUseCase, { unitOfWork: true, offerReviewFlags: true }),
+    useCaseProvider(ChangeOfferReviewTrustUseCase, OFFER_REVIEW_FLAG_CHANGE_PORTS),
+    useCaseProvider(ChangeOfferReviewFullReviewUseCase, OFFER_REVIEW_FLAG_CHANGE_PORTS),
+    useCaseProvider(ChangeOfferReviewStopUseCase, OFFER_REVIEW_FLAG_CHANGE_PORTS),
     // A seller's business activities (ADR-0040 decision 4): the admin's get and set, and the read
     // pair behind the facade's `sellerBusinessActivities`.
     useCaseProvider(SellerActivitiesGetUseCase, {
@@ -1032,6 +1062,8 @@ const REVIEW_DECISION_PORTS = {
         MayProposeCategoriesSystem,
         AiAccess,
         AiAccessSystem,
+        OfferReviewFlags,
+        OfferReviewFlagsSystem,
         ActiveSince,
         ActiveSinceSystem,
         ReviewerBusinessDetailsRead,
@@ -1065,6 +1097,8 @@ const REVIEW_DECISION_PORTS = {
         mayProposeCategoriesSystem: MayProposeCategoriesSystem,
         aiAccess: AiAccess,
         aiAccessSystem: AiAccessSystem,
+        offerReviewFlags: OfferReviewFlags,
+        offerReviewFlagsSystem: OfferReviewFlagsSystem,
         activeSince: ActiveSince,
         activeSinceSystem: ActiveSinceSystem,
         reviewerBusinessDetails: ReviewerBusinessDetailsRead,
@@ -1098,6 +1132,8 @@ const REVIEW_DECISION_PORTS = {
           mayProposeCategoriesSystem,
           aiAccess,
           aiAccessSystem,
+          offerReviewFlags,
+          offerReviewFlagsSystem,
           activeSince,
           activeSinceSystem,
           reviewerBusinessDetails,

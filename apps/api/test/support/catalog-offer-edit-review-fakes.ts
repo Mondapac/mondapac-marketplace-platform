@@ -12,6 +12,7 @@ import type { PrismaService } from '../../src/platform/persistence/prisma.servic
 import { OfferEditReview } from '../../src/modules/catalog/application/offer-edit-review';
 import type { OfferPendingChangeRepository } from '../../src/modules/catalog/application/ports/offer-pending-change.repository';
 import type {
+  OfferReviewFactsRead,
   OfferReviewReferral,
   OfferReviewReferralStore,
   OfferReviewSettings,
@@ -31,6 +32,20 @@ export const REVIEW_OFF: OfferReviewSettings = Object.freeze({
   mode: 'off',
   certificateBadges: 'automatic',
   emergencyStop: false,
+});
+
+/**
+ * The facts of the specs written before slice 4: a Trusted seller with no flag and no flagged
+ * category, read without a failure, so only the edit rules of slice 2c decide.
+ */
+export const FACTS_CLEAR: OfferReviewFactsRead = Object.freeze({
+  emergencyStop: false,
+  probation: false,
+  fullReview: false,
+  sensitiveCategory: false,
+  degraded: false,
+  stampTrust: false,
+  probationOffers: 10,
 });
 
 /**
@@ -126,6 +141,9 @@ export function memoryOfferEditReview(options: {
   readonly ids: IdGenerator;
   /** The Market's settings; 'fail' rejects the read (the review must fail closed). */
   readonly settings?: OfferReviewSettings | 'fail' | (() => OfferReviewSettings | 'fail');
+  /** The seller's and product's facts (default {@link FACTS_CLEAR}); 'fail' rejects the read. */
+  readonly facts?:
+    Partial<OfferReviewFactsRead> | 'fail' | (() => Partial<OfferReviewFactsRead> | 'fail');
   readonly pendingChanges?: InMemoryOfferPendingChanges;
   /** When given, every write must run inside a unit. */
   readonly inUnit?: () => boolean;
@@ -135,6 +153,7 @@ export function memoryOfferEditReview(options: {
   const referrals: OfferReviewReferral[] = [];
   const audits: AuditEntry[] = [];
   let settingsReads = 0;
+  const factsAsked: { sellerId: string; productId: string }[] = [];
   const audit: AuditWriter = {
     record: (_context: CallContext, entry: AuditEntry) => {
       if (options.inUnit !== undefined && !options.inUnit())
@@ -164,6 +183,13 @@ export function memoryOfferEditReview(options: {
           ? Promise.reject(new Error('settings down'))
           : Promise.resolve(value);
       },
+      facts: (_context, subject) => {
+        factsAsked.push({ sellerId: subject.sellerId, productId: subject.productId });
+        const value = typeof options.facts === 'function' ? options.facts() : options.facts;
+        return value === 'fail'
+          ? Promise.reject(new Error('facts down'))
+          : Promise.resolve({ ...FACTS_CLEAR, ...value });
+      },
     },
     referrals: store,
     pendingChanges,
@@ -176,6 +202,7 @@ export function memoryOfferEditReview(options: {
     referrals,
     audits,
     settingsReads: () => settingsReads,
+    factsAsked,
   };
 }
 
@@ -185,9 +212,10 @@ export function prismaOfferEditReview(
   ids: IdGenerator,
   audit: AuditWriter,
   settings: OfferReviewSettings = REVIEW_OFF,
+  facts: OfferReviewFactsRead = FACTS_CLEAR,
 ): OfferEditReview {
   return new OfferEditReview({
-    inputs: { settings: () => Promise.resolve(settings) },
+    inputs: { settings: () => Promise.resolve(settings), facts: () => Promise.resolve(facts) },
     referrals: new PrismaOfferReviewReferralStore(prisma, ids),
     pendingChanges: new PrismaOfferPendingChangeRepository(prisma),
     audit,

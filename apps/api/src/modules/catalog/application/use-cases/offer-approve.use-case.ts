@@ -15,6 +15,7 @@ import { refusalOf, type RefusedField } from '../working-copy/save-draft.service
 import { parseDecision, type ReviewValidationFailure } from '../offer-review-input';
 import type { ClaimEvaluator } from '../ports/claim-evaluator';
 import type { ClaimQueryBuilder } from '../tags/claim-query-builder';
+import type { ProbationInputs, SellerReviewProbation } from '../seller-review-probation';
 import {
   askPrepared,
   claimsFailClosed,
@@ -58,6 +59,8 @@ export interface OfferApproveDependencies {
   /** The claim facts and queries (design 5.1). */
   readonly claims: ClaimQueryBuilder;
   readonly evaluator: ClaimEvaluator;
+  /** The seller's probation counter (slice 4), moved in the approval's unit. */
+  readonly probation: SellerReviewProbation;
 }
 
 /**
@@ -78,6 +81,12 @@ export interface OfferApproveDependencies {
  * published since means asking again). An unanswered ask refuses (`claim.check-unavailable`); a
  * lost race asks again, at most three times, then `conflict.retry`. Audit and mail join with the
  * notification module.
+ *
+ * Probation (risk-based Offer approval slice 4): N and the seller's Trusted-from-start switch are
+ * read before the unit; in the unit, after the Offer row, the seller's standing is locked and the
+ * approval is credited (once per product per epoch) while the seller is in probation, which makes
+ * it Trusted at the target. Every admin approval of a first publication counts, whatever its
+ * reasons; the bulk decision runs this same use case per Offer.
  */
 export class OfferApprove extends UseCase<
   OfferApproveInput,
@@ -184,8 +193,12 @@ export class OfferApprove extends UseCase<
       if (refused.length > 0) return err({ code: 'claim-text.refused', fields: refused });
     }
 
+    // Outside any unit: N and the seller's Trusted-from-start switch (fail closed: probation).
+    const probation = await deps.probation.prepare(context, seen.sellerId);
     for (let attempt = 0; attempt < MAX_CLAIM_ATTEMPTS; attempt += 1) {
-      const outcome = await claimsFailClosed(() => this.#publish(context, offerId, version));
+      const outcome = await claimsFailClosed(() =>
+        this.#publish(context, offerId, version, probation),
+      );
       if (outcome !== RETRY) return outcome;
     }
     return err({ code: 'conflict.retry' });
@@ -200,6 +213,7 @@ export class OfferApprove extends UseCase<
     context: CallContext,
     offerId: Id<'Offer'>,
     version: number,
+    probation: ProbationInputs,
   ): Promise<Result<Record<string, never>, OfferApproveFailure> | typeof RETRY> {
     const { actor, market } = context;
     if (actor.kind !== 'authenticated') return err({ code: 'access.denied' });
@@ -231,6 +245,9 @@ export class OfferApprove extends UseCase<
         const offer = await deps.offers.findById(market, offerId);
         if (offer === null) return err({ code: 'offer.not-found' } as const);
         if (offer.state.version !== version) return err({ code: 'conflict.stale' } as const);
+        if (offer.state.sellerId !== probation.sellerId) {
+          return err({ code: 'conflict.stale' } as const);
+        }
         // Read again in the unit: the product may have left `published`, or been paused (an admin
         // pause, 4.1a), since the first read. Same rule as submit: a paused product is not on sale.
         const product = await deps.products.findById(market, offer.state.productId);
@@ -259,6 +276,12 @@ export class OfferApprove extends UseCase<
         const approved = offer.approve({ now });
         if (!approved.ok) return err({ code: 'offer.not-pending-review' } as const);
         await deps.offers.save(market, offer, { kind: 'admin', accountId: actor.accountId });
+        // Lock order: the Offer row (saved above), then the seller's standing.
+        await deps.probation.recordApproval(context, probation, {
+          productId: offer.state.productId,
+          offerId,
+          now,
+        });
         await deps.outbox.append(context, offer.pendingEvents);
         return ok({});
       });

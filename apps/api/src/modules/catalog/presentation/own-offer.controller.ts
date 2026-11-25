@@ -160,7 +160,10 @@ function offerListQuery(query: Record<string, unknown>): Record<string, unknown>
 
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
 
-/** The held part of an answer (slice 2c): `applied`, and the change id and reasons when held. */
+/**
+ * The held part of an answer (slice 2c): `applied`, and the change id and reasons when held. The
+ * reasons are already as a seller is told them (`sellerReviewReasonsOf`, Hassan S1 on PR #1358).
+ */
 function heldPart(value: {
   readonly applied: boolean;
   readonly pendingChangeId?: string;

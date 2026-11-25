@@ -3,6 +3,9 @@ import {
   OFFER_REVIEW_POLICY_VERSION,
   offerEditReviewReasons,
   offerReviewReasons,
+  OFFER_REVIEW_REASONS,
+  SELLER_REVIEW_REASONS,
+  sellerReviewReasonsOf,
   type OfferEditReviewInput,
   type OfferReviewFacts,
   type OfferReviewInput,
@@ -99,12 +102,43 @@ describe('offerEditReviewReasons (the edit rules of a live Offer, slice 2c)', ()
     mode: 'risk-based',
     certificateBadges: 'review',
     emergencyStop: false,
+    sensitiveCategory: false,
     addedBadgeTypes: [],
     ...overrides,
   });
 
-  it('is version 2 of the policy', () => {
-    expect(OFFER_REVIEW_POLICY_VERSION).toBe(2);
+  it('is version 3 of the policy', () => {
+    expect(OFFER_REVIEW_POLICY_VERSION).toBe(3);
+  });
+
+  it('holds a watched edit of a product in an always-review category (R7), outside mode off', () => {
+    for (const mode of ['risk-based', 'all'] as const) {
+      expect(
+        offerEditReviewReasons(
+          edit({ mode, sensitiveCategory: true, newDescription: { en: 'Now 2 kg' } }),
+        ),
+      ).toEqual(['sensitive-category']);
+      expect(
+        offerEditReviewReasons(edit({ mode, sensitiveCategory: true, newHandling: 'FRESH' })),
+      ).toEqual(['handling', 'sensitive-category']);
+      // Nothing watched, or handling back to sealed original: still instant.
+      expect(offerEditReviewReasons(edit({ mode, sensitiveCategory: true }))).toEqual([]);
+      expect(
+        offerEditReviewReasons(
+          edit({ mode, sensitiveCategory: true, newHandling: 'SEALED_ORIGINAL' }),
+        ),
+      ).toEqual([]);
+    }
+    expect(
+      offerEditReviewReasons(
+        edit({ mode: 'off', sensitiveCategory: true, newDescription: { en: 'Now 2 kg' } }),
+      ),
+    ).toEqual([]);
+    expect(
+      offerEditReviewReasons(
+        edit({ emergencyStop: true, sensitiveCategory: true, newDescription: { en: 'x' } }),
+      ),
+    ).toEqual(['emergency-stop', 'sensitive-category']);
   });
 
   it('applies a clean edit at once in risk-based mode', () => {
@@ -254,5 +288,29 @@ describe('hasContactText on long hostile text (Hassan S1)', () => {
     const started = performance.now();
     for (let locale = 0; locale < 20; locale += 1) hasContactText(text);
     expect(performance.now() - started).toBeLessThan(100);
+  });
+});
+
+describe('sellerReviewReasonsOf (what a seller is told; Hadi (b) on Hassan S1)', () => {
+  it('keeps the reasons about the seller content and folds every other into held-for-review', () => {
+    expect(
+      sellerReviewReasonsOf([
+        'emergency-stop',
+        'certificate-badge',
+        'handling',
+        'contact-text',
+        'sensitive-category',
+        'review-all',
+      ]),
+    ).toEqual(['held-for-review', 'certificate-badge', 'handling', 'contact-text']);
+    for (const hidden of OFFER_REVIEW_REASONS.filter(
+      (r) => !['certificate-badge', 'handling', 'contact-text'].includes(r),
+    )) {
+      expect(sellerReviewReasonsOf([hidden])).toEqual(['held-for-review']);
+    }
+    expect(sellerReviewReasonsOf([])).toEqual([]);
+    for (const told of sellerReviewReasonsOf([...OFFER_REVIEW_REASONS])) {
+      expect(SELLER_REVIEW_REASONS).toContain(told);
+    }
   });
 });

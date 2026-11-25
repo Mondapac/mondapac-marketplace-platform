@@ -8,9 +8,13 @@ import {
   type OfferPendingChange,
   type OfferPendingChangeStatus,
 } from '../domain/offer-pending-change';
-import type { OfferReviewReason } from '../domain/offer-review-policy';
+import {
+  sellerReviewReasonsOf,
+  type OfferReviewReason,
+  type SellerReviewReason,
+} from '../domain/offer-review-policy';
 
-/** A held change of a live Offer as the seller and the reviewer read it (slice 2c). */
+/** A held change of a live Offer as the reviewer reads it (slice 2c): the full reasons. */
 export interface OfferChangeView {
   readonly changeId: string;
   readonly offerId: string;
@@ -28,6 +32,19 @@ export interface OfferChangeView {
   /** The reviewer's note to the seller (request changes, reject); null otherwise. */
   readonly decisionNote: string | null;
   readonly supersededCause: OfferChangeSupersededCause | null;
+}
+
+/**
+ * The same change as its seller reads it: the reasons as a seller is told
+ * (`sellerReviewReasonsOf`; Hadi's decision (b) on Hassan S1, PR #1358).
+ */
+export interface OwnOfferChangeView extends Omit<OfferChangeView, 'reasons'> {
+  readonly reasons: readonly SellerReviewReason[];
+}
+
+export function ownOfferChangeViewOf(change: OfferPendingChange): OwnOfferChangeView {
+  const view = offerChangeViewOf(change);
+  return { ...view, reasons: sellerReviewReasonsOf(view.reasons) };
 }
 
 export function offerChangeViewOf(change: OfferPendingChange): OfferChangeView {
