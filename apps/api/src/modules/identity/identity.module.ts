@@ -50,7 +50,7 @@ import {
   SessionAuthenticator,
 } from './application/access/session-authenticator';
 import { ACCESS_DECISION_REPOSITORY } from './application/ports/access-decision.repository';
-import { ACCESS_REVIEWERS } from './application/ports/access-reviewers';
+import { ACCESS_REVIEWERS, ADMIN_KEY_HOLDERS } from './application/ports/access-reviewers';
 import {
   ACCOUNT_REPOSITORY,
   EMAIL_CHANGE_STORE,
@@ -199,6 +199,7 @@ import { DescribeActor } from './application/use-cases/describe-actor.use-case';
 import { DescribeSellerStatus } from './application/use-cases/describe-seller-status.use-case';
 import { ListRegisteredSellers } from './application/use-cases/list-registered-sellers.use-case';
 import { ContactEmailOf } from './application/use-cases/contact-email-of.use-case';
+import { OfferReviewAlertRecipients } from './application/use-cases/offer-review-alert-recipients.use-case';
 import { OwnOwnerEmail } from './application/use-cases/own-owner-email.use-case';
 import { CustomerAccountOf } from './application/use-cases/customer-account-of.use-case';
 import { AdminRequestCustomerEmailChange } from './application/use-cases/admin-request-customer-email-change.use-case';
@@ -337,6 +338,7 @@ const PORT = {
   sellerAccess: SELLER_ACCESS_REPOSITORY,
   decisions: ACCESS_DECISION_REPOSITORY,
   reviewers: ACCESS_REVIEWERS,
+  keyHolders: ADMIN_KEY_HOLDERS,
   memberships: SELLER_MEMBERSHIP_REPOSITORY,
   roles: ROLE_REPOSITORY,
   assignments: ROLE_ASSIGNMENT_REPOSITORY,
@@ -1140,6 +1142,7 @@ function useCaseProvider<D, U>(
       memberships: true,
       grants: true,
     }),
+    useCaseProvider(OfferReviewAlertRecipients, { keyHolders: true }),
     useCaseProvider(OwnOwnerEmail, {
       unitOfWork: true,
       accounts: true,
@@ -2150,6 +2153,7 @@ function useCaseProvider<D, U>(
         TeamMembershipOf,
         ConfirmSellerSecondFactor,
         ContactEmailOf,
+        OfferReviewAlertRecipients,
         OwnOwnerEmail,
         RequireStepUp,
         CustomerAccountOf,
@@ -2183,6 +2187,7 @@ function useCaseProvider<D, U>(
         teamMembershipOf: TeamMembershipOf,
         confirmSellerSecondFactor: ConfirmSellerSecondFactor,
         contactEmailOf: ContactEmailOf,
+        offerReviewAlertRecipients: OfferReviewAlertRecipients,
         ownOwnerEmail: OwnOwnerEmail,
         requireStepUp: RequireStepUp,
         customerAccountOf: CustomerAccountOf,
@@ -2216,6 +2221,7 @@ function useCaseProvider<D, U>(
           teamMembershipOf,
           confirmSellerSecondFactor,
           contactEmailOf,
+          offerReviewAlertRecipients,
           ownOwnerEmail,
           requireStepUp,
           customerAccountOf,

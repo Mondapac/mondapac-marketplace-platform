@@ -6,6 +6,7 @@ import {
   AccessReviewersUnavailableError,
   type AccessReviewer,
   type AccessReviewers,
+  type AdminKeyHolders,
   type ReviewerCandidateReader,
 } from '../ports/access-reviewers';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
@@ -60,12 +61,13 @@ export function isAccessReviewer(
   candidate: AccessReviewer,
   grant: RoleGrant | null,
   rule: ReviewerRule,
+  key: string = SELLER_ACCESS_APPROVE,
 ): boolean {
   return (
     rule.factors.hasActiveFactor(candidate.accountId) &&
     holdsEvery(
       rule.keys({ population: 'admin', accountId: candidate.accountId, sellerId: null, grant }),
-      [SELLER_ACCESS_APPROVE],
+      [key],
     )
   );
 }
@@ -88,10 +90,19 @@ export interface AccountAccessReviewersDependencies {
  * code. Since slice 8a-1 the grant read and the registry are bound, and since slice 7 the factor
  * store: an admin without an active factor is never a recipient.
  */
-export class AccountAccessReviewers implements AccessReviewers {
+export class AccountAccessReviewers implements AccessReviewers, AdminKeyHolders {
   constructor(private readonly deps: AccountAccessReviewersDependencies) {}
 
-  async reviewersOf(market: MarketContext): Promise<readonly AccessReviewer[]> {
+  reviewersOf(market: MarketContext): Promise<readonly AccessReviewer[]> {
+    return this.holdersOf(market, SELLER_ACCESS_APPROVE);
+  }
+
+  /**
+   * The same read and rule for another admin key (the Offer review queue backlog mail): active,
+   * verified admins of the Market with an active second factor whose effective keys hold `key`,
+   * by account id. Throws {@link AccessReviewersUnavailableError} when the read fails.
+   */
+  async holdersOf(market: MarketContext, key: string): Promise<readonly AccessReviewer[]> {
     const read = await this.deps.unitOfWork.run(
       market,
       async () => {
@@ -121,7 +132,7 @@ export class AccountAccessReviewers implements AccessReviewers {
     const { candidates, grants } = read.value;
     return candidates
       .filter((candidate) =>
-        isAccessReviewer(candidate, grants.get(candidate.accountId) ?? null, rule),
+        isAccessReviewer(candidate, grants.get(candidate.accountId) ?? null, rule, key),
       )
       .sort((a, b) => (a.accountId < b.accountId ? -1 : a.accountId > b.accountId ? 1 : 0));
   }

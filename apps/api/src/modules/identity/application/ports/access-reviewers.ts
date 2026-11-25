@@ -45,3 +45,15 @@ export interface AccessReviewers {
 
 /** Nest token of the {@link AccessReviewers}. */
 export const ACCESS_REVIEWERS = Symbol('ACCESS_REVIEWERS');
+
+/**
+ * The admins who hold one admin permission key in a Market, by the reviewer rule (identity design
+ * 8.7): active, verified, with an active second factor, the key among their effective keys.
+ * Throws {@link AccessReviewersUnavailableError} when the read fails, never answers a guess.
+ */
+export interface AdminKeyHolders {
+  holdersOf(market: MarketContext, key: string): Promise<readonly AccessReviewer[]>;
+}
+
+/** Nest token of the {@link AdminKeyHolders}; bound to the same instance as {@link ACCESS_REVIEWERS}. */
+export const ADMIN_KEY_HOLDERS = Symbol('ADMIN_KEY_HOLDERS');

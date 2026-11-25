@@ -158,6 +158,7 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
         teamMembershipOf: undefined as never,
         confirmSellerSecondFactor: undefined as never,
         contactEmailOf: undefined as never,
+        offerReviewAlertRecipients: undefined as never,
         ownOwnerEmail: undefined as never,
         adminEndCustomerSessions: undefined as never,
         requireStepUp: undefined as never,

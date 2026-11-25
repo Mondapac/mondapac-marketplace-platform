@@ -219,6 +219,8 @@ const OFFER_QUEUE_BACKLOG_PORTS: readonly [keyof OfferQueueBacklogDependencies, 
     ['policy', NOTIFICATIONS_POLICY],
     ['ids', ID_GENERATOR],
     ['clock', CLOCK],
+    ['identity', IDENTITY_FACADE],
+    ['transport', MAIL_TRANSPORT],
   ];
 
 /** The Offer queue backlog alert (risk-based Offer approval, slice 8). */

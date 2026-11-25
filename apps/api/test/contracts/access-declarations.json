@@ -554,6 +554,7 @@
   },
   { "name": "identity.membership-of", "rule": "own-resources", "whenSellerNotApproved": "allow" },
   { "name": "identity.notify-access-reviewers", "rule": "system" },
+  { "name": "identity.offer-review-alert-recipients", "rule": "system" },
   {
     "name": "identity.own-account-tied-to-seller",
     "rule": "own-resources",

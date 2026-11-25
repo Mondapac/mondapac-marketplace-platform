@@ -3,6 +3,7 @@ import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel'
 import type { AccessDenied } from '../../../platform/authz';
 import type { ConfirmSellerSecondFactor } from '../application/use-cases/confirm-seller-second-factor.use-case';
 import type { ContactEmailOf } from '../application/use-cases/contact-email-of.use-case';
+import type { OfferReviewAlertRecipients } from '../application/use-cases/offer-review-alert-recipients.use-case';
 import type { OwnOwnerEmail } from '../application/use-cases/own-owner-email.use-case';
 import type { CustomerAccountOf } from '../application/use-cases/customer-account-of.use-case';
 import type { AdminRequestCustomerEmailChange } from '../application/use-cases/admin-request-customer-email-change.use-case';
@@ -60,6 +61,7 @@ export interface IdentityFacadeUseCases {
   readonly teamMembershipOf: TeamMembershipOf;
   readonly confirmSellerSecondFactor: ConfirmSellerSecondFactor;
   readonly contactEmailOf: ContactEmailOf;
+  readonly offerReviewAlertRecipients: OfferReviewAlertRecipients;
   readonly ownOwnerEmail: OwnOwnerEmail;
   readonly requireStepUp: RequireStepUp;
   readonly customerAccountOf: CustomerAccountOf;
@@ -141,6 +143,12 @@ export class IdentityFacadeImplementation implements IdentityFacade {
     target: ContactEmailTarget,
   ): Promise<Result<string | null, AccessDenied>> {
     return this.useCases.contactEmailOf.execute(context, target);
+  }
+
+  offerReviewAlertRecipients(
+    context: CallContext,
+  ): Promise<Result<readonly string[], AccessDenied | { readonly code: 'access.unavailable' }>> {
+    return this.useCases.offerReviewAlertRecipients.execute(context, {});
   }
 
   ownOwnerEmail(context: CallContext): Promise<Result<string | null, AccessDenied>> {

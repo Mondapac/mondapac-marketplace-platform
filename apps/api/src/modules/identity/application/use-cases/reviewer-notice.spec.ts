@@ -68,6 +68,7 @@ import type { ReapplySellerAccess } from './reapply-seller-access.use-case';
 import type { RejectSellerAccess } from './reject-seller-access.use-case';
 import { SellerAccessOf } from './seller-access-of.use-case';
 import { SellerAccessOfSystem } from './seller-access-of-system.use-case';
+import { OFFER_REVIEW_ALERT_KEY } from './offer-review-alert-recipients.use-case';
 
 // The reviewer notice (identity design 8.7; ux.md E3; request R-3; mini-review 3 with Ali's
 // rulings and Hassan's M2 and L2), in memory, for both Market fixtures: the system-only contract
@@ -1062,6 +1063,75 @@ describe.each(TEST_MARKETS)('the reviewer notice in market %s (identity design 8
             effectiveKeys,
             factors: NO_FACTORS,
           }).reviewersOf(market),
+        ).resolves.toEqual([]);
+      });
+
+      // Slice 8b: the Offer review queue backlog mail reads the holders of the Offer approve key
+      // by the same rule; again a holder exactly when the gate allows that key.
+      it(`holdersOf(${OFFER_REVIEW_ALERT_KEY}): a holder exactly when the gate allows that key`, async () => {
+        const s = setUp();
+        const roles = seedRealRoles(s.fakes);
+        const effectiveKeys = realEffectiveKeys(realPermissionRegistry());
+        const rows: AccountState[] = [];
+        CODES.forEach((seedCode, k) => {
+          const row = accountState(code, { id: n(k) });
+          s.fakes.seedAccount(row);
+          assign(s.fakes, row.id, roles.get(`platform:${seedCode}`)!, k);
+          rows.push(row);
+        });
+        const disabled = accountState(code, { id: n(22), status: 'disabled' });
+        s.fakes.seedAccount(disabled);
+        assign(s.fakes, disabled.id, roles.get('platform:platform-administrator')!, 22);
+        const check = new AccountAuthorisationCheck({
+          unitOfWork: s.unitOfWork,
+          accounts: s.fakes.accountRepository,
+          memberships: s.fakes.membershipRepository,
+          sellerAccess: s.fakes.sellerAccessRepository,
+          grants: s.fakes.grantReader,
+          effectiveKeys,
+        });
+        const holders = new AccountAccessReviewers({
+          unitOfWork: s.unitOfWork,
+          candidates: s.fakes.reviewerCandidateReader,
+          grants: s.fakes.grantReader,
+          effectiveKeys,
+          factors: EVERY_FACTOR,
+        });
+        const found = new Set(
+          (await holders.holdersOf(market, OFFER_REVIEW_ALERT_KEY)).map((h) => h.accountId),
+        );
+        const approveOffers: AccessDeclaration = {
+          name: 'identity.approve-offers',
+          rule: { kind: 'permissions', allOf: [OFFER_REVIEW_ALERT_KEY as never] },
+        };
+        const allowedIds: Id<'Account'>[] = [];
+        for (const row of rows) {
+          const context = testCallContext(
+            market,
+            testAuthenticatedActor(market, {
+              population: 'admin',
+              accountId: row.id,
+              sessionId: SESSION_ID,
+              sellerId: null,
+            }),
+          );
+          const allowed = (await check.check(context, approveOffers)).allowed;
+          expect([row.id, found.has(row.id)]).toEqual([row.id, allowed]);
+          if (allowed) allowedIds.push(row.id);
+        }
+        // Some default roles hold it, some do not; a disabled administrator never does.
+        expect(allowedIds.length).toBeGreaterThan(0);
+        expect(allowedIds.length).toBeLessThan(rows.length);
+        expect(found.has(disabled.id)).toBe(false);
+        // No active factor, no holder.
+        await expect(
+          new AccountAccessReviewers({
+            unitOfWork: s.unitOfWork,
+            candidates: s.fakes.reviewerCandidateReader,
+            grants: s.fakes.grantReader,
+            effectiveKeys,
+            factors: NO_FACTORS,
+          }).holdersOf(market, OFFER_REVIEW_ALERT_KEY),
         ).resolves.toEqual([]);
       });
     });
