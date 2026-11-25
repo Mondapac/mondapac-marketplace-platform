@@ -10,6 +10,14 @@ import { PersistenceModule } from '../../platform/persistence/persistence.module
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../platform/unit-of-work/unit-of-work';
 import { CATALOG_FACADE, CatalogModule, type CatalogFacade } from '../catalog';
+import { SETTINGS_FACADE, SettingsModule, type SettingsFacade } from '../settings';
+import { SELLER_GOAL_STORE, type SellerGoalStore } from './application/ports/seller-goal-store';
+import { SetSellerMonthlyGoal } from './application/use-cases/set-seller-monthly-goal.use-case';
+import { ViewMarketplaceMonthlyTarget } from './application/use-cases/view-marketplace-monthly-target.use-case';
+import {
+  ViewSellerMonthlyGoal,
+  type SellerGoalDependencies,
+} from './application/use-cases/view-seller-monthly-goal.use-case';
 import { ENGAGEMENT_FACADE, EngagementModule, type EngagementFacade } from '../engagement';
 import { ENGAGEMENT_SOURCES, type EngagementSources } from './application/ports/engagement-sources';
 import { ENGAGEMENT_STORE, type EngagementStore } from './application/ports/engagement-store';
@@ -91,6 +99,7 @@ const REPORT_FACTS_DEPENDENCIES = Symbol('REPORT_FACTS_DEPENDENCIES');
 const ADMIN_KPI_DEPENDENCIES = Symbol('ADMIN_KPI_DEPENDENCIES');
 const LEDGER_FACTS_DEPENDENCIES = Symbol('LEDGER_FACTS_DEPENDENCIES');
 const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
+const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
 
 /**
  * The reporting module (dashboards upgrade, option B, phase 3): the facts behind the dashboard
@@ -99,9 +108,11 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
  * (ordering's order and refund events) and the nightly reconcile; the ledger facts come from
  * commission-payouts' reporting facade (its `ledger-recorded` event and the ledger backfill); the
  * shopping funnel's daily counts from ordering's checkouts and engagement's count (dashboards v2,
- * phase 2: a nightly snapshot, counts only). No
+ * phase 2: a nightly snapshot, counts only); the Market's monthly revenue target from the settings
+ * facade. No
  * module imports it. It publishes no event. Its own keys are the two daily exports' (dashboards v2,
- * PR 5), each audited. The history backfill job brings the facts recorded before the module was
+ * PR 5), each audited, and the seller's monthly goal (phase 2), the one table it holds that is not
+ * derived data. The history backfill job brings the facts recorded before the module was
  * deployed in, once.
  */
 @Module({
@@ -111,6 +122,7 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
     CatalogModule,
     ShippingModule,
     CommissionPayoutsModule,
+    SettingsModule,
     EngagementModule,
   ],
   controllers: [SellerKpisController, AdminReportsController],
@@ -179,6 +191,39 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
           zone,
           clock,
         } satisfies ViewSellerKpisDependencies),
+    },
+    // Monthly target and seller goal (dashboards v2, phase 2).
+    {
+      provide: SELLER_GOAL_DEPENDENCIES,
+      inject: [UNIT_OF_WORK, SELLER_KPI_READER, SELLER_GOAL_STORE, MARKET_ZONE, CLOCK],
+      useFactory: (
+        unitOfWork: UnitOfWork,
+        reader: SellerKpiReader,
+        goals: SellerGoalStore,
+        zone: MarketZone,
+        clock: Clock,
+      ): SellerGoalDependencies => ({ unitOfWork, reader, goals, zone, clock }),
+    },
+    {
+      provide: ViewSellerMonthlyGoal,
+      inject: [USE_CASE_GATE, SELLER_GOAL_DEPENDENCIES],
+      useFactory: (gate: UseCaseGate, deps: SellerGoalDependencies) =>
+        new ViewSellerMonthlyGoal(gate, deps),
+    },
+    {
+      provide: SetSellerMonthlyGoal,
+      inject: [USE_CASE_GATE, SELLER_GOAL_DEPENDENCIES, AUDIT_WRITER],
+      useFactory: (gate: UseCaseGate, deps: SellerGoalDependencies, audit: AuditWriter) =>
+        new SetSellerMonthlyGoal(gate, { ...deps, audit }),
+    },
+    {
+      provide: ViewMarketplaceMonthlyTarget,
+      inject: [USE_CASE_GATE, ADMIN_KPI_DEPENDENCIES, SETTINGS_FACADE],
+      useFactory: (gate: UseCaseGate, deps: AdminKpiDependencies, settings: SettingsFacade) =>
+        new ViewMarketplaceMonthlyTarget(gate, {
+          ...deps,
+          targets: { marketTarget: (context) => settings.monthlyRevenueTarget(context) },
+        }),
     },
     {
       provide: REPORT_SOURCES,
@@ -343,6 +388,7 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
         ViewSellerNetEarnings,
         ViewMarketplaceOrderStatus,
         ViewMarketplaceOrdersByState,
+        ViewMarketplaceMonthlyTarget,
         ViewMarketplaceShoppingFunnel,
         MARKET_ZONE,
         CLOCK,
@@ -356,6 +402,7 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
         netEarnings: ViewSellerNetEarnings,
         orderStatus: ViewMarketplaceOrderStatus,
         ordersByState: ViewMarketplaceOrdersByState,
+        monthlyTarget: ViewMarketplaceMonthlyTarget,
         shoppingFunnel: ViewMarketplaceShoppingFunnel,
         zone: MarketZone,
         clock: Clock,
@@ -369,6 +416,7 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
           netEarnings,
           orderStatus,
           ordersByState,
+          monthlyTarget,
           shoppingFunnel,
           { zone, clock },
         ),
