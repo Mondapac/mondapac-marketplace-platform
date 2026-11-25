@@ -1061,6 +1061,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "allow"
   },
+  { "name": "settings.read-offer-review-policy", "rule": "anonymous" },
   { "name": "shipping.book-carrier-delivery", "rule": "system" },
   { "name": "shipping.cancel-carrier-delivery", "rule": "system" },
   { "name": "shipping.carrier-shipment", "rule": "system" },

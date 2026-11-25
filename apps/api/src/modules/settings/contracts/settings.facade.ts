@@ -1,6 +1,9 @@
 import type { CallContext, Money, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { AiModelTierSetting, CartMode } from '../domain/definitions';
+import type { OfferReviewPolicySettings } from '../application/use-cases/read-offer-review-policy.use-case';
+
+export type { OfferReviewPolicySettings };
 
 /**
  * What other modules read from the settings store (ADR-0026 decision 2). Each method carries the
@@ -28,6 +31,12 @@ export interface SettingsFacade {
    * `access.unavailable`, never "no target".
    */
   monthlyRevenueTarget(context: CallContext): Promise<Result<Money | null, AccessDenied>>;
+
+  /**
+   * The Market's Offer review policy (ADR-0051), for any caller. Never an error: a refusal or a
+   * throw answers the safe policy (every Offer waits for an admin; ADR-0026 decision 5).
+   */
+  offerReviewPolicy(context: CallContext): Promise<OfferReviewPolicySettings>;
 }
 
 export const SETTINGS_FACADE = Symbol('SETTINGS_FACADE');
