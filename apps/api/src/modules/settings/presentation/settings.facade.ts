@@ -1,6 +1,7 @@
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { ReadAiDescriptionWriter } from '../application/use-cases/read-ai-description-writer.use-case';
 import type { ReadCartMode } from '../application/use-cases/read-cart-mode.use-case';
+import type { ReadOfferQueueBacklogLimits } from '../application/use-cases/read-offer-queue-backlog-limits.use-case';
 import type { ReadMonthlyRevenueTarget } from '../application/use-cases/read-monthly-revenue-target.use-case';
 import {
   SAFE_OFFER_REVIEW_POLICY,
@@ -16,6 +17,7 @@ export class SettingsFacadeImplementation implements SettingsFacade {
     private readonly readCartMode: ReadCartMode,
     private readonly readMonthlyRevenueTarget: ReadMonthlyRevenueTarget,
     private readonly readOfferReviewPolicy?: ReadOfferReviewPolicy,
+    private readonly readBacklogLimits?: ReadOfferQueueBacklogLimits,
   ) {}
 
   monthlyRevenueTarget(context: CallContext) {
@@ -50,5 +52,15 @@ export class SettingsFacadeImplementation implements SettingsFacade {
       // The safe value below.
     }
     return 'multi-store' as const;
+  }
+
+  async offerQueueBacklogLimits(context: CallContext) {
+    try {
+      const answer = await this.readBacklogLimits?.execute(context, {});
+      if (answer?.ok) return answer.value;
+    } catch {
+      // Null below.
+    }
+    return null;
   }
 }

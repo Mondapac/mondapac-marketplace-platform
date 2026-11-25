@@ -39,8 +39,16 @@ export interface ProductCard {
   /** Category code, used for the fallback illustration when there is no photo. */
   readonly category: string;
   readonly price: Money;
-  /** The regular price when a special price applies. */
+  /**
+   * The regular price to show struck through, only when a special applies and the Market's
+   * was-price rule allows it (the API decides; see search's specials shelf).
+   */
   readonly wasPrice?: Money;
+  /**
+   * True when `price` is a seller's special in force now, with or without a `wasPrice`: the card
+   * shows the "Special price" pill and the special colour. Never a saving amount on its own.
+   */
+  readonly onSpecial?: boolean;
   readonly certifications: readonly CertificationBadge[];
   /** Units left when stock is low; absent when stock is not low. */
   readonly lowStock?: number;

@@ -1149,6 +1149,54 @@ export const OfferChangeSupersededAudit = defineAuditAction({
   },
 });
 
+/**
+ * The audit target type of a seller's Offer review standing (slice 4); the target id is the
+ * seller id (one standing per Market and seller).
+ */
+export const CATALOG_SELLER_REVIEW_TARGET = 'catalog.seller-review-standing';
+
+/**
+ * A seller reached its probation target and is Trusted (slice 4): stamped by an admin's approval
+ * of a first publication, or by the seller's submit when N was lowered under its count. Numbers
+ * only.
+ */
+export const SellerReviewTrustedAudit = defineAuditAction({
+  action: 'catalog.seller-review.trusted',
+  targetType: CATALOG_SELLER_REVIEW_TARGET,
+  actors: ['authenticated'],
+  after: { epoch: auditField.integer(), count: auditField.integer(), target: auditField.integer() },
+});
+
+/** A second Changes needed in a row restarted a seller's probation: the new epoch, count 0. */
+export const SellerReviewRestartedAudit = defineAuditAction({
+  action: 'catalog.seller-review.restarted',
+  targetType: CATALOG_SELLER_REVIEW_TARGET,
+  actors: ['authenticated'],
+  after: { epoch: auditField.integer() },
+});
+
+/**
+ * An admin switched a platform category's "always review" flag (R7, slice 4). Booleans only: the
+ * reason is kept in `catalog.category_offer_review_changes` with the same unit and instant.
+ * `stepUpVerifiedAt` is when the admin's two-step code spent by the change was verified.
+ */
+export const CategoryOfferReviewChangedAudit = defineAuditAction({
+  action: 'catalog.category.offer-review-changed',
+  targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
+  actors: ['authenticated'],
+  before: { on: auditField.boolean() },
+  after: { on: auditField.boolean(), stepUpVerifiedAt: auditField.optional(auditField.instant()) },
+});
+
+/** An admin switched a platform category's Offer review stop (R0); as above. */
+export const CategoryReviewStopChangedAudit = defineAuditAction({
+  action: 'catalog.category.review-stop-changed',
+  targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
+  actors: ['authenticated'],
+  before: { on: auditField.boolean() },
+  after: { on: auditField.boolean(), stepUpVerifiedAt: auditField.optional(auditField.instant()) },
+});
+
 export const CATALOG_AUDIT_ACTIONS = [
   ProductPausedAudit,
   ProductResumedAudit,
@@ -1224,4 +1272,8 @@ export const CATALOG_AUDIT_ACTIONS = [
   OfferChangeRejectedAudit,
   OfferChangeWithdrawnAudit,
   OfferChangeSupersededAudit,
+  SellerReviewTrustedAudit,
+  SellerReviewRestartedAudit,
+  CategoryOfferReviewChangedAudit,
+  CategoryReviewStopChangedAudit,
 ] as const;

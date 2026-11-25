@@ -119,6 +119,7 @@ model CatalogProduct {
   categoryMoveItems    CatalogCategoryProductMoveItem[]
   variantRequests      CatalogVariantRequest[]           @relation("ProductVariantRequests")
   topicSuggestions     CatalogTopicSuggestion[]          @relation("ProductTopicSuggestions")
+  reviewCredits        CatalogSellerReviewCredit[]
 
   /// The target of composite foreign keys (C3).
   @@unique([marketId, id])
@@ -246,6 +247,7 @@ model CatalogPlatformCategory {
   sellerCategories              CatalogSellerCategory[]              @relation("SellerCategoryParent")
   sellerCategoriesMergedHere    CatalogSellerCategory[]              @relation("SellerCategoryMergedInto")
   categoryProposals             CatalogCategoryProposal[]
+  offerReviewFlags              CatalogCategoryOfferReviewFlags?
 
   @@unique([marketId, id])
   /// One slug per Market (D 17.1).
@@ -924,6 +926,7 @@ model CatalogOffer {
   history                     CatalogOfferHistory[]
   reviewReferrals             CatalogOfferReviewReferral[]
   pendingChanges              CatalogOfferPendingChange[]
+  reviewCredits               CatalogSellerReviewCredit[]
   tags                        CatalogOfferTag[]
   sellUnits                   CatalogOfferSellUnit[]
   variantRequests             CatalogVariantRequest[]
@@ -1068,7 +1071,7 @@ model CatalogOfferPendingChange {
   proposedHandling     String?                      @map("proposed_handling")
   /// Requested certification type codes; empty = none.
   proposedTagTypes     String[]                     @default([]) @map("proposed_tag_types")
-  /// emergency-stop | certificate-badge | handling | contact-text | review-all; never empty.
+  /// emergency-stop | certificate-badge | handling | contact-text | sensitive-category | review-all; never empty.
   reasons              String[]
   policyVersion        Int                          @map("policy_version")
   /// pending | approved | changes-requested | rejected | withdrawn | superseded.
@@ -2189,5 +2192,104 @@ model CatalogMissingDetailsEmail {
 
   @@id([marketId, sellerId, productId])
   @@map("missing_details_emails")
+  @@schema("catalog")
+}
+
+/// A seller's Offer review standing in a Market (risk-based Offer approval slice 4, ADR-0051
+/// decision 4): probation progress and Trusted. One row per Market and seller, created lazily by
+/// the first unit that needs it; never deleted. `count` is the number of credits in the current
+/// epoch (not stored); the target is N or ceil(N/2) by target_kind, with N read at decision time.
+/// Lock order: the Offer row, then this row (FOR UPDATE); bulk units lock sellers in id order.
+/// CHECKs, the guard trigger and the column grants are hand-written in the migration.
+model CatalogSellerReviewStanding {
+  marketId                 String                      @map("market_id") @db.VarChar(8)
+  tenantId                 String                      @map("tenant_id")
+  /// A sellers id; no foreign key across schemas.
+  sellerId                 String                      @map("seller_id") @db.Uuid
+  /// Starts at 1; +1 on a restart (two Changes needed in a row) or a misconduct revocation.
+  epoch                    Int
+  /// initial (target N) | after-misconduct (target ceil(N/2)); only initial -> after-misconduct.
+  targetKind               String                      @map("target_kind")
+  /// Changes needed in a row in probation: 0 or 1 (the second one restarts the epoch).
+  consecutiveChangesNeeded Int                         @map("consecutive_changes_needed")
+  /// Set when the seller reaches the target; cleared only by a misconduct revocation.
+  trustedAt                DateTime?                   @map("trusted_at") @db.Timestamptz(6)
+  /// The last misconduct revocation; Trusted-from-start counts only when switched on after it.
+  trustLostAt              DateTime?                   @map("trust_lost_at") @db.Timestamptz(6)
+  version                  Int
+  createdAt                DateTime                    @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime                    @map("updated_at") @db.Timestamptz(6)
+  credits                  CatalogSellerReviewCredit[]
+
+  @@id([marketId, sellerId])
+  @@map("seller_review_standings")
+  @@schema("catalog")
+}
+
+/// One probation credit: an admin approval of a first publication, counted once per product per
+/// epoch (deleting and recreating an Offer gains nothing). Insert-only; the epoch is the
+/// standing's current epoch at insert (guard trigger). The primary key serves the count.
+model CatalogSellerReviewCredit {
+  marketId   String                      @map("market_id") @db.VarChar(8)
+  tenantId   String                      @map("tenant_id")
+  sellerId   String                      @map("seller_id") @db.Uuid
+  epoch      Int
+  productId  String                      @map("product_id") @db.Uuid
+  /// The approved Offer, bound to the seller by the composite foreign key.
+  offerId    String                      @map("offer_id") @db.Uuid
+  creditedAt DateTime                    @map("credited_at") @db.Timestamptz(6)
+  standing   CatalogSellerReviewStanding @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+  offer      CatalogOffer                @relation(fields: [marketId, offerId, sellerId], references: [marketId, id, sellerId], onDelete: Restrict, onUpdate: Restrict)
+  product    CatalogProduct              @relation(fields: [marketId, productId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, sellerId, epoch, productId])
+  @@map("seller_review_credits")
+  @@schema("catalog")
+}
+
+/// A platform category's Offer review flags (slice 4): always review (R7) and the category
+/// emergency stop (R0). Both inherit to sub-categories (read side). Admin data, never code; the
+/// list ships empty. One row per category, created the first time a flag is changed; own version
+/// so a flag change never conflicts with a category edit. Never deleted.
+model CatalogCategoryOfferReviewFlags {
+  marketId                       String                             @map("market_id") @db.VarChar(8)
+  tenantId                       String                             @map("tenant_id")
+  categoryId                     String                             @map("category_id") @db.Uuid
+  alwaysReview                   Boolean                            @map("always_review")
+  alwaysReviewChangedAt          DateTime?                          @map("always_review_changed_at") @db.Timestamptz(6)
+  alwaysReviewChangedByAccountId String?                            @map("always_review_changed_by_account_id") @db.Uuid
+  reviewStop                     Boolean                            @map("review_stop")
+  reviewStopChangedAt            DateTime?                          @map("review_stop_changed_at") @db.Timestamptz(6)
+  reviewStopChangedByAccountId   String?                            @map("review_stop_changed_by_account_id") @db.Uuid
+  version                        Int
+  createdAt                      DateTime                           @map("created_at") @db.Timestamptz(6)
+  category                       CatalogPlatformCategory            @relation(fields: [marketId, categoryId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  changes                        CatalogCategoryOfferReviewChange[]
+
+  @@id([marketId, categoryId])
+  @@map("category_offer_review_flags")
+  @@schema("catalog")
+}
+
+/// Who switched a category's Offer review flag, when, from what to what, and why. Insert-only.
+model CatalogCategoryOfferReviewChange {
+  id                 String                          @id @db.Uuid
+  marketId           String                          @map("market_id") @db.VarChar(8)
+  tenantId           String                          @map("tenant_id")
+  categoryId         String                          @map("category_id") @db.Uuid
+  /// always-review | review-stop.
+  flag               String
+  /// Before and after differ (CHECK).
+  previousValue      Boolean                         @map("previous_value")
+  newValue           Boolean                         @map("new_value")
+  /// 1 to 500 characters, trimmed.
+  reason             String
+  changedByAccountId String                          @map("changed_by_account_id") @db.Uuid
+  changedAt          DateTime                        @map("changed_at") @db.Timestamptz(6)
+  flags              CatalogCategoryOfferReviewFlags @relation(fields: [marketId, categoryId], references: [marketId, categoryId], onDelete: Restrict, onUpdate: Restrict)
+
+  /// A category's flag history, newest first (keyset on changed_at, id).
+  @@index([marketId, categoryId, changedAt, id], map: "category_offer_review_changes_category_idx")
+  @@map("category_offer_review_changes")
   @@schema("catalog")
 }

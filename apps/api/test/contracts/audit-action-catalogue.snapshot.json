@@ -382,6 +382,32 @@
     }
   },
   {
+    "action": "catalog.category.offer-review-changed",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "on": "boolean"
+    },
+    "after": {
+      "on": "boolean",
+      "stepUpVerifiedAt": "optional(instant)"
+    }
+  },
+  {
+    "action": "catalog.category.review-stop-changed",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "on": "boolean"
+    },
+    "after": {
+      "on": "boolean",
+      "stepUpVerifiedAt": "optional(instant)"
+    }
+  },
+  {
     "action": "catalog.seller-category.promoted",
     "targetType": "catalog.seller-category",
     "targetId": "id",
@@ -442,6 +468,28 @@
     "after": {
       "definitionId": "id",
       "productId": "id"
+    }
+  },
+  {
+    "action": "catalog.seller-review.restarted",
+    "targetType": "catalog.seller-review-standing",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "epoch": "integer"
+    }
+  },
+  {
+    "action": "catalog.seller-review.trusted",
+    "targetType": "catalog.seller-review-standing",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "count": "integer",
+      "epoch": "integer",
+      "target": "integer"
     }
   },
   {
@@ -2221,7 +2269,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|customers.customer-email.change|customers.customers.export|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.category-review.change|catalog.offer-review-stop.change|catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|customers.customer-email.change|customers.customers.export|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.offer-review-stop.change|sellers.offer-review-trust.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "cause": "enumOf(invalid|locked)",
       "sessionId": "id"
     }
@@ -2233,7 +2281,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|customers.customer-email.change|customers.customers.export|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.category-review.change|catalog.offer-review-stop.change|catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|customers.customer-email.change|customers.customers.export|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.offer-review-stop.change|sellers.offer-review-trust.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "sessionId": "id"
     }
   },
@@ -2602,11 +2650,11 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|customers.customer-email.change|customers.customers.export|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.category-review.change|catalog.offer-review-stop.change|catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|customers.customer-email.change|customers.customers.export|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.offer-review-stop.change|sellers.offer-review-trust.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "required": "boolean"
     },
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|customers.customer-email.change|customers.customers.export|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.category-review.change|catalog.offer-review-stop.change|catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|customers.customer-email.change|customers.customers.export|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.offer-review-stop.change|sellers.offer-review-trust.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "required": "boolean"
     }
   },
@@ -3549,6 +3597,44 @@
     }
   },
   {
+    "action": "sellers.offer-review-full-review.changed",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "on": "boolean"
+    },
+    "after": {
+      "on": "boolean"
+    }
+  },
+  {
+    "action": "sellers.offer-review-stop.changed",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "on": "boolean"
+    },
+    "after": {
+      "on": "boolean",
+      "stepUpVerifiedAt": "optional(instant)"
+    }
+  },
+  {
+    "action": "sellers.offer-review-trust.changed",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "on": "boolean"
+    },
+    "after": {
+      "on": "boolean",
+      "stepUpVerifiedAt": "optional(instant)"
+    }
+  },
+  {
     "action": "sellers.pickup-details.read-for-carrier",
     "targetType": "sellers.seller",
     "targetId": "id",
@@ -3636,7 +3722,7 @@
   {
     "action": "settings.market-setting.number-changed",
     "targetType": "settings.market-setting",
-    "targetId": "enumOf(ai-saver-percent|offer-review-probation-offers|offer-review-reference-sellers|offer-review-price-band|offer-review-sampling)",
+    "targetId": "enumOf(ai-saver-percent|offer-review-probation-offers|offer-review-reference-sellers|offer-review-price-band|offer-review-sampling|offer-review-backlog-count|offer-review-backlog-hours)",
     "actors": ["authenticated"],
     "before": {
       "value": "integer"

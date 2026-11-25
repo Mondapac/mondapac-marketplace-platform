@@ -19,6 +19,10 @@ export class ConfigNotificationsPolicy implements NotificationsPolicy {
     return { address: fromAddress, name: fromName };
   }
 
+  marketTimezone(market: MarketContext): string {
+    return this.markets.get(market.marketId).timezone;
+  }
+
   defaultLocale(market: MarketContext): string {
     return this.markets.get(market.marketId).defaultLocale;
   }

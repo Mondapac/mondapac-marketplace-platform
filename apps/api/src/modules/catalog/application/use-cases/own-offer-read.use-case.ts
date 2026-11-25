@@ -6,7 +6,7 @@ import { CATALOG_OWN_PRODUCT_VIEW } from '../../contracts/permissions';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { OfferRepository } from '../ports/offer.repository';
 import type { OfferPendingChangeRepository } from '../ports/offer-pending-change.repository';
-import { offerChangeViewOf } from '../offer-change-view';
+import { ownOfferChangeViewOf } from '../offer-change-view';
 import type { OwnCatalogReader } from '../ports/own-catalog.reader';
 import { offerViewOf, type OwnOfferView } from '../own-reads/own-offer-view';
 import { invalid, sellerOf, type ValidationFailure } from '../own-reads/own-reads.shared';
@@ -80,7 +80,7 @@ export class OwnOfferRead extends UseCase<OwnOfferReadInput, OwnOfferView, OwnOf
         return ok({
           ...offerViewOf(offer, label, { withTags: true }),
           sellUnits,
-          pendingChange: latest === null ? null : offerChangeViewOf(latest),
+          pendingChange: latest === null ? null : ownOfferChangeViewOf(latest),
         });
       },
       { readOnly: true },

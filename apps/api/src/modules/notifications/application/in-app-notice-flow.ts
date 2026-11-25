@@ -47,6 +47,7 @@ import {
   ADMIN_DELIVERY_FALLBACK_OVER_CAP,
   ADMIN_SELLER_REFUND_LIMIT_REACHED,
   ADMIN_ASSISTANT_SPEND_CAP_REACHED,
+  ADMIN_OFFER_QUEUE_BACKLOG,
   ADMIN_PRICE_HOLD_OPENED,
   ADMIN_SELLER_REINSTATED_HOLD_REMAINS,
   ADMIN_PRODUCT_REVISION_SUBMITTED,
@@ -256,6 +257,12 @@ const ADMIN_KIND_ACCESS: Readonly<Record<AdminNoticeKind, AccessDeclaration>> = 
   [ADMIN_ASSISTANT_SPEND_CAP_REACHED]: {
     name: 'notifications.see-admin-assistant-spend-cap-notices',
     rule: { kind: 'permissions', allOf: [ASSISTANT_SETTINGS_VIEW.key] },
+  },
+  // The admins who work the Offer review queue see that it is past a limit (the same key as the
+  // product and Offer approval: the queue admin and the manager hold it).
+  [ADMIN_OFFER_QUEUE_BACKLOG]: {
+    name: 'notifications.see-admin-offer-queue-backlog-notices',
+    rule: { kind: 'permissions', allOf: [CATALOG_PRODUCT_APPROVE.key] },
   },
   // The admins who see the caps on seller refunds follow up a seller that reached one.
   [ADMIN_SELLER_REFUND_LIMIT_REACHED]: {

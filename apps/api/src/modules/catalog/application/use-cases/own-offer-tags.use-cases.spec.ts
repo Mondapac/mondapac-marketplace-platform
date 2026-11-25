@@ -1,4 +1,8 @@
 import { memoryOfferEditReview } from '../../../../../test/support/catalog-offer-edit-review-fakes';
+import {
+  InMemorySellerReviewStandings,
+  memoryProbation,
+} from '../../../../../test/support/catalog-seller-review-fakes';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, MarketContext, MarketId, Result } from '@mondapac/shared-kernel';
 import {
@@ -28,8 +32,11 @@ import { CategoryPathsUnavailableError } from '../ports/category-paths.reader';
 import type { CheckClaimText } from '../claim-text/check-claim-text.service';
 import type { AuditEntry } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
-import type { OfferReviewFacts } from '../../domain/offer-review-policy';
-import type { OfferReviewReferral, OfferReviewSettings } from '../ports/offer-review';
+import type {
+  OfferReviewFactsRead,
+  OfferReviewReferral,
+  OfferReviewSettings,
+} from '../ports/offer-review';
 import type { OfferRepository } from '../ports/offer.repository';
 import type { ProductRepository } from '../ports/product.repository';
 import { OwnOfferAddTag } from './own-offer-add-tag.use-case';
@@ -124,7 +131,7 @@ describe.each([
       laterVersion?: number;
       /** The Offer review settings; default risk-based with automatic badges (publishes). */
       review?: OfferReviewSettings;
-      reviewFacts?: Partial<OfferReviewFacts>;
+      reviewFacts?: Partial<OfferReviewFactsRead>;
       /** The settings read rejects (the real adapter never does; the use case must not publish). */
       reviewInputsFail?: boolean;
       /** The referral write throws in the unit. */
@@ -237,6 +244,7 @@ describe.each([
           })),
         }),
     } as unknown as CheckClaimText;
+    const probationStandings = new InMemorySellerReviewStandings();
     const submit = new OwnOfferSubmit(gate, {
       unitOfWork,
       offers,
@@ -261,8 +269,12 @@ describe.each([
             probation: false,
             fullReview: false,
             sensitiveCategory: false,
+            degraded: false,
+            stampTrust: false,
+            probationOffers: 10,
             ...options.reviewFacts,
           }),
+        probationOffers: () => Promise.resolve(10),
       },
       referrals: {
         record: (_m, referral) => {
@@ -278,6 +290,7 @@ describe.each([
       evaluator,
       clock,
       ids,
+      probation: memoryProbation({ standings: probationStandings }).probation,
     });
     return {
       add,
@@ -292,6 +305,7 @@ describe.each([
       claims,
       offerId: initial?.state.id ?? ids.next<'Offer'>(),
       current: () => current,
+      probationStandings,
     };
   }
 
@@ -540,7 +554,7 @@ describe.each([
           offerId: r.offerId,
           trigger: 'first-publication',
           reasons: [],
-          policyVersion: 2,
+          policyVersion: 3,
           offerVersion: r.current()!.state.version,
         }),
       ]);
@@ -586,6 +600,77 @@ describe.each([
       expect(r.current()!.state.status).toBe('pending-first-publish');
       expect(r.referrals[0]!.reasons).toEqual(reasons);
       expect(r.outbox.types).not.toContain('catalog.offer-published.v1');
+    });
+
+    it('queues with full-review, sensitive-category and the seller or category stop (slice 4)', async () => {
+      const r = rig({
+        offer: draft(),
+        reviewFacts: { fullReview: true, sensitiveCategory: true, emergencyStop: true },
+      });
+      const outcome = await r.submit.execute(contextOf('seller'), { offerId: r.offerId });
+      expect(outcome).toEqual({ ok: true, value: { published: false } });
+      expect(r.referrals[0]!.reasons).toEqual([
+        'emergency-stop',
+        'full-review',
+        'sensitive-category',
+      ]);
+    });
+
+    it('stamps Trusted in the submit unit when N was lowered under the count (slice 4)', async () => {
+      const r = rig({ offer: draft(), reviewFacts: { stampTrust: true, probationOffers: 1 } });
+      // One approved product in epoch 1; N was lowered to 1.
+      await r.probationStandings.lock(market, sellerId, T0);
+      await r.probationStandings.credit(market, {
+        sellerId,
+        epoch: 1,
+        productId: ids.next<'Product'>(),
+        offerId: ids.next<'Offer'>(),
+        creditedAt: T0,
+      });
+      const outcome = await r.submit.execute(contextOf('seller'), { offerId: r.offerId });
+      expect(outcome).toEqual({ ok: true, value: { published: true } });
+      const [standing] = [...r.probationStandings.rows.values()];
+      expect(standing?.trustedAt).not.toBeNull();
+    });
+
+    it('stamps nothing while N is 0, even when asked (Hassan S2)', async () => {
+      const r = rig({ offer: draft(), reviewFacts: { stampTrust: true, probationOffers: 0 } });
+      const outcome = await r.submit.execute(contextOf('seller'), { offerId: r.offerId });
+      expect(outcome).toEqual({ ok: true, value: { published: true } });
+      const [standing] = [...r.probationStandings.rows.values()];
+      expect(standing?.trustedAt ?? null).toBeNull();
+    });
+
+    it('judges a first publication in mode all when the facts are degraded, even in mode off (Hassan M1)', async () => {
+      const r = rig({
+        offer: draft(),
+        review: { mode: 'off', certificateBadges: 'automatic', emergencyStop: false },
+        reviewFacts: { degraded: true },
+      });
+      const outcome = await r.submit.execute(contextOf('seller'), { offerId: r.offerId });
+      expect(outcome).toEqual({ ok: true, value: { published: false } });
+      expect(r.current()!.state.status).toBe('pending-first-publish');
+      // No stop is invented: the safe mode's own reason.
+      expect(r.referrals[0]!.reasons).toEqual(['review-all']);
+      expect(r.outbox.types).not.toContain('catalog.offer-published.v1');
+    });
+
+    it('publishes in mode off when the facts were read, and an auto-publish credits nothing (Sajad G1)', async () => {
+      const r = rig({
+        offer: draft(),
+        review: { mode: 'off', certificateBadges: 'automatic', emergencyStop: false },
+      });
+      const outcome = await r.submit.execute(contextOf('seller'), { offerId: r.offerId });
+      expect(outcome).toEqual({ ok: true, value: { published: true } });
+      // Only an admin's approval counts toward probation.
+      expect(r.probationStandings.credits).toEqual([]);
+      expect(r.probationStandings.rows.size).toBe(0);
+    });
+
+    it('touches no standing when the facts do not ask for a stamp', async () => {
+      const r = rig({ offer: draft() });
+      await r.submit.execute(contextOf('seller'), { offerId: r.offerId });
+      expect(r.probationStandings.locks).toBe(0);
     });
 
     it('never publishes when the review inputs fail, and writes nothing', async () => {

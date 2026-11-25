@@ -77,4 +77,6 @@ export {
 export {
   CATALOG_WORK_QUEUE_FACADE,
   type CatalogWorkQueueFacade,
+  type OfferReviewQueueFailure,
+  type OfferReviewQueueSnapshot,
 } from './catalog-work-queue.facade';

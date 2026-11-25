@@ -8,6 +8,8 @@ import type { BlogAccessSystem } from '../application/use-cases/blog-access-syst
 import type { BlogAccess } from '../application/use-cases/blog-access.use-case';
 import type { AiAccessSystem } from '../application/use-cases/ai-access-system.use-case';
 import type { AiAccess } from '../application/use-cases/ai-access.use-case';
+import type { OfferReviewFlagsSystem } from '../application/use-cases/offer-review-flags-system.use-case';
+import type { OfferReviewFlags } from '../application/use-cases/offer-review-flags.use-case';
 import type { MayProposeCategoriesSystem } from '../application/use-cases/may-propose-categories-system.use-case';
 import type { MayProposeCategories } from '../application/use-cases/may-propose-categories.use-case';
 import type { AllowedProductTypesSystem } from '../application/use-cases/allowed-product-types-system.use-case';
@@ -33,6 +35,7 @@ import type { SellerSummaries } from '../application/use-cases/seller-summaries.
 import type {
   AllowedProductTypesOf,
   CarrierPickup,
+  OfferReviewFlagsOf,
   ReviewerBusinessDetails,
   SellerBusinessActivitiesMap,
   SellerDetailsNotFound,
@@ -64,6 +67,8 @@ export interface SellersFacadeUseCases {
   readonly mayProposeCategoriesSystem: MayProposeCategoriesSystem;
   readonly aiAccess: AiAccess;
   readonly aiAccessSystem: AiAccessSystem;
+  readonly offerReviewFlags: OfferReviewFlags;
+  readonly offerReviewFlagsSystem: OfferReviewFlagsSystem;
   readonly activeSince: ActiveSince;
   readonly activeSinceSystem: ActiveSinceSystem;
   readonly reviewerBusinessDetails: ReviewerBusinessDetailsRead;
@@ -181,6 +186,19 @@ export class SellersFacadeImplementation implements SellersFacade {
   ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>> {
     const useCase =
       context.actor.kind === 'system' ? this.useCases.aiAccessSystem : this.useCases.aiAccess;
+    return useCase.execute(context, { sellerId });
+  }
+
+  offerReviewFlagsOf(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<
+    Result<OfferReviewFlagsOf, AccessDenied | SellersValidationFailed | SellersUnavailable>
+  > {
+    const useCase =
+      context.actor.kind === 'system'
+        ? this.useCases.offerReviewFlagsSystem
+        : this.useCases.offerReviewFlags;
     return useCase.execute(context, { sellerId });
   }
 

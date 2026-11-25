@@ -12,6 +12,7 @@ import type { CallContext, Money, Result } from '@mondapac/shared-kernel';
 import { ACCESS_DENIED_STATUS, type AccessDenied } from '../../../platform/authz';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { RoutePopulation } from '../../../platform/call-context/route-population.decorator';
+import { RateLimit } from '../../../platform/rate-limit/rate-limit.decorator';
 import type { ShelfRequest } from '../domain/shelf-query';
 import {
   ListBestsellers,
@@ -67,14 +68,21 @@ export class ShelfController {
     return JSON.parse(JSON.stringify(this.answer(context, result))) as ShelfPageBody;
   }
 
+  /**
+   * In the `public-search` rate-limit class, not `default`: every item's was price is checked
+   * against pricing's history, so one answer costs several reads (Hassan M1, was price).
+   */
   @Get('specials')
+  @RateLimit('public-search')
   @Header('Cache-Control', 'no-store')
   @ApiOperation({
     summary: 'Specials shelf (public)',
     description:
       'No session needed. Offers whose price is a special right now, newest special first, ' +
       'each with the special and the regular price (Money: minor units as a string and the ' +
-      'currency). `category` and `limit` as for best sellers.',
+      "currency). `regularPrice` is null unless the Market's was-price rule allows showing " +
+      "it struck through (the unit sold at that price on enough days of the Market's window). " +
+      '`category` and `limit` as for best sellers.',
   })
   @ApiQuery({ name: 'category', required: false, description: 'A platform category id.' })
   @ApiQuery({ name: 'limit', required: false, description: '1 to 24, default 12.' })
@@ -98,7 +106,7 @@ export class ShelfController {
         primaryImage: item.primaryImage,
         variantId: item.variantId,
         price: money(item.price),
-        regularPrice: money(item.regularPrice),
+        regularPrice: item.regularPrice === null ? null : money(item.regularPrice),
         taxInclusive: item.taxInclusive,
         specialEndsAt: item.specialEndsAt.toString(),
       })),

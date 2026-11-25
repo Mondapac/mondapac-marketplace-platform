@@ -25,6 +25,7 @@ import {
   type PricingFacade,
   type PricingSpecialsFacade,
 } from '../../pricing';
+import { PROMOTIONS_FACADE, type PromotionsFacade } from '../../promotions';
 import { REVIEWS_FACADE, type ReviewsFacade } from '../../reviews';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import {
@@ -54,6 +55,8 @@ import {
   type ShelfDocumentsReader,
 } from '../application/ports/shelf-documents.reader';
 import { SHELF_SOURCES, type ShelfSources } from '../application/ports/shelf-sources';
+import { WAS_PRICE_CHECK, type WasPriceCheck } from '../application/ports/was-price-check';
+import { FacadeWasPriceCheck } from './facade-was-price-check';
 import {
   PRODUCT_DETAIL_SOURCES,
   type ProductDetailSources,
@@ -222,6 +225,12 @@ export const searchProviders: readonly FactoryProvider[] = [
     inject: [ORDERING_RANKING_FACADE, PRICING_SPECIALS_FACADE],
     useFactory: (ordering: OrderingRankingFacade, pricing: PricingSpecialsFacade): ShelfSources =>
       new FacadeShelfSources(ordering, pricing),
+  },
+  {
+    provide: WAS_PRICE_CHECK,
+    inject: [PROMOTIONS_FACADE],
+    useFactory: (promotions: PromotionsFacade): WasPriceCheck =>
+      new FacadeWasPriceCheck(promotions),
   },
   {
     provide: PUBLISHED_VARIANTS,

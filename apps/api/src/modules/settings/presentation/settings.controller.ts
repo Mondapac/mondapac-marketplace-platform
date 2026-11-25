@@ -465,7 +465,8 @@ export class AdminSettingsController {
       'Needs settings.offer-review.view. offer-review-mode (risk-based by default), ' +
       'offer-review-probation-offers (10), offer-review-reference-sellers (3), ' +
       'offer-review-price-band (50, percent), offer-review-sampling (5, percent) and ' +
-      'offer-review-certificate-badges (review), each with its version (0 while the default is ' +
+      'offer-review-certificate-badges (review), offer-review-backlog-count (50) and ' +
+      'offer-review-backlog-hours (24, business hours), each with its version (0 while the default is ' +
       'in force). Numbers are decimal text.',
   })
   @ApiOkResponse({ type: SettingsListBody })

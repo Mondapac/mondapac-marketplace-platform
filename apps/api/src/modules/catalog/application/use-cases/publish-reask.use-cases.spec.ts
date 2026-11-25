@@ -1,3 +1,4 @@
+import { memoryProbation } from '../../../../../test/support/catalog-seller-review-fakes';
 import { Logger } from '@nestjs/common';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, MarketContext, MarketId, Result } from '@mondapac/shared-kernel';
@@ -215,6 +216,7 @@ describe.each([
         clock,
         claims,
         evaluator,
+        probation: memoryProbation().probation,
       });
       const run = () => approve.execute(admin(), { offerId: state.id, version: state.version });
       return { run, evaluator, claims, saved, rows, outbox, state };

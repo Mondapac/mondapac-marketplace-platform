@@ -33,6 +33,7 @@ import { SettingsAiGatewayControls } from './application/ai-gateway-controls-rea
 import { AI_GATEWAY_CONTROLS } from '../../platform/ai/gateway-controls';
 import { ReadAiDescriptionWriter } from './application/use-cases/read-ai-description-writer.use-case';
 import { ReadCartMode } from './application/use-cases/read-cart-mode.use-case';
+import { ReadOfferQueueBacklogLimits } from './application/use-cases/read-offer-queue-backlog-limits.use-case';
 import { ChangeMonthlyRevenueTargetSetting } from './application/use-cases/change-monthly-revenue-target-setting.use-case';
 import { ReadMonthlyRevenueTarget } from './application/use-cases/read-monthly-revenue-target.use-case';
 import { ViewMonthlyRevenueTargetSetting } from './application/use-cases/view-monthly-revenue-target-setting.use-case';
@@ -118,6 +119,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ReadOfferReviewPolicy,
       ReadAiDescriptionWriter,
       ReadCartMode,
+      ReadOfferQueueBacklogLimits,
       ViewMonthlyRevenueTargetSetting,
       ReadMonthlyRevenueTarget,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
@@ -176,13 +178,15 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         ReadCartMode,
         ReadMonthlyRevenueTarget,
         ReadOfferReviewPolicy,
+        ReadOfferQueueBacklogLimits,
       ],
       useFactory: (
         read: ReadAiDescriptionWriter,
         cartMode: ReadCartMode,
         target: ReadMonthlyRevenueTarget,
         offerReview: ReadOfferReviewPolicy,
-      ) => new SettingsFacadeImplementation(read, cartMode, target, offerReview),
+        backlogLimits: ReadOfferQueueBacklogLimits,
+      ) => new SettingsFacadeImplementation(read, cartMode, target, offerReview, backlogLimits),
     },
   ],
   exports: [SETTINGS_FACADE, AI_GATEWAY_CONTROLS],

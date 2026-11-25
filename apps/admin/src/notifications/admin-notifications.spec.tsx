@@ -411,3 +411,39 @@ describe('AdminNotifications assistant spend cap notice', () => {
     expect(showsNoticeBell(['assistant.settings.view'])).toBe(true);
   });
 });
+
+describe('AdminNotifications Offer queue backlog notice', () => {
+  it('words each reason and links to the Offers tab of the review queue', async () => {
+    const items = [
+      notice(NEW, {
+        kind: 'admin.offer-queue-backlog',
+        params: { reason: 'age', count: 3, hours: 26 },
+      }),
+      notice(OLD, {
+        kind: 'admin.offer-queue-backlog',
+        params: { reason: 'size', count: 61, hours: 2 },
+      }),
+    ];
+    counts = [{ unread: 2, newest: items[0]! }];
+    call.mockImplementation((method, path) =>
+      Promise.resolve(
+        path.endsWith('/unread-count') || method === 'POST'
+          ? answer(path, method)
+          : { ok: true as const, status: 200, body: { items, next: null } },
+      ),
+    );
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Notifications, 2 unread' }));
+    const age = await screen.findByRole('link', {
+      name: /Offer review queue is behind: the oldest Offer has waited 26 business hours/,
+    });
+    expect(age.getAttribute('href')).toBe('/review?type=offer');
+    expect(
+      screen.getByRole('link', { name: /Offer review queue is behind: 61 Offers are waiting/ }),
+    ).toBeTruthy();
+  });
+
+  it('shows the bell to an admin who may approve products and Offers', () => {
+    expect(showsNoticeBell(['catalog.product.approve'])).toBe(true);
+  });
+});
