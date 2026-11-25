@@ -124,6 +124,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
 
       expect(rules.map((rule) => rule.name).sort()).toEqual([
         'ai-capability-spec-only-from-contracts',
+        'ai-gateway-controls-only-from-settings',
         'ai-registration-only-from-module-files',
         'ai-usage-report-only-from-the-allow-list',
         'ai-usage-store-only-in-persistence',
@@ -181,6 +182,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       expect(found).toEqual([
         'ai-capability-spec-only-from-contracts: src/modules/alpha/application/declares-capability.ts',
         'ai-capability-spec-only-from-contracts: src/modules/identity/application/uses-ai.ts',
+        'ai-gateway-controls-only-from-settings: src/modules/alpha/infrastructure/implements-ai-gateway-controls.ts',
         'ai-registration-only-from-module-files: src/modules/alpha/application/registers-capabilities.ts',
         'ai-usage-report-only-from-the-allow-list: src/modules/alpha/application/reads-ai-usage-report.ts',
         'ai-usage-store-only-in-persistence: src/modules/alpha/infrastructure/reaches-ai-usage-store.ts',

@@ -1433,23 +1433,6 @@ const fleetSchema = z
   );
 
 /**
- * The AI Gateway's budget caps of the Market (docs/design/domain/platform-ai.md section 7), in US
- * micro-dollars (1 = US$0.000001), until the gateway settings move to the `settings` module (G4).
- * Days and months are the Market's (its `timezone`). A cap that is absent is not enforced: the
- * gateway still counts every call against it. 0 allows nothing. `sellerDay` applies to each seller
- * of a seller-scoped capability; `guestDay` is the guest pool, the share anonymous visitors of a
- * buyer capability may use; `capabilityDay` applies to each capability.
- */
-const aiBudgetCap = z.number().int().min(0).max(1_000_000_000_000);
-const aiBudgetSchema = z.strictObject({
-  marketDayMicroUsd: aiBudgetCap.optional(),
-  marketMonthMicroUsd: aiBudgetCap.optional(),
-  capabilityDayMicroUsd: aiBudgetCap.optional(),
-  sellerDayMicroUsd: aiBudgetCap.optional(),
-  guestDayMicroUsd: aiBudgetCap.optional(),
-});
-
-/**
  * The AI Gateway's routing values of the Market (docs/design/domain/platform-ai.md section 6;
  * ADR-0052 decision 4), code until the gateway settings move to `settings` (G4) and INTL-53 adds
  * `Market.data_residency_requirement`. Absent: no route meets the Market's residency, so AI is off.
@@ -2225,7 +2208,6 @@ const marketSchema = z
     /** Owned by `shipping`: the real-time carrier (SHP-02/03). Absent: sellers ship themselves. */
     shipping: shippingSchema.optional(),
     /** Read by `platform/ai`: the AI budget caps. Absent: every call is counted, none is capped. */
-    aiBudget: aiBudgetSchema.optional(),
     /** Read by `platform/ai`: residency and saver model. Absent: no route is usable (AI off). */
     aiRouting: aiRoutingSchema.optional(),
   })

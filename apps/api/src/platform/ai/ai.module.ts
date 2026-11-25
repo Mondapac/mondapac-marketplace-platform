@@ -38,15 +38,16 @@ import { AI_USAGE_STORE, type AiUsageStore } from './usage/ai-usage-store';
  *
  * `app.module.ts` passes the module that provides and exports `SELLER_AI_SWITCH` (sellers'), as it
  * does for identity's authorisation check, so `platform/` imports no module; a graph without it
- * fails boot with Nest's unknown-dependency error in both roles (ADR-0019 decision 7).
+ * fails boot with Nest's unknown-dependency error in both roles (ADR-0019 decision 7). It passes
+ * the module that provides and exports `AI_GATEWAY_CONTROLS` (settings', G4) the same way.
  */
 @Module({})
 export class AiModule {
-  static register(sellerAiSwitchProvider: Type): DynamicModule {
+  static register(sellerAiSwitchProvider: Type, gatewayControlsProvider: Type): DynamicModule {
     return {
       module: AiModule,
       global: true,
-      imports: [sellerAiSwitchProvider],
+      imports: [sellerAiSwitchProvider, gatewayControlsProvider],
       providers: [
         { provide: MODEL_PROVIDER, useValue: new AnthropicMessagesProvider() },
         { provide: AI_ROUTE_CATALOGUE, useFactory: () => checkedInCatalogue() },

@@ -42,6 +42,11 @@ import { ViewOfferReviewEmergencyStop } from './use-cases/view-offer-review-emer
 import { ReadOfferReviewPolicy as ReadPolicyForStop } from './use-cases/read-offer-review-policy.use-case';
 import { ViewCartModeSetting } from './use-cases/view-cart-mode-setting.use-case';
 import { ViewListPagingSetting } from './use-cases/view-list-paging-setting.use-case';
+import { ChangeAiGatewayEmergencyStop } from './use-cases/change-ai-gateway-emergency-stop.use-case';
+import { ChangeAiGatewayLimits } from './use-cases/change-ai-gateway-limits.use-case';
+import { ViewAiGatewaySettings } from './use-cases/view-ai-gateway-settings.use-case';
+import { SettingsAiGatewayControls } from './ai-gateway-controls-reader';
+import { NO_CAPS } from '../../../platform/ai/gateway-controls';
 
 // The settings store in memory on both Market fixtures: the default in force before any change,
 // a change with its version, history and one audit row, a stale version, a repeat that changes
@@ -1148,6 +1153,195 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
     it('shows the banner to admins only', async () => {
       expect(await view(sellerCtx())).toEqual({ ok: false, error: { code: 'access.denied' } });
       expect((await view(anonymous)).ok).toBe(false);
+    });
+  });
+
+  describe('the AI Gateway settings (G4, docs/design/domain/platform-ai.md section 8)', () => {
+    const limits = (input: Record<string, unknown>, context = adminCtx()) =>
+      new ChangeAiGatewayLimits(gate, deps).execute(context, input);
+    const aiStop = (input: Record<string, unknown>, context = adminCtx()) =>
+      new ChangeAiGatewayEmergencyStop(gate, deps).execute(context, input);
+    const controls = () => new SettingsAiGatewayControls(deps).read(adminCtx());
+    const cap = (codeOf: string, value: unknown, expectedVersion = 0) => ({
+      code: codeOf,
+      value,
+      expectedVersion,
+    });
+
+    it('shows the stop off and every cap none by default; the gateway reads no cap and no stop', async () => {
+      const view = await new ViewAiGatewaySettings(gate, deps).execute(adminCtx(), {});
+      expect(
+        view.ok && view.value.map(({ code, value, version }) => [code, value, version]),
+      ).toEqual([
+        ['ai-gateway-emergency-stop', 'off', 0],
+        ['ai-cap-market-day', 'none', 0],
+        ['ai-cap-market-month', 'none', 0],
+        ['ai-cap-capability-day', 'none', 0],
+        ['ai-cap-seller-day', 'none', 0],
+        ['ai-cap-guest-day', 'none', 0],
+      ]);
+      expect(await controls()).toEqual({ stopped: false, caps: NO_CAPS });
+    });
+
+    it('lowers a cap without a two-step code, audited in micro-dollars; the gateway reads it', async () => {
+      proofLeft = false;
+      const saved = await limits({ changes: [cap('ai-cap-market-day', '5000000')] });
+      expect(saved.ok && saved.value.map(({ value, version }) => [value, version])).toEqual([
+        ['5000000', 1],
+      ]);
+      expect(spentProofs).toEqual([]);
+      expect(audit.entries.at(-1)).toMatchObject({
+        action: 'settings.ai-cap.changed',
+        targetId: 'ai-cap-market-day',
+        before: { microUsd: null },
+        after: { microUsd: 5_000_000, version: 1 },
+      });
+      expect((await controls()).caps).toEqual({ ...NO_CAPS, marketDay: 5_000_000 });
+      // Lower again, and to 0 (nothing allowed): still no code.
+      expect((await limits({ changes: [cap('ai-cap-market-day', '0', 1)] })).ok).toBe(true);
+      expect((await controls()).caps.marketDay).toBe(0);
+    });
+
+    it('needs a fresh two-step code to raise or lift a cap, and saves nothing without one', async () => {
+      await limits({ changes: [cap('ai-cap-guest-day', '100')] });
+      for (const value of ['101', 'none']) {
+        proofLeft = false;
+        expect(await limits({ changes: [cap('ai-cap-guest-day', value, 1)] })).toEqual({
+          ok: false,
+          error: { code: 'second-factor.required', actionKey: 'settings.ai-gateway-limits.raise' },
+        });
+        expect(store.history).toHaveLength(1);
+      }
+      // One raise among several lowered caps still needs the code.
+      proofLeft = false;
+      const mixed = await limits({
+        changes: [cap('ai-cap-market-day', '10'), cap('ai-cap-guest-day', '200', 1)],
+      });
+      expect(mixed.ok).toBe(false);
+      proofLeft = true;
+      expect((await limits({ changes: [cap('ai-cap-guest-day', '200', 1)] })).ok).toBe(true);
+      expect(spentProofs).toEqual(['settings.ai-gateway-limits.raise']);
+    });
+
+    it('takes only none or whole micro-dollars up to 10^12, and only cap codes', async () => {
+      for (const value of ['-1', '1.5', '07', '1e3', '1000000000001', 5, '', 'off']) {
+        const refused = await limits({ changes: [cap('ai-cap-seller-day', value)] });
+        expect(refused).toEqual({
+          ok: false,
+          error: {
+            code: 'validation.failed',
+            fields: [{ path: 'changes.0.value', code: 'value' }],
+          },
+        });
+      }
+      expect((await limits({ changes: [cap('ai-cap-seller-day', '1000000000000')] })).ok).toBe(
+        true,
+      );
+      expect((await limits({ changes: [cap('ai-gateway-emergency-stop', 'on')] })).ok).toBe(false);
+      expect((await limits({ changes: [cap('list-paging', 'pages')] })).ok).toBe(false);
+    });
+
+    it('switches the stop on with a reason and no code; switching it off needs the code', async () => {
+      proofLeft = false;
+      expect(await aiStop({ value: 'on', expectedVersion: 0 })).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'note', code: 'required' }] },
+      });
+      expect((await aiStop({ value: 'on', expectedVersion: 0, note: 'Leak suspected' })).ok).toBe(
+        true,
+      );
+      expect((await controls()).stopped).toBe(true);
+      expect(audit.entries.at(-1)).toMatchObject({
+        action: 'settings.market-setting.changed',
+        targetId: 'ai-gateway-emergency-stop',
+        before: { value: 'off' },
+        after: { value: 'on', version: 1 },
+      });
+      expect(await aiStop({ value: 'off', expectedVersion: 1, note: 'Fixed' })).toEqual({
+        ok: false,
+        error: {
+          code: 'second-factor.required',
+          actionKey: 'settings.ai-gateway-emergency-stop.resume',
+        },
+      });
+      expect((await controls()).stopped).toBe(true);
+      proofLeft = true;
+      expect((await aiStop({ value: 'off', expectedVersion: 1, note: 'Fixed' })).ok).toBe(true);
+      expect((await controls()).stopped).toBe(false);
+      expect(spentProofs).toEqual(['settings.ai-gateway-emergency-stop.resume']);
+    });
+
+    it('is reviewed at high risk where the area is reviewed', async () => {
+      review.review('marketplace');
+      await aiStop({ value: 'on', expectedVersion: 0, note: 'Leak suspected' });
+      await limits({ changes: [cap('ai-cap-market-month', '10')], note: 'Tighter' });
+      expect(review.opened.map((opened) => [opened.subjectRef, opened.risk])).toEqual([
+        ['ai-gateway-emergency-stop', 'high'],
+        ['ai-cap-market-month', 'high'],
+      ]);
+    });
+
+    it('never allows more AI by a revert: a lowered cap or a stop is not undone, a raise is', async () => {
+      const reverter = new SettingsReverter(deps);
+      const revert = (subjectRef: string, before: string, after: string) =>
+        reverter.revert(adminCtx(), {
+          requestId: id<'SystemRequest'>(0x5e3),
+          subjectRef,
+          before: { value: before },
+          after: { value: after },
+        });
+      await limits({ changes: [cap('ai-cap-market-day', '100')] });
+      expect(await revert('ai-cap-market-day', 'none', '100')).toBe('not-permitted');
+      await aiStop({ value: 'on', expectedVersion: 0, note: 'Leak suspected' });
+      expect(await revert('ai-gateway-emergency-stop', 'off', 'on')).toBe('not-permitted');
+      proofLeft = true;
+      await limits({ changes: [cap('ai-cap-market-day', '500', 1)] });
+      expect(await revert('ai-cap-market-day', '100', '500')).toBe('reverted');
+      expect((await controls()).caps.marketDay).toBe(100);
+    });
+
+    it('reads a stored value the definition does not allow as the tightest (cap 0, stop on)', async () => {
+      store.rows.set(`${market.marketId}/ai-cap-capability-day`, {
+        code: 'ai-cap-capability-day',
+        value: 'lots',
+        version: 1,
+        updatedAt: T0,
+        updatedBy: ADMIN,
+      });
+      store.rows.set(`${market.marketId}/ai-gateway-emergency-stop`, {
+        code: 'ai-gateway-emergency-stop',
+        value: 'maybe',
+        version: 1,
+        updatedAt: T0,
+        updatedBy: ADMIN,
+      });
+      expect(await controls()).toEqual({ stopped: true, caps: { ...NO_CAPS, capabilityDay: 0 } });
+    });
+
+    it('throws when the store cannot be read (the gateway answers off)', async () => {
+      store.failReads = true;
+      await expect(controls()).rejects.toThrow();
+    });
+
+    it('never answers another Market: a cap set elsewhere is not read here', async () => {
+      const other = testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default');
+      store.rows.set(`${other.marketId}/ai-cap-market-day`, {
+        code: 'ai-cap-market-day',
+        value: '1',
+        version: 1,
+        updatedAt: T0,
+        updatedBy: ADMIN,
+      });
+      expect((await controls()).caps.marketDay).toBeNull();
+    });
+
+    it('is refused in an acting-as session', async () => {
+      expect(
+        await limits({ changes: [cap('ai-cap-market-day', '1')] }, actingAs(adminCtx())),
+      ).toEqual({ ok: false, error: { code: 'access.denied' } });
+      expect(
+        await aiStop({ value: 'on', expectedVersion: 0, note: 'x' }, actingAs(adminCtx())),
+      ).toEqual({ ok: false, error: { code: 'access.denied' } });
     });
   });
 });

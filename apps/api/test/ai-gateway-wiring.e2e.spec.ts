@@ -11,6 +11,8 @@ import { PrismaService } from '../src/platform/persistence/prisma.service';
 import { JobRegistry } from '../src/platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../src/platform/unit-of-work/unit-of-work';
 import { createTestApp } from './support/test-app';
+import { AI_GATEWAY_CONTROLS } from '../src/platform/ai/gateway-controls';
+import { SELLER_AI_SWITCH } from '../src/platform/ai/seller-ai-switch';
 import { testAppConfig } from './support/test-config';
 
 describe('AI Gateway wiring (platform-ai.md section 4; ADR-0019 decision 7)', () => {
@@ -35,6 +37,11 @@ describe('AI Gateway wiring (platform-ai.md section 4; ADR-0019 decision 7)', ()
   it('fails boot when no module provides the seller switch', async () => {
     @Module({})
     class NoSellerSwitch {}
+    @Module({
+      providers: [{ provide: AI_GATEWAY_CONTROLS, useValue: {} }],
+      exports: [AI_GATEWAY_CONTROLS],
+    })
+    class GatewayControls {}
     // Everything else AiModule needs is there (as stand-ins), so only the seller switch is missing.
     const present = [UNIT_OF_WORK, CLOCK, ID_GENERATOR, MarketRegistry, PrismaService, JobRegistry];
     @Module({
@@ -46,8 +53,38 @@ describe('AI Gateway wiring (platform-ai.md section 4; ADR-0019 decision 7)', ()
     })
     class Config {}
     const build = Test.createTestingModule({
-      imports: [{ module: Config, global: true }, AiModule.register(NoSellerSwitch)],
+      imports: [
+        { module: Config, global: true },
+        AiModule.register(NoSellerSwitch, GatewayControls),
+      ],
     }).compile();
     await expect(build).rejects.toThrow(/SELLER_AI_SWITCH|dependencies of the AiGateway/u);
+  });
+
+  it('fails boot when no module provides the AI Gateway settings (G4)', async () => {
+    @Module({
+      providers: [{ provide: SELLER_AI_SWITCH, useValue: {} }],
+      exports: [SELLER_AI_SWITCH],
+    })
+    class SellerSwitch {}
+    @Module({})
+    class NoGatewayControls {}
+    // Everything else AiModule needs is there (as stand-ins), so only the settings port is missing.
+    const present = [UNIT_OF_WORK, CLOCK, ID_GENERATOR, MarketRegistry, PrismaService, JobRegistry];
+    @Module({
+      providers: [
+        { provide: APP_CONFIG, useValue: testAppConfig() },
+        ...present.map((token) => ({ provide: token, useValue: {} })),
+      ],
+      exports: [APP_CONFIG, ...present],
+    })
+    class Config {}
+    const build = Test.createTestingModule({
+      imports: [
+        { module: Config, global: true },
+        AiModule.register(SellerSwitch, NoGatewayControls),
+      ],
+    }).compile();
+    await expect(build).rejects.toThrow(/AI_GATEWAY_CONTROLS|dependencies of the AiGateway/u);
   });
 });

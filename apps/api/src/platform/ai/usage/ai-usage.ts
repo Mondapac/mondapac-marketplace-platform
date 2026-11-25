@@ -3,6 +3,7 @@ import { err, ok, Temporal } from '@mondapac/shared-kernel';
 import type { Clock, IdGenerator, MarketContext } from '@mondapac/shared-kernel';
 import type { MarketRegistry } from '../../market-config/market-registry';
 import type { UnitOfWork } from '../../unit-of-work/unit-of-work';
+import { NO_CAPS, type AiCaps } from '../gateway-controls';
 import {
   counterKeyText,
   LATENCY_BUCKETS_MS,
@@ -49,15 +50,6 @@ export interface SettledCall {
   readonly costMicroUsd: number;
   readonly latencyMs: number;
   readonly outcome: CallOutcome;
-}
-
-/** The Market's caps (Market configuration `aiBudget`, until G4); absent is not capped. */
-interface Caps {
-  readonly marketDay: number | null;
-  readonly marketMonth: number | null;
-  readonly capabilityDay: number | null;
-  readonly sellerDay: number | null;
-  readonly guestDay: number | null;
 }
 
 /** Calls are kept 90 days (design section 10); in hours, as an Instant has no calendar. */
@@ -108,8 +100,12 @@ export class AiUsage {
    * the Market's month. The Market rows every call shares are locked last, so they are held for
    * the shortest time before the commit (Mojtaba, PR 1348 finding 1).
    */
-  linesOf(market: MarketContext, scope: UsageScope, day: Temporal.PlainDate): BudgetLine[] {
-    const caps = this.#caps(market);
+  linesOf(
+    market: MarketContext,
+    scope: UsageScope,
+    day: Temporal.PlainDate,
+    caps: AiCaps = NO_CAPS,
+  ): BudgetLine[] {
     const lines: BudgetLine[] = [];
     if (scope.sellerId !== null) {
       lines.push({
@@ -164,8 +160,13 @@ export class AiUsage {
    * caller inside an open unit is refused in every Market (`NestedUnitOfWorkError`) and not only
    * once caps are set. Throws on a store failure; the gateway treats that as off.
    */
-  async overBudget(market: MarketContext, scope: UsageScope, roomMicroUsd = 0): Promise<boolean> {
-    const capped = this.linesOf(market, scope, this.dayOf(market, this.clock.now())).filter(
+  async overBudget(
+    market: MarketContext,
+    scope: UsageScope,
+    caps: AiCaps,
+    roomMicroUsd = 0,
+  ): Promise<boolean> {
+    const capped = this.linesOf(market, scope, this.dayOf(market, this.clock.now()), caps).filter(
       (line) => line.capMicroUsd !== null,
     );
     const held = await this.unitOfWork.run(
@@ -185,11 +186,14 @@ export class AiUsage {
    * section 6), or null when the Market has no month cap. Reads in a read-only unit of its own.
    * Throws on a store failure; the gateway then keeps the normal order.
    */
-  async monthShare(market: MarketContext): Promise<number | null> {
+  async monthShare(market: MarketContext, caps: AiCaps): Promise<number | null> {
     const day = this.dayOf(market, this.clock.now());
-    const month = this.linesOf(market, { capability: '', sellerId: null, guest: false }, day).find(
-      (line) => line.period === 'month',
-    )!;
+    const month = this.linesOf(
+      market,
+      { capability: '', sellerId: null, guest: false },
+      day,
+      caps,
+    ).find((line) => line.period === 'month')!;
     if (month.capMicroUsd === null) return null;
     const held = await this.unitOfWork.run(
       market,
@@ -209,13 +213,14 @@ export class AiUsage {
   async reserve(
     market: MarketContext,
     scope: UsageScope,
+    caps: AiCaps,
     estimateMicroUsd: number,
     ttl: Temporal.Duration,
   ): Promise<Reservation | 'over-budget'> {
     const now = this.clock.now();
     const day = this.dayOf(market, now);
     const id = this.ids.next<'AiCall'>();
-    const lines = this.linesOf(market, scope, day);
+    const lines = this.linesOf(market, scope, day, caps);
     // The reservation's row first and the counters last, so the commit follows the last counter
     // UPDATE directly; a refusal rolls both back (Mojtaba, PR 1348 finding 1).
     const held = await this.unitOfWork.run<Reservation, 'over-budget'>(
@@ -443,17 +448,6 @@ export class AiUsage {
     return runForMs === undefined
       ? undefined
       : this.clock.now().add(Temporal.Duration.from({ milliseconds: runForMs }));
-  }
-
-  #caps(market: MarketContext): Caps {
-    const budget = this.markets.get(market.marketId).aiBudget;
-    return {
-      marketDay: budget?.marketDayMicroUsd ?? null,
-      marketMonth: budget?.marketMonthMicroUsd ?? null,
-      capabilityDay: budget?.capabilityDayMicroUsd ?? null,
-      sellerDay: budget?.sellerDayMicroUsd ?? null,
-      guestDay: budget?.guestDayMicroUsd ?? null,
-    };
   }
 }
 

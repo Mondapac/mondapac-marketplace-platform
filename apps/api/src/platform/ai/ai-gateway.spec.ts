@@ -13,13 +13,19 @@ import {
 } from '../../../test/support/in-memory-ai-usage';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../test/support/test-config';
 import {
+  TestAiGatewayControls,
+  ZZ_TEST_AI_CAPS,
+  type TestBudget,
+} from '../../../test/support/ai-gateway-controls';
+import { NO_CAPS } from './gateway-controls';
+import {
   passesFor,
   testRoute,
   testRouteCatalogue,
   testRouter,
 } from '../../../test/support/ai-routes';
 import type { AppConfig } from '../config/app-config';
-import { loadMarketConfigs, type MarketConfig } from '../market-config/market-config';
+import { loadMarketConfigs } from '../market-config/market-config';
 import { MarketRegistry } from '../market-config/market-registry';
 import { AiGateway, costMicroUsd, timeoutUsageOf } from './ai-gateway';
 import type { CapabilitySpec } from './capability';
@@ -83,15 +89,10 @@ const SPECS: CapabilitySpec[] = [
 const NOW = Temporal.Instant.from('2026-11-25T10:00:00Z');
 /** The checked-in AU file (no caps: counted only) and the ZZ fixture (caps). */
 const REAL_MARKETS = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
-const registryOf = (budget?: MarketConfig['aiBudget']) =>
-  new MarketRegistry(
-    new Map(
-      [...REAL_MARKETS].map(([id, config]) => [
-        id,
-        budget === undefined ? config : { ...config, aiBudget: budget },
-      ]),
-    ),
-  );
+const registryOf = () => new MarketRegistry(new Map(REAL_MARKETS));
+/** The Market's gateway settings: the fixtures' caps (AU none, ZZ caps), or one budget for all. */
+const capsOf = (budget?: TestBudget) =>
+  budget === undefined ? new TestAiGatewayControls() : TestAiGatewayControls.everywhere(budget);
 
 // Only AU is configured, on the fast tier: ZZ is a second Market with no model (both fixtures).
 const configOf = (killed = false, codes: readonly string[] = ['AU']) =>
@@ -149,8 +150,15 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
   let usage: AiUsage;
   let unitOfWork: UnitOfWork;
   let router: AiRouter;
+  let controls: TestAiGatewayControls;
 
-  const gatewayOf = (killed = false, markets = registryOf(), codes: readonly string[] = ['AU']) => {
+  const gatewayOf = (
+    killed = false,
+    gatewayControls = capsOf(),
+    codes: readonly string[] = ['AU'],
+  ) => {
+    controls = gatewayControls;
+    const markets = registryOf();
     const registry = new CapabilityRegistry();
     registry.register('alpha', SPECS);
     registry.seal();
@@ -164,7 +172,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
     ({ store, usage, unitOfWork } = inMemoryAiUsage(markets, clock));
     const models = new ModelGateway(configOf(killed, codes), provider, testRouteCatalogue());
     router = testRouter(testRouteCatalogue(), passesFor(SPECS), models, markets, clock);
-    return new AiGateway(models, registry, sellerSwitch, usage, clock, router);
+    return new AiGateway(models, registry, sellerSwitch, usage, clock, router, controls);
   };
 
   beforeEach(() => {
@@ -287,6 +295,69 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
     });
   });
 
+  describe("the Market's gateway settings (G4, design section 8)", () => {
+    it('answers emergency-stop while the Market stops AI, and calls nothing', async () => {
+      const gateway = gatewayOf();
+      controls.stopped.add('AU');
+      expect(await gateway.status('alpha.admin-writer', adminContext(), { tier: 'fast' })).toEqual({
+        on: false,
+        reason: 'emergency-stop',
+      });
+      expect(
+        await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
+      ).toEqual({ ok: false, reason: 'off', costMicroUsd: 0 });
+      expect(provider.requests).toHaveLength(0);
+      expect(store.reservations.size).toBe(0);
+    });
+
+    it("stops one Market only: another Market's stop changes nothing here", async () => {
+      const gateway = gatewayOf(false, capsOf(), ['AU', 'ZZ']);
+      controls.stopped.add('ZZ');
+      expect(await gateway.status('alpha.admin-writer', adminContext(), { tier: 'fast' })).toEqual({
+        on: true,
+      });
+      expect(
+        await gateway.status('alpha.admin-writer', adminContext(ZZ), { tier: 'fast' }),
+      ).toEqual({ on: false, reason: 'emergency-stop' });
+    });
+
+    it('is off when the settings cannot be read (R8), and reads them once per status and run', async () => {
+      const gateway = gatewayOf();
+      expect(await gateway.status('alpha.admin-writer', adminContext(), { tier: 'fast' })).toEqual({
+        on: true,
+      });
+      await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' });
+      expect(controls.reads).toBe(2);
+      controls.failing = true;
+      expect(await gateway.status('alpha.admin-writer', adminContext(), { tier: 'fast' })).toEqual({
+        on: false,
+        reason: 'off',
+      });
+      expect(
+        await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
+      ).toEqual({ ok: false, reason: 'off', costMicroUsd: 0 });
+      expect(provider.requests).toHaveLength(1);
+    });
+
+    it('enforces the caps it read: a cap set to 0 refuses before any call', async () => {
+      const gateway = gatewayOf(false, capsOf({ capabilityDayMicroUsd: 0 }));
+      expect(await gateway.status('alpha.admin-writer', adminContext(), { tier: 'fast' })).toEqual({
+        on: false,
+        reason: 'over-budget',
+      });
+      expect(
+        await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
+      ).toEqual({ ok: false, reason: 'over-budget', costMicroUsd: 0 });
+      expect(provider.requests).toHaveLength(0);
+    });
+
+    it('never reads the settings for a caller it refuses first (acting-as, kill switch)', async () => {
+      const gateway = gatewayOf(true);
+      await gateway.status('alpha.admin-writer', adminContext(), { tier: 'fast' });
+      expect(controls.reads).toBe(0);
+    });
+  });
+
   it('lets a guest reach the buyer chat', async () => {
     expect(
       await gatewayOf().status('alpha.buyer-chat', testCallContext(AU, 'anonymous'), {
@@ -343,7 +414,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
       'reserves, settles once with the real cost and records the call (%s)',
       async (c) => {
         const market = marketOf(c);
-        const gateway = gatewayOf(false, registryOf(), both);
+        const gateway = gatewayOf(false, capsOf(), both);
         const run = await gateway.run('alpha.admin-writer', adminContext(market), REQUEST, {
           tier: 'fast',
         });
@@ -380,7 +451,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
       'is over budget when a cap is full: status says so, run calls nothing and counts a refusal (%s)',
       async (c) => {
         const market = marketOf(c);
-        const gateway = gatewayOf(false, registryOf({ capabilityDayMicroUsd: 20_000 }), both);
+        const gateway = gatewayOf(false, capsOf({ capabilityDayMicroUsd: 20_000 }), both);
         store.counters.set(`${market.marketId}|day|2026-11-25|capability|alpha.admin-writer`, {
           held: 20_000,
           spent: 20_000,
@@ -408,7 +479,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
 
     it('refuses a call whose largest cost does not fit the room left, and holds nothing', async () => {
       // The estimate is about 0.4 cents here: a cap with 300 micro-dollars left refuses it.
-      const gateway = gatewayOf(false, registryOf({ marketDayMicroUsd: 300 }));
+      const gateway = gatewayOf(false, capsOf({ marketDayMicroUsd: 300 }));
       const run = await gateway.run('alpha.admin-writer', adminContext(), REQUEST, {
         tier: 'fast',
       });
@@ -493,7 +564,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
     });
 
     it('is off and calls nothing when the budget cannot be read or written (an error is off)', async () => {
-      const gateway = gatewayOf(false, registryOf({ marketDayMicroUsd: 1_000_000 }));
+      const gateway = gatewayOf(false, capsOf({ marketDayMicroUsd: 1_000_000 }));
       store.failing = true;
       expect(await gateway.status('alpha.admin-writer', adminContext(), { tier: 'fast' })).toEqual({
         on: false,
@@ -516,7 +587,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
         const market = marketOf(c);
         const gateway = gatewayOf(
           false,
-          registryOf(caps === 'caps' ? { marketDayMicroUsd: 1_000_000 } : {}),
+          capsOf(caps === 'caps' ? { marketDayMicroUsd: 1_000_000 } : {}),
           both,
         );
         const inside = await unitOfWork.run(market, async () =>
@@ -537,7 +608,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
         const key = `${market.marketId}|day|2026-11-25|capability|alpha.admin-writer`;
         // The largest call: 8000 input tokens at 1 and 500 output tokens at 5 micro-dollars a
         // thousand, 10,500 micro-dollars. This request's estimate is about 2,600.
-        const gateway = gatewayOf(false, registryOf({ capabilityDayMicroUsd: 20_000 }), both);
+        const gateway = gatewayOf(false, capsOf({ capabilityDayMicroUsd: 20_000 }), both);
         const options = { tier: 'fast' as const };
         store.counters.set(key, { held: 9_500, spent: 9_500 });
         expect(await gateway.status('alpha.admin-writer', adminContext(market), options)).toEqual({
@@ -570,6 +641,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
       const reservation = await usage.reserve(
         AU,
         scope,
+        NO_CAPS,
         900,
         Temporal.Duration.from({ seconds: -1 }),
       );
@@ -614,13 +686,25 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
         latencyMs: 10,
         outcome: 'ok' as const,
       };
-      const first = await usage.reserve(AU, scope, 900, Temporal.Duration.from({ seconds: 60 }));
+      const first = await usage.reserve(
+        AU,
+        scope,
+        NO_CAPS,
+        900,
+        Temporal.Duration.from({ seconds: 60 }),
+      );
       store.failNext = SETTLE_ATTEMPTS - 1;
       await usage.settle(AU, first as Exclude<typeof first, 'over-budget'>, settled);
       expect(store.counterOf(AU, dayLine('market'))).toEqual({ held: 300, spent: 300 });
       expect(store.reservations.size).toBe(0);
 
-      const second = await usage.reserve(AU, scope, 900, Temporal.Duration.from({ seconds: 60 }));
+      const second = await usage.reserve(
+        AU,
+        scope,
+        NO_CAPS,
+        900,
+        Temporal.Duration.from({ seconds: 60 }),
+      );
       store.failNext = SETTLE_ATTEMPTS;
       await usage.settle(AU, second as Exclude<typeof second, 'over-budget'>, settled);
       // Not settled: the estimate stays held until the sweeper counts it as spent.
@@ -631,7 +715,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
     it('stops a sweep at its run time and reports the backlog (Hassan L4)', async () => {
       gatewayOf();
       const scope = { capability: 'alpha.admin-writer', sellerId: null, guest: false };
-      await usage.reserve(AU, scope, 900, Temporal.Duration.from({ seconds: -1 }));
+      await usage.reserve(AU, scope, NO_CAPS, 900, Temporal.Duration.from({ seconds: -1 }));
       expect(await usage.sweep(AU, 0)).toEqual({ released: 0, backlog: true });
       expect(await usage.purge(AU, 0)).toEqual({ calls: 0, days: 0, counters: 0, backlog: true });
       expect(await usage.sweep(AU, 1000)).toEqual({ released: 1, backlog: false });
@@ -675,6 +759,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
       registry.register('alpha', ROUTED);
       registry.seal();
       const markets = setup.markets ?? registryOf();
+      controls = new TestAiGatewayControls();
       clock = new FixedClock(NOW);
       ({ store, usage, unitOfWork } = inMemoryAiUsage(markets, clock));
       const config = configOf(false, ['AU', 'ZZ']) as unknown as {
@@ -700,6 +785,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
         usage,
         clock,
         router,
+        controls,
       );
     };
 
@@ -950,7 +1036,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
       const reserve = jest.spyOn(usage, 'reserve');
       await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' });
       const usageOf = timeoutUsageOf(maskRequest({ ...REQUEST, maxOutputTokens: 500 }));
-      expect(reserve.mock.calls[0]![2]).toBe(
+      expect(reserve.mock.calls[0]![3]).toBe(
         costMicroUsd(usageOf, { inputPicoUsd: 2_000_000, outputPicoUsd: 10_000_000 }),
       );
     });
@@ -1024,8 +1110,8 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
 
       it('reads the month share from the Market month counter (ZZ caps)', async () => {
         routedGateway();
-        expect(await usage.monthShare(AU)).toBeNull();
-        expect(await usage.monthShare(ZZ)).toBe(0);
+        expect(await usage.monthShare(AU, NO_CAPS)).toBeNull();
+        expect(await usage.monthShare(ZZ, ZZ_TEST_AI_CAPS)).toBe(0);
       });
     });
   });

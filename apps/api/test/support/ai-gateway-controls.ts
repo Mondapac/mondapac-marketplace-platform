@@ -1,0 +1,65 @@
+import type { CallContext } from '@mondapac/shared-kernel';
+import {
+  NO_CAPS,
+  type AiCaps,
+  type AiGatewayControls,
+  type AiMarketControls,
+} from '../../src/platform/ai/gateway-controls';
+
+/** The caps the ZZ fixture had as Market configuration `aiBudget` before G4 (US micro-dollars). */
+export const ZZ_TEST_AI_CAPS: AiCaps = Object.freeze({
+  marketDay: 1_000_000_000,
+  marketMonth: 20_000_000_000,
+  capabilityDay: 500_000_000,
+  sellerDay: 50_000_000,
+  guestDay: 100_000_000,
+});
+
+/** The pre-G4 `aiBudget` shape, so a test names a cap the way the Market configuration did. */
+export interface TestBudget {
+  readonly marketDayMicroUsd?: number;
+  readonly marketMonthMicroUsd?: number;
+  readonly capabilityDayMicroUsd?: number;
+  readonly sellerDayMicroUsd?: number;
+  readonly guestDayMicroUsd?: number;
+}
+
+export const capsOfBudget = (budget: TestBudget): AiCaps => ({
+  marketDay: budget.marketDayMicroUsd ?? null,
+  marketMonth: budget.marketMonthMicroUsd ?? null,
+  capabilityDay: budget.capabilityDayMicroUsd ?? null,
+  sellerDay: budget.sellerDayMicroUsd ?? null,
+  guestDay: budget.guestDayMicroUsd ?? null,
+});
+
+/**
+ * {@link AiGatewayControls} for unit tests: by default AU has no caps (counted only) and ZZ the
+ * caps its fixture had; `stopped` Markets have the emergency stop on; `failing` throws (the
+ * settings store is down).
+ */
+export class TestAiGatewayControls implements AiGatewayControls {
+  readonly caps = new Map<string, AiCaps>([['ZZ', ZZ_TEST_AI_CAPS]]);
+  readonly stopped = new Set<string>();
+  failing = false;
+  reads = 0;
+
+  /** Every Market gets the same caps (a budget given for the whole test). */
+  static everywhere(budget: TestBudget): TestAiGatewayControls {
+    const controls = new TestAiGatewayControls();
+    controls.caps.clear();
+    controls.default = capsOfBudget(budget);
+    return controls;
+  }
+
+  default: AiCaps = NO_CAPS;
+
+  read(context: CallContext): Promise<AiMarketControls> {
+    this.reads += 1;
+    if (this.failing) return Promise.reject(new Error('settings store down'));
+    const { marketId } = context.market;
+    return Promise.resolve({
+      stopped: this.stopped.has(marketId),
+      caps: this.caps.get(marketId) ?? this.default,
+    });
+  }
+}

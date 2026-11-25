@@ -3,6 +3,8 @@ import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import type { AuditEntry } from '@mondapac/shared-kernel';
 import {
+  AiCapChanged,
+  type AI_CAP_TARGET_IDS,
   MarketNumberSettingChanged,
   MarketSettingChanged,
   MonthlyRevenueTargetChanged,
@@ -11,7 +13,11 @@ import {
 } from '../domain/audit';
 import {
   acceptedValue,
+  AI_CAP_CODES,
+  AI_GATEWAY_CODES,
+  capOf,
   findDefinition,
+  loosensAi,
   MONTHLY_REVENUE_TARGET_CODE,
   SETTING_DEFINITIONS,
   targetOf,
@@ -44,6 +50,7 @@ const AI_CODES: ReadonlySet<string> = new Set([
  */
 const HIGH_RISK_CODES: ReadonlySet<string> = new Set([
   ...AI_CODES,
+  ...AI_GATEWAY_CODES,
   ...OFFER_REVIEW_CODES,
   OFFER_REVIEW_EMERGENCY_STOP_CODE,
 ]);
@@ -70,6 +77,12 @@ function changeEntry(
     return MonthlyRevenueTargetChanged.entry('monthly-revenue-target', {
       before: { target: targetOf(was) },
       after: { target: targetOf(next), version },
+    });
+  }
+  if (AI_CAP_CODES.includes(definition.code)) {
+    return AiCapChanged.entry(definition.code as (typeof AI_CAP_TARGET_IDS)[number], {
+      before: { microUsd: capOf(was) },
+      after: { microUsd: capOf(next), version },
     });
   }
   if (definition.integer !== undefined) {
@@ -367,8 +380,11 @@ export async function changeSettings(
   /** The settings the caller's manage key covers; any other code is a validation failure. */
   allowedCodes: readonly string[],
   input: { readonly changes?: unknown; readonly note?: unknown },
-  /** The admin step-up action whose fresh proof the change spends in its unit, if any. */
-  stepUpAction?: string,
+  /**
+   * The admin step-up action whose fresh proof the change spends in its unit, if any; with `when`,
+   * only when one of the changes meets it (the value in force and the value asked for).
+   */
+  stepUpAction?: string | ConditionalStepUp,
 ): Promise<Result<readonly SettingChangeView[], SettingsFailure>> {
   const adminId = adminAccountId(context);
   if (adminId === null) return err({ code: 'access.denied' });
@@ -403,13 +419,19 @@ export async function changeSettings(
     context.market,
     async () => {
       // Every version first, so a stale one saves nothing (the unit also rolls back on an error).
-      for (const { definition, seen } of checkedChanges) {
+      let stepUpNeeded = typeof stepUpAction === 'string';
+      for (const { definition, seen, next } of checkedChanges) {
         const row = await deps.settings.find(context.market, definition.code);
         if ((row?.version ?? 0) !== seen) return err({ code: 'settings.conflict' as const });
+        const was = row?.value ?? definition.defaultValue;
+        if (typeof stepUpAction === 'object' && stepUpAction.when(definition.code, was, next)) {
+          stepUpNeeded = true;
+        }
       }
       // The proof is spent only for a change that would be saved; a refusal commits nothing.
-      if (stepUpAction !== undefined) {
-        const spent = await deps.stepUp.consume(context, stepUpAction);
+      if (stepUpAction !== undefined && stepUpNeeded) {
+        const action = typeof stepUpAction === 'string' ? stepUpAction : stepUpAction.action;
+        const spent = await deps.stepUp.consume(context, action);
         if (!spent.ok) return err(stepUpFailure(spent.error));
       }
       const views: SettingChangeView[] = [];
@@ -429,6 +451,13 @@ export async function changeSettings(
       return ok(views);
     },
   );
+}
+
+/** A step-up asked only for some changes (for example raising an AI cap, never lowering one). */
+export interface ConditionalStepUp {
+  readonly action: string;
+  /** Whether changing `code` from the value in force (`was`) to `next` needs the proof. */
+  readonly when: (code: string, was: string, next: string) => boolean;
 }
 
 /** identity's refusal of the step-up, as a settings change answers it; anything else stays closed. */
@@ -466,6 +495,9 @@ export async function revertSetting(
   const current = row?.value ?? definition.defaultValue;
   if (current !== request.after.value) return 'changed-since';
   if (definition.code === AI_DESCRIPTION_WRITER_CODE && restore === 'on') return 'not-permitted';
+  // A revert never allows more AI (a cap raised or lifted, the stop switched off): that needs the
+  // AI Gateway key and a fresh two-step code (design section 8); tightening goes ahead.
+  if (loosensAi(definition.code, current, restore)) return 'not-permitted';
   // A reviewer without the stop's own key never switches the emergency stop off (Hassan, PR 2b);
   // restoring it on after a rejected "off" is the safe side and goes ahead.
   if (definition.code === OFFER_REVIEW_EMERGENCY_STOP_CODE && restore === 'off') {

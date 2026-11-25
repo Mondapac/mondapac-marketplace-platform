@@ -404,6 +404,8 @@ module.exports = {
           '^src/platform/ai/capability\\.ts$',
           '^src/platform/ai/capability-registry\\.ts$',
           '^src/platform/ai/seller-ai-switch\\.ts$',
+          // The gateway-settings port (G4); rule ai-gateway-controls-only-from-settings limits it.
+          '^src/platform/ai/gateway-controls\\.ts$',
           // The usage store's port; rule ai-usage-store-only-in-persistence limits who imports it.
           '^src/platform/ai/usage/ai-usage-store\\.ts$',
           // A module's read of its own capability's usage (G7); no model call. Rule
@@ -471,6 +473,22 @@ module.exports = {
         ],
       },
       to: { path: '^src/platform/ai/seller-ai-switch\\.ts$' },
+    },
+    {
+      name: 'ai-gateway-controls-only-from-settings',
+      comment:
+        "Only settings implements the AI Gateway's settings port (emergency stop and caps, G4; " +
+        'docs/design/domain/platform-ai.md section 8): its module file and its reader.',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '^src/platform/ai/',
+          '^src/app\\.module\\.ts$',
+          '^src/modules/settings/settings\\.module\\.ts$',
+          '^src/modules/settings/application/ai-gateway-controls-reader\\.ts$',
+        ],
+      },
+      to: { path: '^src/platform/ai/gateway-controls\\.ts$' },
     },
     {
       name: 'no-ai-in-identity-payments-or-payouts',

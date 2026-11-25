@@ -228,11 +228,14 @@ number so the partner team can work in parallel (G6).
   most one more notice is sent per day. (Deferred: FE-20261125-ai-gateway-budget-alerts; G2 counts
   and refuses only, and a full cap switches the capability off without a notice.)
 - **Message limits** stay in the module: the gateway counts model rounds, not user messages.
-- **Cap values until G4.** The Market configuration's optional `aiBudget` section
-  (`marketDayMicroUsd`, `marketMonthMicroUsd`, `capabilityDayMicroUsd`, `sellerDayMicroUsd`,
-  `guestDayMicroUsd`, US micro-dollars). An absent cap is counted but not enforced; AU has none
-  today, so G2 changes nothing a user sees there. The guest pool is the buyer capabilities' calls
-  by anonymous visitors.
+- **Cap values (G4a).** The `settings` module's AI Gateway settings (ADR-0042 store, versioned,
+  audited): `ai-cap-market-day`, `ai-cap-market-month`, `ai-cap-capability-day`, `ai-cap-seller-day`
+  and `ai-cap-guest-day`, each `none` (the default: counted, not enforced) or whole US
+  micro-dollars up to 10^12; 0 allows nothing. The gateway reads them with the emergency stop through
+  the port `AiGatewayControls` (`platform/ai/gateway-controls.ts`, implemented by settings) once per
+  `status` and `run`; a read that fails is off (R8), and a stored value the definition no longer
+  allows is read as 0. The Market configuration's `aiBudget` section is removed. The guest pool is
+  the buyer capabilities' calls by anonymous visitors.
 - **Moving the buyer assistant's cap.** G2 only counts in parallel and moves nothing.
   `assistant.spend_days` moves to the gateway in its own later PR, in steps (section 10).
 
@@ -321,6 +324,17 @@ description writer's, the buyer assistant's) are not rebuilt.
   to a previous version. Switching something off never needs confirmation.
 - **Versions and revert.** Each change in the ADR-0042 store has a version and an audit row. A
   revert is a new forward change and passes the same server checks and confirmation.
+- **Built in G4a (limits and emergency stop).** `GET settings/admin/ai-gateway` (key
+  `settings.ai-gateway.view`), `PUT settings/admin/ai-gateway/limits` and `PUT
+  settings/admin/ai-gateway/emergency-stop` (protected key `settings.ai-gateway.manage`). Raising or
+  lifting a cap spends the admin step-up `settings.ai-gateway-limits.raise` and switching the stop
+  off spends `settings.ai-gateway-emergency-stop.resume`, in the change's own unit; lowering a cap or
+  switching the stop on spends none (the route carries no `@RequiresStepUp`, the use case decides).
+  The stop always needs a reason. Every change is reviewed at high risk where the marketplace area
+  is reviewed, and a revert (a rejected review) never raises a cap or switches the stop off. While
+  the stop is on, `status` answers `emergency-stop` and `run` answers `off`. The saver threshold
+  moves with the priority lists (G4b); the alert threshold waits for the alerts
+  (FE-20261125-ai-gateway-budget-alerts).
 - **Server checks.** Every rule of the page is checked on the server too: a model without a key,
   without a passed evaluation, with a region that does not meet the Market's requirement or retired
   is refused in a priority list.

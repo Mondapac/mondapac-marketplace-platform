@@ -505,13 +505,6 @@
       }
     }
   },
-  "aiBudget": {
-    "marketDayMicroUsd": 1000000000,
-    "marketMonthMicroUsd": 20000000000,
-    "capabilityDayMicroUsd": 500000000,
-    "sellerDayMicroUsd": 50000000,
-    "guestDayMicroUsd": 100000000
-  },
   "aiRouting": {
     "dataResidency": "in-market-region",
     "regions": ["ap-southeast-2"]

@@ -5,6 +5,7 @@ import type { DestinationStream } from 'pino';
 import { BINDING_MODULES, CORE_MODULES } from './modules';
 import { IdentityModule } from './modules/identity';
 import { SellersModule } from './modules/sellers';
+import { SettingsModule } from './modules/settings';
 import { AuditModule } from './platform/audit/audit.module';
 import { SecurityEventsModule } from './platform/security-events/security-events.module';
 import { AuthzModule } from './platform/authz/authz.module';
@@ -84,7 +85,7 @@ export class AppModule {
         MalwareModule,
         SchedulerModule,
         // The one model entry point (ADR-0019 decision 6); no model is called unless configured.
-        AiModule.register(SellersModule),
+        AiModule.register(SellersModule, SettingsModule),
         WorkerModule,
         HealthModule,
         ...CORE_MODULES,

@@ -4,6 +4,7 @@ import type { ActorContext, CallContext, Clock, Id, MarketId } from '@mondapac/s
 import { CLOCK } from '../clock/clock.module';
 import type { CapabilitySpec } from './capability';
 import { CapabilityRegistry } from './capability-registry';
+import { AI_GATEWAY_CONTROLS, type AiCaps, type AiGatewayControls } from './gateway-controls';
 import { ModelGateway, type AiModelTier, type ModelTokenPrice } from './model-gateway';
 import { AiRouter, planPrice } from './routing/ai-router';
 import type { ModelRequest, ModelTurn, ModelUsage } from './model-provider';
@@ -13,7 +14,13 @@ import { AiUsage, RESERVATION_GRACE, type UsageScope } from './usage/ai-usage';
 import { TURN_ID, TurnRounds } from './usage/turn-rounds';
 
 /** Why a capability is off for a call (docs/design/domain/platform-ai.md section 5). */
-export type GatewayOffReason = 'kill-switch' | 'off' | 'no-route' | 'over-budget';
+export type GatewayOffReason =
+  | 'kill-switch'
+  /** The Market's AI emergency stop (AI Gateway page, design section 8). */
+  | 'emergency-stop'
+  | 'off'
+  | 'no-route'
+  | 'over-budget';
 
 export type GatewayStatus =
   { readonly on: true } | { readonly on: false; readonly reason: GatewayOffReason };
@@ -71,6 +78,15 @@ export interface GatewaySetup {
   readonly keyConfigured: boolean;
   readonly models: { readonly fast: string | null; readonly balanced: string | null };
 }
+
+/** The caps an "off" evaluation carries: nothing allowed (never used to call). */
+const CLOSED_CAPS: AiCaps = Object.freeze({
+  marketDay: 0,
+  marketMonth: 0,
+  capabilityDay: 0,
+  sellerDay: 0,
+  guestDay: 0,
+});
 
 /** A fallback needs at least this long left of the run's timeout; with less, none is tried. */
 export const MIN_ATTEMPT_MS = 250;
@@ -160,9 +176,10 @@ function scopeOf(spec: CapabilitySpec, context: CallContext, options: GatewayOpt
  * UnitOfWork (decision 6): `status` reads the budget and `run` writes it, each in a short unit of
  * its own.
  *
- * Interim (G1 to G4): the Market's on/off switch of each capability stays in its owning module,
- * which checks it before `status` and `run`, and the module passes its configured tier. The caps
- * are the Market configuration's `aiBudget` until G4.
+ * The Market's emergency stop and its caps are the `settings` module's AI Gateway settings (G4),
+ * read through {@link AiGatewayControls} once per `status` and `run`; a read that fails is off.
+ * Interim: the Market's on/off switch of each capability stays in its owning module, which checks
+ * it before `status` and `run`, and the module passes its configured tier.
  */
 @Injectable()
 export class AiGateway {
@@ -176,6 +193,7 @@ export class AiGateway {
     private readonly usage: AiUsage,
     @Inject(CLOCK) private readonly clock: Clock,
     private readonly router: AiRouter,
+    @Inject(AI_GATEWAY_CONTROLS) private readonly controls: AiGatewayControls,
   ) {}
 
   /**
@@ -189,7 +207,7 @@ export class AiGateway {
     options: GatewayOptions,
   ): Promise<GatewayStatus> {
     try {
-      const status = await this.#evaluate(capability, context, options);
+      const { status, caps } = await this.#evaluate(capability, context, options);
       if (!status.on) return status;
       const spec = this.registry.get(capability)!;
       // Off once a cap cannot take the most one call of the capability can cost: its largest
@@ -203,7 +221,8 @@ export class AiGateway {
               { inputTokens: 2 * spec.maxInputTokens, outputTokens: spec.maxOutputTokens },
               price,
             );
-      if (await this.usage.overBudget(context.market, scopeOf(spec, context, options), largest)) {
+      const scope = scopeOf(spec, context, options);
+      if (await this.usage.overBudget(context.market, scope, caps, largest)) {
         return { on: false, reason: 'over-budget' };
       }
       return status;
@@ -220,15 +239,17 @@ export class AiGateway {
     options: GatewayOptions,
   ): Promise<GatewayRun> {
     let spec: CapabilitySpec;
+    let caps: AiCaps;
     try {
-      const status = await this.#evaluate(capability, context, options);
-      if (!status.on) return { ok: false, reason: 'off', costMicroUsd: 0 };
+      const evaluation = await this.#evaluate(capability, context, options);
+      if (!evaluation.status.on) return { ok: false, reason: 'off', costMicroUsd: 0 };
       spec = this.registry.get(capability)!;
+      caps = evaluation.caps;
     } catch {
       return { ok: false, reason: 'off', costMicroUsd: 0 };
     }
     try {
-      return await this.#call(capability, spec, context, request, options);
+      return await this.#call(capability, spec, context, request, options, caps);
     } catch {
       // Never throws: an unexpected error after the evaluation is an unavailable model.
       this.#logger.warn({ msg: 'ai.run.failed', capability, failure: 'error' });
@@ -242,6 +263,7 @@ export class AiGateway {
     context: CallContext,
     request: ModelRequest,
     options: GatewayOptions,
+    caps: AiCaps,
   ): Promise<GatewayRun> {
     const { market } = context;
     const { marketId } = market;
@@ -276,7 +298,7 @@ export class AiGateway {
     const saverAt = this.router.saverThreshold(marketId);
     if (saverAt !== null) {
       try {
-        const share = await this.usage.monthShare(market);
+        const share = await this.usage.monthShare(market, caps);
         saver = share !== null && share >= saverAt;
       } catch {
         saver = false;
@@ -292,7 +314,7 @@ export class AiGateway {
     try {
       // Read first, without a lock: a cap that cannot take the estimate refuses here, so a
       // refused call never queues on the Market's month and day rows (Hassan, PR 1348 M1, L3).
-      if (await this.usage.overBudget(market, scope, estimate)) {
+      if (await this.usage.overBudget(market, scope, caps, estimate)) {
         return await refuse('over-budget', 'over-budget');
       }
     } catch {
@@ -326,6 +348,7 @@ export class AiGateway {
         reservation = await this.usage.reserve(
           market,
           scope,
+          caps,
           estimate,
           Temporal.Duration.from({ milliseconds: attemptMs }).add(RESERVATION_GRACE),
         );
@@ -419,30 +442,37 @@ export class AiGateway {
     };
   }
 
+  /**
+   * The switches, the Market's gateway settings and the route, in order; the caps come with an
+   * "on". Throws when the gateway settings cannot be read (the callers answer off).
+   */
   async #evaluate(
     capability: string,
     context: CallContext,
     options: GatewayOptions,
-  ): Promise<GatewayStatus> {
+  ): Promise<{ readonly status: GatewayStatus; readonly caps: AiCaps }> {
+    const off = (reason: GatewayOffReason) => ({
+      status: { on: false, reason } as const,
+      caps: CLOSED_CAPS,
+    });
     const spec = this.registry.get(capability);
-    if (spec === undefined) return { on: false, reason: 'off' };
+    if (spec === undefined) return off('off');
     const { actor } = context;
-    if (isActingAs(actor) || !inAudience(spec, actor)) return { on: false, reason: 'off' };
-    if (this.models.killSwitchSet()) return { on: false, reason: 'kill-switch' };
+    if (isActingAs(actor) || !inAudience(spec, actor)) return off('off');
+    if (this.models.killSwitchSet()) return off('kill-switch');
+    // The Market's emergency stop and caps (G4); a store that cannot be read throws: off.
+    const controls = await this.controls.read(context);
+    if (controls.stopped) return off('emergency-stop');
     if (spec.sellerScoped) {
       const sellerId = options.sellerId;
-      if (sellerId === undefined) return { on: false, reason: 'off' };
+      if (sellerId === undefined) return off('off');
       // A seller actor calls only for its own seller; the id never comes from model output.
-      if (actor.kind === 'authenticated' && actor.sellerId !== sellerId) {
-        return { on: false, reason: 'off' };
-      }
-      if ((await this.sellerSwitch.isOn(context, sellerId)) !== true) {
-        return { on: false, reason: 'off' };
-      }
+      if (actor.kind === 'authenticated' && actor.sellerId !== sellerId) return off('off');
+      if ((await this.sellerSwitch.isOn(context, sellerId)) !== true) return off('off');
     }
     if (this.router.plan(context.market.marketId, spec, options.tier).length === 0) {
-      return { on: false, reason: 'no-route' };
+      return off('no-route');
     }
-    return { on: true };
+    return { status: { on: true }, caps: controls.caps };
   }
 }

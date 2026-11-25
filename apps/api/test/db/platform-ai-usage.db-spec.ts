@@ -6,7 +6,7 @@ import { Test } from '@nestjs/testing';
 import { Client } from 'pg';
 import pino from 'pino';
 import { Temporal, uuidV7 } from '@mondapac/shared-kernel';
-import type { CallContext, Id, MarketContext, MarketId } from '@mondapac/shared-kernel';
+import type { CallContext, Id, MarketContext } from '@mondapac/shared-kernel';
 import {
   FixedClock,
   testAuthenticatedActor,
@@ -25,13 +25,14 @@ import { AiUsage, type SettledCall, type UsageScope } from '../../src/platform/a
 import { CALL_OUTCOMES } from '../../src/platform/ai/usage/ai-usage-store';
 import { CLOCK } from '../../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../../src/platform/market-context/tenant';
-import { MarketRegistry } from '../../src/platform/market-config/market-registry';
 import { testAppConfig, TEST_MARKETS } from '../support/test-config';
 import { passesFor, testRouteCatalogue } from '../support/ai-routes';
 import { AI_ROUTE_CATALOGUE } from '../../src/platform/ai/catalogue/route-catalogue';
 import { AI_EVALUATION_RESULTS } from '../../src/platform/ai/evaluations/evaluation-results';
 import { CATALOG_AI_CAPABILITIES } from '../../src/modules/catalog/contracts/ai-capabilities';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
+import { capsOfBudget, type TestBudget } from '../support/ai-gateway-controls';
+import { NO_CAPS, type AiCaps } from '../../src/platform/ai/gateway-controls';
 
 // AI Gateway G2 (docs/design/domain/platform-ai.md sections 7 and 10): the usage and budget
 // tables in a real database. Concurrent reservations never pass a cap, a settle counts once, the
@@ -96,7 +97,6 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
   let app: INestApplicationContext;
   let usage: AiUsage;
   let gateway: AiGateway;
-  let markets: MarketRegistry;
   let sql: Client;
   let owner: Client;
   const provider: ModelProvider = {
@@ -136,7 +136,6 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
     app = await moduleRef.init();
     usage = app.get(AiUsage);
     gateway = app.get(AiGateway);
-    markets = app.get(MarketRegistry);
     sql = new Client({ connectionString: testDatabaseUrl() });
     await sql.connect();
     owner = new Client({ connectionString: ownerTestDatabaseUrl() });
@@ -166,20 +165,29 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
     return rows.map((row) => ({ held: Number(row.held), spent: Number(row.spent) }));
   };
 
+  /** Writes a Market setting as an admin change would (the row only; history is not needed). */
+  const setSetting = async (market: MarketContext, code: string, value: string) => {
+    await sql.query(
+      `INSERT INTO settings.market_settings
+         (market_id, tenant_id, code, value, version, updated_at, updated_by_account_id)
+       VALUES ($1, $2, $3, $4, 1, now(), $5)
+       ON CONFLICT (market_id, code)
+       DO UPDATE SET value = EXCLUDED.value, version = settings.market_settings.version + 1`,
+      [market.marketId, PLATFORM_TENANT_ID, code, value, uuid()],
+    );
+  };
+
   describe.each(TEST_MARKETS)('Market %s', (code) => {
     const market = marketOf(code);
-    const original = () => markets.get(market.marketId);
-    const withBudget = (aiBudget: Record<string, number>) => {
-      const config = original();
-      jest
-        .spyOn(markets, 'get')
-        .mockImplementation((id) =>
-          id === market.marketId
-            ? { ...config, aiBudget }
-            : MarketRegistry.prototype.get.call(markets, id),
-        );
+    /** The Market's caps for the next reservations (the AI Gateway settings since G4). */
+    let caps: AiCaps = NO_CAPS;
+    const withBudget = (budget: TestBudget) => {
+      caps = capsOfBudget(budget);
     };
-    afterEach(() => jest.restoreAllMocks());
+    afterEach(() => {
+      caps = NO_CAPS;
+      jest.restoreAllMocks();
+    });
 
     it('never lets concurrent reservations pass a cap (one conditional UPDATE per counter)', async () => {
       const scope = scopeOf();
@@ -187,7 +195,7 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
       withBudget({ capabilityDayMicroUsd: 700 });
       const results = await Promise.all(
         Array.from({ length: 20 }, () =>
-          usage.reserve(market, scope, 100, Temporal.Duration.from({ minutes: 1 })),
+          usage.reserve(market, scope, caps, 100, Temporal.Duration.from({ minutes: 1 })),
         ),
       );
       expect(results.filter((result) => result !== 'over-budget')).toHaveLength(7);
@@ -207,6 +215,7 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
       const reservation = await usage.reserve(
         market,
         scope,
+        caps,
         900,
         Temporal.Duration.from({ minutes: 1 }),
       );
@@ -252,6 +261,7 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
         const reservation = await usage.reserve(
           market,
           scope,
+          caps,
           50,
           Temporal.Duration.from({ minutes: 1 }),
         );
@@ -272,6 +282,7 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
       const reservation = await usage.reserve(
         market,
         scope,
+        caps,
         500,
         Temporal.Duration.from({ seconds: 1 }),
       );
@@ -338,7 +349,8 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
       expect(rows.length).toBeGreaterThanOrEqual(1);
       expect(JSON.stringify(rows)).not.toMatch(/Write for me|Hello|a@b\.co/u);
 
-      withBudget({ marketDayMicroUsd: 1 });
+      // The cap is the settings module's AI Gateway setting (G4), read by the gateway on each call.
+      await setSetting(market, 'ai-cap-market-day', '1');
       const spy = jest.spyOn(provider, 'call');
       expect(
         await gateway.status('catalog.description-writer.admin', context, { tier: 'fast' }),
@@ -347,6 +359,24 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
         await gateway.run('catalog.description-writer.admin', context, REQUEST, { tier: 'fast' }),
       ).toEqual({ ok: false, reason: 'over-budget', costMicroUsd: 0 });
       expect(spy).not.toHaveBeenCalled();
+      await setSetting(market, 'ai-cap-market-day', 'none');
+    });
+
+    it('answers emergency-stop while the Market stops AI in its gateway settings (G4)', async () => {
+      const context = adminContext(market);
+      await setSetting(market, 'ai-gateway-emergency-stop', 'on');
+      try {
+        const spy = jest.spyOn(provider, 'call');
+        expect(
+          await gateway.status('catalog.description-writer.admin', context, { tier: 'fast' }),
+        ).toEqual({ on: false, reason: 'emergency-stop' });
+        expect(
+          await gateway.run('catalog.description-writer.admin', context, REQUEST, { tier: 'fast' }),
+        ).toEqual({ ok: false, reason: 'off', costMicroUsd: 0 });
+        expect(spy).not.toHaveBeenCalled();
+      } finally {
+        await setSetting(market, 'ai-gateway-emergency-stop', 'off');
+      }
     });
 
     it('falls back to the second route: two call rows, one fallback counted (G3)', async () => {
@@ -396,22 +426,19 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
     const [au, zz] = [marketOf('AU'), marketOf('ZZ')];
     const sellerId = uuid();
     const scope = scopeOf(sellerId);
-    const config = (id: MarketId) => MarketRegistry.prototype.get.call(markets, id);
-    jest
-      .spyOn(markets, 'get')
-      .mockImplementation((id) => ({ ...config(id), aiBudget: { sellerDayMicroUsd: 100 } }));
+    const caps = capsOfBudget({ sellerDayMicroUsd: 100 });
     try {
       // The same capability and seller key fill the seller's cap in AU only.
-      expect(await usage.reserve(au, scope, 100, Temporal.Duration.from({ seconds: 1 }))).not.toBe(
-        'over-budget',
-      );
-      expect(await usage.reserve(au, scope, 100, Temporal.Duration.from({ seconds: 1 }))).toBe(
-        'over-budget',
-      );
-      expect(await usage.overBudget(zz, scope)).toBe(false);
-      expect(await usage.reserve(zz, scope, 100, Temporal.Duration.from({ seconds: 1 }))).not.toBe(
-        'over-budget',
-      );
+      expect(
+        await usage.reserve(au, scope, caps, 100, Temporal.Duration.from({ seconds: 1 })),
+      ).not.toBe('over-budget');
+      expect(
+        await usage.reserve(au, scope, caps, 100, Temporal.Duration.from({ seconds: 1 })),
+      ).toBe('over-budget');
+      expect(await usage.overBudget(zz, scope, caps)).toBe(false);
+      expect(
+        await usage.reserve(zz, scope, caps, 100, Temporal.Duration.from({ seconds: 1 })),
+      ).not.toBe('over-budget');
       clock.advance(Temporal.Duration.from({ seconds: 2 }));
       // AU's sweeper ends AU's reservation and never touches ZZ's.
       await usage.sweep(au);
