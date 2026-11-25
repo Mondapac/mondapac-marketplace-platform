@@ -120,6 +120,7 @@ describe.each(TEST_MARKETS)('the admin KPIs over HTTP in market %s', (code) => {
       health: null,
       ordersByState: null,
       marketTarget: null,
+      reviews: null,
       shoppingFunnel: null,
       ordersByStatus: {
         status: 'ok',
@@ -186,6 +187,7 @@ describe.each(TEST_MARKETS)('the admin KPIs over HTTP in market %s', (code) => {
       topCategories: null,
       health: null,
       marketTarget: null,
+      reviews: null,
       finance: {
         status: 'ok',
         refreshedAt: START.subtract({ minutes: 4 }).toString(),
@@ -224,6 +226,7 @@ describe.each(TEST_MARKETS)('the admin KPIs over HTTP in market %s', (code) => {
       operations: { status: 'error' },
       ordersByState: { status: 'error' },
       marketTarget: { status: 'error' },
+      reviews: { status: 'error' },
       shoppingFunnel: { status: 'error' },
       ordersByStatus: { status: 'error' },
       topSellers: null,
@@ -237,6 +240,7 @@ describe.each(TEST_MARKETS)('the admin KPIs over HTTP in market %s', (code) => {
       operations: { status: 'error' },
       ordersByStatus: { status: 'error' },
       marketTarget: { status: 'error' },
+      reviews: { status: 'error' },
       shoppingFunnel: { status: 'error' },
       finance: null,
     });
