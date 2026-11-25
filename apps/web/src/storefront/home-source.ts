@@ -144,6 +144,10 @@ export function cardOf(
   const name = textOf(item.name, 200);
   const price = moneyOf(item.price);
   if (name === undefined || (price !== undefined && item.taxInclusive === false)) return null;
+  // The struck-through price: the API sends `regularPrice` only when the Market's was-price rule
+  // allows it (AU: sold at that price on at least 28 of the last 90 days, checked by promotions);
+  // otherwise it is null and the card shows the special on its own. The checks below never add a
+  // "was" the API did not send.
   const regular = moneyOf(item.regularPrice);
   const wasPrice =
     price !== undefined &&

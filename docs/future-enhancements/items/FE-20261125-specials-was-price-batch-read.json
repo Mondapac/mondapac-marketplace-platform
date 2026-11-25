@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-specials-was-price-batch-read",
+  "area": "storefront",
+  "title": "خواندن یکجای قاعدهٔ Was برای شلف",
+  "desc": "شلف specials برای هر کارت (حداکثر ۲۴) یک بار promotions.wasPriceEligible و یک کوئری daysAtPrice می‌زند. اگر بار زیاد شد، یک متد دسته‌ای در promotions و pricing لازم است.",
+  "src": "docs/modules/search/search.md (Was price)",
+  "date": "2026-11-25",
+  "trig": "اگر زمان پاسخ search/specials بالا رفت یا کش صفحهٔ اول اضافه شد",
+  "prio": "پایین",
+  "status": "موکول"
+}

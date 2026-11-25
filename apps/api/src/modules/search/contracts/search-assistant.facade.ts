@@ -22,10 +22,13 @@ export interface AssistantProduct {
   readonly priceFrom: boolean;
 }
 
-/** A product on the specials shelf, with the prices pricing answered (Money, never Cost). */
+/**
+ * A product on the specials shelf, with the prices pricing answered (Money, never Cost). The
+ * regular price is set only when the Market's was-price rule allows showing it; otherwise null.
+ */
 export interface AssistantSpecial extends AssistantProduct {
   readonly price: Money;
-  readonly regularPrice: Money;
+  readonly regularPrice: Money | null;
   readonly taxInclusive: boolean;
 }
 

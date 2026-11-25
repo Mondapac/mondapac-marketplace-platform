@@ -308,6 +308,14 @@ describe('home source: checks on each answer', () => {
     expect(moneyOf({ amount: '1299', currency: 'aud' })).toBeUndefined();
   });
 
+  it('shows the special without a struck-through price when the API sends regularPrice null', () => {
+    // The API sends the regular price only when the Market's was-price rule allows it (AU: 28 of
+    // the last 90 days); null means the special is shown on its own.
+    const card = cardOf({ ...SPECIAL, regularPrice: null }, new Map([[MEAT, 'meat']]));
+    expect(card?.price).toEqual({ amount: 2290, currency: 'AUD' });
+    expect(card?.wasPrice).toBeUndefined();
+  });
+
   it('shows no card for a price without tax, and no regular price in another currency', () => {
     const slugs = new Map([[MEAT, 'meat']]);
     expect(cardOf({ ...SPECIAL, taxInclusive: false }, slugs)).toBeNull();

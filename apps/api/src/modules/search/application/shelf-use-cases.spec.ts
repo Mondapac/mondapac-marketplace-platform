@@ -16,6 +16,7 @@ import type { PublicVisibility } from './ports/public-visibility';
 import type { PublishedVariants } from './ports/published-variants';
 import type { ShelfDocumentsReader } from './ports/shelf-documents.reader';
 import type { ShelfSources, ShelfSpecial } from './ports/shelf-sources';
+import type { WasPriceCheck } from './ports/was-price-check';
 import type { ShelfDependencies } from './shelf-dependencies';
 import { FILL_DEPTH, ListBestsellers, RANKED_DEPTH } from './use-cases/list-bestsellers.use-case';
 import { ListBoughtTogether } from './use-cases/list-bought-together.use-case';
@@ -149,6 +150,28 @@ class StubVariants implements PublishedVariants {
         offerIds.map((o) => [o, new Set(all.filter((v) => !this.unpublished.has(v)))] as const),
       ),
     );
+  }
+}
+
+/** The Market's was-price rule as promotions would answer it: yes for the units in `eligible`. */
+class StubWasPrice implements WasPriceCheck {
+  eligible_ = new Set<Id<'Variant'>>();
+  failing = false;
+  readonly asked: {
+    actor: string;
+    offerId: Id<'Offer'>;
+    variantId: Id<'Variant'>;
+    amount: bigint;
+    currency: string;
+  }[] = [];
+  eligible(
+    context: CallContext,
+    unit: { readonly offerId: Id<'Offer'>; readonly variantId: Id<'Variant'> },
+    regularPrice: { readonly amount: bigint; readonly currency: string },
+  ) {
+    this.asked.push({ actor: context.actor.kind, ...unit, ...regularPrice });
+    if (this.failing) return Promise.reject(new Error('promotions down'));
+    return Promise.resolve(this.eligible_.has(unit.variantId));
   }
 }
 
@@ -438,8 +461,14 @@ describe.each([
   });
 
   describe('ListSpecials', () => {
+    let wasPrice: StubWasPrice;
+    beforeEach(() => {
+      wasPrice = new StubWasPrice();
+      // Every unit of these tests held its regular price long enough unless a test says otherwise.
+      for (let n = 0; n < 0x40; n += 1) wasPrice.eligible_.add(variant(n));
+    });
     const run = (input: object, context = anonymous) =>
-      new ListSpecials(gate, deps).execute(context, input);
+      new ListSpecials(gate, { ...deps, wasPrice }).execute(context, input);
 
     it('shows each Offer once with its special and regular price in the Market currency', async () => {
       shelves.documents = [hit(1), hit(2)];
@@ -536,6 +565,74 @@ describe.each([
       shelves.documents = [hit(1)];
       visibility.failing = true;
       expect(await run({})).toEqual({ ok: false, error: { code: 'search.unavailable' } });
+    });
+
+    describe('the regular price (was-price rule, owned by promotions)', () => {
+      it('is answered only for a unit the rule allows, asked with the caller and the regular price', async () => {
+        shelves.documents = [hit(1), hit(2)];
+        sources.specials_ = [special(1), special(2)];
+        wasPrice.eligible_ = new Set([variant(1)]);
+
+        const result = await run({});
+
+        expect(result.ok && result.value.items.map((i) => [i.offerId, i.regularPrice])).toEqual([
+          [offer(1), { amount: 1000n, currency }],
+          [offer(2), null],
+        ]);
+        expect(result.ok && result.value.items[1]?.price).toEqual({ amount: 800n, currency });
+        expect(wasPrice.asked).toEqual(
+          [1, 2].map((n) => ({
+            actor: 'anonymous',
+            offerId: offer(n),
+            variantId: variant(n),
+            amount: 1000n,
+            currency,
+          })),
+        );
+      });
+
+      it('is null, and the shelf still answers, when the rule cannot be checked', async () => {
+        shelves.documents = [hit(1)];
+        sources.specials_ = [special(1)];
+        wasPrice.failing = true;
+
+        const result = await run({});
+
+        expect(result.ok && result.value.items.map((i) => [i.offerId, i.regularPrice])).toEqual([
+          [offer(1), null],
+        ]);
+      });
+
+      it('is null without asking the rule when it is not above the special or in another currency', async () => {
+        shelves.documents = [hit(1), hit(2), hit(3)];
+        sources.specials_ = [
+          { ...special(1), regularPrice: { amount: 800n, currency } },
+          { ...special(2), regularPrice: { amount: 700n, currency } },
+          {
+            ...special(3),
+            regularPrice: { amount: 1000n, currency: currency === 'AUD' ? 'JPY' : 'AUD' },
+          },
+        ];
+
+        const result = await run({});
+
+        expect(result.ok && result.value.items.map((i) => i.regularPrice)).toEqual([
+          null,
+          null,
+          null,
+        ]);
+        expect(wasPrice.asked).toEqual([]);
+      });
+
+      it('asks only for the Offers shown', async () => {
+        shelves.documents = [hit(1), hit(2), hit(3)];
+        sources.specials_ = [special(1), special(2), special(3)];
+        visibility.hidden.add(offer(2));
+
+        await run({ limit: 1 });
+
+        expect(wasPrice.asked.map((a) => a.offerId)).toEqual([offer(1)]);
+      });
     });
   });
 });

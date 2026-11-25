@@ -74,7 +74,9 @@ export class ShelfController {
     description:
       'No session needed. Offers whose price is a special right now, newest special first, ' +
       'each with the special and the regular price (Money: minor units as a string and the ' +
-      'currency). `category` and `limit` as for best sellers.',
+      "currency). `regularPrice` is null unless the Market's was-price rule allows showing " +
+      "it struck through (the unit sold at that price on enough days of the Market's window). " +
+      '`category` and `limit` as for best sellers.',
   })
   @ApiQuery({ name: 'category', required: false, description: 'A platform category id.' })
   @ApiQuery({ name: 'limit', required: false, description: '1 to 24, default 12.' })
@@ -98,7 +100,7 @@ export class ShelfController {
         primaryImage: item.primaryImage,
         variantId: item.variantId,
         price: money(item.price),
-        regularPrice: money(item.regularPrice),
+        regularPrice: item.regularPrice === null ? null : money(item.regularPrice),
         taxInclusive: item.taxInclusive,
         specialEndsAt: item.specialEndsAt.toString(),
       })),
