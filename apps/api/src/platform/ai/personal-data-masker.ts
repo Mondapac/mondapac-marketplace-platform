@@ -12,8 +12,10 @@ const NUMBER =
   /(?<![\p{L}\p{N}-])\+?\(?\p{Nd}(?:(?:[ .-]|\) ?|\( ?)?\p{Nd})*(?![\p{L}\p{N}]|-[\p{L}\p{N}])/gu;
 const DIGIT = /\p{Nd}/gu;
 const ASCII_DIGITS = /^[0-9]+$/;
-// A calendar date (2026-11-25, 25.11.2026, 25-11-2026): a date, never a phone number.
-const DATE = /^(?:\p{Nd}{4}-\p{Nd}{2}-\p{Nd}{2}|\p{Nd}{1,2}[.-]\p{Nd}{1,2}[.-]\p{Nd}{4})$/u;
+// A calendar date (2026-11-25, 25.11.2026, 25-11-2026), maybe with the hour of a time after it
+// ("05.11.2026 10:30" runs up to the colon): a date, never a phone number.
+const DATE =
+  /^(?:\p{Nd}{4}-\p{Nd}{2}-\p{Nd}{2}|\p{Nd}{1,2}[.-]\p{Nd}{1,2}[.-]\p{Nd}{4})(?: \p{Nd}{1,2})?$/u;
 // How a written phone number starts: an international +, a bracketed area code or a trunk zero.
 const PHONE_START = /^(?:\+|\(|[0٠۰०০０])/u;
 

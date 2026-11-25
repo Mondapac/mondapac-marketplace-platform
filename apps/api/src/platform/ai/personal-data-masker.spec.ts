@@ -29,6 +29,7 @@ describe('maskPersonalData (platform-ai.md section 9)', () => {
     ['a dotted date', 'made 25.11.2026'],
     ['a dashed day-first date', 'made 25-11-2026'],
     ['a date and a time', 'at 2026-11-25 14:30'],
+    ['a day-first date and a time', 'at 05.11.2026 10:30'],
     ['a price in toman', '12 500 000 تومان'],
     ['a dotted price in rial', '125.000.000 ریال'],
     ['model numbers', 'Model 2024 1080 1920'],

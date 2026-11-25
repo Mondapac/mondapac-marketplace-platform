@@ -66,8 +66,11 @@ const COMMERCE = new RegExp(
   'iu',
 );
 
-// The gateway's mask (platform/ai, "[masked]"), after inert rendering took the brackets away.
-const MASKED_WORD = /\bmasked\b/iu;
+// The gateway's mask (platform/ai, "[masked]"): `guardDraft` swaps it for this word before inert
+// rendering takes the brackets away, so product copy with the plain word "masked" is kept.
+const MASK_MARK = '[masked]';
+const MASK_WORD = 'zzmaskedpersonaldatazz';
+const MASKED_WORD = new RegExp(String.raw`\b${MASK_WORD}\b`, 'iu');
 
 // Inert rendering (R9): no markup, links, images, addresses or invisible characters survive.
 const MARKDOWN_IMAGE = /!\[[^\]]*\]\([^)]*\)/g;
@@ -135,7 +138,7 @@ export function sentenceVerdict(sentence: string, facts: string): LeftOutReason 
   if (hasClaimWord(sentence) || hasLookAlikeScripts(sentence)) return 'certification';
   const plain = foldForClaims(sentence);
   // The gateway masks personal data in the request as "[masked]"; a sentence that echoes the mark
-  // (its brackets are already gone here) is never useful and goes whole.
+  // is never useful and goes whole.
   if (MASKED_WORD.test(plain)) return 'other';
   if (HEALTH.test(plain)) return 'other';
   if (COMMERCE.test(plain) || COMMERCE.test(sentence)) return 'other';
@@ -154,7 +157,7 @@ export function guardDraft(text: string, facts: string): GuardedDraft {
   let other = 0;
   let length = 0;
   let paragraph = 0;
-  for (const block of inert(text).split(/\n\s*\n+/u)) {
+  for (const block of inert(text.replaceAll(MASK_MARK, ` ${MASK_WORD} `)).split(/\n\s*\n+/u)) {
     let kept = false;
     for (const part of block.split(SENTENCE_BREAK)) {
       const sentence = part.replace(/\s+/gu, ' ').trim();

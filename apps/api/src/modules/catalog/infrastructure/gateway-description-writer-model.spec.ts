@@ -131,5 +131,6 @@ describe('GatewayDescriptionWriterModel on the real AiGateway (AIS-03; ADR-0019 
     const draft = guardDraft(`A sturdy pan. Call ${MASKED} to ask.`, 'pan');
     expect(draft.sentences.map((s) => s.text)).toEqual(['A sturdy pan.']);
     expect(draft.leftOut).toEqual({ certification: 0, other: 1 });
+    expect(guardDraft('A masked ball costume.', 'costume').sentences).toHaveLength(1);
   });
 });
