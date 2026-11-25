@@ -1,5 +1,6 @@
 import { auditField, defineAuditAction } from '@mondapac/shared-kernel';
 import type { ProductScope } from './product';
+import { OFFER_REVIEW_REASONS } from './offer-review-policy';
 
 // The audited actions of catalog (catalog design 11.3), registered at boot with
 // `registerAuditActions('catalog', CATALOG_AUDIT_ACTIONS)`. Ids, codes, counts and booleans only:
@@ -1032,6 +1033,28 @@ export const SellerCategoryMergedAudit = defineAuditAction({
   },
 });
 
+/** The Offer a decision of the Offer review policy is about. */
+export const CATALOG_OFFER_TARGET = 'catalog.offer';
+
+/**
+ * The Offer review policy decided a seller's submit (ADR-0051; design catalog/offer-approval 6):
+ * queued with its reasons, or published at once (no reason). The policy version explains it.
+ */
+export const OfferReviewReferredAudit = defineAuditAction({
+  action: 'catalog.offer.review-referred',
+  targetType: CATALOG_OFFER_TARGET,
+  actors: ['authenticated'],
+  after: {
+    trigger: auditField.enumOf(['first-publication'] as const),
+    outcome: auditField.enumOf(['queued', 'published'] as const),
+    reasons: auditField.listOf(
+      auditField.enumOf(OFFER_REVIEW_REASONS),
+      OFFER_REVIEW_REASONS.length,
+    ),
+    policyVersion: auditField.integer(),
+  },
+});
+
 export const CATALOG_AUDIT_ACTIONS = [
   ProductPausedAudit,
   ProductResumedAudit,
@@ -1100,4 +1123,5 @@ export const CATALOG_AUDIT_ACTIONS = [
   CategoryProposalCancelledAudit,
   SellerCategoryPromotedAudit,
   SellerCategoryMergedAudit,
+  OfferReviewReferredAudit,
 ] as const;
