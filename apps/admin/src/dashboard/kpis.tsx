@@ -2,19 +2,14 @@ import {
   ActivityTable,
   Badge,
   ChartEmpty,
-  ChartSkeleton,
   DashboardCard,
   DashboardSlot,
   DefinitionHint,
   GridItem,
   KpiCard,
-  StatCardSkeleton,
   formatCount,
   type ActivityColumn,
-  type DashboardSource,
   type GridLayout,
-  type IconName,
-  type StatDeltaProps,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
@@ -27,142 +22,55 @@ import {
 } from './kpi-charts.tsx';
 import {
   kpiDayLabel,
-  kpiDelta,
   kpiMoney,
   kpiRate,
   guardDelta,
-  kpiSentiment,
   PERIOD_KEY,
   minorToMajor,
   minutesBetween,
 } from './kpi-format.ts';
 import {
+  CardSkeleton,
+  Skeleton,
+  Slot,
+  part,
+  useDelta,
+  useRange,
+  useStalled,
+  type CardProps,
+  type Source,
+} from './kpi-parts.tsx';
+import {
   KPI_SELLERS_PERMISSION,
+  KPI_TARGET_MANAGE_PERMISSION,
   allowedOf,
   type KpiAllowed,
-  type AdminKpis,
   type FinanceKpis,
   type HealthCount,
-  type KpiDelta,
   type KpiAnswer,
   type KpiPeriodId,
-  type KpiResult,
-  type KpiSection,
   type OperationsKpis,
   type SameDayShare,
   type TopSellerRow,
 } from './kpi-types.ts';
-
-type Source = DashboardSource<KpiResult | null>;
+import {
+  AbandonedCartsCard,
+  DiscountCostCard,
+  MarketTargetCard,
+  OrdersByStateCard,
+  ShoppingFunnelCard,
+  ZeroResultSearchesCard,
+} from './kpi-phase2.tsx';
 
 /** The four headline cards: four across on desktop, two by two on a tablet and wide phone. */
 const KPI_LAYOUT: GridLayout = { span: 3, tabletSpan: 6, phoneSpan: 6, mobileOrder: 'kpi' };
 const CHART_LAYOUT: GridLayout = { span: 8, tabletSpan: 12 };
 const WIDE_LAYOUT: GridLayout = { span: 12 };
 
-/** What one section of the read is for a card: left out, failed (in place), or its figures. */
-type Part<K> =
-  | { readonly kind: 'hidden' }
-  | { readonly kind: 'failed' }
-  | { readonly kind: 'ok'; readonly kpis: K; readonly value: AdminKpis };
-
-/**
- * A refused section (null) is left out, never shown as an error; one that failed, or a whole read
- * that failed for a session that holds the key, is an in-place error.
- */
-function part<K>(
-  result: KpiAnswer,
-  allowed: boolean,
-  pick: (value: AdminKpis) => KpiSection<K> | null,
-): Part<K> {
-  if (!allowed) return { kind: 'hidden' };
-  if (result.kind === 'error') return { kind: 'failed' };
-  const section = pick(result.value);
-  if (section === null) return { kind: 'hidden' };
-  if (section.status === 'error') return { kind: 'failed' };
-  return { kind: 'ok', kpis: section.kpis, value: result.value };
-}
-
 const financeOf = (result: KpiAnswer, allowed: KpiAllowed) =>
   part<FinanceKpis>(result, allowed.money, (v) => v.finance);
 const operationsOf = (result: KpiAnswer, allowed: KpiAllowed) =>
   part<OperationsKpis>(result, allowed.orders, (v) => v.operations);
-
-function Slot({
-  source,
-  layout,
-  fallback,
-  children,
-}: {
-  readonly source: Source;
-  readonly layout?: GridLayout;
-  readonly fallback: ReactNode;
-  readonly children: (result: KpiAnswer) => ReactNode;
-}) {
-  return (
-    <DashboardSlot
-      {...(layout === undefined ? {} : { layout })}
-      source={source}
-      fallback={fallback}
-    >
-      {(result) => (result === null || result.kind === 'invalid' ? null : children(result))}
-    </DashboardSlot>
-  );
-}
-
-function useStalled() {
-  return useTranslations('dashboard')('error.card');
-}
-
-function Skeleton({ icon, label }: { readonly icon: IconName; readonly label: string }) {
-  return <StatCardSkeleton as="div" icon={icon} label={label} stalledLabel={useStalled()} />;
-}
-
-function CardSkeleton({
-  id,
-  title,
-  height,
-}: {
-  readonly id: string;
-  readonly title: string;
-  readonly height: number;
-}) {
-  return (
-    <DashboardCard id={id} title={title}>
-      <ChartSkeleton height={height} />
-    </DashboardCard>
-  );
-}
-
-/** One figure's change line; "n/a" says why there is no figure. */
-function useDelta(period: KpiPeriodId) {
-  const t = useTranslations('dashboard.kpis');
-  const locale = useLocale();
-  const comparedWith = t(`compared.${PERIOD_KEY[period]}`);
-  return (
-    delta: KpiDelta | undefined,
-    kind: 'percent' | 'points',
-    higherIs: 'better' | 'worse',
-  ): StatDeltaProps | undefined => {
-    if (delta === undefined) return undefined;
-    const value = kpiDelta(delta, kind, locale);
-    return {
-      value,
-      direction: delta.direction,
-      sentiment: kpiSentiment(delta, higherIs),
-      comparedWith,
-      ...(value === 'n/a' ? { hint: t('delta.na') } : {}),
-    };
-  };
-}
-
-function useRange() {
-  const locale = useLocale();
-  return (value: AdminKpis): string | null =>
-    value.period === null
-      ? null
-      : `${kpiDayLabel(value.period.current.from, locale)} - ${kpiDayLabel(value.period.current.to, locale)}`;
-}
 
 function useCommon(id: 'gmv' | 'orders' | 'net' | 'aov') {
   const t = useTranslations('dashboard.kpis');
@@ -1029,12 +937,6 @@ function TopSellers({
   );
 }
 
-interface CardProps {
-  readonly source: Source;
-  readonly allowed: KpiAllowed;
-  readonly period: KpiPeriodId;
-}
-
 /**
  * In place of the figures when the range is refused: one line with the way out. The reason is
  * under the field in the page header, so it is not said twice.
@@ -1076,23 +978,29 @@ function Cell({
 /**
  * The KPI part of the admin dashboard as items of its DashboardGrid: four headline cards (GMV,
  * seller orders paid, Mondapac net revenue, average order), the revenue chart with its measure
- * switch, sales by category, orders by status, supply and health, and the top sellers. All read
- * the one KPI answer; each is present only when its section is (a refused section is left out),
- * and a failed section says so in place, never as a zero.
+ * switch, the month against the Market's target, the shopping funnel and abandoned carts, sales by
+ * category, orders by status, supply and health, the top sellers, then zero-result searches,
+ * orders by state and the discount cost (dashboards v2, phase 2). All read the one KPI answer; each
+ * is present only when its section is (a refused section is left out), and a failed section says
+ * so in place, never as a zero.
  */
 export function KpiItems({
   source,
   period,
   permissionKeys,
   before,
+  csrfToken,
 }: {
   readonly source: Source;
   readonly period: KpiPeriodId;
   readonly permissionKeys: readonly string[];
   /** Items placed after the chart in the same row (the work queue). */
   readonly before?: ReactNode;
+  /** The session's CSRF token, for the writes a card offers (the monthly target). */
+  readonly csrfToken?: string;
 }) {
   const allowed = allowedOf(permissionKeys);
+  const keys = new Set(permissionKeys);
   const props = { source, allowed, period };
   return (
     <>
@@ -1107,6 +1015,22 @@ export function KpiItems({
         {/* Cards that are absent leave no hole: the rest share the row (and the tablet's two columns). */}
         <div className="grid w-full min-w-0 gap-4 md:grid-cols-2 lg:flex">
           <Cell>
+            <MarketTargetCard
+              {...props}
+              editToken={keys.has(KPI_TARGET_MANAGE_PERMISSION) ? csrfToken : undefined}
+            />
+          </Cell>
+          <Cell>
+            <ShoppingFunnelCard {...props} />
+          </Cell>
+          <Cell wide>
+            <AbandonedCartsCard {...props} />
+          </Cell>
+        </div>
+      </GridItem>
+      <GridItem span={12}>
+        <div className="grid w-full min-w-0 gap-4 md:grid-cols-2 lg:flex">
+          <Cell>
             <SalesByCategory {...props} />
           </Cell>
           <Cell>
@@ -1117,7 +1041,20 @@ export function KpiItems({
           </Cell>
         </div>
       </GridItem>
-      <TopSellers {...props} canOpenSellers={new Set(permissionKeys).has(KPI_SELLERS_PERMISSION)} />
+      <TopSellers {...props} canOpenSellers={keys.has(KPI_SELLERS_PERMISSION)} />
+      <GridItem span={12}>
+        <div className="grid w-full min-w-0 gap-4 md:grid-cols-2 lg:flex">
+          <Cell>
+            <ZeroResultSearchesCard {...props} />
+          </Cell>
+          <Cell>
+            <OrdersByStateCard {...props} />
+          </Cell>
+          <Cell wide>
+            <DiscountCostCard {...props} />
+          </Cell>
+        </div>
+      </GridItem>
     </>
   );
 }

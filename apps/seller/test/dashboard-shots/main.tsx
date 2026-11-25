@@ -6,7 +6,7 @@ import '../../app/globals.css';
 import { SellerDashboard } from '../../src/dashboard/dashboard.tsx';
 import type { SellerKpiSources } from '../../src/dashboard/kpis/load.ts';
 import type { Selection } from '../../src/dashboard/kpis/range.ts';
-import type { SellerKpis } from '../../src/dashboard/kpis/types.ts';
+import type { SellerGoalFigures, SellerKpis } from '../../src/dashboard/kpis/types.ts';
 import type { SellerDashboardData } from '../../src/dashboard/types.ts';
 import type { WorkQueueAnswer } from '../../src/work-queue/queues.ts';
 
@@ -62,7 +62,7 @@ const totals = (rows: ReturnType<typeof series>) => {
 };
 const cur = series(N, 66000, 0);
 const prev = series(N, 60000, 3).map((r, i) => ({ ...r, day: dayStr(2 * N - 1 - i) }));
-const kpis: SellerKpis = {
+const kpis: { -readonly [K in keyof SellerKpis]: SellerKpis[K] } = {
   period: {
     id: selection.id,
     current: { from: dayStr(N - 1), to: dayStr(0) },
@@ -83,6 +83,44 @@ const kpis: SellerKpis = {
   ],
   refreshedAt: ago(1),
 };
+// Dashboards v2 phase 2: the seller's own monthly goal (always the current month).
+const goal: SellerGoalFigures = {
+  month: '2026-11',
+  lastMonth: '2026-10',
+  timezone: 'Australia/Brisbane',
+  currency: 'AUD',
+  daysInMonth: 30,
+  dayOfMonth: 23,
+  daysLeft: 8,
+  monthToDate: '2164000',
+  lastMonthTotal: '2310000',
+  forecast: { status: 'estimate', amount: '2835000' },
+  target: '2700000',
+  progressBp: 8015,
+  paceBp: 10500,
+  toGo: '536000',
+  perDayToGo: '67000',
+  version: 2,
+};
+const noGoal: SellerGoalFigures = {
+  ...goal,
+  dayOfMonth: 2,
+  daysLeft: 29,
+  monthToDate: '86000',
+  forecast: { status: 'not-enough-data', daysElapsed: 1, minimumDays: 3 },
+  target: null,
+  progressBp: null,
+  paceBp: null,
+  toGo: null,
+  perDayToGo: null,
+  version: 0,
+};
+kpis.sellerGoal =
+  scenario === 'goal-none'
+    ? { status: 'ok', goal: noGoal }
+    : scenario === 'goal-failed'
+      ? { status: 'error' }
+      : { status: 'ok', goal };
 const health = {
   current: {
     day: dayStr(0),
@@ -237,6 +275,7 @@ const sources: SellerKpiSources = {
     estimatedAmount: { amountMinor: '231000', currency: 'AUD' },
     blockReason: null,
   }),
+  goal: { canManage: scenario !== 'goal-read-only', csrfToken: 'shots' },
 };
 const sparse: SellerKpiSources = {
   ...sources,

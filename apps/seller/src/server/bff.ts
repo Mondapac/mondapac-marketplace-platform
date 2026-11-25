@@ -120,6 +120,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'sellers/store-profile/about',
     'sellers/store-profile/logo',
     'sellers/store-profile/banner',
+    // The seller's own monthly sales goal (dashboards v2, phase 2): the session's seller only,
+    // key reporting.seller-goal.manage, refused in an acting-as session (judged by the API).
+    'reporting/seller/monthly-goal',
   ]),
   DELETE: new Set(['sellers/store-profile/logo', 'sellers/store-profile/banner']),
   POST: new Set([

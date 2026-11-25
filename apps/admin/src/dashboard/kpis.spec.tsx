@@ -315,7 +315,8 @@ describe('the admin KPI cards', () => {
 
   it('shows an error in every card when the whole read failed', () => {
     page({ kind: 'error' });
-    expect(document.querySelectorAll('[data-kpi-card] [role="alert"]')).toHaveLength(4);
+    // The four headline cards and Abandoned carts (phase 2), each with its own error.
+    expect(document.querySelectorAll('[data-kpi-card] [role="alert"]')).toHaveLength(5);
     expect(screen.getAllByRole('alert').length).toBeGreaterThan(4);
     expect(screen.queryByText(/\$/)).toBeNull();
   });

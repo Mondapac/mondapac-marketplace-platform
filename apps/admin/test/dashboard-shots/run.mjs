@@ -41,9 +41,15 @@ const views = [
   ['admin-dashboard-empty', 'empty', [1280]],
   ['admin-dashboard-custom', 'custom', [1280, 375]],
   ['admin-dashboard-custom-refused', 'custom-bad', [1280, 375]],
+  // Dashboards v2 phase 2 cards: full (above), every card short of data, every card failed.
+  ['admin-dashboard-p2-not-enough', 'p2-thin', [1280, 768, 375]],
+  ['admin-dashboard-p2-failed', 'p2-failed', [1280, 375]],
 ];
+// SHOTS_ONLY: a comma-separated list of view names to take (all when unset).
+const only = process.env.SHOTS_ONLY?.split(',');
 for (const scheme of ['light', 'dark']) {
   for (const [name, scenario, widths] of views) {
+    if (only !== undefined && !only.includes(name)) continue;
     for (const width of widths) {
       const ctx = await browser.newContext({
         viewport: { width, height: 900 },

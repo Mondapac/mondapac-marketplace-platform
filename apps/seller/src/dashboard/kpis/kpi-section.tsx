@@ -31,6 +31,7 @@ import { formatMinor } from '../../price/money.ts';
 import type { Widget } from '../types.ts';
 import type { SellerKpiSources } from './load.ts';
 import { SalesChartCard, type ChartDay } from './sales-chart-card.tsx';
+import { SellerGoalBody } from './seller-goal.tsx';
 import type { SellerKpis, SellerNetEarnings, ShownPeriod } from './types.ts';
 import { deltasOf, MIN_BASE_ORDERS } from './view.ts';
 
@@ -374,6 +375,69 @@ function SalesChart({
 const SIDE_LAYOUT: GridLayout = { span: 4, tabletSpan: 6 };
 
 /**
+ * Monthly goal (dashboards v2, phase 2): the current calendar month of the Market against the
+ * seller's own goal, whatever the period. Left out when the API leaves the section out (no key);
+ * an error in place when it failed, or when the whole KPI read failed.
+ */
+function SellerGoalCard({
+  source,
+  goal,
+}: {
+  readonly source: Source<SellerKpis>;
+  readonly goal: SellerKpiSources['goal'];
+}) {
+  const t = useTranslations('dashboard.kpi');
+  const locale = useLocale();
+  const stalled = useStalled();
+  const frame = { id: 'dash-kpi-goal', title: t('goal.title') };
+  return (
+    <DashboardSlot
+      layout={SIDE_LAYOUT}
+      source={source}
+      fallback={
+        <DashboardCard {...frame}>
+          <ChartSkeleton height={200} />
+        </DashboardCard>
+      }
+    >
+      {(widget) => {
+        if (widget === null) return null;
+        if (widget.kind === 'error') return <DashboardCard {...frame} error={stalled} />;
+        const section = widget.value.sellerGoal;
+        if (section === null || section === undefined) return null;
+        if (section.status === 'error') return <DashboardCard {...frame} error={stalled} />;
+        const figures = section.goal;
+        return (
+          <InsightCard
+            {...frame}
+            scope={t('goal.scope', { month: monthOf(figures.month, locale) })}
+            definition={t('def.goal')}
+            definitionLabel={t('def.what', { name: t('goal.title') })}
+            viewAsTable={t('chart.table')}
+            viewAsChart={t('chart.chart')}
+            chart={
+              <SellerGoalBody
+                goal={figures}
+                canManage={goal?.canManage ?? false}
+                csrfToken={goal?.csrfToken ?? ''}
+              />
+            }
+          />
+        );
+      }}
+    </DashboardSlot>
+  );
+}
+
+/** "November" for `YYYY-MM`. */
+function monthOf(month: string, locale: string): string {
+  const date = new Date(`${month}-01T00:00:00Z`);
+  return Number.isNaN(date.getTime())
+    ? month
+    : new Intl.DateTimeFormat(locale, { month: 'long', timeZone: 'UTC' }).format(date);
+}
+
+/**
  * The best-selling part of the dashboard. There is no per-product sales read yet (FE-20261124-seller-top-products-per-offer), so the
  * card ranks the seller's categories, which the KPI endpoint does send. With fewer than
  * MIN_BASE_ORDERS paid orders a ranking says nothing, so the card says "not enough data" instead.
@@ -597,7 +661,7 @@ function InvalidRangeNote() {
 /**
  * The KPI part of the seller dashboard as items of its DashboardGrid: the four headline cards
  * (Sales, Orders paid, Net earnings, Next payout), the sales chart with its measure switch, the
- * best-selling categories and the store health. Each group is present only when its read was
+ * monthly goal, the store health and the best-selling categories. Each group is present only when its read was
  * started (its key). Every block reads on its own and says so in place when its read fails; sales
  * figures never show a zero for a failed read.
  */
@@ -624,6 +688,7 @@ export function KpiItems({
         <NextPayoutCard source={sources.nextPayout} refused={sources.refused} />
       )}
       {sources.kpis === null ? null : <SalesChart source={sources.kpis} period={period} />}
+      {sources.kpis === null ? null : <SellerGoalCard source={sources.kpis} goal={sources.goal} />}
       <StoreHealth source={sources.health} />
       {sources.kpis === null || sources.categories === null ? null : (
         <TopCategories source={sources.kpis} categories={sources.categories} period={period} />

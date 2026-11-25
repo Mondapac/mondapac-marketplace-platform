@@ -15,6 +15,14 @@ export const KPI_ORDERS_PERMISSION = 'ordering.order.view';
 /** The key that opens the sellers pages the top-sellers card links to. */
 export const KPI_SELLERS_PERMISSION = 'sellers.seller.view';
 export const KPI_MONEY_PERMISSION = 'commission-payouts.settlement.view';
+/** With the money key, opens the month against the Market's monthly revenue target. */
+export const KPI_TARGET_PERMISSION = 'settings.monthly-revenue-target.view';
+/** Opens the Sales target settings page the target card's Edit link goes to. */
+export const KPI_TARGET_MANAGE_PERMISSION = 'settings.monthly-revenue-target.manage';
+/** The key of the zero-result searches (the catalogue team's view). */
+export const KPI_CATALOG_PERMISSION = 'catalog.product.view';
+/** With the money key, opens the discount cost (spend is for promotion managers). */
+export const KPI_PROMOTIONS_PERMISSION = 'promotions.promotion.manage';
 /** The keys of the numbers of the supply and health card; any one of them shows the card. */
 export const KPI_HEALTH_PERMISSIONS = [
   'catalog.product.view',
@@ -29,6 +37,12 @@ export interface KpiAllowed {
   readonly money: boolean;
   readonly orders: boolean;
   readonly health: boolean;
+  /** The monthly target card: the money key and the target view key (dashboards v2, phase 2). */
+  readonly target: boolean;
+  /** The zero-result searches card: `catalog.product.view`. */
+  readonly searches: boolean;
+  /** The discount cost card: the money key and `promotions.promotion.manage`. */
+  readonly discounts: boolean;
 }
 
 export const allowedOf = (permissionKeys: readonly string[]): KpiAllowed => {
@@ -37,12 +51,15 @@ export const allowedOf = (permissionKeys: readonly string[]): KpiAllowed => {
     money: keys.has(KPI_MONEY_PERMISSION),
     orders: keys.has(KPI_ORDERS_PERMISSION),
     health: KPI_HEALTH_PERMISSIONS.some((key) => keys.has(key)),
+    target: keys.has(KPI_MONEY_PERMISSION) && keys.has(KPI_TARGET_PERMISSION),
+    searches: keys.has(KPI_CATALOG_PERMISSION),
+    discounts: keys.has(KPI_MONEY_PERMISSION) && keys.has(KPI_PROMOTIONS_PERMISSION),
   };
 };
 
 /** True when the session may be shown any of the KPI cards (the page then reads them). */
 export const wantsKpis = (allowed: KpiAllowed): boolean =>
-  allowed.money || allowed.orders || allowed.health;
+  allowed.money || allowed.orders || allowed.health || allowed.searches;
 
 export interface KpiDelta {
   /** Basis points: a percentage change, or for a rate the difference in points. */
@@ -253,6 +270,142 @@ export interface MarketHealth {
   readonly disputeRate: DisputeRate | null;
 }
 
+// Dashboards v2, phase 2. Each section is null without its key(s) and `error` when its read failed;
+// `not-enough-data` carries no figure, never a zero.
+
+export interface StateShare {
+  /** Region code of the delivery address (a pickup counts in the store's state). */
+  readonly state: string;
+  readonly orders: number;
+  readonly shareBp: number;
+}
+
+export interface OtherShare {
+  readonly orders: number;
+  readonly shareBp: number;
+}
+
+export type OrdersByStateKpis =
+  | {
+      readonly status: 'available';
+      readonly paid: number;
+      /** Biggest first, at most eight. */
+      readonly states: readonly StateShare[];
+      readonly other: OtherShare | null;
+      /** Paid orders with no state recorded yet; never folded into a state. */
+      readonly unknown: OtherShare | null;
+    }
+  | { readonly status: 'not-enough-data'; readonly paid: number; readonly minimum: number };
+
+export type MonthForecast =
+  | { readonly status: 'estimate'; readonly amount: string }
+  | {
+      readonly status: 'not-enough-data';
+      readonly daysElapsed: number;
+      readonly minimumDays: number;
+    };
+
+/** The current calendar month against a target (the Market's) or a goal (the seller's). */
+export interface MonthFigures {
+  /** `YYYY-MM` of the Market's zone. */
+  readonly month: string;
+  readonly lastMonth: string;
+  readonly timezone: string;
+  /** ISO 4217; every amount is in it (minor units as a string). */
+  readonly currency: string;
+  readonly daysInMonth: number;
+  readonly dayOfMonth: number;
+  /** Days still to sell in, today included. */
+  readonly daysLeft: number;
+  readonly monthToDate: string;
+  readonly lastMonthTotal: string;
+  readonly forecast: MonthForecast;
+  /** Null while none is set. */
+  readonly target: string | null;
+  readonly progressBp: number | null;
+  readonly paceBp: number | null;
+  readonly toGo: string | null;
+  readonly perDayToGo: string | null;
+}
+
+export interface MarketTargetKpis extends MonthFigures {
+  readonly refreshedAt: string | null;
+}
+
+export interface FunnelStepKpi {
+  /** Customer-days; null when under five (hidden), never 0. */
+  readonly count: number | null;
+  /** Of the step before; null for the first step or when hidden. */
+  readonly rateBp: number | null;
+  readonly change: KpiDelta;
+  readonly rateChange: KpiDelta;
+}
+
+export interface ShoppingFunnelKpis {
+  readonly status: 'available' | 'not-enough-data';
+  readonly minimum?: number;
+  readonly viewed?: FunnelStepKpi;
+  readonly carted?: FunnelStepKpi;
+  readonly checkedOut?: FunnelStepKpi;
+  readonly paid?: FunnelStepKpi;
+  readonly recordedDays: number;
+  readonly periodDays: number;
+}
+
+export interface ZeroResultQuery {
+  /** The folded text as searched. Data, never markup: render it as a plain text node only. */
+  readonly query: string;
+  readonly searches: number;
+  readonly searcherDays: number;
+  readonly days: number;
+}
+
+export interface ZeroResultSearchesKpis {
+  readonly status: 'available' | 'not-enough-data';
+  readonly minimumSearchers?: number;
+  /** At most ten, most searches first. */
+  readonly queries?: readonly ZeroResultQuery[];
+  readonly recordedDays: number;
+  readonly periodDays: number;
+}
+
+export interface DiscountKindCost {
+  readonly kind: 'promotion' | 'first-order' | 'free-shipping';
+  /** Null: 1 to 4 uses, every figure of the kind held back ("fewer than 5"), never 0. */
+  readonly uses: number | null;
+  readonly amount: KpiMoney | null;
+  readonly platformShare: KpiMoney | null;
+  readonly shareBp: number | null;
+}
+
+export interface DiscountCostKpis {
+  readonly status: 'available' | 'not-enough-data';
+  readonly orders: number;
+  readonly minimum?: number;
+  readonly amount?: KpiMoney;
+  readonly platformShare?: KpiMoney;
+  readonly sellerShare?: KpiMoney;
+  readonly platformShareBp?: number | null;
+  readonly change?: KpiDelta;
+  readonly previousAmount?: KpiMoney;
+  readonly byKind?: readonly DiscountKindCost[];
+  /** Null when 1 to 4 orders gave a discount back (held back). */
+  readonly released?: { readonly orders: number; readonly amount: KpiMoney } | null;
+}
+
+export interface AbandonedCartsKpis {
+  readonly status: 'available' | 'not-enough-data';
+  readonly minimum?: number;
+  /** A level on `asOfDay` (untouched 24h+), not a sum over the period. */
+  readonly carts?: number;
+  /** Approximate (prices when the items were added); null with mixed currencies. */
+  readonly approximateValue?: KpiMoney | null;
+  readonly asOfDay?: string;
+  readonly change?: KpiDelta;
+  readonly recordedDays: number;
+  readonly periodDays: number;
+}
+
 export interface AdminKpis {
   readonly generatedAt: string;
   readonly periodId: KpiPeriod | 'custom';
@@ -264,6 +417,13 @@ export interface AdminKpis {
   readonly operations: KpiSection<OperationsKpis> | null;
   readonly finance: KpiSection<FinanceKpis> | null;
   readonly ordersByStatus: KpiSection<OrdersByStatusKpis> | null;
+  // Phase 2 sections: optional so an answer of an older API reads as "left out".
+  readonly ordersByState?: KpiSection<OrdersByStateKpis> | null;
+  readonly marketTarget?: KpiSection<MarketTargetKpis> | null;
+  readonly shoppingFunnel?: KpiSection<ShoppingFunnelKpis> | null;
+  readonly zeroResultSearches?: KpiSection<ZeroResultSearchesKpis> | null;
+  readonly discountCost?: KpiSection<DiscountCostKpis> | null;
+  readonly abandonedCarts?: KpiSection<AbandonedCartsKpis> | null;
   readonly topSellers: KpiSection<TopSellersKpis> | null;
   readonly topCategories: KpiSection<TopCategoriesKpis> | null;
   /** Null when the viewer holds none of the keys of its numbers. */

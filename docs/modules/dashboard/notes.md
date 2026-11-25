@@ -418,3 +418,38 @@ with no snapshot in the period (the period "today" has none until tomorrow). The
 "about" for the value (prices when the items were added) and show the count as "untouched 24h+ as of
 <day>", not as a total of the period. "Reminders sent" is not in the API
 (FE-20261125-dashboards-abandoned-carts-reminders-sent). The card is built in the phase 2 cards PR.
+
+### Phase 2 cards (dashboards v2, phase 2, cards PR)
+
+The phase 2 sections now have cards. Admin (`apps/admin/src/dashboard/kpi-phase2.tsx`; shared card
+pieces moved to `kpi-parts.tsx`), after the chart and Needs action: a row with Monthly target,
+Shopping funnel and Abandoned carts; the existing row (sales by category, orders by status, supply
+and health); Top sellers; then a row with Searches with no results, Orders by state and Discount
+cost. Each card is left out when its section is null or absent (no key; the panel mirrors the API's
+keys in `allowedOf`), shows the dashboard's in-place error when its section is `error` or the whole
+read failed, a skeleton while the read streams, and "Not enough data yet" in words (never 0) for
+`not-enough-data`, a hidden funnel step ("Fewer than 5") and a held-back discount kind. Each has a
+"?" with the rules the sections above ask for (funnel: customer-days and steps under 5 hidden in
+each answer; searches: counted on the days a text found nothing, shown only when 10 or more
+shoppers searched it in a day; discounts: with GST, unlike net revenue). A zero-result text is
+rendered only as a React text node (no HTML, link or title attribute; tested with markup in it).
+Orders by state shows the region code as the API sends it
+(FE-20261125-dashboards-orders-by-state-names).
+
+The target is edited on the dashboard: with `settings.monthly-revenue-target.manage` the Monthly
+target card has an Edit button that opens a dialog (`target-editor.tsx`): it reads `GET
+settings/admin/monthly-revenue-target` (version, review flag), sends `PUT` with the version, a note
+where the area is reviewed, or `target: null` to remove it, and reads the page again. The currency is
+the Market's from the KPI section, because the settings read does not name it while no target is
+set; a Settings page is FE-20261125-market-target-settings-page. Both routes were added to the admin
+BFF.
+
+Seller (`apps/seller/src/dashboard/kpis/seller-goal.tsx`): Monthly goal beside the sales chart, from
+`sellerGoal` of the KPI read; left out when null, error in place, "Set goal" or "Edit goal" only with
+`reporting.seller-goal.manage`. The dialog sets this month's goal (`PUT reporting/seller/monthly-goal`
+through the BFF, the version seen; future months are FE-20261125-seller-goal-future-months). The
+panel cannot tell an acting-as session in advance: the API refuses it with 403 like a missing key,
+and the dialog says the goal can only be set by the store owner signed in as themselves. The seller
+new-versus-returning and product funnel cards have no API yet and are not built. Built in code first
+under speed mode (FE-20261125-dashboards-phase2-cards-figma-backport). Screenshots:
+`apps/admin/test/dashboard-shots`, `apps/seller/test/dashboard-shots` (not part of CI).
