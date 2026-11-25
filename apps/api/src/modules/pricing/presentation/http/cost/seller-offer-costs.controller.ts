@@ -22,6 +22,7 @@ import {
   ApiParam,
   ApiServiceUnavailableResponse,
   ApiTags,
+  ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
   ApiUnprocessableEntityResponse,
   ApiUnsupportedMediaTypeResponse,
@@ -35,8 +36,8 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../../../platform/call-context/route-population.decorator';
-import { SetOfferCost } from '../../../application/use-cases/set-offer-cost.use-case';
-import { ViewOfferCosts } from '../../../application/use-cases/view-offer-costs.use-case';
+import { SetOfferCost } from '../../../application/use-cases/set-cost.use-case';
+import { ViewOfferCosts } from '../../../application/use-cases/view-cost.use-case';
 import { closedBody, fail } from '../../http-answers';
 import { setRetryAfter } from '../../retry-after';
 import { CostPresenter } from './cost.presenter';
@@ -134,15 +135,23 @@ export class SellerOfferCostsController {
   @ApiForbiddenResponse({
     ...ERROR,
     description:
-      'access.denied, access.seller-not-approved, request.csrf or pricing.acting-as-refused',
+      'access.denied, access.seller-not-approved, request.csrf, second-factor.required ' +
+      '(details.actionKey pricing.price.change) or pricing.acting-as-refused',
   })
   @ApiNotFoundResponse({ ...ERROR, description: 'pricing.offer-not-found' })
-  @ApiConflictResponse({ ...ERROR, description: 'conflict.stale or pricing.series-retired' })
+  @ApiConflictResponse({
+    ...ERROR,
+    description: 'conflict.stale, conflict.retry or pricing.series-retired',
+  })
   @ApiUnprocessableEntityResponse({
     ...ERROR,
     description: 'pricing.currency-mismatch or pricing.amount-out-of-range',
   })
   @ApiUnsupportedMediaTypeResponse({ ...ERROR, description: 'Not application/json' })
+  @ApiTooManyRequestsResponse({
+    ...ERROR,
+    description: 'request.throttled (details.retryAfterSeconds and a Retry-After header)',
+  })
   @ApiServiceUnavailableResponse({ ...ERROR, description: 'access.unavailable' })
   async set(
     @Call() context: CallContext,

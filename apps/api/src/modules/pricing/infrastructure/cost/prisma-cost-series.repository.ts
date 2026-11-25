@@ -22,9 +22,11 @@ const toInstant = (date: Date): Temporal.Instant =>
   Temporal.Instant.fromEpochMilliseconds(date.getTime());
 
 /**
- * Only the latest record of a series is read (the current Cost; pricing-data 3.7, 6): the one with
- * the highest series version, through `cost_records_market_id_cost_series_id_series_version_key`.
- * Never by `submitted_at`: two writes can share an instant.
+ * The latest record of a series is the current Cost (pricing-data 3.7, 6): the one with the highest
+ * series version (unique `cost_records_market_id_cost_series_id_series_version_key`). Never by
+ * `submitted_at`: two writes can share an instant. Without `relationJoins`, Prisma reads every
+ * record of the selected series and applies `take: 1` in memory; Cost changes are rare, so the read
+ * stays small. Measure with the slice 3 plans and move to `DISTINCT ON` if it grows (Mojtaba M2).
  */
 const LATEST_RECORD = {
   records: { orderBy: { seriesVersion: 'desc' as const }, take: 1 },

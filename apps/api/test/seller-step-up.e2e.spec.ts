@@ -299,6 +299,18 @@ describe.each(TEST_MARKETS)('seller two-step rules per action in market %s', (co
       code: 'second-factor.required',
       details: { actionKey: 'pricing.price.change' },
     });
+    // The Cost write asks for the same step-up action (Hassan, PR 7 review H3).
+    const cost = await http()
+      .put(
+        '/pricing/seller/offers/01990000-0000-7000-8000-000000000001/variants/01990000-0000-7000-8000-000000000002/cost',
+      )
+      .set({ ...base(), ...headers })
+      .send({ cost: null, expectedVersion: null });
+    expect(cost.body).toEqual({
+      statusCode: 403,
+      code: 'second-factor.required',
+      details: { actionKey: 'pricing.price.change' },
+    });
     // Within five minutes, still covered; after five, asked again.
     clock.advance(Temporal.Duration.from({ minutes: 4 }));
     expect((await guarded(headers)).status).toBe(200);

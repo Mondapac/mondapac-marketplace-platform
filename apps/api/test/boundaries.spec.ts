@@ -155,6 +155,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'platform-does-not-import-modules',
         'pricing-cost-store-only-in-cost-use-cases',
         'pricing-cost-type-only-on-cost-paths',
+        'pricing-cost-use-cases-only-on-cost-paths',
         'prisma-only-in-infrastructure',
         'repositories-stay-behind-use-cases',
         'request-actor-is-attached-by-the-actor-guard',
@@ -224,6 +225,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'platform-does-not-import-modules: src/platform/reaches-into-module.ts',
         'pricing-cost-store-only-in-cost-use-cases: src/modules/pricing/application/use-cases/set-regular-price.use-case.ts',
         'pricing-cost-type-only-on-cost-paths: src/modules/pricing/contracts/leaks-cost.ts',
+        'pricing-cost-use-cases-only-on-cost-paths: src/modules/pricing/contracts/facade-reads-cost.ts',
         'prisma-only-in-infrastructure: src/modules/alpha/presentation/uses-prisma.ts',
         'repositories-stay-behind-use-cases: src/modules/alpha/presentation/jobs/reaches-repository.ts',
         'request-actor-is-attached-by-the-actor-guard: src/modules/alpha/presentation/attaches-actor.ts',
@@ -302,6 +304,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       'src/modules/pricing/application/use-cases/view-offer-costs.use-case.ts',
       'src/modules/pricing/infrastructure/cost/prisma-cost-series.repository.ts',
       'src/modules/pricing/presentation/http/cost/cost.presenter.ts',
+      'src/modules/pricing/presentation/http/cost/costs.controller.ts',
       // M1: platform/authz builds the gate; a module imports the barrel.
       'src/platform/authz/authz.module.ts',
       'src/modules/alpha/application/uses-authz-barrel.ts',

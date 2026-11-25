@@ -31,8 +31,8 @@ import { HELD_UNIT_LABELS, SELLER_STORE_NAMES } from './application/ports/held-l
 import { OFFER_SELL_UNITS_SOURCE } from './application/ports/offer-sell-units';
 import { PRICE_SERIES_REPOSITORY } from './application/ports/price-series.repository';
 import { COST_SERIES_REPOSITORY } from './application/ports/cost-series.repository';
-import { SetOfferCost } from './application/use-cases/set-offer-cost.use-case';
-import { ViewOfferCosts } from './application/use-cases/view-offer-costs.use-case';
+import { SetOfferCost } from './application/use-cases/set-cost.use-case';
+import { ViewOfferCosts } from './application/use-cases/view-cost.use-case';
 import { costProviders } from './infrastructure/cost/cost-providers';
 import { SellerOfferCostsController } from './presentation/http/cost/seller-offer-costs.controller';
 import { PRICING_POLICY_PROVIDER } from './application/ports/pricing-policy-provider';

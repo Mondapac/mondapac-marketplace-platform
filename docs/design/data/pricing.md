@@ -431,7 +431,7 @@ The facade answers 1 to 200 `(offerId, variantId)` keys (D 6.2). Three statement
 | Re-key handler (3.2.1) | Series of the Offer; target keys (Offer, `to`); tombstones by primary key | Leading `(market_id, offer_id)` of the series unique key; `retired_variants_pkey`. No new index |
 | Boundary job, starts (D 11) | Specials with `effective_from` in `(now − H, now]`, no `start` marker (Prisma `none` relation filter = `NOT EXISTS`), `ORDER BY effective_from LIMIT 100` | `special_price_records_market_id_effective_from_live_idx` + marker PK |
 | Boundary job, natural ends | `status IN (accepted, approved)`, `ends_at` in `(now − H, now]`, no `end` marker | `special_price_records_market_id_ends_at_live_idx` |
-| Cost of a page of series (D 5.2) | `cost_records` by `cost_series_id in […]`, newest first | `cost_records_market_id_cost_series_id_submitted_at_id_idx` |
+| Cost of a page of series (D 5.2) | `cost_records` by `cost_series_id in […]`, highest `series_version` first | `cost_records_market_id_cost_series_id_series_version_key` |
 
 **Job horizon H** (proposal: 7 days). Measured at steady state, with 91,048 of 91,058 past starts already marked: with H the discovery query took **11 to 13 ms** (3,583 probes). Without H it took **229 to 238 ms** (91,058 probes) and grows with every special ever created, every minute. A boundary older than H with no marker is not published. Prices are still correct (D 11: the job only tells consumers), and a daily check counts such rows and alerts. This adds a value and an alert to D 11 (11.2 M4).
 

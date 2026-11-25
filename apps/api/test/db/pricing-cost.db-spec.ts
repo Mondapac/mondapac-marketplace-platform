@@ -12,8 +12,8 @@ import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../suppo
 import {
   SetOfferCost,
   type SetOfferCostInput,
-} from '../../src/modules/pricing/application/use-cases/set-offer-cost.use-case';
-import { ViewOfferCosts } from '../../src/modules/pricing/application/use-cases/view-offer-costs.use-case';
+} from '../../src/modules/pricing/application/use-cases/set-cost.use-case';
+import { ViewOfferCosts } from '../../src/modules/pricing/application/use-cases/view-cost.use-case';
 import { PRICING_AUDIT_ACTIONS } from '../../src/modules/pricing/domain/audit';
 import { revealCostMinor } from '../../src/modules/pricing/domain/cost/cost-amount';
 import { CostSeries } from '../../src/modules/pricing/domain/cost/cost-series';
@@ -32,6 +32,7 @@ import { loadMarketConfigs } from '../../src/platform/market-config/market-confi
 import { MarketRegistry } from '../../src/platform/market-config/market-registry';
 import { PersistenceModule } from '../../src/platform/persistence/persistence.module';
 import { SerializableUnitRequiredError } from '../../src/modules/pricing/application/serializable-unit';
+import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
 import {
   createPersistence,
   marketOf,
@@ -341,6 +342,67 @@ describe.each(TEST_MARKETS)('pricing Cost in market %s (database integration)', 
         ok: false,
         error: { code: 'conflict.stale' },
       });
+      // Nothing written (Sajad Q9): one record, the series still at version 1.
+      const { rows } = await app.query(
+        `SELECT s.version, count(r.id)::int AS records
+           FROM pricing.cost_series s JOIN pricing.cost_records r
+             ON r.market_id = s.market_id AND r.cost_series_id = s.id
+          WHERE s.market_id = $1 AND s.offer_id = $2
+          GROUP BY s.version`,
+        [code, s.offerId],
+      );
+      expect(rows).toEqual([{ version: 1, records: 1 }]);
+    });
+
+    /** A use-case result or a thrown StaleAggregateError, as the HTTP filter answers it (P 10). */
+    const outcomeOf = (
+      settled: PromiseSettledResult<Awaited<ReturnType<SetOfferCost['execute']>>>,
+    ): string => {
+      if (settled.status === 'rejected') {
+        return settled.reason instanceof StaleAggregateError
+          ? 'conflict.stale'
+          : String(settled.reason);
+      }
+      return settled.value.ok ? settled.value.value.status : settled.value.error.code;
+    };
+
+    it('creates the series once when two first Costs race; the loser answers conflict.stale (Sajad Q3)', async () => {
+      const s = seller();
+      const { set } = useCases();
+      const results = await Promise.allSettled([
+        set.execute(s.context, s.input(1_000n, null)),
+        useCases().set.execute(s.context, s.input(1_001n, null)),
+      ]);
+      expect(results.map(outcomeOf).sort()).toEqual(['conflict.stale', 'recorded']);
+      const { rows } = await app.query(
+        `SELECT s.version, count(r.id)::int AS records
+           FROM pricing.cost_series s JOIN pricing.cost_records r
+             ON r.market_id = s.market_id AND r.cost_series_id = s.id
+          WHERE s.market_id = $1 AND s.offer_id = $2
+          GROUP BY s.version`,
+        [code, s.offerId],
+      );
+      expect(rows).toEqual([{ version: 1, records: 1 }]);
+    });
+
+    it('lets one of two writes on the same version win; the other is stale (Sajad Q3)', async () => {
+      const s = seller();
+      const { set } = useCases();
+      await set.execute(s.context, s.input(1_000n, null));
+      const results = await Promise.allSettled([
+        set.execute(s.context, s.input(2_000n, 1)),
+        useCases().set.execute(s.context, s.input(3_000n, 1)),
+      ]);
+      expect(results.map(outcomeOf).sort()).toEqual(['conflict.stale', 'recorded']);
+      const { rows } = await app.query(
+        `SELECT r.series_version
+           FROM pricing.cost_records r JOIN pricing.cost_series s
+             ON r.market_id = s.market_id AND r.cost_series_id = s.id
+          WHERE s.market_id = $1 AND s.offer_id = $2
+          ORDER BY r.series_version`,
+        [code, s.offerId],
+      );
+      expect(rows).toEqual([{ series_version: 1 }, { series_version: 2 }]);
     });
 
     it('refuses to create a series behind a tombstone: pricing.offer-not-found, no row', async () => {

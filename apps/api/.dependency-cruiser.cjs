@@ -136,6 +136,24 @@ module.exports = {
       to: { path: '^src/modules/pricing/domain/cost/' },
     },
     {
+      // Pricing design 6.5 (Hassan, PR 7 review H1): the Cost use cases return a Cost, so only
+      // the Cost route and the Nest module that binds them reach them.
+      name: 'pricing-cost-use-cases-only-on-cost-paths',
+      comment:
+        "pricing's Cost use cases (application/use-cases/*cost*) are imported only by each other, " +
+        'the Cost route (presentation/http/cost/) and the Nest module that binds them: no facade, ' +
+        'job, subscriber or price use case reaches a Cost through them (pricing design 6.5).',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '^src/modules/pricing/application/use-cases/[^/]*cost[^/]*\\.ts$',
+          '^src/modules/pricing/presentation/http/cost/',
+          '^src/modules/pricing/pricing\\.module\\.ts$',
+        ],
+      },
+      to: { path: '^src/modules/pricing/application/use-cases/[^/]*cost[^/]*\\.ts$' },
+    },
+    {
       // Rule 3.
       name: 'temporal-only-through-kernel',
       comment:

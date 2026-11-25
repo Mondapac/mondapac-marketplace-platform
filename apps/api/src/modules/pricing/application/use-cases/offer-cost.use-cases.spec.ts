@@ -23,8 +23,8 @@ import { loadMarketConfigs } from '../../../../platform/market-config/market-con
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import { revealCostMinor } from '../../domain/cost/cost-amount';
 import { ConfigPricingPolicyProvider } from '../../infrastructure/config-pricing-policy-provider';
-import { SetOfferCost, type SetOfferCostInput } from './set-offer-cost.use-case';
-import { ViewOfferCosts } from './view-offer-costs.use-case';
+import { SetOfferCost, type SetOfferCostInput } from './set-cost.use-case';
+import { ViewOfferCosts } from './view-cost.use-case';
 
 // `pricing.set-cost` and `pricing.view-cost` in memory (pricing design 3.3, 5.2, 5.4, 6.5, 8;
 // slice 3), on both Market fixtures: AU (AUD, exponent 2) and the synthetic ZZ (JPY, exponent 0).
@@ -136,8 +136,11 @@ describe.each(['AU', 'ZZ'] as const)('pricing Cost use cases in market %s', (cod
 
   /**
    * The same context, marked as a Login as Seller session (the reserved `actingAs` field). No
-   * session mints the marker yet (SEL-08), so today the gate refuses such an actor first; the
-   * use case's own check (`isActingAsSession`, tested in acting-as.spec) is the second layer.
+   * session mints the marker yet (SEL-08), so today the gate refuses such an actor first with
+   * `access.denied` (the copied actor is not minted). The use case's own check
+   * (`isActingAsSession`, tested in acting-as.spec) is the second layer: a use case's `handle`
+   * runs only behind the gate and a use case cannot be subclassed, so it is reachable only once
+   * SEL-08 mints the marker; the SEL-08 slice adds the `pricing.acting-as-refused` assertions.
    * Either way nothing is read or written.
    */
   function actingAs(context: CallContext, admin: Id<'Account'>): CallContext {
@@ -288,6 +291,63 @@ describe.each(['AU', 'ZZ'] as const)('pricing Cost use cases in market %s', (cod
     });
 
     it.each([
+      ['leading zeros', { amount: '01250', currency: 'C' }, null, ['cost.amount', 'format']],
+      [
+        '17 digits',
+        { amount: '12345678901234567', currency: 'C' },
+        null,
+        ['cost.amount', 'format'],
+      ],
+      ['a decimal', { amount: '12.50', currency: 'C' }, null, ['cost.amount', 'format']],
+      ['a number, not a string', { amount: 1250, currency: 'C' }, null, ['cost.amount', 'format']],
+      ['no amount', { currency: 'C' }, null, ['cost.amount', 'required']],
+      ['no currency', { amount: '1250' }, null, ['cost.currency', 'required']],
+      [
+        'an extra key in cost',
+        { amount: '1250', currency: 'C', note: 'x' },
+        null,
+        ['cost.note', 'unknown-field'],
+      ],
+      ['cost as a string', '1250', null, ['cost', 'type']],
+      ['cost as an array', ['1250'], null, ['cost', 'type']],
+      ['cost missing', undefined, null, ['cost', 'type']],
+      [
+        'expectedVersion as a string',
+        { amount: '1250', currency: 'C' },
+        '1',
+        ['expectedVersion', 'format'],
+      ],
+      [
+        'expectedVersion 1.5',
+        { amount: '1250', currency: 'C' },
+        1.5,
+        ['expectedVersion', 'format'],
+      ],
+      ['expectedVersion 0', { amount: '1250', currency: 'C' }, 0, ['expectedVersion', 'format']],
+    ] as const)(
+      'answers %s with one path and code, before any read (Sajad Q2)',
+      async (_name, cost, expectedVersion, [path, code]) => {
+        const t = setup();
+        const withCurrency =
+          typeof cost === 'object' && cost !== null && !Array.isArray(cost) && 'currency' in cost
+            ? { ...cost, currency: fixture.currency }
+            : cost;
+        const result = await t.setCost.execute(t.context, {
+          offerId: t.offerId,
+          variantId: t.variantId,
+          cost: withCurrency as never,
+          expectedVersion: expectedVersion as never,
+        });
+        expect(result).toEqual({
+          ok: false,
+          error: { code: 'validation.failed', fields: [{ path, code }] },
+        });
+        expect(t.offers.calls).toHaveLength(0);
+        expect(t.unitOfWork.units).toHaveLength(0);
+      },
+    );
+
+    it.each([
       ['another seller', 'not-yours'],
       ['a deleted Offer', 'deleted'],
       ['a Variant outside the sell units', 'variant-not-priceable'],
@@ -330,6 +390,20 @@ describe.each(['AU', 'ZZ'] as const)('pricing Cost use cases in market %s', (cod
       },
     );
 
+    it('answers pricing.series-retired for a retired series: no record, no audit row (Sajad Q6)', async () => {
+      const t = setup();
+      valueOf(await t.setCost.execute(t.context, t.input(fixture.cost, null)));
+      const stored = t.costs.stored(market, t.offerId, t.variantId)!;
+      t.costs.putStored(market, { ...stored, retiredAt: T0, retireCause: 'offer-removed' });
+      const rows = t.audit.rows.length;
+      expect(await t.setCost.execute(t.context, t.input(fixture.cost + 1n, 1))).toEqual({
+        ok: false,
+        error: { code: 'pricing.series-retired' },
+      });
+      expect(t.costs.records).toHaveLength(1);
+      expect(t.audit.rows).toHaveLength(rows);
+    });
+
     it('refuses a stored series whose seller copy is another seller (Hassan L3), writing nothing', async () => {
       const t = setup();
       valueOf(await t.setCost.execute(t.context, t.input(fixture.cost, null)));
@@ -358,7 +432,7 @@ describe.each(['AU', 'ZZ'] as const)('pricing Cost use cases in market %s', (cod
         actingAs(t.context, t.ids.next<'Account'>()),
         t.input(fixture.cost, null),
       );
-      expect(result.ok).toBe(false);
+      expect(result).toEqual({ ok: false, error: { code: 'access.denied' } });
       expect(t.offers.calls).toHaveLength(0);
       expect(t.unitOfWork.units).toHaveLength(0);
     });
@@ -455,7 +529,7 @@ describe.each(['AU', 'ZZ'] as const)('pricing Cost use cases in market %s', (cod
       const result = await t.viewCosts.execute(actingAs(t.context, t.ids.next<'Account'>()), {
         offerId: t.offerId,
       });
-      expect(result.ok).toBe(false);
+      expect(result).toEqual({ ok: false, error: { code: 'access.denied' } });
       expect(t.unitOfWork.units).toHaveLength(0);
       expect(t.offers.calls).toHaveLength(0);
     });

@@ -74,6 +74,7 @@ describe('seller Cost over HTTP (integration, pricing slice 3)', () => {
   let clock: FixedClock;
   let costs: InMemoryCostSeries;
   let offers: FakeOfferSellUnits;
+  let counters: InMemoryWriteRateCounters;
   const http = () => request(app.getHttpServer());
 
   async function boot() {
@@ -92,7 +93,7 @@ describe('seller Cost over HTTP (integration, pricing slice 3)', () => {
           .overrideProvider(WRITE_REFUSAL_THROTTLE_REPOSITORY)
           .useValue(new InMemoryRefusalThrottles())
           .overrideProvider(WRITE_RATE_COUNTER_REPOSITORY)
-          .useValue(new InMemoryWriteRateCounters())
+          .useValue(counters)
           .overrideProvider(OFFER_SELL_UNITS_SOURCE)
           .useValue(offers)
           .overrideProvider(AUDIT_WRITER)
@@ -102,7 +103,11 @@ describe('seller Cost over HTTP (integration, pricing slice 3)', () => {
 
   const marketOf = (code: string) => testMarketContext(code, PLATFORM_TENANT_ID);
 
-  async function seeded(code: string, roleCode = 'seller-owner') {
+  async function seeded(
+    code: string,
+    roleCode = 'seller-owner',
+    sellerState: 'approved' | 'pending' = 'approved',
+  ) {
     await app.get(SeedRoles).execute(testCallContext(marketOf(code), 'system', 'price-0001'), {});
     const marketId = code as AccountState['marketId'];
     const ownerRole = [...fakes.roles.values()].find(
@@ -112,7 +117,7 @@ describe('seller Cost over HTTP (integration, pricing slice 3)', () => {
       sellerId: SELLER,
       marketId,
       origin: 'self',
-      state: 'approved',
+      state: sellerState,
       stateChangedAt: START,
       reapplyCount: 0,
       registeredAt: START,
@@ -207,6 +212,7 @@ describe('seller Cost over HTTP (integration, pricing slice 3)', () => {
     clock = new FixedClock(START);
     costs = new InMemoryCostSeries();
     offers = new FakeOfferSellUnits();
+    counters = new InMemoryWriteRateCounters();
   });
   afterEach(async () => {
     await app.close();
@@ -302,6 +308,23 @@ describe('seller Cost over HTTP (integration, pricing slice 3)', () => {
       );
       expect(zero.status).toBe(422);
       expect(zero.body).toEqual({ statusCode: 422, code: 'pricing.amount-out-of-range' });
+      // A number is not a string of minor units; a missing key is "required" (Sajad Q2).
+      const numeric = await put(
+        code,
+        costBody(code, { cost: { amount: 1250, currency: CURRENCY[code] } }),
+        session,
+      );
+      expect(numeric.body).toEqual({
+        statusCode: 400,
+        code: 'validation.failed',
+        details: { fields: [{ path: 'cost.amount', code: 'format' }] },
+      });
+      const missing = await put(code, { cost: null }, session);
+      expect(missing.body).toEqual({
+        statusCode: 400,
+        code: 'validation.failed',
+        details: { fields: [{ path: 'expectedVersion', code: 'required' }] },
+      });
       expect(costs.records).toHaveLength(0);
       expect(JSON.stringify(logLines)).not.toContain(CANARY);
     });
@@ -349,6 +372,38 @@ describe('seller Cost over HTTP (integration, pricing slice 3)', () => {
       expect(costs.records).toHaveLength(0);
     });
 
+    it('refuses both routes to a seller not yet approved (Sajad Q5)', async () => {
+      await boot();
+      await seeded(code, 'seller-owner', 'pending');
+      const session = sessionOf(code);
+
+      const read = await get(code, { cookie: session.cookie });
+      expect(read.status).toBe(403);
+      expect(read.headers['cache-control']).toBe('no-store');
+      expect(read.body).toEqual({ statusCode: 403, code: 'access.seller-not-approved' });
+      const write = await put(code, costBody(code), session);
+      expect(write.status).toBe(403);
+      expect(write.body).toEqual({ statusCode: 403, code: 'access.seller-not-approved' });
+      expect(costs.records).toHaveLength(0);
+    });
+
+    it('answers the per-account write cap with 429 and Retry-After, storing nothing (Sajad Q5)', async () => {
+      await boot();
+      await seeded(code);
+      const session = sessionOf(code);
+      counters.rows.set(`${code}|write.account.minute|${OWNER}`, {
+        start: START.epochMilliseconds,
+        count: 60,
+      });
+
+      const throttled = await put(code, costBody(code), session);
+      expect(throttled.status).toBe(429);
+      expect(throttled.headers['cache-control']).toBe('no-store');
+      expect(throttled.headers['retry-after']).toMatch(/^[1-9][0-9]*$/);
+      expect(throttled.body).toMatchObject({ statusCode: 429, code: 'request.throttled' });
+      expect(costs.records).toHaveLength(0);
+    });
+
     it('logs the route outcome by code only, never a Cost', async () => {
       await boot();
       await seeded(code);
@@ -363,9 +418,11 @@ describe('seller Cost over HTTP (integration, pricing slice 3)', () => {
       expect(logLines.find((l) => l.msg === 'pricing.set-cost-route')).toMatchObject({
         outcome: 'ok',
         marketId: code,
+        correlationId: expect.any(String) as unknown,
       });
       expect(logLines.find((l) => l.msg === 'pricing.view-cost-route')).toMatchObject({
         outcome: 'ok',
+        correlationId: expect.any(String) as unknown,
       });
       expect(JSON.stringify(logLines)).not.toContain(CANARY);
     });

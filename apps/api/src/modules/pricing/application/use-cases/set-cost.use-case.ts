@@ -186,11 +186,24 @@ export class SetOfferCost extends UseCase<
       if (typeof cost !== 'object' || cost === undefined || Array.isArray(cost)) {
         fields.push({ path: 'cost', code: 'type' });
       } else {
-        const { amount, currency: code } = cost as { amount?: unknown; currency?: unknown };
-        if (typeof amount !== 'string' || !MINOR_UNITS.test(amount)) {
+        const record = cost as Record<string, unknown>;
+        // The Cost object is closed like the body (Hassan, PR 7 review H2): the same path
+        // cleaning as `closedBody`, at most 10 keys named.
+        for (const key of Object.keys(record).sort().slice(0, 10)) {
+          if (key !== 'amount' && key !== 'currency') {
+            const name = Array.from(key).slice(0, 64).join('').replace(/\p{C}/gu, '�');
+            fields.push({ path: `cost.${name}`, code: 'unknown-field' });
+          }
+        }
+        const { amount, currency: code } = record;
+        if (!Object.hasOwn(record, 'amount')) {
+          fields.push({ path: 'cost.amount', code: 'required' });
+        } else if (typeof amount !== 'string' || !MINOR_UNITS.test(amount)) {
           fields.push({ path: 'cost.amount', code: 'format' });
         } else amountText = amount;
-        if (typeof code !== 'string' || !CURRENCY.test(code)) {
+        if (!Object.hasOwn(record, 'currency')) {
+          fields.push({ path: 'cost.currency', code: 'required' });
+        } else if (typeof code !== 'string' || !CURRENCY.test(code)) {
           fields.push({ path: 'cost.currency', code: 'format' });
         } else currency = code;
       }
