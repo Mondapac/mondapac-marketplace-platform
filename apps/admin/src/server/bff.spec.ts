@@ -713,6 +713,7 @@ describe('relay allowlist for seller decisions', () => {
 
   it('relays the AI Gateway history with its code and limit, and drops anything else', async () => {
     const path = 'settings/admin/ai-gateway/history';
+    const modelsPath = 'settings/admin/ai-models/history';
     const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
     const upstream = () => {
       const target = fetchImpl.mock.calls.at(-1)?.[0];
@@ -731,6 +732,20 @@ describe('relay allowlist for seller decisions', () => {
     expect(upstream()).not.toContain('secret');
     expect((await ask('?code=../x')).status).toBe(200);
     expect(upstream()).not.toContain('code=');
+    const models = new Request(
+      `http://admin.localhost:3002/api/${modelsPath}?code=ai-models-chat`,
+      {
+        headers: sameOrigin,
+      },
+    );
+    expect((await relay(config, models, modelsPath.split('/'), fetchImpl)).status).toBe(200);
+    expect(upstream()).toContain('code=ai-models-chat');
+    const bad = new Request(
+      `http://admin.localhost:3002/api/${modelsPath}?code=ai-models-chat&secret=1`,
+      { headers: sameOrigin },
+    );
+    expect((await relay(config, bad, modelsPath.split('/'), fetchImpl)).status).toBe(200);
+    expect(upstream()).not.toContain('secret');
   });
 
   it('relays the own display name (PUT) and password change (POST) on their exact paths only', async () => {
@@ -1011,6 +1026,13 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('POST', `${gateway}/revert`)).status).toBe(200);
     expect((await call('PUT', `${gateway}/revert`)).status).toBe(404);
     expect((await call('PUT', gateway)).status).toBe(404);
+    const models = 'settings/admin/ai-models';
+    expect((await read(models)).status).toBe(200);
+    expect((await read(`${models}/history`)).status).toBe(200);
+    expect((await call('PUT', models)).status).toBe(200);
+    expect((await call('POST', models)).status).toBe(404);
+    expect((await call('POST', `${models}/revert`)).status).toBe(200);
+    expect((await call('PUT', `${models}/revert`)).status).toBe(404);
     expect((await read('settings/admin/ai')).status).toBe(200);
     expect((await call('PUT', 'settings/admin/ai')).status).toBe(200);
     expect((await call('POST', 'settings/admin/ai')).status).toBe(404);

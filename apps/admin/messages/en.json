@@ -4301,6 +4301,7 @@
         "lists": "List paging",
         "ai": "Write with AI",
         "ai-gateway": "AI Gateway",
+        "ai-models": "AI Models",
         "promotions": "Promotion rules",
         "review-policy": "Approval rules",
         "offer-review": "Offer review",
@@ -4313,6 +4314,7 @@
         "lists": "Lists,pagination,page numbers",
         "ai": "AI,AI writing,product descriptions",
         "ai-gateway": "AI,gateway,emergency stop,spending cap,budget,capability,kill switch,revert",
+        "ai-models": "AI,model,models,priority,saver model,fallback,chat,vision,extract,write",
         "promotions": "Promotions,discounts,free delivery,first order",
         "review-policy": "Review policy,System requests,second admin,review",
         "offer-review": "Offers,approval,probation,new sellers,price check,sampling,Approval required,queue alert,backlog",
@@ -4331,6 +4333,7 @@
         "assistant": "On or off, who sees it, what it answers and spends",
         "ai": "AI drafts of product descriptions, on or off",
         "ai-gateway": "AI emergency stop, capability switches and spending caps",
+        "ai-models": "Which models each AI task may use, in order, and the saver model",
         "account-deletion": "Whether customers can delete their account, and the wait",
         "ship-to-retention": "When old orders' addresses and phone numbers are erased",
         "admins": "Who can sign in to this panel, and invitations",
@@ -9635,6 +9638,9 @@
         "ai-capability": {
           "resume": "switch AI on"
         },
+        "ai-models": {
+          "change": "change the AI models"
+        },
         "ai-gateway-limits": {
           "raise": "raise an AI spending cap"
         },
@@ -14708,6 +14714,142 @@
       "unknown": "Something went wrong. Try again."
     }
   },
+  "ai-models": {
+    "title": "AI Models",
+    "permission-view": "AI Models: view",
+    "load-failed": "Couldn't load the AI model choice.",
+    "read-only": "You can view these settings but not change them.",
+    "saved": "Saved.",
+    "none": "none",
+    "tabs": {
+      "label": "AI model groups",
+      "external": "External models",
+      "own": "Mondapac Intelligence"
+    },
+    "own": {
+      "section": "Mondapac Intelligence",
+      "body": "The platform's own model.",
+      "later": "Not available yet. It will be set up here when it is ready."
+    },
+    "task": {
+      "chat": { "label": "Chat", "about": "Conversations, such as the buyer assistant." },
+      "extract": { "label": "Extract", "about": "Reading text or files into fields." },
+      "write": { "label": "Write", "about": "Drafting text, such as product descriptions." },
+      "vision": { "label": "Vision", "about": "Reading images." }
+    },
+    "list": {
+      "label": "Models for {task}, in the order to try",
+      "empty": "No model chosen. AI of this kind stays off.",
+      "add": "Add a model for {task}",
+      "choose": "Choose a model",
+      "none-usable": "No model is usable for this task now.",
+      "add-help": "Up to {max}. Only models usable in this Market are listed.",
+      "up": "Move {family} up",
+      "down": "Move {family} down",
+      "remove": "Remove {family}",
+      "up-short": "Up",
+      "down-short": "Down",
+      "remove-short": "Remove"
+    },
+    "field": {
+      "saver": "{task} saver model",
+      "model": "{task}, model {n}"
+    },
+    "saver": {
+      "label": "Saver model for {task}",
+      "none": "No saver model",
+      "help": "A cheaper model that goes first once spending reaches the saver threshold."
+    },
+    "percent": {
+      "section": "Saver threshold",
+      "intro": "From this share of the month's spending cap, the saver models go first.",
+      "label": "Saver threshold (%)",
+      "help": "A whole number from 50 to 99. Default 80.",
+      "invalid": "Enter a whole number from 50 to 99."
+    },
+    "problem": {
+      "unknown-model": "Unknown model",
+      "task-unsupported": "Not for this task",
+      "not-checked": "Not checked yet",
+      "region": "Not allowed in this region",
+      "no-key": "No key set",
+      "retired": "Retired",
+      "not-evaluated": "Not evaluated yet",
+      "duplicate": "Chosen twice",
+      "too-many": "Too many models",
+      "saver-not-cheaper": "The saver model must be cheaper than model 1",
+      "saver-without-list": "A saver model needs a list"
+    },
+    "alerts": {
+      "title": "Some chosen models can't be used now",
+      "item": "{family} ({task}): {why}. The gateway skips it. Replace it."
+    },
+    "save": {
+      "section": "Save",
+      "intro": "Review the changes first. Saving asks for your two-step code.",
+      "review": "Review changes",
+      "discard": "Discard changes"
+    },
+    "preview": {
+      "title": "Save these changes?",
+      "body": "These changes apply from the next AI call.",
+      "to": "to",
+      "cancel": "Cancel",
+      "confirm": "Save changes"
+    },
+    "note": {
+      "label": "Note for this change",
+      "help": "Up to {max} characters. No personal data.",
+      "error": {
+        "required": "Write a note first.",
+        "rejected": "This note isn't accepted. Check its length."
+      }
+    },
+    "code": {
+      "ai-models-chat": "Chat models",
+      "ai-models-extract": "Extract models",
+      "ai-models-write": "Write models",
+      "ai-models-vision": "Vision models",
+      "ai-saver-chat": "Chat saver model",
+      "ai-saver-extract": "Extract saver model",
+      "ai-saver-write": "Write saver model",
+      "ai-saver-vision": "Vision saver model",
+      "ai-saver-percent": "Saver threshold"
+    },
+    "history": {
+      "section": "History",
+      "intro": "The latest 50 changes of one setting. Restoring makes a new change and always asks for your two-step code.",
+      "setting": "Setting",
+      "show": "Show history",
+      "list": "Changes",
+      "empty": "No changes yet. The default is in force.",
+      "failed": "Couldn't load the history.",
+      "default": "default",
+      "current": "In force",
+      "unknown": "an admin",
+      "change": "Version {version}: {before} to {after}",
+      "by-at": "{name}, {when}",
+      "restore": "Restore version {version}",
+      "restore-value": "Restore version {version}: {value}",
+      "restore-default": "Restore the default",
+      "capped": "Older changes are in the audit log."
+    },
+    "error": {
+      "invalid": "A choice isn't allowed. Check the models and the threshold.",
+      "same": "That value is already in force.",
+      "version": "That version can't be restored any more. Show the history again.",
+      "chat-pair": "That choice isn't allowed.",
+      "refresh": "Saved, but the page couldn't refresh. Reload it before changing anything else.",
+      "conflict": "Someone else changed this. The values were reloaded.",
+      "denied": "You don't have permission to change this.",
+      "acting-as": "AI model settings can't be changed while you are acting as a seller.",
+      "second-factor": "This change needs your two-step code. Try again and enter the code.",
+      "csrf": "Your session expired. Reload the page.",
+      "throttled": "Too many attempts. Wait a moment and try again.",
+      "unavailable": "The service isn't available right now. Try again.",
+      "unknown": "Something went wrong. Try again."
+    }
+  },
   "ai-settings": {
     "title": "Write with AI",
     "permission-view": "Write with AI settings: view",
@@ -17985,6 +18127,21 @@
           {
             "label": "Write with AI",
             "href": "/settings/ai"
+          }
+        ]
+      },
+      "settings-ai-models": {
+        "title": "AI Models",
+        "about": "Choose which models each kind of AI task may use, in the order to try them, and a cheaper saver model.",
+        "good": [
+          "You only pick from models the server lists as usable here. A model that is retired or not yet evaluated cannot be chosen.",
+          "Saving shows what will change first, then asks for your two-step code.",
+          "Restoring an earlier choice also asks for your code."
+        ],
+        "related": [
+          {
+            "label": "AI Gateway",
+            "href": "/settings/ai-gateway"
           }
         ]
       },

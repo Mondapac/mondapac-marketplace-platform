@@ -29,6 +29,7 @@ import {
   SHIP_TO_RETENTION_VIEW_PERMISSION,
 } from '../ship-to-retention/types.ts';
 import { AI_MANAGE_PERMISSION, AI_VIEW_PERMISSION } from '../ai-settings/types.ts';
+import { MODELS_MANAGE_PERMISSION, MODELS_VIEW_PERMISSION } from '../ai-models/types.ts';
 import { GATEWAY_MANAGE_PERMISSION, GATEWAY_VIEW_PERMISSION } from '../ai-gateway/types.ts';
 import { POLICY_MANAGE_PERMISSION, POLICY_VIEW_PERMISSION } from '../system-requests/types.ts';
 import {
@@ -233,6 +234,15 @@ export const settingsGroups: readonly SettingsGroup[] = [
         href: '/settings/ai-gateway',
         view: [GATEWAY_VIEW_PERMISSION],
         manage: [GATEWAY_MANAGE_PERMISSION],
+      },
+      {
+        id: 'ai-models',
+        labelKey: 'settings.hub.link.ai-models',
+        descriptionKey: 'settings.hub.about.ai-models',
+        keywordsKey: 'settings.hub.words.ai-models',
+        href: '/settings/ai-models',
+        view: [MODELS_VIEW_PERMISSION],
+        manage: [MODELS_MANAGE_PERMISSION],
       },
     ],
   },
