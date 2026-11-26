@@ -35,6 +35,13 @@ export type AiDescriptionWriter = (typeof AI_DESCRIPTION_WRITER_VALUES)[number];
 // stored rows stay (no setting is deleted, ADR-0026 decision 4); with no definition, every reader
 // skips them and a review of an old change reverts as `gone`.
 
+/**
+ * Codes of settings that were retired. Their stored rows stay (ADR-0026 decision 4), so a new
+ * definition must never reuse one: the old rows would quietly come back into force (checked by a
+ * unit test against {@link SETTING_CODES}).
+ */
+export const RETIRED_SETTING_CODES: readonly string[] = ['ai-description-writer-tier'];
+
 export const MONTHLY_REVENUE_TARGET_CODE = 'monthly-revenue-target';
 
 /**

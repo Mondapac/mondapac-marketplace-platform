@@ -87,6 +87,7 @@ jobs:
         run: |
           if [ -n "$KEY" ]; then
             export ASSISTANT_MODEL_API_KEY="AU=$KEY,ZZ=$KEY"
+            echo "::add-mask::$ASSISTANT_MODEL_API_KEY"
           fi
           if [ -n "$BEDROCK_KEY" ]; then
             export AI_BEDROCK_API_KEY="AU=$BEDROCK_KEY,ZZ=$BEDROCK_KEY"
