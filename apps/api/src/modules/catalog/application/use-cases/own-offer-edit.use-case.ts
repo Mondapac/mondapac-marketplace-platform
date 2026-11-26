@@ -1,6 +1,13 @@
 import { Logger } from '@nestjs/common';
 import { err, ok, parseId } from '@mondapac/shared-kernel';
-import type { CallContext, Clock, Id, MarketContext, Result } from '@mondapac/shared-kernel';
+import type {
+  CallContext,
+  Clock,
+  Id,
+  IdGenerator,
+  MarketContext,
+  Result,
+} from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
@@ -30,6 +37,11 @@ import type { OfferRepository } from '../ports/offer.repository';
 import type { SellerEligibilityReader } from '../ports/seller-eligibility.reader';
 import { refusalOf, type RefusedField } from '../working-copy/save-draft.service';
 import type { SaveWorkingCopy } from '../working-copy/save-working-copy.service';
+import { previewedContact } from '../offer-post-review/preview-contact-mark';
+import { receivePostReviewReason, sampleSourceRef } from '../offer-post-review/post-review-intake';
+import type { OfferPostReviewRepository } from '../ports/offer-post-review';
+import type { RateCounterKeys } from '../ports/rate-counter-keys';
+import type { RateCounterWindows } from '../ports/rate-counter-windows';
 
 /** The request as the route passes it: the whole content form, a closed shape (B1, L8). */
 export interface OwnOfferEditInput {
@@ -89,6 +101,14 @@ export interface OwnOfferEditDependencies {
   readonly clock: Clock;
   /** The edit rules of a live Offer (slice 2c). */
   readonly editReview: OfferEditReview;
+  /**
+   * A live description that goes live at once while the seller's submit-preview contact-text mark
+   * is open goes on the post-publication review list (slice 7b; security N1 of PR 1376).
+   */
+  readonly counterWindows: RateCounterWindows;
+  readonly counterKeys: RateCounterKeys;
+  readonly postReviews: OfferPostReviewRepository;
+  readonly ids: IdGenerator;
 }
 
 const INPUT_KEYS = [
@@ -285,6 +305,11 @@ export class OwnOfferEdit extends UseCase<
     const verdict = watchedEdit ? await deps.editReview.verdict(context, subject, watched) : null;
     const reasons = verdict?.reasons ?? [];
     const held = reasons.length > 0;
+    // A new live description applied at once: read the seller's preview mark before the unit.
+    const contactMarked =
+      watched.newDescription !== undefined && !held
+        ? await previewedContact(deps, context, sellerId, this.#logger)
+        : false;
 
     try {
       const written = await deps.unitOfWork.run<
@@ -334,6 +359,17 @@ export class OwnOfferEdit extends UseCase<
           accountId: actor.accountId,
         });
         if (refusal !== null) return err({ code: refusal } as const);
+        // The answer is the same either way, so the seller is not told.
+        if (contactMarked) {
+          await receivePostReviewReason(deps, market, {
+            offerId,
+            sellerId,
+            productId: offer.state.productId,
+            reason: 'preview-contact-text',
+            sourceRef: sampleSourceRef(offer.state.version),
+            now,
+          });
+        }
         const pendingChangeId = watchedEdit
           ? await deps.editReview.settle(context, {
               offer,

@@ -297,7 +297,21 @@ describe.each([
     const requestChanges = new AdminOfferChangeRequestChanges(gate, decisionDeps);
     const reject = new AdminOfferChangeReject(gate, decisionDeps);
     return {
-      edit: new OwnOfferEdit(gate, { ...deps, check, policy, editReview: memory.review }),
+      edit: new OwnOfferEdit(gate, {
+        // No preview mark in these tests (slice 7b): never read past isOpen.
+        counterWindows: { isOpen: () => Promise.resolve(false) },
+        counterKeys: { keyOf: () => new Uint8Array(32) },
+        postReviews: {} as never,
+        ids: {
+          next: () => {
+            throw new Error('ids: not reached');
+          },
+        } as never,
+        ...deps,
+        check,
+        policy,
+        editReview: memory.review,
+      }),
       setHandling: new OwnOfferSetHandling(gate, { ...deps, editReview: memory.review }),
       addTag: new OwnOfferAddTag(gate, { ...deps, ids, editReview: memory.review }),
       remove: new OwnOfferDelete(gate, {
@@ -467,7 +481,7 @@ describe.each([
       const held = await r.edit.execute(sellerContext(), form(r, 'Call 0412 345 678'));
       expect(held.ok && held.value).toMatchObject({
         applied: false,
-        reasons: ['held-for-review', 'contact-text'],
+        reasons: ['contact-text', 'held-for-review'],
       });
       expect(JSON.stringify(held)).not.toMatch(/emergency-stop|sensitive-category/);
       expect(r.changes()[0]?.reasons).toEqual([
@@ -485,8 +499,8 @@ describe.each([
       // carries no review flag or standing (Sajad G2).
       const read = await r.read.execute(sellerContext(), { offerId: r.offerId });
       expect(read.ok && read.value.pendingChange?.reasons).toEqual([
-        'held-for-review',
         'contact-text',
+        'held-for-review',
       ]);
       expect(JSON.stringify(read)).not.toMatch(
         /emergency-stop|sensitive-category|fullReview|trustedFromStart|reviewStop|probation|standing|trustedAt|epoch/,
@@ -672,7 +686,7 @@ describe.each([
       });
       expect(outcome.ok && outcome.value).toMatchObject({
         applied: false,
-        reasons: ['held-for-review', 'handling'],
+        reasons: ['handling', 'held-for-review'],
       });
       expect(r.changes()[0]?.reasons).toEqual(['emergency-stop', 'handling']);
     });

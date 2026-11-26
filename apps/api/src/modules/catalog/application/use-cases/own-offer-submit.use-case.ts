@@ -18,12 +18,9 @@ import type { CheckClaimText } from '../claim-text/check-claim-text.service';
 import type { AllowedProductTypesReader } from '../ports/allowed-product-types.reader';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import { OfferReviewReferredAudit } from '../../domain/audit';
-import { OFFER_REVIEW_POLICY_VERSION, offerReviewReasons } from '../../domain/offer-review-policy';
-import {
-  SAFE_OFFER_REVIEW_SETTINGS,
-  type OfferReviewInputs,
-  type OfferReviewReferralStore,
-} from '../ports/offer-review';
+import { OFFER_REVIEW_POLICY_VERSION } from '../../domain/offer-review-policy';
+import { judgeFirstPublication } from '../first-publication-review';
+import type { OfferReviewInputs, OfferReviewReferralStore } from '../ports/offer-review';
 import type { SellerReviewProbation } from '../seller-review-probation';
 import {
   effectiveSamplingPercent,
@@ -31,6 +28,9 @@ import {
   SAFE_SAMPLING_PERCENT,
 } from '../../domain/offer-post-review';
 import type { OfferPostReviewRepository, OfferPostReviewSampler } from '../ports/offer-post-review';
+import type { RateCounterKeys } from '../ports/rate-counter-keys';
+import type { RateCounterWindows } from '../ports/rate-counter-windows';
+import { previewedContact } from '../offer-post-review/preview-contact-mark';
 import { receivePostReviewReason, sampleSourceRef } from '../offer-post-review/post-review-intake';
 import type { OfferRepository } from '../ports/offer.repository';
 import type { ProductRepository } from '../ports/product.repository';
@@ -111,6 +111,9 @@ export interface OwnOfferSubmitDependencies {
   readonly sampler: OfferPostReviewSampler;
   /** The post-publication review rows (slice 6), written in the submit unit. */
   readonly postReviews: OfferPostReviewRepository;
+  /** Whether the seller's submit preview found contact text lately (slice 7b), read before the unit. */
+  readonly counterWindows: RateCounterWindows;
+  readonly counterKeys: RateCounterKeys;
 }
 
 /**
@@ -323,29 +326,23 @@ export class OwnOfferSubmit extends UseCase<
     if (!asked.ok) return err(asked.error);
     const hash = hashesOf(prepared);
 
-    // The review policy's inputs, outside any unit; each answers "review" on a failure.
+    // The review policy, outside any unit; each read answers "review" on a failure. The preview
+    // (slice 7b) judges through the same function.
     const productId = guard.value.productId;
-    const [reviewSettings, reviewFacts] = await Promise.all([
-      deps.reviewInputs.settings(context),
-      deps.reviewInputs.facts(context, { sellerId, productId, offerId }),
-    ]);
-    // Facts read with a failure (degraded) are judged in the safe settings, as edits are: mode
-    // `all` and badges reviewed, so a stop that could not be read never lets an Offer go live
-    // in mode `off` (Hassan M1 on PR #1358). No stop is invented.
-    const safe = reviewFacts.degraded === true;
-    const reasons = offerReviewReasons({
-      mode: safe ? SAFE_OFFER_REVIEW_SETTINGS.mode : reviewSettings.mode,
-      certificateBadges: safe
-        ? SAFE_OFFER_REVIEW_SETTINGS.certificateBadges
-        : reviewSettings.certificateBadges,
-      facts: {
-        ...reviewFacts,
-        emergencyStop: reviewFacts.emergencyStop || reviewSettings.emergencyStop,
-      },
+    const {
+      reasons,
+      settings: reviewSettings,
+      facts: reviewFacts,
+      safe,
+    } = await judgeFirstPublication(deps.reviewInputs, context, {
+      sellerId,
+      productId,
+      offerId,
       handling,
       badgeTypes,
       description,
     });
+    const contactMarked = await previewedContact(deps, context, sellerId, this.#logger);
 
     try {
       const written = await deps.unitOfWork.run<
@@ -414,6 +411,19 @@ export class OwnOfferSubmit extends UseCase<
               now,
             })
           : null;
+        // The seller's preview found contact text in the last 30 days and this Offer goes live at
+        // once: a reviewer looks after publication (security M1 of PR 1376). Neither the submit's
+        // answer nor the preview's changes, so the seller is not told.
+        if (submitted.value.published && contactMarked) {
+          await receivePostReviewReason(this.deps, market, {
+            offerId,
+            sellerId,
+            productId: offer.state.productId,
+            reason: 'preview-contact-text',
+            sourceRef: sampleSourceRef(offer.state.version),
+            now,
+          });
+        }
         await deps.referrals.record(market, {
           offerId,
           sellerId,

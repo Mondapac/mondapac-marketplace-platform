@@ -17,6 +17,11 @@ export interface OfferReviewSettings {
    * safe 100.
    */
   readonly samplingPercent?: number;
+  /**
+   * True only on the safe answer given because the settings could not be read (slice 7b: the
+   * preview then says "could not check" instead of a guess). Absent is false.
+   */
+  readonly degraded?: boolean;
 }
 
 /** The safe answer when the settings cannot be read: review everything (fail closed). */
@@ -27,6 +32,7 @@ export const SAFE_OFFER_REVIEW_SETTINGS: OfferReviewSettings = Object.freeze({
   emergencyStop: false,
   // Every Offer that is published at once anyway is checked after publication.
   samplingPercent: 100,
+  degraded: true,
 });
 
 /**

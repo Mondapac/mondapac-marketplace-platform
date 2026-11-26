@@ -154,6 +154,7 @@ import { OwnOfferEdit } from './application/use-cases/own-offer-edit.use-case';
 import { OwnOfferSetHandling } from './application/use-cases/own-offer-set-handling.use-case';
 import { OwnOfferRecordAttestation } from './application/use-cases/own-offer-record-attestation.use-case';
 import { OwnOfferSubmit } from './application/use-cases/own-offer-submit.use-case';
+import { OwnOfferSubmitPreview } from './application/use-cases/own-offer-submit-preview.use-case';
 import { ReviewQueueList } from './application/use-cases/review-queue-list.use-case';
 import { ReviewQueueExport } from './application/use-cases/review-queue-export.use-case';
 import { ClaimTermsImpactCount } from './application/use-cases/claim-terms-impact-count.use-case';
@@ -280,6 +281,7 @@ import { SellersModule } from '../sellers';
 import { PRODUCT_REPOSITORY } from './application/ports/product.repository';
 import { RATE_COUNTER_KEYS } from './application/ports/rate-counter-keys';
 import { RATE_COUNTER_REPOSITORY } from './application/ports/rate-counter.repository';
+import { RATE_COUNTER_WINDOWS } from './application/ports/rate-counter-windows';
 import { WORKING_COPY_REPOSITORY } from './application/ports/working-copy.repository';
 import { CheckClaimText } from './application/claim-text/check-claim-text.service';
 import { FreezeRevision } from './application/revisions/freeze-revision.service';
@@ -718,6 +720,7 @@ const PORT = {
   workingCopies: WORKING_COPY_REPOSITORY,
   counters: RATE_COUNTER_REPOSITORY,
   counterKeys: RATE_COUNTER_KEYS,
+  counterWindows: RATE_COUNTER_WINDOWS,
   policy: CATALOG_MARKET_POLICY,
   reviewInputs: OFFER_REVIEW_INPUTS,
   referrals: OFFER_REVIEW_REFERRAL_STORE,
@@ -2407,6 +2410,10 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       outbox: true,
       clock: true,
       editReview: true,
+      counterWindows: true,
+      counterKeys: true,
+      postReviews: true,
+      ids: true,
     }),
     useCaseProvider(OwnOfferSetHandling, {
       unitOfWork: true,
@@ -2447,6 +2454,21 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       probation: true,
       sampler: true,
       postReviews: true,
+      counterWindows: true,
+      counterKeys: true,
+    }),
+    // The submit's rules as a dry run (slice 7b): reads and the preview counters only.
+    useCaseProvider(OwnOfferSubmitPreview, {
+      unitOfWork: true,
+      offers: true,
+      products: true,
+      eligibility: true,
+      allowedTypes: true,
+      evaluator: true,
+      reviewInputs: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
     }),
     useCaseProvider(OwnOfferAddTag, {
       unitOfWork: true,
@@ -2942,6 +2964,10 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
         outbox: true,
         clock: true,
         editReview: true,
+        counterWindows: true,
+        counterKeys: true,
+        postReviews: true,
+        ids: true,
       },
       { save: NO_SAVE_BUDGET },
       ['import-row'],

@@ -2047,7 +2047,7 @@
       "attestation-withdrawn": "Your sealed-pack statement was withdrawn because the handling is no longer Sealed original. Badges that need it are checked again."
     },
     "offer-actions": {
-      "submit": "Submit for review",
+      "submit": "Submit offer",
       "delete": "Delete offer",
       "cancel": "Cancel",
       "delete-confirm": "Delete this offer? It stops being listed and you can't bring it back.",
@@ -2090,6 +2090,26 @@
         "unavailable": "The request could not be sent. Try again later.",
         "unknown": "Something went wrong. Try again."
       }
+    },
+    "submit-preview": {
+      "checking": "Checking this offer…",
+      "publish": {
+        "title": "Should go on sale when you submit",
+        "body": "As it stands, this offer should go on sale as soon as you submit it.",
+        "title-held": "Goes on sale, but one price waits for our check"
+      },
+      "review": {
+        "title": "We'll check this offer first",
+        "body": "When you submit, this offer waits for our check before it goes on sale.",
+        "reason": {
+          "certificate-badge": "It shows a certificate badge. We check badges before they appear.",
+          "handling": "Its handling isn't “Sealed original”. We check how unsealed goods are handled.",
+          "contact-text": "Its description seems to hold contact details or a link. Remove them and the offer may skip this check."
+        }
+      },
+      "price-held": "A price on this offer is waiting for our check. That size can't be bought until we've checked it.",
+      "unavailable": "We couldn't check this offer right now. You can still submit it.",
+      "not-a-promise": "This is a guide, not a promise: we decide when you submit."
     },
     "not-given": "Not given",
     "size-requests": {

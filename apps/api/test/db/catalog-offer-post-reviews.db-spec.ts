@@ -142,7 +142,7 @@ describe.each(TEST_MARKETS)(
     const opened = (
       offerId: Id<'Offer'>,
       productId: Id<'Product'>,
-      reason: 'sample' | 'price-no-reference' = 'price-no-reference',
+      reason: 'sample' | 'price-no-reference' | 'preview-contact-text' = 'price-no-reference',
     ) => {
       const made = OfferPostReview.open({
         id: uuid7() as Id<'OfferPostReview'>,
@@ -411,6 +411,25 @@ describe.each(TEST_MARKETS)(
       expect(await receive(sample, 'sample', uuid7())).toBe(
         'offer_post_review_reasons_source_kind_check',
       );
+      // The preview's contact-text mark is keyed like a sample, on the Offer version (slice 7b).
+      const marked = await liveOffer();
+      const mark = opened(marked.offerId, marked.productId, 'preview-contact-text');
+      await unit(() => reviews.insert(market, mark));
+      expect(await receive(mark, 'preview-contact-text', 'offer-version:2')).toBeNull();
+      expect(await receive(mark, 'preview-contact-text', uuid7())).toBe(
+        'offer_post_review_reasons_source_kind_check',
+      );
+      // A sample and a mark of the same published version both go on one row (Mojtaba N1).
+      const both = await liveOffer();
+      const drawn = opened(both.offerId, both.productId, 'sample');
+      await unit(() => reviews.insert(market, drawn));
+      expect(await receive(drawn, 'sample', 'offer-version:2')).toBeNull();
+      const plus = (await read(() => reviews.findById(market, drawn.state.id)))!;
+      expect(
+        plus.addReason({ reason: 'preview-contact-text', sample: null, now: nowInstant() }).ok,
+      ).toBe(true);
+      expect(await read(() => reviews.save(market, plus))).toBe(true);
+      expect(await receive(plus, 'preview-contact-text', 'offer-version:2')).toBeNull();
       // Only onto the open row of that Offer that carries the reason (Mojtaba L3).
       expect(await receive(sample, 'price-no-reference', uuid7())).toContain(
         'the row is not open with this reason',

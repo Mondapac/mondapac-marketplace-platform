@@ -19252,7 +19252,8 @@
         "sample-doubled": "Random check (new Trusted, 2×)",
         "price-no-reference": "Price: no comparison yet",
         "price-reference-unavailable": "Price: comparison unavailable",
-        "price-recheck-outside": "Price: outside range on re-check"
+        "price-recheck-outside": "Price: outside range on re-check",
+        "preview-contact-text": "Contact details seen in a recent preview"
       },
       "detail": {
         "seller": "Seller",

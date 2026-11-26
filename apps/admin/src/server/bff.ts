@@ -1780,7 +1780,7 @@ const OFFER_REVIEW_REASONS_LIST =
   /^(emergency-stop|probation|certificate-badge|handling|contact-text|full-review|sensitive-category|review-all)(,(emergency-stop|probation|certificate-badge|handling|contact-text|full-review|sensitive-category|review-all)){0,7}$/;
 /** The reasons of a post-publication review row (`reasons` of its list), comma-separated. */
 const POST_REVIEW_REASONS_LIST =
-  /^(sample|price-no-reference|price-reference-unavailable|price-recheck-outside)(,(sample|price-no-reference|price-reference-unavailable|price-recheck-outside)){0,3}$/;
+  /^(sample|price-no-reference|price-reference-unavailable|price-recheck-outside|preview-contact-text)(,(sample|price-no-reference|price-reference-unavailable|price-recheck-outside|preview-contact-text)){0,4}$/;
 /** An instant as the API takes it: ISO 8601 date and time with a zone (`Z` or an offset). */
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
 /** At most 200 ids, the cap of a selection. */

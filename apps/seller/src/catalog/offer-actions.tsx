@@ -6,6 +6,7 @@ import { useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { offerActionErrorOf } from './offer-action-errors.ts';
+import { SubmitPreview } from './submit-preview.tsx';
 
 type Outcome = 'submitted' | 'published' | 'deleted';
 
@@ -18,10 +19,16 @@ export function OfferActions({
   offerId,
   status,
   csrfToken,
+  preview = false,
+  heldPrice = false,
 }: {
   readonly offerId: string;
   readonly status: string;
   readonly csrfToken: string;
+  /** Show the result bar of the submit preview above Submit (slice 7b); only for a draft. */
+  readonly preview?: boolean;
+  /** A price on this offer waits for our check (the size rows' own state), for the bar. */
+  readonly heldPrice?: boolean;
 }) {
   const t = useTranslations('catalog.offer-actions');
   const tr = useTranslations();
@@ -92,6 +99,9 @@ export function OfferActions({
   if (!canSubmit && !canDelete) return null;
   return (
     <div className="flex flex-col gap-3">
+      {preview && canSubmit ? (
+        <SubmitPreview offerId={offerId} csrfToken={csrfToken} heldPrice={heldPrice} />
+      ) : null}
       {error === null ? null : <Banner tone="critical">{tr(error)}</Banner>}
       {confirming ? (
         <div className="flex flex-col gap-2">

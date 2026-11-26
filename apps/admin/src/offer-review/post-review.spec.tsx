@@ -166,7 +166,12 @@ describe('After publication tab', () => {
     serve([
       row(1, { reasons: ['sample'], sampleDoubled: true, samplePercent: 10 }),
       row(2, {
-        reasons: ['price-no-reference', 'price-reference-unavailable', 'price-recheck-outside'],
+        reasons: [
+          'price-no-reference',
+          'price-reference-unavailable',
+          'price-recheck-outside',
+          'preview-contact-text',
+        ],
         samplePercent: null,
       }),
       row(3),
@@ -178,6 +183,7 @@ describe('After publication tab', () => {
     expect(screen.getByText('Price: no comparison yet')).toBeTruthy();
     expect(screen.getByText('Price: comparison unavailable')).toBeTruthy();
     expect(screen.getByText('Price: outside range on re-check')).toBeTruthy();
+    expect(screen.getByText('Contact details seen in a recent preview')).toBeTruthy();
     expect(await screen.findByRole('link', { name: 'Published (7)' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Edits' }).getAttribute('href')).toBe(
       '/offer-reviews?tab=edits',

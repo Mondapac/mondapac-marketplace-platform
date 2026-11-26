@@ -252,6 +252,25 @@ export class OwnOfferSubmitted {
   published!: boolean;
 }
 
+export class OwnOfferSubmitPreviewed {
+  @ApiProperty({
+    enum: ['publish', 'review'],
+    description:
+      'publish: as things stand the Offer goes live at the submit; review: it waits for a check. ' +
+      'Not a promise: the submit decides again.',
+  })
+  outcome!: 'publish' | 'review';
+
+  @ApiProperty({
+    type: [String],
+    enum: ['certificate-badge', 'handling', 'contact-text', 'held-for-review'],
+    description:
+      'Empty for publish. The reasons a seller may act on by name; every other reason is the one ' +
+      'held-for-review. Never the matched text.',
+  })
+  reasons!: string[];
+}
+
 export class OwnOfferSubmitRequest {
   @ApiProperty({
     required: false,

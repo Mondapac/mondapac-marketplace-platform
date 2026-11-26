@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261126-offer-preview-copy-polish",
+  "area": "catalog",
+  "title": "یکدست کردن متن نوار پیش‌نمایش و قاب حالت «در حال بررسی»",
+  "desc": "عنوان قیمت معلق «Goes on sale, but…» قطعی است و بقیه «Should go on sale»؛ پیشنهاد «Should go on sale, but one price waits for our check» و کاهش تکرار «waits for our check». حالت «Checking this offer…» قاب ندارد؛ Banner اطلاعاتی با همان متن پرش را کامل حذف می‌کند. برچسب ادمین کوتاه‌تر: «Contact details in a recent preview».",
+  "src": "PR 1376 برش ۷b (رضا UI/UX، پیشنهادهای A و B)",
+  "date": "2026-11-26",
+  "trig": "در بازبینی بعدی متن پنل فروشنده",
+  "prio": "پایین",
+  "status": "موکول"
+}

@@ -1069,7 +1069,7 @@ model CatalogOfferPostReview {
   productId            String                         @map("product_id") @db.Uuid
   /// open | approved | taken-down.
   status               String
-  /// sample | price-no-reference | price-reference-unavailable | price-recheck-outside; never empty, no duplicate.
+  /// sample | price-no-reference | price-reference-unavailable | price-recheck-outside | preview-contact-text; never empty, no duplicate.
   reasons              String[]
   /// The effective sampling percent (after doubling) when the row carries `sample`.
   samplePercent        Int?                           @map("sample_percent")
