@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { Crumbs } from '../catalog/results.tsx';
 import { ProductCard } from '../home/product-card.tsx';
 import { Icon } from '../icons/icon.tsx';
+import { categoryHref } from '../storefront/links.ts';
 import type { Category, ProductDetail, ProductSpecification } from '../storefront/types.ts';
 import { ProductReviews } from '../reviews/product-reviews.tsx';
 import type { ProductReviews as ProductReviewsData } from '../reviews/reviews-source.ts';
@@ -48,11 +49,15 @@ function specGroups(rows: readonly ProductSpecification[]): SpecGroup[] {
 export function ProductPage({
   product,
   category,
+  trail,
   reviews = null,
   initialVariantId,
 }: {
   readonly product: ProductDetail;
-  readonly category: Category | undefined;
+  /** The category "Show all" of similar products opens: the product's own (deepest) one. */
+  readonly category: Pick<Category, 'code' | 'name'> | undefined;
+  /** The category path of the breadcrumb, top level first; absent shows `category` alone. */
+  readonly trail?: readonly Pick<Category, 'code' | 'name'>[];
   /** The product's reviews while the Market's reviews switch is on and there is one; else null. */
   readonly reviews?: ProductReviewsData | null;
   /** The Variant the link names (`?v=`), already checked; absent opens the default Variant. */
@@ -72,7 +77,10 @@ export function ProductPage({
           trail={[
             { label: tc('home'), href: '/' },
             { label: tc('browse-products'), browse: true },
-            ...(category ? [{ label: category.name, href: `/c/${category.code}` }] : []),
+            ...(trail ?? (category ? [category] : [])).map((step) => ({
+              label: step.name,
+              href: categoryHref(step.code),
+            })),
           ]}
           current={product.name}
         />
@@ -144,7 +152,7 @@ export function ProductPage({
               <h2>{t('similar')}</h2>
               {category ? (
                 <Link
-                  href={`/c/${category.code}`}
+                  href={categoryHref(category.code)}
                   aria-label={t('show-all-similar', { category: category.name })}
                 >
                   {t('show-all')}

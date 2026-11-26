@@ -144,9 +144,11 @@ export async function loadProduct(id: string): Promise<ProductDetail | undefined
     getTranslations('seller'),
     getTranslations('product'),
     photoUrls(),
-    // The same read the shell makes for the menu (one per request): the product's department.
+    // The same read the shell makes for the menu (one per request): the product's department
+    // and its breadcrumb path. A failed tree gives a page without a category.
     readOnce('catalog/categories'),
   ]);
+  const rows = (tree.kind === 'ok' ? treeOf(tree.body) : null) ?? [];
   return productDetailOf(
     read.body,
     locale,
@@ -158,7 +160,8 @@ export async function loadProduct(id: string): Promise<ProductDetail | undefined
       group: (code) => (tp.has(`spec-group-${code}`) ? tp(`spec-group-${code}`) : undefined),
     },
     photo,
-    departmentsOf((tree.kind === 'ok' ? treeOf(tree.body) : null) ?? []),
+    departmentsOf(rows),
+    rows,
   );
 }
 

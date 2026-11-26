@@ -11,7 +11,7 @@ import {
 } from '../../../src/seo/metadata.ts';
 import { productPageStructuredData } from '../../../src/seo/structured-data.ts';
 import { variantFromParam } from '../../../src/storefront/product-detail.ts';
-import { productHref } from '../../../src/storefront/links.ts';
+import { categoryHref, productHref } from '../../../src/storefront/links.ts';
 import { productForMetadata, resolveProduct } from '../../../src/storefront/product-route.ts';
 import type { ProductDetail } from '../../../src/storefront/types.ts';
 import { loadStorefrontContent } from '../../../src/storefront/source.ts';
@@ -81,7 +81,13 @@ async function ProductContent({
     // Null while the Market's reviews switch is off, on a fault, and for a product with none.
     loadProductReviews(product.id),
   ]);
-  const category = content.categories.find((c) => c.code === product.category);
+  // The live tree's path of the product's category (top level first); the sample data has none,
+  // so its category code names a top-level category of the menu.
+  const sampleCategory = content.categories.find((c) => c.code === product.category);
+  const trail =
+    product.categoryTrail ??
+    (sampleCategory ? [{ code: sampleCategory.code, name: sampleCategory.name }] : []);
+  const category = trail[trail.length - 1];
   // The markup is built from the same read as the page, so price and stock always match it.
   const canonical = origin === undefined ? undefined : canonicalOf({ path }, origin);
   const data =
@@ -92,7 +98,7 @@ async function ProductContent({
           // The visible crumbs, without "Browse products" (a panel, not a page).
           [
             { name: t('home'), path: '/' },
-            ...(category ? [{ name: category.name, path: `/c/${category.code}` }] : []),
+            ...trail.map((step) => ({ name: step.name, path: categoryHref(step.code) })),
             { name: product.name },
           ],
           origin,
@@ -104,6 +110,7 @@ async function ProductContent({
       <ProductPage
         product={product}
         category={category}
+        trail={trail}
         reviews={reviews}
         initialVariantId={initialVariantId}
       />
