@@ -7,6 +7,7 @@ import { sellerNav } from '../nav.ts';
 import { formatInstant, known, PRODUCT_STATUSES } from './format.ts';
 import { OfferDetail } from './offer-detail.tsx';
 import { Pager } from './pager.tsx';
+import { ProbationBar } from './probation-bar.tsx';
 import { ProductDetail } from './product-detail.tsx';
 import type { OfferView, ProductView } from './types.ts';
 import { visibleNavItems } from '@mondapac/ui';
@@ -151,6 +152,85 @@ describe('seller catalog pages', () => {
     expect(screen.getByRole('link', { name: 'Back to offers' }).getAttribute('href')).toBe(
       '/offers',
     );
+  });
+
+  it('tells a taken-down offer with the reason, and a first send-back with the old text', async () => {
+    const down = offer({
+      status: 'changes-needed',
+      firstPublishedAt: '2026-10-01T00:00:00.000Z',
+      takeDown: { reasonCode: 'description-claim', at: '2026-11-26T01:00:00.000Z' },
+    });
+    const view = render(await OfferDetail({ offer: down }));
+    expect(screen.getByText('Taken down')).toBeTruthy();
+    expect(
+      screen.getByText(
+        "This offer was taken off sale. Reason: the description makes a claim we can't accept.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/Fix it and submit again/)).toBeTruthy();
+    view.unmount();
+    render(
+      await OfferDetail({
+        offer: offer({ status: 'changes-needed', firstPublishedAt: null, takeDown: null }),
+      }),
+    );
+    expect(screen.queryByText('Taken down')).toBeNull();
+    expect(screen.getByText(/We asked for changes to this offer/)).toBeTruthy();
+  });
+
+  it('never shows an admin note, misconduct or sampling on a taken-down offer', async () => {
+    const down = {
+      ...offer({
+        status: 'changes-needed',
+        firstPublishedAt: '2026-10-01T00:00:00.000Z',
+        takeDown: { reasonCode: 'unheard-of-code', at: '2026-11-26T01:00:00.000Z' },
+      }),
+      note: 'internal admin note',
+      misconduct: true,
+      sampled: true,
+    } as OfferView;
+    const { container } = render(await OfferDetail({ offer: down }));
+    // A code this panel does not know reads as the safe line, never the raw code.
+    expect(screen.getByText(/see the email we sent you/)).toBeTruthy();
+    const text = container.textContent ?? '';
+    for (const word of [
+      'internal admin note',
+      'misconduct',
+      'sampl',
+      'unheard-of-code',
+      'Trusted',
+    ]) {
+      expect(text.toLowerCase()).not.toContain(word.toLowerCase());
+    }
+  });
+
+  it('shows the probation bar with its progress, and nothing once Trusted or unreadable', async () => {
+    const view = render(
+      await ProbationBar({
+        standing: { status: 'probation', count: 3, target: 10, restarted: false },
+      }),
+    );
+    const bar = screen.getByRole('progressbar');
+    expect(bar.getAttribute('aria-valuenow')).toBe('3');
+    expect(bar.getAttribute('aria-valuemax')).toBe('10');
+    expect(screen.getAllByText('3 of 10 offers checked').length).toBeGreaterThan(0);
+    expect(screen.getByText('Your first offers are being checked')).toBeTruthy();
+    view.unmount();
+    const shorter = render(
+      await ProbationBar({
+        standing: { status: 'probation', count: 0, target: 5, restarted: true },
+      }),
+    );
+    expect(screen.getByText('A shorter check applies to your next offers')).toBeTruthy();
+    shorter.unmount();
+    for (const standing of [
+      { status: 'trusted', count: 0, target: 0, restarted: false } as const,
+      null,
+    ]) {
+      const empty = render(await ProbationBar({ standing }));
+      expect(empty.container.textContent).toBe('');
+      empty.unmount();
+    }
   });
 
   it('renders a seller-written description as text, not markup', async () => {

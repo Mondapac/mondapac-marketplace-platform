@@ -30,6 +30,7 @@ import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { OfferRepository } from '../ports/offer.repository';
 import type { OwnCatalogReader } from '../ports/own-catalog.reader';
 import { OfferPostReviewRefer } from './offer-post-review-refer.use-case';
+import { OwnOfferRead } from './own-offer-read.use-case';
 import { AdminOfferPostReviewApprove } from './offer-post-review-approve.use-case';
 import { AdminOfferPostReviewTakeDown } from './offer-post-review-take-down.use-case';
 import { AdminOfferPostReviewsBulkApprove } from './offer-post-reviews-bulk-approve.use-case';
@@ -198,7 +199,20 @@ describe.each(TEST_MARKET_IDS)('the post-publication review list in market %s', 
       postReviews.rows.set(opened.value.state.id, opened.value.state);
       return opened.value.state;
     };
+    /** The seller's single Offer read (slice 7: the take-down as the seller is told it). */
+    const read = new OwnOfferRead(gate, {
+      unitOfWork,
+      offers,
+      ownReader: {
+        productLabels: () => Promise.resolve([]),
+        sellUnitsOf: () => Promise.resolve([]),
+      } as unknown as OwnCatalogReader,
+      policy,
+      pendingChanges,
+      postReviews,
+    });
     return {
+      read,
       approve,
       takeDown,
       bulk,
@@ -486,6 +500,54 @@ describe.each(TEST_MARKET_IDS)('the post-publication review list in market %s', 
         error: { code: 'conflict.stale' },
       });
       r.postReviews.save = save;
+    });
+  });
+
+  describe('the seller reads a take-down (slice 7)', () => {
+    it('shows the reason code and time only, never the note, misconduct or sampling', async () => {
+      const r = rig({ offer: { firstPublishedAt: T0 } });
+      const row = r.openRow('sample');
+      await r.takeDown.execute(
+        admin(),
+        takeDownBody(row.id, {
+          misconduct: true,
+          reasonCode: 'handling-unclear',
+          note: 'internal admin note',
+        }),
+      );
+      const outcome = await r.read.execute(seller(), { offerId: r.offer().id });
+      expect(outcome.ok).toBe(true);
+      if (!outcome.ok) return;
+      expect(outcome.value.status).toBe('changes-needed');
+      expect(outcome.value.takeDown).toEqual({
+        reasonCode: 'handling-unclear',
+        at: clock.now().toString(),
+      });
+      const text = JSON.stringify(outcome.value);
+      for (const secret of ['internal admin note', 'misconduct', 'sample', 'percent', 'doubled']) {
+        expect(text).not.toContain(secret);
+      }
+    });
+
+    it('has no take-down for an Offer never taken down, or never published', async () => {
+      const live = rig({ offer: { firstPublishedAt: T0 } });
+      live.openRow('sample');
+      const answer = await live.read.execute(seller(), { offerId: live.offer().id });
+      expect(answer.ok && answer.value.takeDown).toBeNull();
+      // A first-publication send-back (no first publication on record) is not a take-down, even
+      // if a stale row of the Offer exists.
+      const sent = rig({
+        offer: { status: 'changes-needed', listed: false, firstPublishedAt: null },
+      });
+      const row = sent.openRow();
+      sent.postReviews.rows.set(row.id, {
+        ...row,
+        status: 'taken-down',
+        decidedAt: T0,
+        decisionReasonCode: 'other',
+      });
+      const second = await sent.read.execute(seller(), { offerId: sent.offer().id });
+      expect(second.ok && second.value.takeDown).toBeNull();
     });
   });
 

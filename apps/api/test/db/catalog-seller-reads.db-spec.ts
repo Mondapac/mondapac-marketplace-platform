@@ -1,3 +1,4 @@
+import { PrismaOfferPostReviewRepository } from '../../src/modules/catalog/infrastructure/prisma-offer-post-review.repository';
 import { PrismaOfferPendingChangeRepository } from '../../src/modules/catalog/infrastructure/prisma-offer-pending-change.repository';
 import { ALL_CATEGORIES_IN_SCOPE } from '../support/seller-scope-allow-all';
 import { randomUUID } from 'node:crypto';
@@ -386,6 +387,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       offers,
       ownReader: reader,
       policy,
+      postReviews: new PrismaOfferPostReviewRepository(persistence.service),
     });
   });
 

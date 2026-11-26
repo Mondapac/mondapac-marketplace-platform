@@ -474,3 +474,28 @@ Built from `/mnt/project-files/handoffs/offer-approval-6-spec.md`.
   FE-20261126-post-review-price-author-own-submission.
 - **Deferred:** the price and median column on the list (catalog stores codes only; pricing's
   read would need a facade for it), FE-20261125-post-review-price-column.
+
+## Seller view of a take-down and probation (risk-based Offer approval slice 7)
+
+- **Take-down notice.** `GET catalog/seller/offers/:id` carries `takeDown: { reasonCode, at }`
+  (else null). It is set only when the Offer is `changes-needed` **and** `firstPublishedAt` is
+  set, which tells a take-down from a first-publication send-back. The data is the latest
+  `taken-down` row's `decision_reason_code` and `decided_at` (`latestTakeDownOf`). The admin
+  note, the misconduct flag, the sampling figures and every other row column are never read.
+  The panel says "Taken down. This offer was taken off sale. Reason: {reason}. Fix it and
+  submit again. Orders already placed will still ship." An unknown code reads as "see the email
+  we sent you", never the raw code. The list read does not carry `takeDown`.
+- **Probation progress.** `GET catalog/seller/review-standing` (key `catalog.own-product.view`,
+  seller population) answers `{ status, count, target, restarted }` and nothing else: no epoch,
+  admin flags, Trusted source or date, so a seller never learns how long double sampling runs.
+  `trustStatusOf` is the same as the admin read; when sellers cannot answer the flags,
+  Trusted-from-start is read as off. A failed read is 503 and the panel shows no bar. Trusted
+  answers `count 0, target 0`. `restarted` is the shorter target after a misconduct take-down.
+- **Panel.** English LTR. The bar shows on the Offers page and on an Offer's page, only in
+  probation. It says "N of M offers checked" and that new offers may wait for review, never why.
+- **What a seller never sees:** sampling (a sampled submit looks like any other), the admin
+  take-down note, probation or R6/R7 as a reason (they stay `held-for-review`).
+- **Not in this slice:** the pre-submit preview (dry run of the server rules; Hassan reviews it
+  for R4 median and R7 list leaks, FE "r4-median-probing") goes in its own PR.
+- **Deferred:** the notice is gone once the seller edits and the Offer returns to draft:
+  FE-20261126-taken-down-notice-after-edit.

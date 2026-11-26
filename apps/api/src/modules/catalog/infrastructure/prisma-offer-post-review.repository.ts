@@ -188,6 +188,22 @@ export class PrismaOfferPostReviewRepository implements OfferPostReviewRepositor
     return row !== null;
   }
 
+  async latestTakeDownOf(
+    market: MarketContext,
+    offerId: Id<'Offer'>,
+  ): Promise<{ readonly reasonCode: OfferChangeReason; readonly at: Temporal.Instant } | null> {
+    const row = await this.prisma.tx(market).catalogOfferPostReview.findFirst({
+      where: { marketId: market.marketId, offerId, status: 'taken-down' },
+      orderBy: { decidedAt: 'desc' },
+      select: { decisionReasonCode: true, decidedAt: true },
+    });
+    if (row === null || row.decisionReasonCode === null || row.decidedAt === null) return null;
+    return {
+      reasonCode: row.decisionReasonCode as OfferChangeReason,
+      at: toInstant(row.decidedAt),
+    };
+  }
+
   async list(
     market: MarketContext,
     page: OfferPostReviewPage,

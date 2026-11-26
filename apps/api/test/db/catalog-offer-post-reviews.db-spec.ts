@@ -535,6 +535,16 @@ describe.each(TEST_MARKETS)(
         value: await reviews.everTakenDown(other, offerId),
       }));
       expect(foreign).toEqual({ ok: true, value: false });
+      // Slice 7: the seller's read gets the reason code and the time only, in this Market only.
+      const told = await read(() => reviews.latestTakeDownOf(market, offerId));
+      expect(told?.reasonCode).toBe('handling-unclear');
+      expect(told?.at.toString()).toMatch(/^20\d\d-/);
+      expect(Object.keys(told!).sort()).toEqual(['at', 'reasonCode']);
+      const none = await persistence.unitOfWork.run(other, async () => ({
+        ok: true as const,
+        value: await reviews.latestTakeDownOf(other, offerId),
+      }));
+      expect(none).toEqual({ ok: true, value: null });
     });
 
     it('lists and counts by status, reason and seller, oldest first, in the Market only', async () => {

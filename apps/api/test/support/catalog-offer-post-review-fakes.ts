@@ -1,5 +1,6 @@
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import { Temporal } from '@mondapac/shared-kernel';
+import type { OfferChangeReason } from '../../src/modules/catalog/domain/events';
 import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
 import type {
   OfferPostReviewFilter,
@@ -99,6 +100,29 @@ export class InMemoryOfferPostReviews implements OfferPostReviewRepository {
           ? []
           : [OfferPostReview.restore(row)];
       }),
+    );
+  }
+
+  latestTakeDownOf(
+    market: MarketContext,
+    offerId: Id<'Offer'>,
+  ): Promise<{
+    readonly reasonCode: OfferChangeReason;
+    readonly at: Temporal.Instant;
+  } | null> {
+    const taken = [...this.rows.values()]
+      .filter(
+        (r) =>
+          r.marketId === market.marketId &&
+          r.offerId === offerId &&
+          r.status === 'taken-down' &&
+          r.decisionReasonCode !== null &&
+          r.decidedAt !== null,
+      )
+      .sort((a, b) => Temporal.Instant.compare(b.decidedAt!, a.decidedAt!));
+    const row = taken[0];
+    return Promise.resolve(
+      row === undefined ? null : { reasonCode: row.decisionReasonCode!, at: row.decidedAt! },
     );
   }
 

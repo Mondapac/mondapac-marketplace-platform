@@ -5,6 +5,7 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import { CATALOG_OWN_PRODUCT_VIEW } from '../../contracts/permissions';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { OfferRepository } from '../ports/offer.repository';
+import type { OfferPostReviewRepository } from '../ports/offer-post-review';
 import type { OfferPendingChangeRepository } from '../ports/offer-pending-change.repository';
 import { ownOfferChangeViewOf } from '../offer-change-view';
 import type { OwnCatalogReader } from '../ports/own-catalog.reader';
@@ -28,6 +29,8 @@ export interface OwnOfferReadDependencies {
   readonly policy: CatalogMarketPolicy;
   /** The Offer's latest held change (slice 2c). */
   readonly pendingChanges: Pick<OfferPendingChangeRepository, 'findLatestByOffer'>;
+  /** The Offer's latest take-down, reason code and time only (slice 7). */
+  readonly postReviews: Pick<OfferPostReviewRepository, 'latestTakeDownOf'>;
 }
 
 /**
@@ -77,8 +80,15 @@ export class OwnOfferRead extends UseCase<OwnOfferReadInput, OwnOfferView, OwnOf
         const [label] = await this.deps.ownReader.productLabels(market, [productId], locale);
         const sellUnits = await this.deps.ownReader.sellUnitsOf(market, offer.state.id);
         const latest = await this.deps.pendingChanges.findLatestByOffer(market, offer.state.id);
+        // A take-down is told only while the Offer is off sale after it: sent back with a first
+        // publication on record. A first-publication send-back has none (slice 7).
+        const down =
+          status === 'changes-needed' && offer.state.firstPublishedAt !== null
+            ? await this.deps.postReviews.latestTakeDownOf(market, offer.state.id)
+            : null;
         return ok({
           ...offerViewOf(offer, label, { withTags: true }),
+          takeDown: down === null ? null : { reasonCode: down.reasonCode, at: down.at.toString() },
           sellUnits,
           pendingChange: latest === null ? null : ownOfferChangeViewOf(latest),
         });

@@ -7,6 +7,7 @@ import { EDIT_PERMISSION, type OfferView } from '../../../../src/catalog/types.t
 import { VariantsTable } from '../../../../src/catalog/variants-table.tsx';
 import { loadActiveShelves } from '../../../../src/server/category-proposals-page.ts';
 import { isUuid, loadCatalogPage } from '../../../../src/server/catalog-page.ts';
+import { loadReviewStanding } from '../../../../src/server/review-standing.ts';
 import { loadOfferSizes } from '../../../../src/server/offer-sizes.ts';
 import { canEstimateReceive } from '../../../../src/price/receive-permissions.ts';
 import {
@@ -45,11 +46,12 @@ export default async function OfferPage({
   const state = await catalogStateFor(page, 's_offers', title);
   if (state !== null || page.kind !== 'ok') return state;
   const keys = page.session.permissionKeys;
-  const [sizes, shelves] = await Promise.all([
+  const [sizes, shelves, standing] = await Promise.all([
     loadOfferSizes(page.body, keys, locale, (number) =>
       t('catalog.variants-table.variant-n', { number }),
     ),
     loadActiveShelves(keys, locale),
+    loadReviewStanding(),
   ]);
   return (
     <SellerShell session={page.session} activeId="s_offers" title={title}>
@@ -58,6 +60,7 @@ export default async function OfferPage({
         canEdit={keys.includes(EDIT_PERMISSION)}
         csrfToken={page.session.csrfToken}
         shelves={shelves}
+        standing={standing}
         sizes={
           sizes === 'unavailable' ? (
             <div id="sizes" className="scroll-mt-4">
