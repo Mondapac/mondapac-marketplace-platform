@@ -184,6 +184,7 @@ export class OfferEditReview {
           outcome: changeId === null ? 'published' : 'queued',
           reasons,
           policyVersion: OFFER_REVIEW_POLICY_VERSION,
+          sampled: null,
         },
       }),
     );

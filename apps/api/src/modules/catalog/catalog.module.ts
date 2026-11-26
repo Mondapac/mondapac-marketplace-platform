@@ -334,6 +334,18 @@ import { configurableProductType } from './domain/product-types/configurable';
 import { simpleProductType } from './domain/product-types/simple';
 import { PlatformProductController } from './presentation/platform-product.controller';
 import { OfferReviewController } from './presentation/offer-review.controller';
+import { OfferPostReviewController } from './presentation/offer-post-review.controller';
+import {
+  OFFER_POST_REVIEW_REPOSITORY,
+  OFFER_POST_REVIEW_SAMPLER,
+} from './application/ports/offer-post-review';
+import { OfferPostReviewRefer } from './application/use-cases/offer-post-review-refer.use-case';
+import { AdminOfferPostReviewsList } from './application/use-cases/admin-offer-post-reviews-list.use-case';
+import { AdminOfferPostReviewsExport } from './application/use-cases/admin-offer-post-reviews-export.use-case';
+import { AdminOfferPostReviewView } from './application/use-cases/admin-offer-post-review-view.use-case';
+import { AdminOfferPostReviewApprove } from './application/use-cases/offer-post-review-approve.use-case';
+import { AdminOfferPostReviewTakeDown } from './application/use-cases/offer-post-review-take-down.use-case';
+import { AdminOfferPostReviewsBulkApprove } from './application/use-cases/offer-post-reviews-bulk-approve.use-case';
 import { OwnOfferController } from './presentation/own-offer.controller';
 import { OwnOffersExport } from './application/use-cases/own-offers-export.use-case';
 import { OwnProductsExport } from './application/use-cases/own-products-export.use-case';
@@ -715,6 +727,10 @@ const PORT = {
   queueFacts: OFFER_REVIEW_QUEUE_FACTS,
   stops: OFFER_REVIEW_STOPS_READER,
   changes: AdminOfferChangesList,
+  postReviews: OFFER_POST_REVIEW_REPOSITORY,
+  sampler: OFFER_POST_REVIEW_SAMPLER,
+  postReviewsList: AdminOfferPostReviewsList,
+  postReviewApprove: AdminOfferPostReviewApprove,
   stepUp: STEP_UP_CONSUMER,
   pendingChanges: OFFER_PENDING_CHANGE_REPOSITORY,
   matcher: CLAIM_TEXT_MATCHER,
@@ -1138,6 +1154,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
     OwnTopicController,
     ProductImageController,
     OfferReviewController,
+    OfferPostReviewController,
     CatalogOfferReviewController,
     AdminProductListController,
     AdminCustomVariantLabelsController,
@@ -2425,6 +2442,8 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       clock: true,
       ids: true,
       probation: true,
+      sampler: true,
+      postReviews: true,
     }),
     useCaseProvider(OwnOfferAddTag, {
       unitOfWork: true,
@@ -2554,6 +2573,65 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       policy: true,
       sellerNames: true,
       productApproveProbe: true,
+    }),
+    // Risk-based Offer approval slice 6: the post-publication review list.
+    useCaseProvider(OfferPostReviewRefer, {
+      unitOfWork: true,
+      offers: true,
+      postReviews: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AdminOfferPostReviewsList, {
+      unitOfWork: true,
+      postReviews: true,
+      offers: true,
+      ownReader: true,
+      policy: true,
+      sellerNames: true,
+      storeSearch: true,
+      productApproveProbe: true,
+      deleteProbe: true,
+    }),
+    useCaseProvider(AdminOfferPostReviewsExport, {
+      postReviewsList: true,
+      sheetWriter: true,
+      clock: true,
+    }),
+    useCaseProvider(AdminOfferPostReviewView, {
+      unitOfWork: true,
+      postReviews: true,
+      offers: true,
+      ownReader: true,
+      policy: true,
+      sellerNames: true,
+      productApproveProbe: true,
+      deleteProbe: true,
+    }),
+    useCaseProvider(AdminOfferPostReviewApprove, {
+      unitOfWork: true,
+      postReviews: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(AdminOfferPostReviewTakeDown, {
+      unitOfWork: true,
+      postReviews: true,
+      offers: true,
+      pendingChanges: true,
+      editReview: true,
+      probation: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+    }),
+    useCaseProvider(AdminOfferPostReviewsBulkApprove, {
+      postReviewApprove: true,
+      unitOfWork: true,
+      postReviews: true,
+      offers: true,
+      ownReader: true,
+      policy: true,
     }),
     useCaseProvider(OfferReviewStopsView, {
       unitOfWork: true,
@@ -3630,6 +3708,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
         PendingProductRevisionsQuery,
         SellerProductOwnersQuery,
         ProductsForLinkingQuery,
+        OfferPostReviewRefer,
       ],
       useFactory: (
         offerSellUnits: OfferSellUnitsQuery,
@@ -3647,6 +3726,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
         pendingProductRevisions: PendingProductRevisionsQuery,
         sellerProductOwners: SellerProductOwnersQuery,
         productsForLinking: ProductsForLinkingQuery,
+        offerPostReviewRefer: OfferPostReviewRefer,
       ) =>
         new CatalogFacadeImplementation({
           offerSellUnits,
@@ -3664,6 +3744,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
           pendingProductRevisions,
           sellerProductOwners,
           productsForLinking,
+          offerPostReviewRefer,
         }),
     },
     useCaseProvider(OfferSearchFactsQuery, { unitOfWork: true, searchReader: true }),

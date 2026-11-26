@@ -235,6 +235,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/offer-changes/export',
     'catalog/admin/offer-review/stops',
     'catalog/admin/offer-review/category-flags',
+    // Published Offers checked after they went live, as a super list and as a file (catalog,
+    // risk-based Offer approval slice 6; codes and labels only, never the note).
+    'catalog/admin/offer-post-reviews',
+    'catalog/admin/offer-post-reviews/export',
     // Requests to turn off Material waiting for a second administrator (attributes A2 part 3).
     'catalog/admin/attribute-relaxations',
     // Requests to archive a Material attribute waiting for a second administrator (attributes A8).
@@ -545,6 +549,11 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/offer-changes/:id/approve',
     'catalog/admin/offer-changes/:id/request-changes',
     'catalog/admin/offer-changes/:id/reject',
+    // Close a post-publication review row, or take its Offer off sale with a reason, a misconduct
+    // flag and a note (catalog, risk-based Offer approval slice 6); bulk approve up to 50 rows.
+    'catalog/admin/offer-post-reviews/:id/approve',
+    'catalog/admin/offer-post-reviews/:id/take-down',
+    'catalog/admin/offer-post-reviews/bulk-approve',
     // Approve or send back a pending product version, naming the version seen (catalog, product
     // version review); take a photo down with a reason (cannot be undone).
     'catalog/admin/products/:id/revisions/:id/approve',
@@ -810,6 +819,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // One held edit of a live Offer with its live values, a seller's review standing and flags
     // (catalog and sellers, risk-based Offer approval slices 4 and 5).
     'catalog/admin/offer-changes/:id',
+    // One post-publication review row, with its note for an admin holding the approve key (slice 6).
+    'catalog/admin/offer-post-reviews/:id',
     'catalog/admin/sellers/:id/review-standing',
     'sellers/admin/:id/offer-review',
     // One system request with its values and its history (system-requests).
@@ -1622,6 +1633,30 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'sort',
     'direction',
   ],
+  'catalog/admin/offer-post-reviews': [
+    'status',
+    'reasons',
+    'sellerId',
+    'categoryId',
+    'openedFrom',
+    'openedTo',
+    'q',
+    'page',
+    'pageSize',
+    'paging',
+    'sort',
+    'direction',
+  ],
+  'catalog/admin/offer-post-reviews/export': [
+    'format',
+    'status',
+    'reasons',
+    'sellerId',
+    'categoryId',
+    'openedFrom',
+    'openedTo',
+    'q',
+  ],
   'catalog/admin/offer-changes/export': [
     'format',
     'reasons',
@@ -1743,6 +1778,9 @@ const QUEUE_SEARCH_TEXT = /^[\s\S]{1,100}$/;
 /** The review reasons of a held edit (`reasons` of the offer-changes list), comma-separated. */
 const OFFER_REVIEW_REASONS_LIST =
   /^(emergency-stop|probation|certificate-badge|handling|contact-text|full-review|sensitive-category|review-all)(,(emergency-stop|probation|certificate-badge|handling|contact-text|full-review|sensitive-category|review-all)){0,7}$/;
+/** The reasons of a post-publication review row (`reasons` of its list), comma-separated. */
+const POST_REVIEW_REASONS_LIST =
+  /^(sample|price-no-reference|price-reference-unavailable|price-recheck-outside)(,(sample|price-no-reference|price-reference-unavailable|price-recheck-outside)){0,3}$/;
 /** An instant as the API takes it: ISO 8601 date and time with a zone (`Z` or an offset). */
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
 /** At most 200 ids, the cap of a selection. */
@@ -2388,6 +2426,31 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     paging: /^(pages|prev-next)$/,
     sort: /^submitted$/,
     direction: /^(asc|desc)$/,
+  },
+  'catalog/admin/offer-post-reviews': {
+    status: /^(open|approved|taken-down|all)$/,
+    reasons: POST_REVIEW_REASONS_LIST,
+    sellerId: UUID,
+    categoryId: UUID,
+    openedFrom: ISO_INSTANT,
+    openedTo: ISO_INSTANT,
+    q: QUEUE_SEARCH_TEXT,
+    // The page read of the offer-changes list: pages 1 to 20 of 1 to 50 rows.
+    page: /^([1-9]|1[0-9]|20)$/,
+    pageSize: /^([1-9]|[1-4][0-9]|50)$/,
+    paging: /^(pages|prev-next)$/,
+    sort: /^(opened|decided)$/,
+    direction: /^(asc|desc)$/,
+  },
+  'catalog/admin/offer-post-reviews/export': {
+    format: /^(csv|xlsx)$/,
+    status: /^(open|approved|taken-down|all)$/,
+    reasons: POST_REVIEW_REASONS_LIST,
+    sellerId: UUID,
+    categoryId: UUID,
+    openedFrom: ISO_INSTANT,
+    openedTo: ISO_INSTANT,
+    q: QUEUE_SEARCH_TEXT,
   },
   'catalog/admin/offer-changes/export': {
     format: /^(csv|xlsx)$/,

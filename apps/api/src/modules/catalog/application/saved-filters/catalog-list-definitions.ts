@@ -44,6 +44,11 @@ import { VARIANT_REQUEST_SORTS } from '../use-cases/variant-request-list.use-cas
 import { parseFilter as parseVariantsFilter } from '../variants/variant-admin.shared';
 import { parseOfferReviewReasons } from '../offer-changes/review-reasons-filter';
 import { OFFER_CHANGES_SORTS } from '../use-cases/admin-offer-changes-list.use-case';
+import {
+  OFFER_POST_REVIEW_VIEWS,
+  parsePostReviewReasons,
+} from '../offer-post-review/post-review-rows';
+import { OFFER_POST_REVIEWS_SORTS } from '../use-cases/admin-offer-post-reviews-list.use-case';
 
 // The catalog lists of super list phase 2 register with `lists` so they have saved filters through
 // the generic routes (B0-1b): the admin lists 3 to 13 (the Product review queue and the Revision
@@ -486,6 +491,54 @@ const OFFER_CHANGES: ListDefinition = {
   }),
 };
 
+/**
+ * The post-publication review list (risk-based Offer approval slice 6): the status (`open` by
+ * default, `all` for every row), reasons, the age preset, seller, category and the review queue's
+ * search text. The age is kept as its preset id only (the panel resolves it into `openedFrom` /
+ * `openedTo` on each load), as the held edits list.
+ */
+const OFFER_POST_REVIEWS: ListDefinition = {
+  listKey: 'admin.catalog.offer-post-reviews',
+  population: 'admin',
+  viewKey: CATALOG_PRODUCT_VIEW.key,
+  shareKey: CATALOG_SAVED_FILTER_SHARE.key,
+  parsePayload: savedListPayloadParser({
+    views: null,
+    filterKeys: ['status', 'reasons', 'age', 'sellerId', 'categoryId'],
+    sorts: OFFER_POST_REVIEWS_SORTS,
+    read(query) {
+      const status = query['status'];
+      if (
+        status !== undefined &&
+        !(OFFER_POST_REVIEW_VIEWS as readonly string[]).includes(status)
+      ) {
+        return refused('status', 'enum');
+      }
+      const reasons = parsePostReviewReasons(query['reasons']);
+      if (!reasons.ok) return { fields: fieldsOf(reasons.error), canonical: {} };
+      const age = query['age'];
+      if (age !== undefined && !OFFER_CHANGE_AGES.includes(age)) return refused('age', 'enum');
+      for (const key of ['sellerId', 'categoryId']) {
+        const value = query[key];
+        if (value !== undefined && !UUID.test(value)) return refused(key, 'format');
+      }
+      const text = parseQueueSearch(query['q']);
+      if (!text.ok) return { fields: fieldsOf(text.error), canonical: {} };
+      return {
+        fields: [],
+        canonical: canonicalQuery({
+          q: text.value,
+          status: status ?? null,
+          reasons: reasons.value === null ? null : reasons.value.join(','),
+          age: age ?? null,
+          sellerId: query['sellerId']?.toLowerCase() ?? null,
+          categoryId: query['categoryId']?.toLowerCase() ?? null,
+        }),
+      };
+    },
+  }),
+};
+
 const OWN_SUGGESTION_STATUSES = ['open', 'approved', 'mapped', 'rejected'];
 
 /** The seller's own suggestion lists: the status and the label search, one set per store. */
@@ -530,6 +583,7 @@ export const CATALOG_PHASE2_LISTS: readonly ListDefinition[] = [
   CATEGORY_PROPOSALS,
   REVIEW_QUEUE,
   OFFER_CHANGES,
+  OFFER_POST_REVIEWS,
   ownSuggestionList('seller.catalog.attribute-suggestions'),
   ownSuggestionList('seller.catalog.topic-suggestions'),
 ];

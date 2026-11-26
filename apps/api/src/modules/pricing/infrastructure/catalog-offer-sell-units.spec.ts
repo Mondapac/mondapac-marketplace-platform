@@ -40,6 +40,7 @@ describe.each(['AU', 'ZZ'])('CatalogOfferSellUnits in market %s', (code) => {
       pendingProductRevisions: () => Promise.resolve(ok(new Set())),
       sellerProductOwners: () => Promise.resolve(ok(new Map())),
       productsForLinking: () => Promise.resolve(ok(new Map())),
+      referOfferForPostReview: () => Promise.resolve(ok({ code: 'post-review.opened' })),
     };
     return { calls, source: new CatalogOfferSellUnits(catalog) };
   }

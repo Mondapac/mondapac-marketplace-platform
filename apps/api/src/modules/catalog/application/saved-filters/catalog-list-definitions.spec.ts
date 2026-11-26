@@ -14,6 +14,7 @@ import { OwnAttributeSuggestionsList } from '../use-cases/own-attribute-suggesti
 import { OwnTopicSuggestionsList } from '../use-cases/own-topic-suggestions-list.use-case';
 import { ProductsMissingDetailsList } from '../use-cases/products-missing-details-list.use-case';
 import { AdminOfferChangesList } from '../use-cases/admin-offer-changes-list.use-case';
+import { AdminOfferPostReviewsList } from '../use-cases/admin-offer-post-reviews-list.use-case';
 import { ReviewQueueList } from '../use-cases/review-queue-list.use-case';
 import { TopicList } from '../use-cases/topic-list.use-case';
 import { TopicSuggestionList } from '../use-cases/topic-suggestion-list.use-case';
@@ -49,6 +50,7 @@ describe('the catalog phase 2 saved-filter lists', () => {
       'admin.catalog.category-proposals',
       'admin.catalog.review-queue',
       'admin.catalog.offer-changes',
+      'admin.catalog.offer-post-reviews',
       'seller.catalog.attribute-suggestions',
       'seller.catalog.topic-suggestions',
     ]);
@@ -75,6 +77,7 @@ describe('the catalog phase 2 saved-filter lists', () => {
       ['admin.catalog.category-proposals', CategoryProposalList],
       ['admin.catalog.review-queue', ReviewQueueList],
       ['admin.catalog.offer-changes', AdminOfferChangesList],
+      ['admin.catalog.offer-post-reviews', AdminOfferPostReviewsList],
       ['seller.catalog.attribute-suggestions', OwnAttributeSuggestionsList],
       ['seller.catalog.topic-suggestions', OwnTopicSuggestionsList],
     ];
@@ -501,6 +504,53 @@ describe('the catalog phase 2 saved-filter lists', () => {
       expect(fieldsOf(list, { v: 1, filters: { submittedFrom: 'x' }, ...base })).not.toBeNull();
       expect(fieldsOf(list, { v: 1, q: 'a', ...base })).toEqual([
         { path: 'payload.q', code: 'length' },
+      ]);
+    });
+  });
+
+  describe('admin.catalog.offer-post-reviews', () => {
+    const list = byKey('admin.catalog.offer-post-reviews');
+    const base = { sort: 'opened', direction: 'asc' };
+    it('keeps the status, the reasons, the age preset, the seller, the category and the text', () => {
+      const payload = {
+        v: 1,
+        q: 'Dates Co',
+        filters: {
+          status: 'all',
+          reasons: 'sample,price-no-reference',
+          age: 'older-7d',
+          sellerId: UUID,
+          categoryId: UUID,
+        },
+        ...base,
+      };
+      expect(list.parsePayload(payload)).toEqual({ ok: true, value: payload });
+      expect(list.viewKey).toBe('catalog.product.view');
+      expect(list.shareKey).toBe(CATALOG_SAVED_FILTER_SHARE.key);
+      const decided = {
+        v: 1,
+        filters: { status: 'taken-down' },
+        sort: 'decided',
+        direction: 'desc',
+      };
+      expect(list.parsePayload(decided)).toEqual({ ok: true, value: decided });
+    });
+    it('refuses what the list refuses', () => {
+      expect(fieldsOf(list, { v: 1, filters: { status: 'closed' }, ...base })).toEqual([
+        { path: 'payload.filters.status', code: 'enum' },
+      ]);
+      expect(fieldsOf(list, { v: 1, filters: { age: 'older-1y' }, ...base })).toEqual([
+        { path: 'payload.filters.age', code: 'enum' },
+      ]);
+      expect(fieldsOf(list, { v: 1, filters: { reasons: 'sample,x' }, ...base })).toEqual([
+        { path: 'payload.filters.reasons', code: 'value' },
+      ]);
+      expect(fieldsOf(list, { v: 1, filters: { categoryId: 'abc' }, ...base })).toEqual([
+        { path: 'payload.filters.categoryId', code: 'format' },
+      ]);
+      expect(fieldsOf(list, { v: 1, filters: { openedFrom: 'x' }, ...base })).not.toBeNull();
+      expect(fieldsOf(list, { v: 1, sort: 'submitted', direction: 'asc' })).toEqual([
+        { path: 'payload.sort', code: 'value' },
       ]);
     });
   });

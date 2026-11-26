@@ -441,6 +441,14 @@ import {
 } from '../application/ports/offer-review';
 import { FacadeOfferReviewInputs } from './facade-offer-review-inputs';
 import {
+  OFFER_POST_REVIEW_REPOSITORY,
+  OFFER_POST_REVIEW_SAMPLER,
+  type OfferPostReviewRepository,
+  type OfferPostReviewSampler,
+} from '../application/ports/offer-post-review';
+import { PrismaOfferPostReviewRepository } from './prisma-offer-post-review.repository';
+import { HmacOfferPostReviewSampler } from './hmac-offer-post-review-sampler';
+import {
   PrismaOfferReviewQueueFacts,
   PrismaOfferReviewReferralStore,
 } from './prisma-offer-review-referral.store';
@@ -520,6 +528,7 @@ export const catalogProviders: readonly Provider[] = [
       SELLER_REVIEW_STANDING_REPOSITORY,
       CATEGORY_OFFER_REVIEW_FLAGS_STORE,
       CATEGORY_PATHS_READER,
+      OFFER_POST_REVIEW_REPOSITORY,
     ],
     useFactory: (
       settings: SettingsFacade,
@@ -528,6 +537,7 @@ export const catalogProviders: readonly Provider[] = [
       standings: SellerReviewStandingRepository,
       categoryFlags: CategoryOfferReviewFlagsStore,
       categoryPaths: CategoryPathsReader,
+      postReviews: OfferPostReviewRepository,
     ): OfferReviewInputs =>
       new FacadeOfferReviewInputs({
         settings,
@@ -536,7 +546,21 @@ export const catalogProviders: readonly Provider[] = [
         standings,
         categoryFlags,
         categoryPaths,
+        postReviews,
       }),
+  },
+  {
+    provide: OFFER_POST_REVIEW_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): OfferPostReviewRepository =>
+      new PrismaOfferPostReviewRepository(prisma),
+  },
+  {
+    // Its own HKDF label from the catalog stack secret (slice 6); the key is never logged.
+    provide: OFFER_POST_REVIEW_SAMPLER,
+    inject: [CATALOG_SECRET],
+    useFactory: (secret: Uint8Array): OfferPostReviewSampler =>
+      new HmacOfferPostReviewSampler(secret),
   },
   {
     provide: SellerReviewProbation,

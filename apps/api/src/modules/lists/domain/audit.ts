@@ -44,6 +44,7 @@ export const LISTS_AUDIT_LIST_KEYS = [
   'admin.catalog.category-proposals',
   'admin.catalog.review-queue',
   'admin.catalog.offer-changes',
+  'admin.catalog.offer-post-reviews',
   'seller.catalog.attribute-suggestions',
   'seller.catalog.topic-suggestions',
   'seller.commission-payouts.payouts',

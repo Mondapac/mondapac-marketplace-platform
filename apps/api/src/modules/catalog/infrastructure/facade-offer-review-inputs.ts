@@ -4,6 +4,7 @@ import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { SettingsFacade } from '../../settings';
 import type { CategoryOfferReviewFlagsStore } from '../application/ports/category-offer-review-flags.store';
 import type { CategoryPathsReader } from '../application/ports/category-paths.reader';
+import type { OfferPostReviewRepository } from '../application/ports/offer-post-review';
 import {
   SAFE_OFFER_REVIEW_SETTINGS,
   type OfferReviewFactsRead,
@@ -13,6 +14,7 @@ import {
 import type { SellerOfferReviewFlagsReader } from '../application/ports/seller-offer-review-flags.reader';
 import type { SellerReviewStandingRepository } from '../application/ports/seller-review-standing.repository';
 import { categoryReviewFactsOf } from '../domain/category-offer-review-flags';
+import { samplingPercentOf } from '../domain/offer-post-review';
 import {
   probationOffersOf,
   SAFE_PROBATION_OFFERS,
@@ -28,6 +30,8 @@ export interface FacadeOfferReviewInputsDependencies {
   readonly standings: SellerReviewStandingRepository;
   readonly categoryFlags: CategoryOfferReviewFlagsStore;
   readonly categoryPaths: CategoryPathsReader;
+  /** The post-publication review rows (slice 6): whether the Offer was ever taken down. */
+  readonly postReviews: OfferPostReviewRepository;
 }
 
 const FAILED = Symbol('failed');
@@ -42,8 +46,10 @@ const FAILED = Symbol('failed');
  * - the sellers facade refused, the seller is unknown or it failed: probation and full review on;
  * - the standing cannot be read: probation on;
  * - the categories cannot be read: sensitive category on;
+ * - whether the Offer was ever taken down after publication (slice 6) cannot be read: full review
+ *   on (an Offer that was taken down always gets R6 on its resubmit);
  *
- * each of the last three with `degraded`. A stop is never invented: the seller's stop counts only
+ * each of the last four with `degraded`. A stop is never invented: the seller's stop counts only
  * when the facade answered, the category stop only when the categories were read.
  */
 export class FacadeOfferReviewInputs implements OfferReviewInputs {
@@ -58,7 +64,13 @@ export class FacadeOfferReviewInputs implements OfferReviewInputs {
           : SAFE_OFFER_REVIEW_SETTINGS.mode;
       const certificateBadges =
         policy.certificateBadges === 'automatic' ? 'automatic' : ('review' as const);
-      return { mode, certificateBadges, emergencyStop: policy.emergencyStop === true };
+      return {
+        mode,
+        certificateBadges,
+        emergencyStop: policy.emergencyStop === true,
+        // Out of bounds or not a whole number: the safe 100 (slice 6).
+        samplingPercent: samplingPercentOf(policy.samplingPercent),
+      };
     } catch {
       return SAFE_OFFER_REVIEW_SETTINGS;
     }
@@ -77,17 +89,23 @@ export class FacadeOfferReviewInputs implements OfferReviewInputs {
 
   async facts(
     context: CallContext,
-    subject: { readonly sellerId: Id<'Seller'>; readonly productId: Id<'Product'> },
+    subject: {
+      readonly sellerId: Id<'Seller'>;
+      readonly productId: Id<'Product'>;
+      readonly offerId?: Id<'Offer'>;
+    },
   ): Promise<OfferReviewFactsRead> {
-    const [probationOffers, flags, standing, categories] = await Promise.all([
+    const [probationOffers, flags, standing, categories, takenDown] = await Promise.all([
       this.probationOffers(context),
       this.deps.sellerFlags.flagsOf(context, subject.sellerId).catch(() => null),
       this.#standing(context, subject.sellerId),
       this.#categories(context, subject.productId),
+      subject.offerId === undefined ? false : this.#everTakenDown(context, subject.offerId),
     ]);
     const flagsFailed = flags === null;
     const standingFailed = standing === FAILED;
     const categoriesFailed = categories === FAILED;
+    const takenDownFailed = takenDown === FAILED;
     const trust =
       flagsFailed || standingFailed
         ? null
@@ -97,9 +115,11 @@ export class FacadeOfferReviewInputs implements OfferReviewInputs {
       emergencyStop:
         flags?.reviewStop.on === true || (!categoriesFailed && categories.emergencyStop),
       probation: trust === null || trust.status === 'probation',
-      fullReview: flagsFailed || flags.fullReview.on,
+      // R6 also for an Offer that was ever taken down after publication (slice 6): its resubmit
+      // gets a full review; a failed read of that is R6 as well.
+      fullReview: flagsFailed || flags.fullReview.on || takenDown !== false,
       sensitiveCategory: categoriesFailed || categories.sensitiveCategory,
-      degraded: flagsFailed || standingFailed || categoriesFailed,
+      degraded: flagsFailed || standingFailed || categoriesFailed || takenDownFailed,
       stampTrust:
         !standingFailed &&
         standing !== null &&
@@ -109,7 +129,26 @@ export class FacadeOfferReviewInputs implements OfferReviewInputs {
         trust.source === 'count' &&
         stampsTrust(trust.count, trust.target),
       probationOffers,
+      trustedSince: trust?.trustedSince ?? null,
     };
+  }
+
+  /** Whether the Offer was ever taken down after publication; FAILED on any error. */
+  async #everTakenDown(
+    context: CallContext,
+    offerId: Id<'Offer'>,
+  ): Promise<boolean | typeof FAILED> {
+    const { market } = context;
+    try {
+      const read = await this.deps.unitOfWork.run(
+        market,
+        async () => ok(await this.deps.postReviews.everTakenDown(market, offerId)),
+        { readOnly: true },
+      );
+      return read.ok ? read.value : FAILED;
+    } catch {
+      return FAILED;
+    }
   }
 
   /** The standing and its count, null when the seller has none yet, FAILED on any error. */

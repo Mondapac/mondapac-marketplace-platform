@@ -1,6 +1,11 @@
-import type { CallContext, Id, Temporal } from '@mondapac/shared-kernel';
+import { Temporal } from '@mondapac/shared-kernel';
+import type { CallContext, Id } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
-import { SellerReviewRestartedAudit, SellerReviewTrustedAudit } from '../domain/audit';
+import {
+  SellerReviewRestartedAudit,
+  SellerReviewTrustedAudit,
+  SellerReviewTrustRevokedAudit,
+} from '../domain/audit';
 import {
   probationTarget,
   trustStatusOf,
@@ -43,7 +48,7 @@ const NOT_TRUSTED_FROM_START: TrustFlags = Object.freeze({
  *   (`offer.request-changes`). In probation only; the second in a row (seller-wide) restarts.
  * - {@link stampTrust}: the seller's submit, when N was lowered under its count.
  *
- * The misconduct revocation (`SellerReviewStanding.revokeForMisconduct`) is wired by slice 6.
+ * - {@link revokeForMisconduct}: an admin's misconduct take-down after publication (slice 6).
  */
 export class SellerReviewProbation {
   constructor(private readonly deps: SellerReviewProbationDependencies) {}
@@ -147,6 +152,36 @@ export class SellerReviewProbation {
     }
     await standings.save(market, standing);
     await this.#trusted(context, standing, count, input.probationOffers);
+  }
+
+  /**
+   * In the take-down unit, after the Offer row (lock order: Offer, then standing): Trusted is lost
+   * and a new epoch opens with the after-misconduct target, whatever the seller's status was. A
+   * seller with no standing yet gets one started, then revoked. Audited with the new epoch.
+   */
+  async revokeForMisconduct(
+    context: CallContext,
+    input: { readonly sellerId: Id<'Seller'>; readonly now: Temporal.Instant },
+  ): Promise<void> {
+    const { market } = context;
+    const { standings } = this.deps;
+    const standing = await standings.lock(market, input.sellerId, input.now);
+    // The instant is read before the lock: a concurrent misconduct take-down of the same seller
+    // may have revoked at the same or a later instant while this unit waited. Revoke just after
+    // it, never before (Hassan L2): the take-down never fails on it.
+    const last = standing.state.trustLostAt;
+    const at =
+      last !== null && Temporal.Instant.compare(input.now, last) <= 0
+        ? last.add({ milliseconds: 1 })
+        : input.now;
+    standing.revokeForMisconduct({ now: at });
+    await standings.save(market, standing);
+    await this.deps.audit.record(
+      context,
+      SellerReviewTrustRevokedAudit.entry(input.sellerId, {
+        after: { epoch: standing.state.epoch },
+      }),
+    );
   }
 
   #status(standing: SellerReviewStanding, count: number, prepared: ProbationInputs) {

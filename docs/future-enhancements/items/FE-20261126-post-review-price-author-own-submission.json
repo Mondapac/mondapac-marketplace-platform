@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261126-post-review-price-author-own-submission",
+  "area": "catalog",
+  "title": "Own-submission rule for the admin behind a price on the post-publication review",
+  "desc": "The post-publication review's own-submission rule reads only the Offer's submitted and published history. A price reason (price-no-reference and the others) comes from a price that an admin in a Login-as-Seller session may have set, and that admin could then approve the row. No session carries actingAs today, so it has no effect yet. Read the admin behind the pricing record (sourceRef) through a pricing facade and add it to the submitters set.",
+  "src": "PR review of risk-based Offer approval slice 6 (Hassan, security, L3)",
+  "date": "2026-11-26",
+  "trig": "must close before SEL-08 (Login as Seller) ships",
+  "prio": "متوسط",
+  "status": "موکول"
+}

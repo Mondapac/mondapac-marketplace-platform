@@ -139,6 +139,10 @@ describe.each([
     ['an unlisted Offer', { offer: { ...published, listed: false } }],
     ['a draft Offer', { offer: { ...published, status: 'draft' as const } }],
     [
+      'an Offer taken down after publication (changes needed, no longer listed)',
+      { offer: { ...published, status: 'changes-needed' as const, listed: false } },
+    ],
+    [
       'a proposed sell unit',
       {
         offer: {

@@ -1063,6 +1063,17 @@
     }
   },
   {
+    "type": "pricing.offer-post-review-flagged.v1",
+    "aggregateType": "price-series",
+    "fields": {
+      "offerId": "id",
+      "productId": "id",
+      "sellerId": "id",
+      "recordId": "id",
+      "reason": "enumOf(no-reference|reference-unavailable|recheck-outside)"
+    }
+  },
+  {
     "type": "pricing.price-hold-decided.v1",
     "aggregateType": "price-series",
     "fields": {

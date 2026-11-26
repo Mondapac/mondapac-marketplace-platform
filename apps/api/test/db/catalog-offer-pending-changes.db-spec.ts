@@ -591,7 +591,7 @@ describe.each(TEST_MARKETS)(
         const referral = {
           sellerId,
           trigger: 'first-publication' as const,
-          policyVersion: 3,
+          policyVersion: 4,
           decidedAt: T0,
         };
         // a was held for handling first, then for probation: only the latest decision counts.
@@ -706,7 +706,7 @@ describe.each(TEST_MARKETS)(
           offerId,
           sellerId,
           trigger: 'first-publication' as const,
-          policyVersion: 3,
+          policyVersion: 4,
           decidedAt: T0,
         };
         await unit(() =>

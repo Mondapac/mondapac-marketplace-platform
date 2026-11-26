@@ -2,6 +2,7 @@ import { auditField, defineAuditAction } from '@mondapac/shared-kernel';
 import type { ProductScope } from './product';
 import { OFFER_REVIEW_REASONS } from './offer-review-policy';
 import { OFFER_HANDLING_AUDIT_CODES } from './offer-handling';
+import { OFFER_CHANGE_REASONS } from './events';
 import {
   MAX_PROPOSED_TAG_TYPES,
   OFFER_CHANGE_FIELDS,
@@ -1059,6 +1060,11 @@ export const OfferReviewReferredAudit = defineAuditAction({
       OFFER_REVIEW_REASONS.length,
     ),
     policyVersion: auditField.integer(),
+    /**
+     * A first publication published at once: whether the keyed sample drew it for the
+     * post-publication review (slice 6). Absent on a queued Offer and on edits.
+     */
+    sampled: auditField.optional(auditField.boolean()),
   },
 });
 
@@ -1165,6 +1171,44 @@ export const SellerReviewTrustedAudit = defineAuditAction({
   targetType: CATALOG_SELLER_REVIEW_TARGET,
   actors: ['authenticated'],
   after: { epoch: auditField.integer(), count: auditField.integer(), target: auditField.integer() },
+});
+
+/**
+ * A misconduct take-down revoked the seller's Trusted (slice 6): a new epoch with the
+ * after-misconduct target, count 0.
+ */
+export const SellerReviewTrustRevokedAudit = defineAuditAction({
+  action: 'catalog.seller-review.trust-revoked',
+  targetType: CATALOG_SELLER_REVIEW_TARGET,
+  actors: ['authenticated'],
+  after: { epoch: auditField.integer() },
+});
+
+/**
+ * An admin approved an Offer on the post-publication review list (slice 6): the row is closed and
+ * the Offer stays as it is. The note is never audited.
+ */
+export const OfferPostReviewApprovedAudit = defineAuditAction({
+  action: 'catalog.offer.post-review-approved',
+  targetType: CATALOG_OFFER_TARGET,
+  actors: ['authenticated'],
+  after: { postReviewId: auditField.id() },
+});
+
+/**
+ * An admin took a published Offer down after publication (slice 6): off sale, Changes needed,
+ * with an Offer change reason code; `misconduct` revoked the seller's Trusted in the same unit.
+ * The note is never audited.
+ */
+export const OfferTakenDownAudit = defineAuditAction({
+  action: 'catalog.offer.taken-down',
+  targetType: CATALOG_OFFER_TARGET,
+  actors: ['authenticated'],
+  after: {
+    postReviewId: auditField.id(),
+    reasonCode: auditField.enumOf(OFFER_CHANGE_REASONS),
+    misconduct: auditField.boolean(),
+  },
 });
 
 /** A second Changes needed in a row restarted a seller's probation: the new epoch, count 0. */
@@ -1274,6 +1318,9 @@ export const CATALOG_AUDIT_ACTIONS = [
   OfferChangeSupersededAudit,
   SellerReviewTrustedAudit,
   SellerReviewRestartedAudit,
+  SellerReviewTrustRevokedAudit,
+  OfferPostReviewApprovedAudit,
+  OfferTakenDownAudit,
   CategoryOfferReviewChangedAudit,
   CategoryReviewStopChangedAudit,
 ] as const;

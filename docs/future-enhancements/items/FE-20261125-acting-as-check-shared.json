@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-acting-as-check-shared",
+  "area": "users",
+  "title": "یکی کردن بررسی نشست Login as Seller در ماژول sellers",
+  "desc": "تغییر پرچم‌های بازبینی فروشنده (change-offer-review-flag.ts) نسخهٔ محلی isActingAs دارد که همان معنای isActingAsSession کاتالوگ را دارد. رفتار درست است و جمعیت admin هم جلسهٔ acting-as را جدا رد می‌کند؛ فقط تکرار کد است و بهتر است یک تابع مشترک در shared-kernel باشد.",
+  "src": "بازبینی PR 1358 برش ۴ تأیید Offer (حسن، امنیت، N4)",
+  "date": "2026-11-25",
+  "trig": "همراه کار بعدی روی Login as Seller",
+  "prio": "پایین",
+  "status": "موکول"
+}

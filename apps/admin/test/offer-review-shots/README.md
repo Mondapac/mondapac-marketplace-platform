@@ -8,3 +8,7 @@ package folder at hand:
     VITE_PATH=<vite package folder> PW_PATH=<folder holding playwright> node test/offer-review-shots/run.mjs <out-dir>
 
 `ONLY=<view>` takes one view.
+
+Slice 6 (post-publication review): `ONLY=after WIDTHS=1280,768,375 SCALE=1` takes the After
+publication tab (list, All view with an approved and a taken-down row, drawer, taken-down drawer,
+take-down dialog, reason filter, bulk results). `WIDTHS` and `SCALE` default to `1280,375` and `2`.

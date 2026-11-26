@@ -21,6 +21,7 @@ import {
   RegularPriceSuperseded,
   type OfferWriteRefusalCause,
 } from '../../domain/audit';
+import { OfferPostReviewFlagged, POST_REVIEW_FLAG_VERSION } from '../../domain/events';
 import { referenceAmountMinor } from '../../domain/reference-price';
 import { priceAmount, type PriceAmount } from '../../domain/price-amount';
 import {
@@ -263,7 +264,7 @@ export class SetRegularPrice extends UseCase<
       }
       // The R4 re-check of earlier first prices with no reference.
       await recheckFirstPrices(
-        { ...this.r4Deps(), audit: this.deps.audit },
+        { ...this.r4Deps(), audit: this.deps.audit, outbox: this.deps.outbox },
         context,
         key,
         forRecheck,
@@ -539,6 +540,17 @@ export class SetRegularPrice extends UseCase<
         },
       }),
     );
+    if (postReview) {
+      // Catalog's post-publication review list hears of it through pricing's own subscriber.
+      await this.deps.outbox.append(context, [
+        OfferPostReviewFlagged.record({
+          aggregateId: record.id,
+          aggregateVersion: POST_REVIEW_FLAG_VERSION.check,
+          occurredAt: record.submittedAt,
+          payload: { offerId, productId, sellerId, recordId: record.id, reason: outcome },
+        }),
+      ]);
+    }
   }
 
   private reference(): FirstPriceReferencePorts {

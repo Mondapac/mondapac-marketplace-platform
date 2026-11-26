@@ -45,6 +45,8 @@ import {
 } from './support/catalog-tag-fakes';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
 import { InMemoryOfferPendingChanges, REVIEW_OFF } from './support/catalog-offer-edit-review-fakes';
+import { InMemoryOfferPostReviews } from './support/catalog-offer-post-review-fakes';
+import { OFFER_POST_REVIEW_REPOSITORY } from '../src/modules/catalog/application/ports/offer-post-review';
 import { createTestApp, type LogLine } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
@@ -96,6 +98,7 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
   let evaluator: FakeClaimEvaluator;
   let claimFacts: FixedFactsClaimQueryBuilder;
   let pendingChanges: InMemoryOfferPendingChanges;
+  let postReviews: InMemoryOfferPostReviews;
   let reviewSettings: OfferReviewSettings;
   let audits: { action: string }[];
   const http = () => request(app.getHttpServer());
@@ -228,6 +231,8 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
           })
           .overrideProvider(OFFER_PENDING_CHANGE_REPOSITORY)
           .useValue(pendingChanges)
+          .overrideProvider(OFFER_POST_REVIEW_REPOSITORY)
+          .useValue(postReviews)
           .overrideProvider(AUDIT_WRITER)
           .useValue({
             record: (_c: unknown, entry: { action: string }) => {
@@ -377,6 +382,7 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
     }, []);
     claimFacts = new FixedFactsClaimQueryBuilder(null);
     pendingChanges = new InMemoryOfferPendingChanges();
+    postReviews = new InMemoryOfferPostReviews();
     reviewSettings = REVIEW_OFF;
     audits = [];
   });
@@ -707,10 +713,37 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
         (response.body as { published: boolean }).published ? 'published' : 'pending-first-publish',
       );
       expect([version, submittedAt]).toEqual([3, START]);
+      // Published at once with no sampling percent in the settings: the safe 100 samples it.
+      if (status === 'published') {
+        expect(postReviews.ofOffer(OFFER).map((row) => [row.reasons, row.samplePercent])).toEqual([
+          [['sample'], 100],
+        ]);
+      }
       expect(claimChecks).toBe(1);
       expect(logLines.find((l) => l.msg === 'catalog.own-offer-submit' && l.outcome)).toMatchObject(
         { outcome: 'ok', marketId: code },
       );
+    });
+
+    it('answers a sampled and an unsampled submit byte for byte the same (Hassan L1)', async () => {
+      await boot();
+      await seeded(code);
+      const answers: { status: number; type: unknown; store: unknown; text: string }[] = [];
+      for (const samplingPercent of [100, 0]) {
+        reviewSettings = { ...REVIEW_OFF, samplingPercent };
+        offer = Offer.restore(offerState());
+        const response = await route('post', '/submit', sessionOf(code)).send();
+        answers.push({
+          status: response.status,
+          type: response.headers['content-type'],
+          store: response.headers['cache-control'],
+          text: response.text,
+        });
+      }
+      // The first was drawn (a row opened), the second not; the seller sees no difference.
+      expect(postReviews.ofOffer(OFFER).map((row) => row.reasons)).toEqual([['sample']]);
+      expect(answers[0]).toEqual(answers[1]);
+      expect(answers[0]!.text).toBe('{"published":true}');
     });
 
     it('answers 422 without handling and 409 for an Offer that is not a draft, storing nothing', async () => {

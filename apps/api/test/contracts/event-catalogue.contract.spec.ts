@@ -224,6 +224,8 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'ordering.cancel-carrier-after-refund',
       'ordering.record-carrier-progress',
       'ordering.record-delivery-anchor',
+      // Risk-based Offer approval slice 6: pricing's R4 flag reaches catalog's post-publication list.
+      'pricing.refer-offer-for-post-review',
       'pricing.retire-series-for-removed-offer',
       'pricing.retire-series-for-removed-variant',
       'promotions.cashback-on-delivery',

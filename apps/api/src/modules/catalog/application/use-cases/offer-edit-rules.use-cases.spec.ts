@@ -434,7 +434,7 @@ describe.each([
         proposedHandling: null,
         proposedTagTypes: [],
         reasons: ['contact-text'],
-        policyVersion: 3,
+        policyVersion: 4,
       });
       expect(r.referrals).toEqual([
         expect.objectContaining({
@@ -1082,14 +1082,14 @@ describe.each([
           fields: ['handling'],
           handling: 'repacked',
           reasons: ['handling'],
-          policyVersion: 3,
+          policyVersion: 4,
         },
         {
           changeId: tag.value.pendingChangeId,
           fields: ['tags'],
           handling: null,
           reasons: ['review-all'],
-          policyVersion: 3,
+          policyVersion: 4,
         },
       ]);
       const tagId = r.current().tags.find((t) => t.typeCode === typeCode)!.id;

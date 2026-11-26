@@ -385,3 +385,92 @@ settings (mode `all`).
   the category options from `catalog/categories`, as the Products list. The Edits list has saved
   filters of its own (`admin.catalog.offer-changes`: `reasons`, `age` preset, `sellerId`,
   `categoryId`, `q`); `admin.catalog.review-queue` also keeps `reasons` and `categoryId`.
+
+## Post-publication review (risk-based Offer approval slice 6)
+
+An Offer published at once can still be checked after it went live, while it sells (ADR-0051).
+Built from `/mnt/project-files/handoffs/offer-approval-6-spec.md`.
+
+- **Tables** (migration `20261126000000_catalog_offer_post_reviews`):
+  - `offer_post_reviews` holds one row per check, with `reasons` (`sample`, `price-no-reference`,
+    `price-reference-unavailable`, `price-recheck-outside`), the sample's effective percent and
+    `sample_doubled`. A row is born `open` at version 1. While open it only gains reasons (each
+    once), and the sample columns are set once. It is decided once (`approved` | `taken-down`)
+    and never deleted (guard trigger). One open row per Offer (partial unique).
+  - `offer_post_review_reasons` is insert-only and keyed on (Market, Offer, reason, source). It
+    makes every intake idempotent. The source is the pricing record id or `offer-version:N`.
+  - `offer_pending_changes.superseded_cause` gains `taken-down`.
+- **Sample at the submit.** It runs in the submit unit, after the Offer row, only for an Offer
+  published at once.
+  - The draw is HMAC-SHA-256 under an HKDF key of its own (info `catalog.offer-review-sampling`)
+    over (Market, Offer, saved version), scaled to a bucket 0..9999. It is drawn when the bucket
+    is under percent × 100.
+  - The percent comes from the Market setting `samplingPercent`. An absent or invalid percent is
+    the safe 100.
+  - The percent is doubled (at most 100) for 30 days (720 h) after the seller became Trusted.
+    This includes the submit that stamps Trusted.
+  - A sampler failure counts as drawn and logs a code only.
+  - Degraded facts already queue the Offer (safe settings), so it is never drawn.
+  - Nothing reaches the seller. The answer is still `{ published }`. The audit
+    `catalog.offer.review-referred` gains `sampled` (null when queued). `OFFER_REVIEW_POLICY_VERSION`
+    is 4.
+- **R6 on resubmit.** The review facts read `everTakenDown` for the Offer. A take-down, or a
+  failed read, sets `fullReview`; a failed read also sets `degraded`. The facts also answer
+  `trustedSince`.
+- **Price reasons** come from pricing through `CatalogFacade.referOfferForPostReview`
+  (`catalog.offer-post-review-refer`, system). The record id is the source. An unknown, deleted
+  or mismatched Offer answers `post-review.offer-gone` with nothing written. A lost race is
+  asked again three times, then `conflict.retry` makes the delivery retry.
+- **Admin routes** under `catalog/admin/offer-post-reviews`. All are no-store, and each logs
+  only its code, the Market and the correlation id.
+  - **List.** `GET` is a super list with `status` (default `open`, `all`), `reasons`,
+    `sellerId`, `categoryId`, `openedFrom`/`openedTo`, `q`, sort `opened` | `decided`, page
+    1..20 and pageSize 1..50. It answers `totalOpen` and `sellers`.
+  - **Export.** `GET export` gives CSV or XLSX, never the note.
+  - **One row.** `GET :id` adds `note` only for a caller holding `catalog.product.approve`.
+  - **Approve.** `POST :id/approve` needs `catalog.product.approve`. The note is optional. It
+    still closes a row whose Offer is not live any more.
+  - **Take down.** `POST :id/take-down` needs approve and `catalog.product.delete`, and is
+    refused in any Login-as-Seller session. The body is `version`, `reasonCode`, `misconduct`
+    and a required `note`.
+    - The Offer goes `changes-needed`, unlisted, with `catalog.offer-changes-requested.v1` and
+      `catalog.offer-listing-changed.v1`.
+    - Its held edit is superseded (`taken-down`).
+    - `misconduct` revokes Trusted. A seller with no standing gets one started.
+    - The audit `catalog.offer.taken-down` holds codes only.
+  - **Bulk approve.** `POST bulk-approve` takes 1..50 rows, uses the shared bulk kit (`done`,
+    `skipped`, `failed`) and adds the product `name`.
+  - **Own submission.** An admin behind one of the Offer's submits (Offer history, actor or
+    acting admin) is refused with `post-review.own-submission` (403). The submit now records
+    `acting_admin_account_id`.
+- **Saved filters:** `admin.catalog.offer-post-reviews` (`status`, `reasons`, `age` preset,
+  `sellerId`, `categoryId`, `q`).
+- **Audit actions:** `catalog.offer.post-review-approved`, `catalog.offer.taken-down`,
+  `catalog.seller-review.trust-revoked`. The note is never audited or logged.
+- **Indexes and guards (review fixes).**
+  - The list has `(market, opened_at, id)`, `(market, seller, opened_at, id)` and
+    `(market, status, seller)`. The decided sort uses a partial index on
+    `(market, status, decided_at, opened_at, id) WHERE status <> 'open'`, so `nulls last` is
+    sent only when no status filter is set.
+  - A CHECK ties the source to the reason: `sample` takes `offer-version:N`, a price reason a
+    record id.
+  - The reasons guard accepts a row only for an open review of the same Offer that carries
+    that reason.
+  - `product_id` is not bound to the Offer's product by a key. An Offer's product can change
+    (offer-moved), so the row keeps the product at the time it opened.
+- **Approve and bulk approve** refuse any Login-as-Seller session (`access.denied`), as the
+  take-down does. The bulk name read is one query.
+- **Misconduct revocation** stamps the instant after the standing lock. If a racing take-down
+  already stamped a later or equal `trustLostAt`, it uses that plus 1 ms, so the second
+  take-down never fails.
+- **Sample timing (Hassan L1).** The sample stays in the submit unit; a sampled and an
+  unsampled submit answer byte for byte the same (e2e). The residual risk: the sample write
+  adds a few queries, and its rare failure (guard window, three lost races) fails the whole
+  submit. A seller could, with statistics, tell a sampled submit by its time or by a retry.
+  Moving the open to a catalog outbox event would remove this; it is not done now.
+- **Carry (Hassan L3).** The own-submission rule reads only the Offer's submit history, not
+  the admin behind a pricing record. With SEL-08 an admin acting as the seller could set a
+  price and approve its price row. It must close before SEL-08:
+  FE-20261126-post-review-price-author-own-submission.
+- **Deferred:** the price and median column on the list (catalog stores codes only; pricing's
+  read would need a facade for it), FE-20261125-post-review-price-column.
