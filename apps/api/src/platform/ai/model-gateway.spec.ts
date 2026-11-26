@@ -35,6 +35,7 @@ const configOf = (models: AppConfig['assistantModels']) =>
 const AU_ONLY = configOf({
   apiKeys: { AU: KEY },
   bedrockApiKeys: { AU: BEDROCK_KEY },
+  inHouseApiKeys: {},
   removedVariables: [],
 });
 const gatewayOf = (provider: ModelProvider, config = AU_ONLY) => new ModelGateway(config, provider);
@@ -86,6 +87,7 @@ describe('ModelGateway (ADR-0019 R7, R8; ADR-0052)', () => {
       configOf({
         apiKeys: { AU: KEY },
         bedrockApiKeys: {},
+        inHouseApiKeys: {},
         removedVariables: ['ASSISTANT_MODEL_FAST', 'ASSISTANT_MODEL_BALANCED'],
       }),
     );
@@ -118,12 +120,19 @@ describe('ModelGateway (ADR-0019 R7, R8; ADR-0052)', () => {
     });
     await gateway.complete(AU, FAST_BEDROCK, REQUEST, 1000);
     expect(provider.calls).toEqual([
-      { apiKey: KEY, model: 'model-fast', route: 'anthropic-api', region: 'ap-southeast-2' },
+      {
+        apiKey: KEY,
+        model: 'model-fast',
+        route: 'anthropic-api',
+        region: 'ap-southeast-2',
+        endpoint: null,
+      },
       {
         apiKey: BEDROCK_KEY,
         model: 'anthropic.model-fast',
         route: 'bedrock-mantle',
         region: 'ap-southeast-2',
+        endpoint: null,
       },
     ]);
   });
@@ -181,7 +190,7 @@ describe('AnthropicMessagesProvider', () => {
       usage: { input_tokens: 5, cache_read_input_tokens: 100, output_tokens: 3 },
     });
     const turn = await provider.call(
-      { apiKey: KEY, model: 'model-fast', route: 'anthropic-api', region: null },
+      { apiKey: KEY, model: 'model-fast', route: 'anthropic-api', region: null, endpoint: null },
       REQUEST,
       signal,
     );
@@ -216,7 +225,7 @@ describe('AnthropicMessagesProvider', () => {
       usage: { input_tokens: 1, output_tokens: 1 },
     });
     const turn = await provider.call(
-      { apiKey: KEY, model: 'm', route: 'anthropic-api', region: null },
+      { apiKey: KEY, model: 'm', route: 'anthropic-api', region: null, endpoint: null },
       {
         ...REQUEST,
         messages: [
@@ -260,7 +269,11 @@ describe('AnthropicMessagesProvider', () => {
     async (status, kind) => {
       const { provider } = answering(status, { error: { message: `invalid x-api-key ${KEY}` } });
       const failure = await provider
-        .call({ apiKey: KEY, model: 'm', route: 'anthropic-api', region: null }, REQUEST, signal)
+        .call(
+          { apiKey: KEY, model: 'm', route: 'anthropic-api', region: null, endpoint: null },
+          REQUEST,
+          signal,
+        )
         .catch((e: Error) => e);
       expect(failure).toBeInstanceOf(ModelProviderError);
       expect((failure as ModelProviderError).kind).toBe(kind);
@@ -275,7 +288,7 @@ describe('AnthropicMessagesProvider', () => {
       usage: { input_tokens: 5, output_tokens: 3 },
     });
     await provider.call(
-      { apiKey: KEY, model: 'm', route: 'anthropic-api', region: null },
+      { apiKey: KEY, model: 'm', route: 'anthropic-api', region: null, endpoint: null },
       REQUEST,
       signal,
     );
@@ -285,7 +298,11 @@ describe('AnthropicMessagesProvider', () => {
   it('throws network when the request does not reach the provider', async () => {
     const provider = new AnthropicMessagesProvider(() => Promise.reject(new Error('ECONNRESET')));
     const failure = await provider
-      .call({ apiKey: KEY, model: 'm', route: 'anthropic-api', region: null }, REQUEST, signal)
+      .call(
+        { apiKey: KEY, model: 'm', route: 'anthropic-api', region: null, endpoint: null },
+        REQUEST,
+        signal,
+      )
       .catch((e: Error) => e);
     expect((failure as ModelProviderError).kind).toBe('network');
   });
@@ -302,6 +319,7 @@ describe('AnthropicMessagesProvider', () => {
         model: 'anthropic.model-fast',
         route: 'bedrock-mantle',
         region: 'ap-southeast-2',
+        endpoint: null,
       },
       REQUEST,
       signal,
@@ -323,7 +341,11 @@ describe('AnthropicMessagesProvider', () => {
     async (region) => {
       const { sent, provider } = answering(200, {});
       const failure = await provider
-        .call({ apiKey: BEDROCK_KEY, model: 'm', route: 'bedrock-mantle', region }, REQUEST, signal)
+        .call(
+          { apiKey: BEDROCK_KEY, model: 'm', route: 'bedrock-mantle', region, endpoint: null },
+          REQUEST,
+          signal,
+        )
         .catch((e: Error) => e);
       expect((failure as ModelProviderError).kind).toBe('client');
       expect(sent).toEqual([]);
@@ -333,7 +355,11 @@ describe('AnthropicMessagesProvider', () => {
   it('refuses an unknown route, reaching no host', async () => {
     const { sent, provider } = answering(200, {});
     await expect(
-      provider.call({ apiKey: KEY, model: 'm', route: 'elsewhere', region: null }, REQUEST, signal),
+      provider.call(
+        { apiKey: KEY, model: 'm', route: 'elsewhere', region: null, endpoint: null },
+        REQUEST,
+        signal,
+      ),
     ).rejects.toBeInstanceOf(ModelProviderError);
     expect(sent).toEqual([]);
   });
@@ -341,13 +367,13 @@ describe('AnthropicMessagesProvider', () => {
   it('throws on an answer without content, and maps an unknown stop to other', async () => {
     await expect(
       answering(200, { stop_reason: 'end_turn' }).provider.call(
-        { apiKey: KEY, model: 'm', route: 'anthropic-api', region: null },
+        { apiKey: KEY, model: 'm', route: 'anthropic-api', region: null, endpoint: null },
         REQUEST,
         signal,
       ),
     ).rejects.toBeInstanceOf(ModelProviderError);
     const odd = await answering(200, { content: [], stop_reason: 'pause_turn' }).provider.call(
-      { apiKey: KEY, model: 'm', route: 'anthropic-api', region: null },
+      { apiKey: KEY, model: 'm', route: 'anthropic-api', region: null, endpoint: null },
       REQUEST,
       signal,
     );

@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261126-ai-gateway-in-house-mtls",
+  "area": "assistant",
+  "title": "درگاه AI: احراز هویت mTLS برای مدل اختصاصی",
+  "desc": "قرارداد mondapac-model/1 (G6a) فعلاً با کلید سروری Bearer برای هر بازار احراز هویت می‌کند (AI_IN_HOUSE_API_KEY). تصمیم ۶ ADR-0052 گزینهٔ mTLS را هم مجاز می‌داند: گواهی کلاینت در secret store، اعتبارسنجی گواهی سرور شریک، و چرخش گواهی. نیاز به بازبینی حسن و کاظم.",
+  "src": "docs/design/domain/platform-ai-in-house-contract-v1.md",
+  "date": "2026-11-26",
+  "trig": "پیش از اولین ارسال دادهٔ واقعی مشتری به مدل اختصاصی، یا اگر تیم شریک mTLS بخواهد",
+  "prio": "متوسط",
+  "status": "موکول"
+}

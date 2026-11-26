@@ -355,6 +355,19 @@ ADR-0026 decision 9 and ADR-0042 decision 7, so ADR-0053 supersedes those points
   ADR-0052 decision 3 and that version passed its evaluation; the same holds for "roll back to the
   previous version". The endpoint address changes only by PR. Customer data reaches shadow only
   once the owner's written approval is recorded in ADR-0052.
+- **Built in G6a (contract and adapter, no stage yet).** The in-house model is the route kind
+  `in-house-http` of provider `mondapac`, called through the HTTP contract `mondapac-model/1`
+  (`platform-ai-in-house-contract-v1.md`, the document shared with the partner team): our own
+  message format, the exact model version id echoed in the answer (another version or contract
+  counts as the route being down), token counts required, a 1 MiB answer cap, only tools the
+  request offered, redirects never followed. The endpoint is the catalogue row's `endpoint` (an
+  `https://` DNS host, no port, user, query or fragment; by PR only, `catalogue/in-house.ts`, empty
+  for now) and the key is `AI_IN_HOUSE_API_KEY` per Market, sent as a bearer token (mTLS:
+  FE-20261126-ai-gateway-in-house-mtls). A family belongs to one provider; a `mondapac` family is
+  never an External models choice, never in its scorecard, and the router skips it in an external
+  list or as the saver model even when a stale or restored value names it: only the in-house stages
+  (G6b to G6e) will route to it. Each route kind has its adapter behind one `ModelProvider`
+  (`route-providers.ts`). No migration: `ai_calls.provider` already takes any provider id.
 
 **AI Gateway page.** Tabs Overview (today's and this month's cost against the caps, requests,
 errors, latency and fallbacks per capability), Limits (caps, guest share, alert and saver

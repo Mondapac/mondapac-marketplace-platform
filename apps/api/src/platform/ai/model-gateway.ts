@@ -32,8 +32,9 @@ export type ModelCall =
  * (ADR-0052) with that route's server key for the Market; the key never leaves this class: callers
  * learn only whether a Market has one. Which row to call is the router's choice (`routing/`).
  *
- * `ASSISTANT_MODEL_API_KEY` is the key of the `anthropic-api` route and `AI_BEDROCK_API_KEY` that
- * of the `bedrock-mantle` route, per Market. Which models a task type uses is the Market's priority
+ * `ASSISTANT_MODEL_API_KEY` is the key of the `anthropic-api` route, `AI_BEDROCK_API_KEY` that
+ * of the `bedrock-mantle` route and `AI_IN_HOUSE_API_KEY` that of the in-house model's
+ * `in-house-http` route (G6a), per Market. Which models a task type uses is the Market's priority
  * list in settings (G4b), never configuration: the model tiers and their variables
  * (`ASSISTANT_MODEL_FAST`, `_BALANCED`) are gone since G4d1; one still set is logged once as
  * `ai.config.removed` (its name, never its value) and ignored. Prices come from the catalogue only.
@@ -98,7 +99,13 @@ export class ModelGateway {
   ): Promise<ModelCall> {
     const apiKey = this.#keyOf(marketId, row.route);
     if (this.#killed || apiKey === null) return { ok: false, failure: 'not-configured' };
-    const credentials = { apiKey, model: row.model, route: row.route, region: row.region };
+    const credentials = {
+      apiKey,
+      model: row.model,
+      route: row.route,
+      region: row.region,
+      endpoint: row.endpoint ?? null,
+    };
     const abort = new AbortController();
     let timer: NodeJS.Timeout | undefined;
     // The cut does not rely on the provider honouring the signal.
@@ -130,7 +137,12 @@ export class ModelGateway {
   }
 
   #keyOf(marketId: MarketId, route: RouteKind): string | null {
-    const keys = route === 'anthropic-api' ? this.#config.apiKeys : this.#config.bedrockApiKeys;
+    const keys =
+      route === 'anthropic-api'
+        ? this.#config.apiKeys
+        : route === 'bedrock-mantle'
+          ? this.#config.bedrockApiKeys
+          : this.#config.inHouseApiKeys;
     return Object.hasOwn(keys, marketId) ? keys[marketId]! : null;
   }
 }

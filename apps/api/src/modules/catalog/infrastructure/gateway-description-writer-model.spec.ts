@@ -41,6 +41,7 @@ const configOf = () =>
     assistantModels: {
       apiKeys: { AU: 'sk-test-canary-key-0001', ZZ: 'sk-test-canary-key-0002' },
       bedrockApiKeys: {},
+      inHouseApiKeys: {},
       removedVariables: [],
     },
   }) as unknown as AppConfig;

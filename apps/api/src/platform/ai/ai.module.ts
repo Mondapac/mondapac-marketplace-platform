@@ -9,6 +9,8 @@ import { UNIT_OF_WORK, type UnitOfWork } from '../unit-of-work/unit-of-work';
 import { AiGateway } from './ai-gateway';
 import { AnthropicMessagesProvider } from './anthropic-messages.provider';
 import { CapabilityRegistry } from './capability-registry';
+import { InHouseHttpProvider } from './in-house-http.provider';
+import { RouteProviders } from './route-providers';
 import { checkedInCatalogue } from './catalogue';
 import { AI_ROUTE_CATALOGUE, type RouteCatalogue } from './catalogue/route-catalogue';
 import { AI_EVALUATION_RESULTS, EvaluationResults } from './evaluations/evaluation-results';
@@ -61,7 +63,17 @@ export class AiModule {
       global: true,
       imports: [sellerAiSwitchProvider, gatewayControlsProvider],
       providers: [
-        { provide: MODEL_PROVIDER, useValue: new AnthropicMessagesProvider() },
+        {
+          provide: MODEL_PROVIDER,
+          useFactory: () => {
+            const messages = new AnthropicMessagesProvider();
+            return new RouteProviders({
+              'anthropic-api': messages,
+              'bedrock-mantle': messages,
+              'in-house-http': new InHouseHttpProvider(),
+            });
+          },
+        },
         { provide: AI_ROUTE_CATALOGUE, useFactory: () => checkedInCatalogue() },
         {
           provide: AI_EVALUATION_RESULTS,

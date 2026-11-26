@@ -1,8 +1,8 @@
-import { testRoute } from '../../../../test/support/ai-routes';
+import { testInHouseRoute, testRoute } from '../../../../test/support/ai-routes';
 import { EvaluationResults } from '../evaluations/evaluation-results';
 import { EVALUATION_PASSES } from '../evaluations/results';
 import { checkedInCatalogue } from '.';
-import { priceOf, RouteCatalogue } from './route-catalogue';
+import { inHouseEndpointProblem, priceOf, RouteCatalogue } from './route-catalogue';
 
 describe('the AI route catalogue (ADR-0052 decision 2)', () => {
   it('loads the checked-in rows, each valid and listed once', () => {
@@ -122,5 +122,71 @@ describe('the AI route catalogue (ADR-0052 decision 2)', () => {
           },
         ]),
     ).toThrow(/needs a day and a reference/);
+  });
+
+  describe('the in-house model rows (ADR-0052 decision 6, G6a)', () => {
+    it('checks in no in-house row yet: the partner endpoint is added by PR', () => {
+      expect(
+        checkedInCatalogue()
+          .rows()
+          .filter((row) => row.provider === 'mondapac' || row.route === 'in-house-http'),
+      ).toEqual([]);
+    });
+
+    it('takes an in-house row with its endpoint and keeps it out of the external families', () => {
+      const catalogue = new RouteCatalogue([testRoute('m'), testInHouseRoute('mi')]);
+      expect(catalogue.families()).toEqual(['m', 'mi']);
+      expect(catalogue.externalFamilies()).toEqual(['m']);
+      expect(catalogue.isInHouse('mi')).toBe(true);
+      expect(catalogue.isInHouse('m')).toBe(false);
+      expect(catalogue.routesOf('mi')[0]!.endpoint).toBe('https://intelligence.example.com/model');
+    });
+
+    it.each([
+      ['no endpoint', { endpoint: undefined }],
+      ['an external provider', { provider: 'anthropic' }],
+      ['an http endpoint', { endpoint: 'http://intelligence.example.com' }],
+    ] as const)('refuses an in-house row with %s', (_name, overrides) => {
+      expect(() => new RouteCatalogue([testInHouseRoute('mi', overrides as never)])).toThrow(
+        /AI route catalogue/,
+      );
+    });
+
+    it('refuses the mondapac provider or an endpoint on an external route', () => {
+      expect(
+        () => new RouteCatalogue([testRoute('m', 'anthropic-api', { provider: 'mondapac' })]),
+      ).toThrow(/in-house route serves the mondapac provider only/);
+      expect(
+        () =>
+          new RouteCatalogue([
+            testRoute('m', 'anthropic-api', { endpoint: 'https://intelligence.example.com' }),
+          ]),
+      ).toThrow(/only an in-house row names an endpoint/);
+    });
+
+    it('refuses a family served by two providers', () => {
+      expect(() => new RouteCatalogue([testRoute('m'), testInHouseRoute('m')])).toThrow(
+        /has two providers/,
+      );
+    });
+
+    it.each([
+      ['https://intelligence.example.com', null],
+      ['https://intelligence.example.com/', null],
+      ['https://ap-southeast-2.intelligence.example.com.au/model/v-a_1', null],
+      ['not a url', 'not a URL'],
+      ['http://intelligence.example.com', 'not https'],
+      ['https://user@intelligence.example.com', 'carries a user'],
+      ['https://intelligence.example.com:8443', 'carries a port'],
+      ['https://intelligence.example.com/?a=1', 'carries a query or fragment'],
+      ['https://intelligence.example.com/#x', 'carries a query or fragment'],
+      ['https://10.0.0.5', 'the host is not a DNS name'],
+      ['https://[::1]', 'the host is not a DNS name'],
+      ['https://localhost', 'the host is not a DNS name'],
+      ['https://intelligence.example.com/a%2f..', 'the path has other than plain segments'],
+      [`https://intelligence.example.com/${'a'.repeat(200)}`, 'longer than 200 characters'],
+    ])('checks the endpoint %s', (endpoint, problem) => {
+      expect(inHouseEndpointProblem(endpoint)).toBe(problem);
+    });
   });
 });

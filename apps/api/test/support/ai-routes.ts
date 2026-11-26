@@ -84,3 +84,22 @@ export function testRouter(
 ): AiRouter {
   return new AiRouter(catalogue, evaluations, models, markets, clock);
 }
+
+/** A usable in-house test row (G6a): the `mondapac` provider on `in-house-http`, in Sydney. */
+export function testInHouseRoute(family: string, overrides: Partial<RouteRow> = {}): RouteRow {
+  const model = `${family}-v1`;
+  return {
+    id: `in-house-http/${model}`,
+    provider: 'mondapac',
+    route: 'in-house-http',
+    family,
+    model,
+    region: 'ap-southeast-2',
+    dataTerms: TEST_DATA_TERMS,
+    inputUsdPerMTok: 0.2,
+    outputUsdPerMTok: 1,
+    retiresOn: null,
+    endpoint: 'https://intelligence.example.com/model',
+    ...overrides,
+  };
+}
