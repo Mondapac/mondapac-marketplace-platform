@@ -116,6 +116,20 @@ class MemoryRateCounters {
   purgeStartedBefore(): Promise<number> {
     return Promise.resolve(0);
   }
+  failOpen = false;
+  isOpen(
+    _m: MarketContext,
+    { limit, keyHash }: RateCounter,
+    now: Temporal.Instant,
+  ): Promise<boolean> {
+    if (this.failOpen) return Promise.reject(new Error('counters down'));
+    const held = this.counts.get(`${limit.kind}:${Buffer.from(keyHash).toString('hex')}`);
+    return Promise.resolve(
+      held !== undefined &&
+        held.count > 0 &&
+        Temporal.Instant.compare(held.startedAt.add({ minutes: limit.windowMinutes }), now) > 0,
+    );
+  }
 }
 
 /** An object whose named methods record the call and throw. */
@@ -573,6 +587,75 @@ describe('seller submit preview over HTTP (integration, slice 7b)', () => {
         '{"outcome":"review","reasons":["handling","held-for-review"]}',
       );
       expect(writes()).toEqual(NOTHING);
+    });
+
+    it('marks a contact-text preview, so the next instant publish is checked after it (security M1)', async () => {
+      const marks = () =>
+        [...counters.counts.keys()].filter((k) => k.startsWith('submit-preview-contact.')).length;
+      // A clean preview marks nothing, and its instant publish has no preview reason.
+      reviewSettings = { ...RISK_BASED, samplingPercent: 0 };
+      offer = Offer.restore(offerState(code));
+      expect((await preview(code)).body).toEqual({ outcome: 'publish', reasons: [] });
+      expect(marks()).toBe(0);
+
+      // The preview tells contact-text and marks the seller; its answer is unchanged.
+      offer = Offer.restore(
+        offerState(code, { description: { 'en-AU': 'Fresh dates, call 0412 345 678' } }),
+      );
+      expect((await preview(code)).text).toBe('{"outcome":"review","reasons":["contact-text"]}');
+      expect(marks()).toBe(1);
+      expect(writes()).toEqual(NOTHING);
+
+      // The seller edits the text away and submits: published at once, with the same answer as an
+      // unmarked seller, and a post-publication review that says why.
+      clock.advance(Temporal.Duration.from({ hours: 24 * 29 }));
+      session = sessionOf(code);
+      offer = Offer.restore(offerState(code));
+      const published = await post(code, '/submit');
+      expect(published.status).toBe(200);
+      expect((published.body as { published: boolean }).published).toBe(true);
+      const rows = [...postReviews.rows.values()];
+      expect(rows.map((row) => row.reasons)).toEqual([['preview-contact-text']]);
+      expect(published.text).not.toMatch(/preview|contact|review/i);
+    });
+
+    it('lets the mark lapse after 30 days, and counts an unreadable mark as set (fail closed)', async () => {
+      reviewSettings = { ...RISK_BASED, samplingPercent: 0 };
+      offer = Offer.restore(
+        offerState(code, { description: { 'en-AU': 'Message me at seller@example.com' } }),
+      );
+      expect((await preview(code)).body).toEqual({ outcome: 'review', reasons: ['contact-text'] });
+      clock.advance(Temporal.Duration.from({ hours: 24 * 30 }));
+      session = sessionOf(code);
+      offer = Offer.restore(offerState(code));
+      expect((await post(code, '/submit')).status).toBe(200);
+      expect(postReviews.rows.size).toBe(0);
+
+      // A store that cannot say: the Offer is still published, and checked after.
+      counters.failOpen = true;
+      offer = Offer.restore(offerState(code));
+      const unread = await post(code, '/submit');
+      expect([unread.status, (unread.body as { published: boolean }).published]).toEqual([
+        200,
+        true,
+      ]);
+      expect([...postReviews.rows.values()].map((row) => row.reasons)).toEqual([
+        ['preview-contact-text'],
+      ]);
+    });
+
+    it('answers 503 for a contact-text preview whose mark cannot be written, never the bare reason', async () => {
+      offer = Offer.restore(offerState(code, { description: { 'en-AU': 'call 0412 345 678' } }));
+      const reserve = counters.reserve.bind(counters);
+      counters.reserve = (m, list, now) =>
+        list.some((c) => c.limit.kind === 'submit-preview-contact.seller.month')
+          ? Promise.reject(new Error('down'))
+          : reserve(m, list, now);
+      const answer = await preview(code);
+      expect([answer.status, answer.body]).toEqual([
+        503,
+        { statusCode: 503, code: 'access.unavailable' },
+      ]);
     });
 
     it('gives the same answer as the real submit, whose reasons it is (parity)', async () => {

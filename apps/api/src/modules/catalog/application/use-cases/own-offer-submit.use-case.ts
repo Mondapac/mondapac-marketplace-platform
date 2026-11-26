@@ -28,6 +28,9 @@ import {
   SAFE_SAMPLING_PERCENT,
 } from '../../domain/offer-post-review';
 import type { OfferPostReviewRepository, OfferPostReviewSampler } from '../ports/offer-post-review';
+import type { RateCounterKeys } from '../ports/rate-counter-keys';
+import type { RateCounterWindows } from '../ports/rate-counter-windows';
+import { PREVIEW_CONTACT_MARK } from '../../domain/rate-limits';
 import { receivePostReviewReason, sampleSourceRef } from '../offer-post-review/post-review-intake';
 import type { OfferRepository } from '../ports/offer.repository';
 import type { ProductRepository } from '../ports/product.repository';
@@ -108,6 +111,9 @@ export interface OwnOfferSubmitDependencies {
   readonly sampler: OfferPostReviewSampler;
   /** The post-publication review rows (slice 6), written in the submit unit. */
   readonly postReviews: OfferPostReviewRepository;
+  /** Whether the seller's submit preview found contact text lately (slice 7b), read before the unit. */
+  readonly counterWindows: RateCounterWindows;
+  readonly counterKeys: RateCounterKeys;
 }
 
 /**
@@ -336,6 +342,7 @@ export class OwnOfferSubmit extends UseCase<
       badgeTypes,
       description,
     });
+    const previewedContact = await this.#previewedContact(context, sellerId);
 
     try {
       const written = await deps.unitOfWork.run<
@@ -404,6 +411,19 @@ export class OwnOfferSubmit extends UseCase<
               now,
             })
           : null;
+        // The seller's preview found contact text in the last 30 days and this Offer goes live at
+        // once: a reviewer looks after publication (security M1 of PR 1376). Neither the submit's
+        // answer nor the preview's changes, so the seller is not told.
+        if (submitted.value.published && previewedContact) {
+          await receivePostReviewReason(this.deps, market, {
+            offerId,
+            sellerId,
+            productId: offer.state.productId,
+            reason: 'preview-contact-text',
+            sourceRef: sampleSourceRef(offer.state.version),
+            now,
+          });
+        }
         await deps.referrals.record(market, {
           offerId,
           sellerId,
@@ -443,6 +463,35 @@ export class OwnOfferSubmit extends UseCase<
    * cannot be made counts as drawn (fail closed). Answers whether the Offer was drawn; nothing of
    * it reaches the seller.
    */
+  /**
+   * Before the unit: whether the seller's {@link PREVIEW_CONTACT_MARK} window is open. A read that
+   * fails counts as open (fail closed: one more post-publication review, never one less).
+   */
+  async #previewedContact(context: CallContext, sellerId: Id<'Seller'>): Promise<boolean> {
+    const { market } = context;
+    try {
+      const counter = {
+        limit: PREVIEW_CONTACT_MARK,
+        keyHash: this.deps.counterKeys.keyOf(market, PREVIEW_CONTACT_MARK.kind, sellerId),
+      };
+      const now = this.deps.clock.now();
+      const read = await this.deps.unitOfWork.run(
+        market,
+        async () => ok(await this.deps.counterWindows.isOpen(market, counter, now)),
+        { readOnly: true },
+      );
+      if (read.ok) return read.value;
+    } catch {
+      // Logged below, a code only.
+    }
+    this.#logger.warn({
+      msg: 'catalog.own-offer-submit.preview-mark-unreadable',
+      marketId: market.marketId,
+      correlationId: context.correlationId,
+    });
+    return true;
+  }
+
   async #sample(
     context: CallContext,
     offer: Offer,

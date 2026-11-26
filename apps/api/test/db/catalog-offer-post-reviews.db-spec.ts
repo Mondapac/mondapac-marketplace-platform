@@ -142,7 +142,7 @@ describe.each(TEST_MARKETS)(
     const opened = (
       offerId: Id<'Offer'>,
       productId: Id<'Product'>,
-      reason: 'sample' | 'price-no-reference' = 'price-no-reference',
+      reason: 'sample' | 'price-no-reference' | 'preview-contact-text' = 'price-no-reference',
     ) => {
       const made = OfferPostReview.open({
         id: uuid7() as Id<'OfferPostReview'>,
@@ -409,6 +409,14 @@ describe.each(TEST_MARKETS)(
         'offer_post_review_reasons_source_kind_check',
       );
       expect(await receive(sample, 'sample', uuid7())).toBe(
+        'offer_post_review_reasons_source_kind_check',
+      );
+      // The preview's contact-text mark is keyed like a sample, on the Offer version (slice 7b).
+      const marked = await liveOffer();
+      const mark = opened(marked.offerId, marked.productId, 'preview-contact-text');
+      await unit(() => reviews.insert(market, mark));
+      expect(await receive(mark, 'preview-contact-text', 'offer-version:2')).toBeNull();
+      expect(await receive(mark, 'preview-contact-text', uuid7())).toBe(
         'offer_post_review_reasons_source_kind_check',
       );
       // Only onto the open row of that Offer that carries the reason (Mojtaba L3).

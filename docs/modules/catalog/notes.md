@@ -515,7 +515,19 @@ Built from `/mnt/project-files/handoffs/offer-approval-7b-preview-handoff.md` (d
   the submit's, in its order (byte-identical `offer.not-found`, `offer.not-submittable`,
   `offer.handling-missing`, `offer.product-not-published`, `type.not-allowed`, `tag.type-unknown`).
 - **Writes nothing.** The use case has no referral store, audit, outbox, sampler, post-review,
-  probation or Offer save among its dependencies. The only write is the seller's preview counters.
+  probation or Offer save among its dependencies. The only writes are the seller's preview counters
+  and the contact-text mark below.
+- **Contact-text mark (security M1 of PR 1376).** The preview tells `contact-text`, so a seller
+  could edit a description until the filter stops matching, unseen. A preview that answers
+  `contact-text` counts `submit-preview-contact.seller.month` on the seller (30-day fixed window from
+  the first such preview; never refused; the 48-hour purge skips it). The submit reads the window
+  (`RateCounterWindows.isOpen`) before its unit; an Offer it publishes at once while the window is
+  open gets the post-publication reason `preview-contact-text` (keyed `offer-version:N`, like a
+  sample). Neither answer changes, so the seller is not told. A mark that cannot be written makes the
+  preview 503; a mark that cannot be read counts as set. Keyed on the seller, not the Offer, so a
+  throwaway draft cannot carry the probe. Migration
+  `20261126050000_catalog_preview_contact_mark` widens the kind CHECK and the post-review reason
+  CHECKs; the admin list shows "Contact details seen in a recent preview".
 - **Budget.** `submit-preview.seller.minute` 10 and `submit-preview.seller.day` 200, keyed on the
   seller (every account shares them), taken before the Offer is read
   (migration `20261126040000_catalog_submit_preview_rate_counters` widens the kind CHECK). 429 with
@@ -543,5 +555,5 @@ Built from `/mnt/project-files/handoffs/offer-approval-7b-preview-handoff.md` (d
   couldn't check this offer right now. You can still submit it."
 - **Deferred:** the preview for watched edits of a live Offer
   (FE-20261126-offer-preview-watched-edits), the claim-text and badge checks in the preview
-  (FE-20261126-offer-preview-claim-checks), and watching for R7 probing through previews
-  (FE-20261126-offer-preview-r7-inference). R4 probing stays FE-20261125-r4-median-probing.
+  (FE-20261126-offer-preview-claim-checks), and watching for R7 or a category emergency stop being
+  inferred through previews (FE-20261126-offer-preview-r7-inference). R4 probing stays FE-20261125-r4-median-probing.

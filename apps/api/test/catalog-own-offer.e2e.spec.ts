@@ -1,4 +1,5 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import { RATE_COUNTER_WINDOWS } from '../src/modules/catalog/application/ports/rate-counter-windows';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
@@ -231,6 +232,9 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
           })
           .overrideProvider(OFFER_PENDING_CHANGE_REPOSITORY)
           .useValue(pendingChanges)
+          // No preview ran here, so the seller carries no contact-text mark (slice 7b).
+          .overrideProvider(RATE_COUNTER_WINDOWS)
+          .useValue({ isOpen: () => Promise.resolve(false) })
           .overrideProvider(OFFER_POST_REVIEW_REPOSITORY)
           .useValue(postReviews)
           .overrideProvider(AUDIT_WRITER)

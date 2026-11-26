@@ -39,6 +39,7 @@ import {
   type CatalogMarketPolicy,
 } from '../application/ports/catalog-market-policy';
 import { RATE_COUNTER_KEYS, type RateCounterKeys } from '../application/ports/rate-counter-keys';
+import { RATE_COUNTER_WINDOWS } from '../application/ports/rate-counter-windows';
 import {
   PRODUCT_REVISION_REPOSITORY,
   type ProductRevisionRepository,
@@ -1130,6 +1131,8 @@ export const catalogProviders: readonly Provider[] = [
     useFactory: (prisma: PrismaService): RateCounterRepository =>
       new PrismaRateCounterRepository(prisma),
   },
+  // The same store, read only (the preview's contact-text mark, slice 7b).
+  { provide: RATE_COUNTER_WINDOWS, useExisting: RATE_COUNTER_REPOSITORY },
   {
     // The local stand-in of the catalog stack secret refuses production (K1).
     provide: CATALOG_SECRET,

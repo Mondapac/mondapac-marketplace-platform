@@ -8,12 +8,14 @@ export const API_POST_REVIEWS = 'catalog/admin/offer-post-reviews';
 export const POST_APPROVE_PERMISSION = 'catalog.product.approve';
 export const TAKE_DOWN_PERMISSIONS = ['catalog.product.approve', 'catalog.product.delete'] as const;
 
-/** Why a published Offer is in the list (`reasons` of a row; the API's CHECK of four codes). */
+/** Why a published Offer is in the list (`reasons` of a row; the API's CHECK of five codes). */
 export const POST_REVIEW_REASONS = [
   'sample',
   'price-no-reference',
   'price-reference-unavailable',
   'price-recheck-outside',
+  // The seller's submit preview found contact text in the last 30 days (slice 7b).
+  'preview-contact-text',
 ] as const;
 export type PostReviewReason = (typeof POST_REVIEW_REASONS)[number];
 const KNOWN: ReadonlySet<string> = new Set(POST_REVIEW_REASONS);

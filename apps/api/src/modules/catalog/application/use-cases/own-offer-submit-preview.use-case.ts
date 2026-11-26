@@ -6,7 +6,7 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_OWN_PRODUCT_EDIT } from '../../contracts/permissions';
 import { sellerReviewReasonsOf, type SellerReviewReason } from '../../domain/offer-review-policy';
-import { rateVerdict, SUBMIT_PREVIEW_LIMITS } from '../../domain/rate-limits';
+import { PREVIEW_CONTACT_MARK, rateVerdict, SUBMIT_PREVIEW_LIMITS } from '../../domain/rate-limits';
 import { judgeFirstPublication } from '../first-publication-review';
 import type { AllowedProductTypesReader } from '../ports/allowed-product-types.reader';
 import type { ClaimEvaluator } from '../ports/claim-evaluator';
@@ -51,7 +51,8 @@ export type OwnOfferSubmitPreviewFailure =
     };
 
 /**
- * Only reads, and the seller's preview counters. By construction there is no referral store,
+ * Only reads, and the seller's preview counters (and the contact-text mark, {@link
+ * PREVIEW_CONTACT_MARK}, on the same store). By construction there is no referral store,
  * audit, outbox, sampler, post-publication review, probation stamp or Offer save here: the preview
  * cannot write any of them (Hassan, handoff 7b point "writes nothing").
  */
@@ -220,7 +221,39 @@ export class OwnOfferSubmitPreview extends UseCase<
     // A read that failed is never a guess of either answer (handoff 7b point 7).
     if (judged.unreadable) return err({ code: 'access.unavailable' });
     if (judged.reasons.length === 0) return ok({ outcome: 'publish', reasons: [] });
-    return ok({ outcome: 'review', reasons: sellerReviewReasonsOf(judged.reasons) });
+    const reasons = sellerReviewReasonsOf(judged.reasons);
+    // The seller is told `contact-text`, so they could edit the text until the preview stops
+    // saying it. Mark it: an Offer they publish at once within 30 days goes on the
+    // post-publication review list (security M1 of PR 1376). A mark that could not be written is
+    // "we could not check", never an answer that leaves the probe unseen.
+    if (reasons.includes('contact-text') && !(await this.#markContact(context, sellerId))) {
+      return err({ code: 'access.unavailable' });
+    }
+    return ok({ outcome: 'review', reasons });
+  }
+
+  /** Counts {@link PREVIEW_CONTACT_MARK} on the seller; false when the store cannot answer. */
+  async #markContact(context: CallContext, sellerId: Id<'Seller'>): Promise<boolean> {
+    const { market } = context;
+    try {
+      const counter = {
+        limit: PREVIEW_CONTACT_MARK,
+        keyHash: this.deps.counterKeys.keyOf(market, PREVIEW_CONTACT_MARK.kind, sellerId),
+      };
+      const now = this.deps.clock.now();
+      const marked = await this.deps.unitOfWork.run(market, async () =>
+        ok(await this.deps.counters.reserve(market, [counter], now)),
+      );
+      if (marked.ok) return true;
+    } catch {
+      // A code only, below.
+    }
+    this.#logger.error({
+      msg: 'catalog.own-offer-submit-preview.mark-failed',
+      marketId: market.marketId,
+      correlationId: context.correlationId,
+    });
+    return false;
   }
 
   /** Counts the preview on the seller; a store that cannot answer refuses (fail closed). */

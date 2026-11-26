@@ -13,6 +13,7 @@ import { Product } from '../../src/modules/catalog/domain/product';
 import { configurableProductType } from '../../src/modules/catalog/domain/product-types/configurable';
 import {
   DRAFT_SAVE_LIMITS,
+  PREVIEW_CONTACT_MARK,
   RATE_COUNTER_KINDS,
   rateVerdict,
 } from '../../src/modules/catalog/domain/rate-limits';
@@ -250,6 +251,32 @@ describe.each(TEST_MARKETS)(
           await inUnit(() => counters.reserve(market, counterFor(a), T0));
         const first = await inUnit(() => counters.reserve(market, counterFor(b), T0));
         expect(first[0]!.count).toBe(1);
+      });
+
+      it("reads a mark's open window without counting, and never purges a mark (slice 7b)", async () => {
+        const subject = uuid7();
+        const mark = {
+          limit: PREVIEW_CONTACT_MARK,
+          keyHash: keys.keyOf(market, PREVIEW_CONTACT_MARK.kind, subject),
+        };
+        expect(await inUnit(() => counters.isOpen(market, mark, T0))).toBe(false);
+        await inUnit(() => counters.reserve(market, [mark], T0));
+        expect(
+          await inUnit(() => counters.isOpen(market, mark, T0.add({ hours: 24 * 30 - 1 }))),
+        ).toBe(true);
+        expect(await inUnit(() => counters.isOpen(market, mark, T0.add({ hours: 24 * 30 })))).toBe(
+          false,
+        );
+        // Another Market never sees it.
+        const elsewhere = {
+          ...mark,
+          keyHash: keys.keyOf(other, PREVIEW_CONTACT_MARK.kind, subject),
+        };
+        expect(await inUnit(() => counters.isOpen(other, elsewhere, T0), other)).toBe(false);
+        await inUnit(() => counters.purgeStartedBefore(market, T0.add({ hours: 48 })));
+        expect(await inUnit(() => counters.isOpen(market, mark, T0.add({ hours: 72 })))).toBe(true);
+        const again = await inUnit(() => counters.reserve(market, [mark], T0.add({ hours: 72 })));
+        expect(again[0]!.count).toBe(2);
       });
 
       it('lists exactly the kinds its CHECK accepts', async () => {

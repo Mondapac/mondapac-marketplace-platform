@@ -14,6 +14,7 @@ export const OFFER_POST_REVIEW_REASONS = [
   'price-no-reference',
   'price-reference-unavailable',
   'price-recheck-outside',
+  'preview-contact-text',
 ] as const;
 export type OfferPostReviewReason = (typeof OFFER_POST_REVIEW_REASONS)[number];
 

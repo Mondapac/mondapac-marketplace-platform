@@ -281,6 +281,7 @@ import { SellersModule } from '../sellers';
 import { PRODUCT_REPOSITORY } from './application/ports/product.repository';
 import { RATE_COUNTER_KEYS } from './application/ports/rate-counter-keys';
 import { RATE_COUNTER_REPOSITORY } from './application/ports/rate-counter.repository';
+import { RATE_COUNTER_WINDOWS } from './application/ports/rate-counter-windows';
 import { WORKING_COPY_REPOSITORY } from './application/ports/working-copy.repository';
 import { CheckClaimText } from './application/claim-text/check-claim-text.service';
 import { FreezeRevision } from './application/revisions/freeze-revision.service';
@@ -719,6 +720,7 @@ const PORT = {
   workingCopies: WORKING_COPY_REPOSITORY,
   counters: RATE_COUNTER_REPOSITORY,
   counterKeys: RATE_COUNTER_KEYS,
+  counterWindows: RATE_COUNTER_WINDOWS,
   policy: CATALOG_MARKET_POLICY,
   reviewInputs: OFFER_REVIEW_INPUTS,
   referrals: OFFER_REVIEW_REFERRAL_STORE,
@@ -2448,6 +2450,8 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       probation: true,
       sampler: true,
       postReviews: true,
+      counterWindows: true,
+      counterKeys: true,
     }),
     // The submit's rules as a dry run (slice 7b): reads and the preview counters only.
     useCaseProvider(OwnOfferSubmitPreview, {

@@ -316,6 +316,8 @@ describe.each([
       probation: memoryProbation({ standings: probationStandings }).probation,
       sampler,
       postReviews,
+      counterWindows: { isOpen: () => Promise.resolve(false) },
+      counterKeys: { keyOf: () => new Uint8Array(32) },
     });
     return {
       add,

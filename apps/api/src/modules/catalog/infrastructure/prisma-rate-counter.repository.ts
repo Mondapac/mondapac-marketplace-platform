@@ -5,7 +5,9 @@ import type {
   RateCounter,
   RateCounterRepository,
 } from '../application/ports/rate-counter.repository';
+import type { RateCounterWindows } from '../application/ports/rate-counter-windows';
 import {
+  PREVIEW_CONTACT_MARK,
   RATE_COUNTER_KINDS,
   windowRestartBefore,
   type RateReservation,
@@ -30,7 +32,7 @@ const KEY_HASH_BYTES = 32;
  * `INSERT ... ON CONFLICT DO UPDATE ... RETURNING`, so concurrent units count every attempt
  * exactly once. Nothing is released here.
  */
-export class PrismaRateCounterRepository implements RateCounterRepository {
+export class PrismaRateCounterRepository implements RateCounterRepository, RateCounterWindows {
   constructor(private readonly prisma: PrismaService) {}
 
   async reserve(
@@ -83,12 +85,41 @@ export class PrismaRateCounterRepository implements RateCounterRepository {
     return counters.map((counter) => reserved.get(counter)!);
   }
 
+  async isOpen(
+    market: MarketContext,
+    counter: RateCounter,
+    now: Temporal.Instant,
+  ): Promise<boolean> {
+    if (!(RATE_COUNTER_KINDS as readonly string[]).includes(counter.limit.kind)) {
+      throw new TypeError('isOpen: unknown rate counter kind');
+    }
+    if (counter.keyHash.length !== KEY_HASH_BYTES) {
+      throw new TypeError('isOpen: a key hash is 32 bytes');
+    }
+    const row = await this.prisma.tx(market).catalogRateCounter.findFirst({
+      where: {
+        marketId: market.marketId,
+        kind: counter.limit.kind,
+        keyHash: Uint8Array.from(counter.keyHash),
+        windowStartedAt: { gt: toDate(windowRestartBefore(counter.limit, now)) },
+        count: { gt: 0 },
+      },
+      select: { count: true },
+    });
+    return row !== null;
+  }
+
+  /** A mark's window outlives the purge's 48 hours, so marks are never purged here. */
   async purgeStartedBefore(
     market: MarketContext,
     startedBefore: Temporal.Instant,
   ): Promise<number> {
     const { count } = await this.prisma.tx(market).catalogRateCounter.deleteMany({
-      where: { marketId: market.marketId, windowStartedAt: { lt: toDate(startedBefore) } },
+      where: {
+        marketId: market.marketId,
+        kind: { not: PREVIEW_CONTACT_MARK.kind },
+        windowStartedAt: { lt: toDate(startedBefore) },
+      },
     });
     return count;
   }
