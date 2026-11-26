@@ -6408,7 +6408,9 @@ svg {
 .lmmap.gl {
   cursor: default;
 }
-.lmgl {
+/* Two classes so it outranks Mapbox's own .mapboxgl-map { position: relative }, whose stylesheet
+   loads after this one; with one class the box kept a ~50px height and the map showed as a strip. */
+.lmmap .lmgl {
   position: absolute;
   inset: 0;
 }
