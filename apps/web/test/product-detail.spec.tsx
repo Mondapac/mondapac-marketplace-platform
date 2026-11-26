@@ -4,6 +4,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../messages/en.json';
 import { ProductPage } from '../src/product/product-page.tsx';
+import { departmentsOf } from '../src/storefront/departments.ts';
 import { StoreProvider } from '../src/shell/store-context.tsx';
 import {
   isProductId,
@@ -225,6 +226,61 @@ describe('product page on API data', () => {
       </NextIntlClientProvider>,
     );
     expect(screen.queryByRole('heading', { name: 'Details' })).toBeNull();
+  });
+});
+
+describe('product category from the live tree', () => {
+  const LAMB_ROASTS = TWO_SELLERS.categoryIds[0]!;
+  const MEAT = '01990000-0000-7000-8000-0000000000c1';
+  const LAMB = '01990000-0000-7000-8000-0000000000c2';
+  const TREE = [
+    { id: MEAT, parentId: null, slug: 'meat', name: 'Meat' },
+    { id: LAMB, parentId: MEAT, slug: 'lamb', name: 'Lamb' },
+    { id: LAMB_ROASTS, parentId: LAMB, slug: 'lamb-roasts', name: 'Lamb roasts' },
+  ];
+
+  it('never shows the category id: no tree gives no category', () => {
+    const detail = productDetailOf(TWO_SELLERS, 'en', labels)!;
+    expect(detail.category).toBe('');
+    expect(detail.categoryTrail).toBeUndefined();
+  });
+
+  it('maps the id to its path, beside the department art', () => {
+    const detail = productDetailOf(TWO_SELLERS, 'en', labels, null, departmentsOf(TREE), TREE)!;
+    expect(detail.category).toBe('meat');
+    expect(detail.categoryTrail).toEqual([
+      { code: 'meat', name: 'Meat' },
+      { code: 'lamb', name: 'Lamb' },
+      { code: 'lamb-roasts', name: 'Lamb roasts' },
+    ]);
+  });
+
+  it('shows the whole path in the breadcrumb', () => {
+    const detail = productDetailOf(TWO_SELLERS, 'en', labels, null, departmentsOf(TREE), TREE)!;
+    render(
+      <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+        <StoreProvider>
+          <ProductPage
+            product={detail}
+            category={detail.categoryTrail!.at(-1)}
+            trail={detail.categoryTrail}
+          />
+        </StoreProvider>
+      </NextIntlClientProvider>,
+    );
+    const crumbs = screen.getAllByRole('navigation').find((n) => within(n).queryByText('Lamb'));
+    expect(crumbs).toBeDefined();
+    const links = within(crumbs!)
+      .getAllByRole('link')
+      .map((a) => [a.textContent, a.getAttribute('href')]);
+    expect(links).toEqual(
+      expect.arrayContaining([
+        ['Meat', '/c/meat'],
+        ['Lamb', '/c/lamb'],
+        ['Lamb roasts', '/c/lamb-roasts'],
+      ]),
+    );
+    expect(screen.queryByText(LAMB_ROASTS)).toBeNull();
   });
 });
 

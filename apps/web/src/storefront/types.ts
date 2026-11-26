@@ -299,7 +299,13 @@ export interface ProductSpecification {
 export interface ProductDetail {
   readonly id: string;
   readonly name: string;
+  /** Category code for the illustration when there is no photo ('' when unknown). */
   readonly category: string;
+  /**
+   * The product's category path from the live tree, top level first (the breadcrumb); absent on
+   * sample data and when the tree knows none of the product's categories.
+   */
+  readonly categoryTrail?: readonly { readonly code: string; readonly name: string }[];
   readonly description: string;
   readonly specifications: readonly ProductSpecification[];
   readonly photos: readonly string[];

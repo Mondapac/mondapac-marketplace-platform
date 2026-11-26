@@ -2,6 +2,7 @@ import { formatDate } from '../format/date.ts';
 import { formatMoney } from '../format/money.ts';
 import { intlLocale } from '../i18n/locale.ts';
 import { isBrandSlug } from './brands.ts';
+import { categoryTrailOf, type CategoryNode } from './category-path.ts';
 import { imageRefsOf, photoSetOf, type PhotoUrl } from './photos.ts';
 import { defaultVariantOf } from './variants.ts';
 import type {
@@ -397,6 +398,8 @@ export function productDetailOf(
   photo: PhotoUrl | null = null,
   /** The department slug of each category id (./departments.ts); empty without the tree. */
   departments: ReadonlyMap<string, string> = new Map(),
+  /** The live category tree, for the breadcrumb's path (./category-path.ts); empty without it. */
+  tree: readonly CategoryNode[] = [],
 ): ProductDetail | undefined {
   const refs = photo === null ? [] : imageRefsOf(body.images);
   // Both sizes or neither: an id the builder refuses drops that photo from all lists.
@@ -423,12 +426,16 @@ export function productDetailOf(
       ? undefined
       : ([firstVariant, secondVariant, ...restVariants] as const);
   const offers = variants === undefined ? firstVariant.offers : defaultVariantOf(variants).offers;
+  // The API sends category ids; the tree turns them into the breadcrumb's path. A tree that knows
+  // none of them (or did not answer) gives no path, never the raw id.
+  const trail = categoryTrailOf(tree, body.categoryIds);
   return {
     id: body.productId,
     name: body.name,
-    // The department of the product's first category: its illustration without photos, its
-    // breadcrumb and "show all similar" link. An id the tree does not know gives none.
+    // The department of the product's first category: its illustration without photos. An id
+    // the tree does not know gives none.
     category: departments.get(body.categoryIds[0] ?? '') ?? '',
+    ...(trail === undefined ? {} : { categoryTrail: trail }),
     description: body.description ?? body.shortDescription ?? '',
     specifications: specificationsOf(body.specifications, locale, labels),
     ...(brandRefOf(body.brand) === undefined ? {} : { brand: brandRefOf(body.brand)! }),
