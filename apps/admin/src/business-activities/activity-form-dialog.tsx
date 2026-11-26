@@ -294,12 +294,14 @@ export function ActivityFormDialog({
             setForm((current) => ({ ...current, categoryIds: value.map((option) => option.value) }))
           }
         />
-        <CheckboxRow
-          label={t('active')}
-          help={t('active-help')}
-          checked={form.active}
-          onChange={(event) => setField('active', event.target.checked)}
-        />
+        {editing ? (
+          <CheckboxRow
+            label={t('active')}
+            help={t('active-help')}
+            checked={form.active}
+            onChange={(event) => setField('active', event.target.checked)}
+          />
+        ) : null}
       </form>
     </Dialog>
   );
