@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261126-category-pick-shared-helper",
+  "area": "catalog",
+  "title": "One shared helper to pick a revision's display category",
+  "desc": "The primary-else-first category pick is written twice, in the offer-listings reader and the sell-unit-labels reader (PR 1404). Move it to one shared function so both stay equal.",
+  "src": "PR 1404 review (Mohammad, architect)",
+  "date": "2026-11-26",
+  "trig": "The next change to either reader, or a third reader that needs the category",
+  "prio": "پایین",
+  "status": "موکول"
+}

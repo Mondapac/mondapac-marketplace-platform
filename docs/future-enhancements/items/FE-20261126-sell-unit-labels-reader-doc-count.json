@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261126-sell-unit-labels-reader-doc-count",
+  "area": "catalog",
+  "title": "Fix the statement count in the sell-unit-labels reader comment",
+  "desc": "After PR 1404 the reader runs five statements, and the offer-listings reader comment says 'up to seven' while it now runs eight. Correct both header comments.",
+  "src": "PR 1404 review (Mohammad, architect)",
+  "date": "2026-11-26",
+  "trig": "The next edit of either reader",
+  "prio": "پایین",
+  "status": "موکول"
+}
