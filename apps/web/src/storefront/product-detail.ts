@@ -277,6 +277,7 @@ function offerOf(
         .map((badge) => ({ type: badge.type, name: badge.label })),
     },
     price,
+    ...(unit.special === null || unit.special === undefined ? {} : { onSpecial: true }),
     certifications: badges,
     ...(unit.stock.status === 'out'
       ? { lowStock: 0 }

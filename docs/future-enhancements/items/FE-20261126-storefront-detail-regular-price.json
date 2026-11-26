@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261126-storefront-detail-regular-price",
+  "area": "storefront",
+  "title": "Product page: struck-through regular price in live mode",
+  "desc": "The detail API gives special.endsAt but no regularPrice, so the live product page shows the Special price label without a struck-through Was price. Needs the detail response to carry regularPrice with the was-price rule's decision (28-of-90 days) taken in promotions.",
+  "src": "Storefront live gaps report, slice E and B2 (26 Nov 2026)",
+  "date": "2026-11-26",
+  "trig": "API slice B2: regularPrice in the product detail response",
+  "prio": "متوسط",
+  "status": "موکول"
+}
