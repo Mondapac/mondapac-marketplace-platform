@@ -2047,7 +2047,7 @@
       "attestation-withdrawn": "Your sealed-pack statement was withdrawn because the handling is no longer Sealed original. Badges that need it are checked again."
     },
     "offer-actions": {
-      "submit": "Submit for review",
+      "submit": "Submit offer",
       "delete": "Delete offer",
       "cancel": "Cancel",
       "delete-confirm": "Delete this offer? It stops being listed and you can't bring it back.",
@@ -2092,17 +2092,18 @@
       }
     },
     "submit-preview": {
-      "checking": "Checking whether this offer can go on sale at once…",
+      "checking": "Checking this offer…",
       "publish": {
-        "title": "Goes on sale when you submit",
-        "body": "As it stands, this offer goes on sale as soon as you submit it."
+        "title": "Should go on sale when you submit",
+        "body": "As it stands, this offer should go on sale as soon as you submit it.",
+        "title-held": "Goes on sale, but one price waits for our check"
       },
       "review": {
         "title": "We'll check this offer first",
         "body": "When you submit, this offer waits for our check before it goes on sale.",
         "reason": {
           "certificate-badge": "It shows a certificate badge. We check badges before they appear.",
-          "handling": "Its handling isn't Sealed original. We check how unsealed goods are handled.",
+          "handling": "Its handling isn't “Sealed original”. We check how unsealed goods are handled.",
           "contact-text": "Its description seems to hold contact details or a link. Remove them and the offer may skip this check."
         }
       },

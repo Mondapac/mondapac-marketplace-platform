@@ -25,8 +25,8 @@ describe('SubmitPreview (slice 7b)', () => {
   it('asks the dry run once and says the offer goes on sale at once', async () => {
     call.mockResolvedValue({ ok: true, status: 200, body: { outcome: 'publish', reasons: [] } });
     mount();
-    expect(screen.getByText(/Checking whether/)).toBeTruthy();
-    expect(await screen.findByText('Goes on sale when you submit')).toBeTruthy();
+    expect(screen.getByText(/Checking this offer/)).toBeTruthy();
+    expect(await screen.findByText('Should go on sale when you submit')).toBeTruthy();
     expect(screen.getByText(/not a promise/)).toBeTruthy();
     expect(call).toHaveBeenCalledTimes(1);
     expect(call).toHaveBeenCalledWith(
@@ -47,7 +47,7 @@ describe('SubmitPreview (slice 7b)', () => {
     expect(await screen.findByText("We'll check this offer first")).toBeTruthy();
     const items = screen.getAllByRole('listitem').map((li) => li.textContent);
     expect(items).toEqual([
-      expect.stringMatching(/handling isn't Sealed original/),
+      expect.stringMatching(/handling isn't “Sealed original”/),
       expect.stringMatching(/contact details or a link/),
     ]);
   });
@@ -76,13 +76,16 @@ describe('SubmitPreview (slice 7b)', () => {
     call.mockResolvedValue(answer as never);
     mount();
     expect(await screen.findByText(/couldn't check this offer right now/)).toBeTruthy();
-    expect(screen.queryByText(/Goes on sale/)).toBeNull();
+    expect(screen.queryByText(/go on sale/i)).toBeNull();
   });
 
   it('adds the held price, from the size rows, without a number', async () => {
     call.mockResolvedValue({ ok: true, status: 200, body: { outcome: 'publish', reasons: [] } });
     const { container } = mount(true);
     expect(await screen.findByText(/A price on this offer is waiting for our check/)).toBeTruthy();
+    // The headline says it too, so the title and the detail never disagree (Reza 1).
+    expect(screen.getByText('Goes on sale, but one price waits for our check')).toBeTruthy();
+    expect(screen.queryByText('Should go on sale when you submit')).toBeNull();
     expect(container.textContent).not.toMatch(/\d|%|median|similar/);
   });
 
@@ -95,7 +98,7 @@ describe('SubmitPreview (slice 7b)', () => {
         </NextIntlClientProvider>,
       );
     page('draft', true);
-    expect(await screen.findByText('Goes on sale when you submit')).toBeTruthy();
+    expect(await screen.findByText('Should go on sale when you submit')).toBeTruthy();
     cleanup();
     call.mockClear();
     page('changes-needed', true);

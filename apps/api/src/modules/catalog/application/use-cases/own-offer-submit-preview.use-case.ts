@@ -76,8 +76,8 @@ export interface OwnOfferSubmitPreviewDependencies {
  * or waits for a check. Rule: the key `catalog.own-product.edit`, the seller population and a
  * seller who may sell, as the submit. The guards are the submit's, in its order (the seller may
  * sell; the closed `requestedTags`; the Offer is theirs, else a byte-identical `offer.not-found`;
- * a draft; handling recorded; product on sale; a type the seller may sell), then the seller's
- * preview budget (10 a minute, 200 a day), then {@link judgeFirstPublication}, the very function
+ * a draft; handling recorded; product on sale; a type the seller may sell), with the seller's
+ * preview budget (10 a minute, 200 a day) taken right after the closed body, then {@link judgeFirstPublication}, the very function
  * the submit decides with.
  *
  * What it never says (handoff 7b "must never leak"):
@@ -155,6 +155,12 @@ export class OwnOfferSubmitPreview extends UseCase<
     }
     const requested = parseRequestedTags(input.requestedTags);
     if (!requested.ok) return err({ code: 'validation.failed', fields: [requested.error] });
+
+    // The budget before any read past the seller's own eligibility, certification's active types
+    // included (Hassan L1).
+    const throttled = await this.#reserve(context, sellerId);
+    if (throttled !== null) return err(throttled);
+
     if (requested.value.length > 0) {
       // As the submit: badge requests are not offered in an acting-as session (Hassan M1 of 5.1a).
       if (isActingAsSession(actor)) return err({ code: 'access.denied' });
@@ -164,9 +170,6 @@ export class OwnOfferSubmitPreview extends UseCase<
         return err({ code: 'tag.type-unknown' });
       }
     }
-
-    const throttled = await this.#reserve(context, sellerId);
-    if (throttled !== null) return err(throttled);
 
     const read = await deps.unitOfWork.run(
       market,
@@ -242,9 +245,12 @@ export class OwnOfferSubmitPreview extends UseCase<
       if (!reserved.ok) return { code: 'access.unavailable' };
       const verdict = rateVerdict(SUBMIT_PREVIEW_LIMITS, reserved.value, now);
       if (verdict.allowed) return null;
+      // The seller id (an internal id, never a name) so a seller who keeps meeting the cap can be
+      // found (Hassan L3; FE-20261126-offer-preview-r7-inference).
       this.#logger.warn({
         msg: 'catalog.request-throttled',
         kinds: SUBMIT_PREVIEW_LIMITS.map((limit) => limit.kind),
+        sellerId,
         marketId: market.marketId,
         correlationId: context.correlationId,
       });

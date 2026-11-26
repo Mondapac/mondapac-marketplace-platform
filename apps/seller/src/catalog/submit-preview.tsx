@@ -76,7 +76,8 @@ export function SubmitPreview({
   switch (preview.kind) {
     case 'checking':
       return (
-        <p role="status" className="text-sm text-fg-muted">
+        // The bar's height is held while it loads, so Submit and Delete never jump under a click.
+        <p role="status" className="flex min-h-12 items-center text-sm text-fg-muted">
           {t('checking')}
         </p>
       );
@@ -91,7 +92,10 @@ export function SubmitPreview({
       );
     case 'publish':
       return (
-        <Banner tone={heldPrice ? 'attention' : 'success'} title={t('publish.title')}>
+        <Banner
+          tone={heldPrice ? 'attention' : 'success'}
+          title={heldPrice ? t('publish.title-held') : t('publish.title')}
+        >
           <div className="mt-1 flex flex-col gap-1">
             <p>{t('publish.body')}</p>
             {price}
@@ -101,7 +105,11 @@ export function SubmitPreview({
       );
     case 'review':
       return (
-        <Banner tone="attention" title={t('review.title')}>
+        // Amber only when there is something the seller can fix; a check alone is information.
+        <Banner
+          tone={preview.told.length > 0 || heldPrice ? 'attention' : 'info'}
+          title={t('review.title')}
+        >
           <div className="mt-1 flex flex-col gap-1">
             <p>{t('review.body')}</p>
             {preview.told.length > 0 ? (

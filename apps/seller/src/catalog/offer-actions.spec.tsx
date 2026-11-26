@@ -29,7 +29,7 @@ describe('OfferActions', () => {
   it('submits a draft and says it waits for review', async () => {
     call.mockResolvedValue({ ok: true, status: 200, body: { published: false } });
     mount('draft');
-    fireEvent.click(screen.getByRole('button', { name: 'Submit for review' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit offer' }));
     await waitFor(() =>
       expect(call).toHaveBeenCalledWith(
         'POST',
@@ -44,16 +44,16 @@ describe('OfferActions', () => {
   it('says so when the market publishes at once', async () => {
     call.mockResolvedValue({ ok: true, status: 200, body: { published: true } });
     mount('draft');
-    fireEvent.click(screen.getByRole('button', { name: 'Submit for review' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit offer' }));
     expect(await screen.findByText(/Submitted and published/)).toBeTruthy();
   });
 
   it('shows the missing-handling refusal in words', async () => {
     call.mockResolvedValue({ ok: false, failure: { status: 422, code: 'offer.handling-missing' } });
     mount('draft');
-    fireEvent.click(screen.getByRole('button', { name: 'Submit for review' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit offer' }));
     expect(await screen.findByText(/its handling is not set/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Submit for review' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Submit offer' })).toBeTruthy();
   });
 
   it('asks before deleting, then deletes', async () => {
@@ -78,7 +78,7 @@ describe('OfferActions', () => {
 
   it('offers only delete when changes are needed, and nothing when waiting or published', () => {
     mount('changes-needed');
-    expect(screen.queryByRole('button', { name: 'Submit for review' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Submit offer' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Delete offer' })).toBeTruthy();
     cleanup();
     for (const status of ['pending-first-publish', 'published']) {
@@ -91,7 +91,7 @@ describe('OfferActions', () => {
   it('sends a signed-out seller to the session-ended page', async () => {
     call.mockResolvedValue({ ok: false, failure: { status: 401, code: 'session.invalid' } });
     mount('draft');
-    fireEvent.click(screen.getByRole('button', { name: 'Submit for review' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit offer' }));
     await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
   });
 });

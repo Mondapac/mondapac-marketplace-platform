@@ -14,7 +14,11 @@ import {
   type OfferReviewReferral,
   type OfferReviewSettings,
 } from '../src/modules/catalog/application/ports/offer-review';
-import { OFFER_POST_REVIEW_REPOSITORY } from '../src/modules/catalog/application/ports/offer-post-review';
+import {
+  OFFER_POST_REVIEW_REPOSITORY,
+  OFFER_POST_REVIEW_SAMPLER,
+} from '../src/modules/catalog/application/ports/offer-post-review';
+import { FIRST_PRICE_REFERENCE } from '../src/modules/pricing/application/reference/variant-reference';
 import { OFFER_REPOSITORY } from '../src/modules/catalog/application/ports/offer.repository';
 import { PRODUCT_REPOSITORY } from '../src/modules/catalog/application/ports/product.repository';
 import {
@@ -61,6 +65,8 @@ const id = <T extends string>(n: number): Id<T> => {
   return parsed.value as Id<T>;
 };
 const OWNER = id<'Account'>(0xa101);
+const OWNER_2 = id<'Account'>(0xa102);
+const OTHER_OWNER = id<'Account'>(0xa103);
 const SELLER = id<'Seller'>(0xb020);
 const OTHER_SELLER = id<'Seller'>(0xb021);
 const PRODUCT = id<'Product'>(0xc001);
@@ -112,6 +118,19 @@ class MemoryRateCounters {
   }
 }
 
+/** An object whose named methods record the call and throw. */
+const tripwire = (name: string, methods: readonly string[]) =>
+  Object.fromEntries(
+    methods.map((method) => [
+      method,
+      () => {
+        forbiddenCalls.push(`${name}.${method}`);
+        throw new Error(`${name}.${method} must not be called by the preview`);
+      },
+    ]),
+  );
+let forbiddenCalls: string[] = [];
+
 const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
 
@@ -129,6 +148,10 @@ describe('seller submit preview over HTTP (integration, slice 7b)', () => {
   let reviewSettings: OfferReviewSettings;
   let reviewFacts: OfferReviewFactsRead;
   let factReads: number;
+  let eligible: boolean;
+  let allowed: 'all' | Set<string> | null;
+  /** Every call that reached the sampler or pricing's R4 ports: the preview must make none. */
+  let forbidden: string[];
   let claimChecks: number;
   let evaluator: FakeClaimEvaluator;
   let productState: (code: string) => ProductState;
@@ -166,9 +189,9 @@ describe('seller submit preview over HTTP (integration, slice 7b)', () => {
               Promise.resolve(Product.restore(productState(m.marketId))),
           })
           .overrideProvider(SELLER_ELIGIBILITY_READER)
-          .useValue({ isEligible: () => Promise.resolve(true) })
+          .useValue({ isEligible: () => Promise.resolve(eligible) })
           .overrideProvider(ALLOWED_PRODUCT_TYPES_READER)
-          .useValue({ allowedFor: () => Promise.resolve('all') })
+          .useValue({ allowedFor: () => Promise.resolve(allowed) })
           .overrideProvider(CheckClaimText)
           .useValue({
             execute: () => {
@@ -200,6 +223,16 @@ describe('seller submit preview over HTTP (integration, slice 7b)', () => {
           .useValue(postReviews)
           .overrideProvider(RATE_COUNTER_REPOSITORY)
           .useValue(counters)
+          // The sampler and pricing's R4 reference: any call is recorded and fails.
+          .overrideProvider(OFFER_POST_REVIEW_SAMPLER)
+          .useValue(tripwire('sampler', ['bucketOf']))
+          .overrideProvider(FIRST_PRICE_REFERENCE)
+          .useValue({
+            prices: tripwire('r4.prices', ['regularPricesInForce']),
+            businesses: tripwire('r4.businesses', ['eligibleSellers']),
+            settings: tripwire('r4.settings', ['settings']),
+            checks: tripwire('r4.checks', ['record', 'pendingRechecks', 'markRechecked']),
+          })
           .overrideProvider(AUDIT_WRITER)
           .useValue({
             record: (_c: unknown, entry: { action: string }) => {
@@ -258,69 +291,80 @@ describe('seller submit preview over HTTP (integration, slice 7b)', () => {
     ...overrides,
   });
 
+  /** The owner and a second account of SELLER, and the owner of OTHER_SELLER. */
+  const PEOPLE = [
+    { account: OWNER, seller: SELLER, n: 1 },
+    { account: OWNER_2, seller: SELLER, n: 2 },
+    { account: OTHER_OWNER, seller: OTHER_SELLER, n: 3 },
+  ] as const;
+
   async function seeded(code: string) {
     await app.get(SeedRoles).execute(testCallContext(marketOf(code), 'system', 'preview-01'), {});
     const marketId = code as AccountState['marketId'];
     const ownerRole = [...fakes.roles.values()].find(
       (r) => r.marketId === code && r.scope === 'seller' && r.seedCode === 'seller-owner',
     )!.id;
-    fakes.seedSellerAccess({
-      sellerId: SELLER,
-      marketId,
-      origin: 'self',
-      state: 'approved',
-      stateChangedAt: START,
-      reapplyCount: 0,
-      registeredAt: START,
-      version: 3,
-      createdAt: START,
-    });
-    fakes.seedAccount({
-      id: OWNER,
-      marketId,
-      population: 'seller',
-      email: { typed: 'Owner@Example.com', normalized: 'owner@example.com' },
-      displayName: 'Owner',
-      status: 'active',
-      emailVerifiedAt: START,
-      existingAccountNoticeAt: null,
-      signedUpAt: START,
-      createdAt: START,
-      version: 1,
-      credential: { passwordHash: fakeHashOf('x'), changedAt: START },
-    });
-    fakes.seedAssignment({
-      id: id<'RoleAssignment'>(0xe001),
-      marketId,
-      accountId: OWNER,
-      roleId: ownerRole,
-      assignedByAccountId: null,
-      assignedAt: START,
-      version: 1,
-    });
-    fakes.seedMembership({
-      id: id<'SellerMembership'>(0xf001),
-      marketId,
-      accountId: OWNER,
-      sellerId: SELLER,
-      state: 'active',
-      removedAt: null,
-      version: 1,
-      createdAt: START,
-    });
+    for (const sellerId of [SELLER, OTHER_SELLER]) {
+      fakes.seedSellerAccess({
+        sellerId,
+        marketId,
+        origin: 'self',
+        state: 'approved',
+        stateChangedAt: START,
+        reapplyCount: 0,
+        registeredAt: START,
+        version: 3,
+        createdAt: START,
+      });
+    }
+    for (const { account, seller, n } of PEOPLE) {
+      fakes.seedAccount({
+        id: account,
+        marketId,
+        population: 'seller',
+        email: { typed: `Owner${n}@Example.com`, normalized: `owner${n}@example.com` },
+        displayName: `Owner ${n}`,
+        status: 'active',
+        emailVerifiedAt: START,
+        existingAccountNoticeAt: null,
+        signedUpAt: START,
+        createdAt: START,
+        version: 1,
+        credential: { passwordHash: fakeHashOf('x'), changedAt: START },
+      });
+      fakes.seedAssignment({
+        id: id<'RoleAssignment'>(0xe000 + n),
+        marketId,
+        accountId: account,
+        roleId: ownerRole,
+        assignedByAccountId: null,
+        assignedAt: START,
+        version: 1,
+      });
+      fakes.seedMembership({
+        id: id<'SellerMembership'>(0xf000 + n),
+        marketId,
+        accountId: account,
+        sellerId: seller,
+        state: 'active',
+        removedAt: null,
+        version: 1,
+        createdAt: START,
+      });
+    }
   }
 
   let session: Record<string, string>;
-  function sessionOf(code: string) {
+  function sessionOf(code: string, who: (typeof PEOPLE)[number] = PEOPLE[0]) {
     const issued = tokens.issue();
     void fakes.sessionRepository.add(
       marketOf(code),
       openSession({
-        id: id<'Session'>(0xf101),
+        id: id<'Session'>(0xf100 + who.n),
         marketId: code as AccountState['marketId'],
-        accountId: OWNER,
+        accountId: who.account,
         population: 'seller',
-        sellerId: SELLER,
+        sellerId: who.seller,
         transport: 'cookie',
         lifetime: LIFETIME,
         now: clock.now(),
@@ -372,6 +416,10 @@ describe('seller submit preview over HTTP (integration, slice 7b)', () => {
     reviewSettings = RISK_BASED;
     reviewFacts = CLEAN_FACTS;
     factReads = 0;
+    eligible = true;
+    allowed = 'all';
+    forbidden = [];
+    forbiddenCalls = forbidden;
     claimChecks = 0;
     evaluator = new FakeClaimEvaluator(() => {
       throw new Error('the preview never asks certification');
@@ -420,20 +468,41 @@ describe('seller submit preview over HTTP (integration, slice 7b)', () => {
       expect(line).toMatchObject({ code: 'publish', marketId: code });
     });
 
-    it('answers a sampled and an unsampled Offer byte for byte the same (handoff 7b point 1)', async () => {
-      const answers: unknown[] = [];
-      for (const samplingPercent of [100, 0, 5]) {
-        reviewSettings = { ...REVIEW_OFF, samplingPercent };
-        const response = await preview(code);
-        answers.push({
-          status: response.status,
-          type: response.headers['content-type'],
-          store: response.headers['cache-control'],
-          text: response.text,
-        });
+    it('answers a sampled and an unsampled Offer byte for byte the same, never asking the sampler (point 1)', async () => {
+      // Off and risk-based publish, all queues: in each, the answer is one and the same whatever
+      // the sampling percent, and the sampler (a tripwire here) is never reached.
+      const byMode = new Map<string, Set<string>>();
+      for (const mode of [REVIEW_OFF, RISK_BASED, { ...RISK_BASED, mode: 'all' as const }]) {
+        for (const samplingPercent of [0, 5, 100]) {
+          reviewSettings = { ...mode, samplingPercent };
+          const response = await preview(code);
+          const answers = byMode.get(mode.mode) ?? new Set<string>();
+          answers.add(
+            JSON.stringify([
+              response.status,
+              response.headers['content-type'],
+              response.headers['cache-control'],
+              response.text,
+            ]),
+          );
+          byMode.set(mode.mode, answers);
+        }
       }
-      expect(new Set(answers.map((a) => JSON.stringify(a))).size).toBe(1);
+      expect([...byMode.values()].map((answers) => answers.size)).toEqual([1, 1, 1]);
+      expect([...byMode.get('all')!][0]).toContain('held-for-review');
+      expect([...byMode.get('off')!][0]).toContain('publish');
+      expect(forbidden).toEqual([]);
       expect(postReviews.rows.size).toBe(0);
+    });
+
+    it("never measures a price: pricing's R4 reference is not reached (point 2)", async () => {
+      // A price inside the band, outside it or with no reference cannot change the answer: the
+      // preview has no way to read it. The R4 ports are tripwires here.
+      for (const settings of [REVIEW_OFF, RISK_BASED]) {
+        reviewSettings = settings;
+        expect((await preview(code)).text).toBe('{"outcome":"publish","reasons":[]}');
+      }
+      expect(forbidden).toEqual([]);
     });
 
     it('says one byte-identical held-for-review for R0, R1, R6, R7 and mode all (points 3, 4, 6)', async () => {
@@ -524,7 +593,10 @@ describe('seller submit preview over HTTP (integration, slice 7b)', () => {
         reviewFacts = { ...CLEAN_FACTS, ...facts };
         offer = Offer.restore(offerState(code, state));
         const previewed = (await preview(code)).body as { outcome: string; reasons: string[] };
+        const before = referrals.length;
         const submitted = (await post(code, '/submit')).body as { published: boolean };
+        // The submit recorded its own referral: the comparison never reads a stale one.
+        expect(referrals.length).toBe(before + 1);
         const referral = referrals.at(-1)!;
         expect([previewed.outcome === 'publish', previewed.reasons]).toEqual([
           submitted.published,
@@ -599,6 +671,78 @@ describe('seller submit preview over HTTP (integration, slice 7b)', () => {
 
       clock.advance(Temporal.Duration.from({ minutes: 1 }));
       expect((await preview(code)).status).toBe(200);
+    });
+
+    it('caps a seller at 200 previews a day, across minutes', async () => {
+      // 200 real requests would meet the platform's per-origin limit first, so the day counter is
+      // brought to 199 directly after the first preview made it.
+      expect((await preview(code)).status).toBe(200);
+      const day = [...counters.counts.entries()].find(([key]) =>
+        key.startsWith('submit-preview.seller.day:'),
+      )!;
+      day[1].count = 199;
+      clock.advance(Temporal.Duration.from({ minutes: 5 }));
+      expect((await preview(code)).status).toBe(200);
+      const throttled = await preview(code);
+      expect(throttled.status).toBe(429);
+      // The day window, not the minute one: about 24 hours less the 5 minutes gone.
+      expect(Number(throttled.headers['retry-after'])).toBe(24 * 3600 - 5 * 60);
+      clock.advance(Temporal.Duration.from({ hours: 24 }));
+      session = sessionOf(code);
+      expect((await preview(code)).status).toBe(200);
+    });
+
+    it('shares the budget between the accounts of one seller, never with another seller', async () => {
+      const second = sessionOf(code, PEOPLE[1]);
+      for (let n = 0; n < 10; n += 1) {
+        session = n % 2 === 0 ? sessionOf(code, PEOPLE[0]) : second;
+        expect((await preview(code)).status).toBe(200);
+      }
+      session = second;
+      expect((await preview(code)).status).toBe(429);
+      // Another seller has its own budget: its answer for this Offer is the not-found of an
+      // Offer it does not own, never a throttle.
+      session = sessionOf(code, PEOPLE[2]);
+      const other = await preview(code);
+      expect([other.status, other.body]).toEqual([
+        404,
+        { statusCode: 404, code: 'offer.not-found' },
+      ]);
+    });
+
+    it('fails closed: counters, badge types and allowed types unreadable are 503; a seller who may not sell is 403', async () => {
+      const failing = counters.reserve.bind(counters);
+      counters.reserve = () => Promise.reject(new Error('counters down'));
+      const noCounters = await preview(code);
+      expect([noCounters.status, noCounters.body]).toEqual([
+        503,
+        { statusCode: 503, code: 'access.unavailable' },
+      ]);
+      counters.reserve = failing;
+
+      evaluator.activeUnavailable = true;
+      const noTypes = await preview(code, { requestedTags: ['halal'] });
+      expect([noTypes.status, noTypes.body]).toEqual([
+        503,
+        { statusCode: 503, code: 'claim.check-unavailable' },
+      ]);
+      evaluator.activeUnavailable = false;
+      expect((await preview(code, { requestedTags: ['kosher-x'] })).body).toEqual({
+        statusCode: 422,
+        code: 'tag.type-unknown',
+      });
+
+      allowed = null;
+      expect((await preview(code)).status).toBe(503);
+      allowed = new Set(['other-type']);
+      expect((await preview(code)).body).toEqual({ statusCode: 422, code: 'type.not-allowed' });
+      allowed = 'all';
+
+      eligible = false;
+      expect((await preview(code)).body).toEqual({ statusCode: 403, code: 'seller.not-eligible' });
+      // None of these was judged, and nothing was written.
+      expect(factReads).toBe(0);
+      expect(writes()).toEqual(NOTHING);
     });
   });
 });
