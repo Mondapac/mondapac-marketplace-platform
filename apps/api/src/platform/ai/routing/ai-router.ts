@@ -141,6 +141,11 @@ export class AiRouter {
     return this.catalogue.externalFamilies();
   }
 
+  /** The in-house model's families, sorted: reached only through its stages (G6b onwards). */
+  inHouseFamilies(): string[] {
+    return this.catalogue.families().filter((family) => this.catalogue.isInHouse(family));
+  }
+
   /**
    * The most expensive price per token (input and output) of a family's routes that meet every
    * condition but the evaluation in the Market for the task type, as `plan` prices them; null with

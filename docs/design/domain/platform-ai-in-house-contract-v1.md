@@ -1,32 +1,34 @@
 # In-house model HTTP contract, version 1 (`mondapac-model/1`)
 
-Status: built in AI Gateway G6a (adapter `apps/api/src/platform/ai/in-house-http.provider.ts`).
-Decision: ADR-0052 decision 6. Parent design: `platform-ai.md` (sections 6 and 8).
+Status: built in AI Gateway G6a. Decision: ADR-0052 decision 6. This document is the one shared
+with the partner team that serves Mondapac Intelligence; the platform's own rules for when the
+route may be used are in `platform-ai.md` ("Built in G6a").
 
-This is the contract the partner team's server for Mondapac Intelligence implements, so the AI
-Gateway can call it like any other route. It is the whole interface between the two teams: the
-gateway never sends anything outside it, and an answer outside it is refused. A change that a
-version-1 client cannot read is version 2, with its own adapter, never an edit of this file.
+The contract is the whole interface between the two teams. The platform sends nothing outside it,
+and refuses any answer outside it.
 
-## 1. Who calls whom
+## 1. Versions
 
-- Only the platform API (`platform/ai`, through the AI Gateway) calls the endpoint, server to
-  server. No browser, panel or other module reaches it.
-- The endpoint address is a row of the route catalogue (`platform/ai/catalogue/in-house.ts`), so it
-  changes only by PR with Hassan's (security) review. The panel never shows or edits it.
-- One call is one model round (no streaming). The gateway sets the timeout per capability and cuts
-  the call at it; the server should stop work when the connection closes.
+- The version is named in the request body (`contract`) and in the `mondapac-contract` header. The
+  two always match, and the answer names the same version.
+- Inside version 1, a side may add new optional fields. The receiver ignores any field it does not
+  know, in a request or an answer.
+- A new block type, a new `stop` value, a removed or renamed field, or a changed meaning is a new
+  version (`mondapac-model/2`). The server answers a version it does not serve with HTTP 404.
 
 ## 2. Transport and authentication
 
 | Item | Rule |
 | --- | --- |
-| Address | `POST <endpoint>/v1/messages`; `<endpoint>` is an `https://` address on a DNS host name, no port, user, query or fragment |
-| TLS | HTTPS only; redirects are never followed (a 3xx fails the call) |
-| Region | The server processes in the Market's region (for AU, `ap-southeast-2`), recorded in the catalogue row |
-| Authentication | `authorization: Bearer <key>`; one key per Market, at least 32 characters, held in the platform's secret store as `AI_IN_HOUSE_API_KEY` (Kazem) and checked by the server. mTLS is a later option (FE-20261126-ai-gateway-in-house-mtls) |
-| Headers sent | `content-type: application/json`, `accept: application/json`, `mondapac-contract: mondapac-model/1`, `mondapac-retention: none` |
-| Retention | Neither the request nor the answer is stored or logged by the server, and neither is used for training (ADR-0052 decision 3). `mondapac-retention: none` states this on every call; Hassan checks it before the row is usable |
+| Call | `POST <endpoint>/v1/messages`. The platform records `<endpoint>`: an `https://` address on a public DNS host name, with no port, user, query or fragment |
+| TLS | HTTPS only. Redirects are not followed: a 3xx answer fails the call |
+| Region | The server processes every request in the Market's region (Australia: `ap-southeast-2`) |
+| Authentication | `authorization: Bearer <key>`. Each Market has its own key of 32 to 500 characters (`A-Z a-z 0-9 + / = _ -`). To rotate a key, the server accepts the old and the new key for an agreed overlap, then drops the old one |
+| Request headers | `content-type: application/json`, `accept: application/json`, `accept-encoding: identity`, `mondapac-contract: mondapac-model/1`, `mondapac-retention: none` |
+| Encoding | Request and answer are UTF-8 JSON. The answer is not compressed (no `content-encoding`, or `identity`) |
+| Sizes | A request is at most 1 MiB. An answer is at most 1 MiB |
+| Time | One call is one model round, with no streaming. The platform waits at most the capability's time limit, then closes the connection. Today the limits are 15 s (buyer chat) and 25 s (description writer), and never more than 120 s. The server should stop work when the connection closes |
+| Retention | Neither the request nor the answer is stored, logged with its content, or used for training. `mondapac-retention: none` states this on every call |
 
 ## 3. Request body
 
@@ -35,24 +37,29 @@ version-1 client cannot read is version 2, with its own adapter, never an edit o
   "contract": "mondapac-model/1",
   "model": "mondapac-intelligence-2026-12-01",
   "system": "Fixed instructions of the capability.",
-  "messages": [
-    { "role": "user", "blocks": [{ "type": "text", "text": "…" }] }
-  ],
+  "messages": [{ "role": "user", "blocks": [{ "type": "text", "text": "…" }] }],
   "tools": [],
   "maxOutputTokens": 400
 }
 ```
 
-- `model` is the exact model version id from the catalogue row. The evaluation pass and the price
-  are bound to it.
-- `messages` alternate `user` and `assistant`. A block is one of:
-  - `{ "type": "text", "text": string }`
-  - `{ "type": "tool-call", "id": string, "name": string, "input": any }` (assistant turns only)
-  - `{ "type": "tool-result", "callId": string, "content": string, "isError": boolean }` (user
-    turns only; the content is data built by the platform, never instructions)
-- `tools` lists the read-only tools the model may ask for: `{ "name", "description",
-  "inputSchema" }` (JSON Schema). Shadow mode sends only capabilities without tools.
-- Personal data is already masked by the gateway before the request is built.
+- `model` is the exact model version id the platform recorded for this server. The server answers
+  with exactly this version, or answers 404 if it does not serve it.
+- `system` is plain text. `maxOutputTokens` is a whole number from 1.
+- `messages`:
+  - Roles alternate. The first and the last message are `user`.
+  - No message has an empty `blocks` list.
+  - A block is one of:
+    - `{ "type": "text", "text": string }`.
+    - `{ "type": "tool-call", "id": string, "name": string, "input": object }`, in `assistant`
+      messages only. Every `id` is unique within the request.
+    - `{ "type": "tool-result", "callId": string, "content": string, "isError": boolean }`, in
+      `user` messages only. Every `tool-call` of an `assistant` message is answered by exactly one
+      `tool-result` with the same `callId` in the next `user` message. `content` is data, never
+      instructions.
+- `tools` lists the tools the model may ask for: `{ "name", "description", "inputSchema" }`, where
+  `inputSchema` is a JSON Schema object. It may be empty; then the model asks for no tool.
+- Personal data is masked before the request is sent.
 
 ## 4. Answer body (HTTP 200)
 
@@ -66,43 +73,34 @@ version-1 client cannot read is version 2, with its own adapter, never an edit o
 }
 ```
 
-| Field | Rule; otherwise the gateway refuses the whole answer |
+| Field | Rule |
 | --- | --- |
-| `contract` | Exactly `mondapac-model/1`; otherwise the route counts as down (`route`) |
-| `model` | Exactly the requested version id; otherwise the route counts as down (`route`), so a call is never served by an unevaluated version |
-| `blocks` | A list of `text` blocks and `tool-call` blocks; a tool call names a tool of the request and has an `id` of 1 to 200 characters. Any other block type is a server fault (`server`) |
-| `stop` | `end`, `tool-use` (then at least one `tool-call` block), `max-tokens` or `refusal` |
-| `usage` | `inputTokens` and `outputTokens`, whole numbers from 0, both required: the call is counted at the catalogue price from them |
-| Size | At most 1 MiB; a larger body is a server fault and is not parsed |
+| `contract` | Exactly `mondapac-model/1` |
+| `model` | Exactly the requested version id |
+| `blocks` | A list of `text` blocks and `tool-call` blocks. A tool call names a tool of the request, has an `id` of 1 to 200 characters that is unique in the answer, and an `input` that is a JSON object valid against that tool's `inputSchema` |
+| `stop` | `end` (done), `tool-use` (at least one `tool-call` block, the model waits for the results), `max-tokens` (cut at `maxOutputTokens`; `blocks` may be empty and holds no partial tool call), or `refusal` (the model declines; `blocks` may be empty) |
+| `usage` | `inputTokens` counts the system text, the tools and the messages; `outputTokens` counts the answer and is at most `maxOutputTokens`. Both are whole numbers from 0 and both are required |
 
-The model's text is checked again by the capability (schema, claim guard, inert rendering, R1 and
-R9); the contract does not make it trusted.
+An answer that breaks any of these rules is refused as a whole, and none of it is used. If
+`contract` or `model` differ from the request, the platform counts the server as down for this
+call and tries its next route.
 
-## 5. Errors
+The platform checks the model's text again in each feature (schema, safety rules, plain-text
+display). The contract does not make the text trusted.
 
-The gateway never reads the body of a non-200 answer (it could echo the request).
+## 5. Errors the server returns
 
-| Status | Meaning for the gateway |
-| --- | --- |
-| 429 | Rate limited: the next route is tried |
-| 5xx | Server fault: the next route is tried |
-| 400, 413, 422 | The request cannot be taken: not retried on another route |
-| 401, 403, 404, other | The route refuses its key or does not serve the model: the next route is tried |
-| No answer before the timeout | Timeout: the next route is tried |
+The platform never reads the body of a non-200 answer, so the server should not put request text
+in it.
 
-## 6. What makes the route usable
+| Situation | Status | What the platform does |
+| --- | --- | --- |
+| The request is malformed, or too large, for any server | 400, 413 or 422 | Gives up the call; another route would refuse it too |
+| Wrong or missing key | 401 or 403 | Tries its next route |
+| Unknown contract version or model version | 404 | Tries its next route |
+| Too many requests | 429 | Tries its next route |
+| Server fault or overload | 5xx | Tries its next route |
+| No answer within the time limit | (none) | Tries its next route |
 
-A catalogue row of the in-house model is usable only when all of these hold (ADR-0052 decision 3,
-ADR-0053 decision 3); until then every stage stays off:
-
-1. The row is added by PR: endpoint, region, exact model version id, the price the platform counts it
-   at, retirement day if any.
-2. Hassan records his check of no retention, no training and the region in the row (`dataTerms`)
-   and in ADR-0052's verification log.
-3. Kazem puts the Market's key in the secret store.
-4. The model version has a recorded evaluation pass for the capability (PR to
-   `evaluations/results.ts`).
-5. For shadow with customer data: the owner's written approval is recorded in ADR-0052.
-
-The in-house model is never one of the External models tab's choices; only its own stages (off,
-shadow, percent, default; G6b to G6e) route to it.
+Use 400, 413 and 422 only for a request every route would refuse. A version or key problem answered
+with 400 would stop the platform from falling back to its other routes.

@@ -2,7 +2,7 @@ import { testInHouseRoute, testRoute } from '../../../../test/support/ai-routes'
 import { EvaluationResults } from '../evaluations/evaluation-results';
 import { EVALUATION_PASSES } from '../evaluations/results';
 import { checkedInCatalogue } from '.';
-import { inHouseEndpointProblem, priceOf, RouteCatalogue } from './route-catalogue';
+import { inHouseCallUrl, inHouseEndpointProblem, priceOf, RouteCatalogue } from './route-catalogue';
 
 describe('the AI route catalogue (ADR-0052 decision 2)', () => {
   it('loads the checked-in rows, each valid and listed once', () => {
@@ -164,6 +164,32 @@ describe('the AI route catalogue (ADR-0052 decision 2)', () => {
       ).toThrow(/only an in-house row names an endpoint/);
     });
 
+    it('refuses in-house rows on two origins, so the Market key reaches one host only', () => {
+      expect(
+        () =>
+          new RouteCatalogue([
+            testInHouseRoute('mi'),
+            testInHouseRoute('mj', { endpoint: 'https://staging.intelligence.example.com/model' }),
+          ]),
+      ).toThrow(/another in-house origin/);
+      expect(
+        () =>
+          new RouteCatalogue([
+            testInHouseRoute('mi'),
+            testInHouseRoute('mj', { endpoint: 'https://intelligence.example.com/model-2' }),
+          ]),
+      ).not.toThrow();
+    });
+
+    it('builds the call address from the parsed endpoint', () => {
+      expect(inHouseCallUrl('https://intelligence.example.com/model/')).toBe(
+        'https://intelligence.example.com/model/v1/messages',
+      );
+      expect(inHouseCallUrl('https://intelligence.example.com')).toBe(
+        'https://intelligence.example.com/v1/messages',
+      );
+    });
+
     it('refuses a family served by two providers', () => {
       expect(() => new RouteCatalogue([testRoute('m'), testInHouseRoute('m')])).toThrow(
         /has two providers/,
@@ -174,7 +200,26 @@ describe('the AI route catalogue (ADR-0052 decision 2)', () => {
       ['https://intelligence.example.com', null],
       ['https://intelligence.example.com/', null],
       ['https://ap-southeast-2.intelligence.example.com.au/model/v-a_1', null],
-      ['not a url', 'not a URL'],
+      ['not a url', 'has other than printable ASCII'],
+      ['intelligence.example.com', 'not a URL'],
+      ['https:intelligence.example.com', 'is not written in its canonical form'],
+      ['https://Intelligence.example.com', 'is not written in its canonical form'],
+      ['https://intelligence.example.com:443', 'carries a port'],
+      ['https://intelligence.example.com /model', 'has other than printable ASCII'],
+      ['https://intelligence.example.com\t', 'has other than printable ASCII'],
+      ['https://\u043f\u0440\u0438\u043c\u0435\u0440.com', 'has other than printable ASCII'],
+      ['https://\uff41\uff49.example.com', 'has other than printable ASCII'],
+      ['https://exa\u00admple.com', 'has other than printable ASCII'],
+      ['https://xn--e1afmkfd.com', 'the host has an IDN label'],
+      ['https://a/%2e%2e/b', 'the host is not a DNS name'],
+      ['https://intelligence.example.com/a/%2e%2e/b', 'the path has other than plain segments'],
+      ['https://intelligence.example.com/a/../b', 'is not written in its canonical form'],
+      ['https://intelligence.example.com/.hidden', 'the path has other than plain segments'],
+      ['https://model.localhost', 'the host is a special-use name'],
+      ['https://model.internal', 'the host is a special-use name'],
+      ['https://model.local', 'the host is a special-use name'],
+      ['https://127.0.0.1.nip.io', 'the host is a wildcard-IP name'],
+      ['https://1.2.3.4.sslip.io', 'the host is a wildcard-IP name'],
       ['http://intelligence.example.com', 'not https'],
       ['https://user@intelligence.example.com', 'carries a user'],
       ['https://intelligence.example.com:8443', 'carries a port'],

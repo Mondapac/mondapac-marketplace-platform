@@ -224,6 +224,7 @@ describe.each(['AU', 'ZZ'] as const)(
     it('is usable as a route, yet not listed, refused in a list and refused as the saver', () => {
       expect(router.routeProblem(marketId, WRITER, house)).toBeNull();
       expect(router.families()).not.toContain('model-house');
+      expect(router.inHouseFamilies()).toEqual(['model-house']);
       expect(choices.options(marketId).write.map((option) => option.family)).not.toContain(
         'model-house',
       );

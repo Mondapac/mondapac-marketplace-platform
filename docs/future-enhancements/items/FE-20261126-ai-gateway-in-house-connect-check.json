@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261126-ai-gateway-in-house-connect-check",
+  "area": "assistant",
+  "title": "درگاه AI: بررسی نشانی هنگام اتصال به مدل اختصاصی",
+  "desc": "در G6a نشانی endpoint مدل اختصاصی فقط به شکل متن بررسی می‌شود. پیش از اولین ردیف واقعی، یک Agent برای fetch باید هنگام اتصال نشانی‌های خصوصی، loopback و link-local (مثل 169.254.169.254) را رد کند تا تغییر DNS سرور شریک کلید یا داده را به شبکهٔ داخلی نفرستد؛ یا میزبان در فهرست مجاز ADR-0052 ثبت شود.",
+  "src": "docs/design/domain/platform-ai.md (In-house route readiness)",
+  "date": "2026-11-26",
+  "trig": "پیش از افزودن اولین ردیف in-house-http به کاتالوگ",
+  "prio": "بالا",
+  "status": "موکول"
+}

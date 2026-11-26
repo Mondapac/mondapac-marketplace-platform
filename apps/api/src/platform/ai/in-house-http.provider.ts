@@ -1,4 +1,4 @@
-import { inHouseEndpointProblem } from './catalogue/route-catalogue';
+import { inHouseCallUrl, inHouseEndpointProblem } from './catalogue/route-catalogue';
 import type { Fetch } from './anthropic-messages.provider';
 import {
   ModelProviderError,
@@ -65,7 +65,8 @@ export class InHouseHttpProvider implements ModelProvider {
     ) {
       throw new ModelProviderError('client');
     }
-    const url = `${endpoint.replace(/\/$/, '')}/v1/messages`;
+    // Built from the parsed address, never from the raw text (Hassan, G6a review 2).
+    const url = inHouseCallUrl(endpoint);
     let response: Response;
     try {
       response = await this.fetchFn(url, {
@@ -75,6 +76,8 @@ export class InHouseHttpProvider implements ModelProvider {
         headers: {
           'content-type': 'application/json',
           accept: 'application/json',
+          // No compressed answer: the size cap counts the bytes as sent (Hassan, G6a review 1).
+          'accept-encoding': 'identity',
           authorization: `Bearer ${credentials.apiKey}`,
           'mondapac-contract': IN_HOUSE_CONTRACT,
           // The contract's terms, stated on every call: neither request nor answer is kept.
@@ -104,26 +107,67 @@ export class InHouseHttpProvider implements ModelProvider {
       // The body is not read: it may echo the request.
       throw failureOf(response.status);
     }
-    const declared = Number(response.headers.get('content-length') ?? '0');
-    if (Number.isFinite(declared) && declared > IN_HOUSE_MAX_ANSWER_BYTES) {
-      throw new ModelProviderError('server');
-    }
-    const text = await response.text();
-    if (Buffer.byteLength(text, 'utf8') > IN_HOUSE_MAX_ANSWER_BYTES) {
-      throw new ModelProviderError('server');
-    }
+    const text = await readCapped(response);
     let body: unknown;
     try {
       body = JSON.parse(text);
     } catch {
       throw new ModelProviderError('server');
     }
-    return turnOf(body, credentials.model, new Set(request.tools.map((tool) => tool.name)));
+    return turnOf(
+      body,
+      credentials.model,
+      new Set(request.tools.map((tool) => tool.name)),
+      request.maxOutputTokens,
+    );
+  }
+}
+
+/**
+ * The answer body as UTF-8 text, read as a stream and cut at {@link IN_HOUSE_MAX_ANSWER_BYTES}: a
+ * body over the cap, with or without a length header, is a server fault and is not read further
+ * (Hassan, G6a review 1; Mohammad 5). A length header that is not a whole number is a fault too.
+ */
+async function readCapped(response: Response): Promise<string> {
+  const declared = response.headers.get('content-length');
+  if (declared !== null) {
+    if (!/^\d{1,12}$/.test(declared)) throw new ModelProviderError('server');
+    if (Number(declared) > IN_HOUSE_MAX_ANSWER_BYTES) throw new ModelProviderError('server');
+  }
+  const encoding = response.headers.get('content-encoding');
+  if (encoding !== null && encoding.trim().toLowerCase() !== 'identity') {
+    throw new ModelProviderError('server');
+  }
+  if (response.body === null) throw new ModelProviderError('server');
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const next = (await reader.read()) as { done: boolean; value?: unknown };
+    if (next.done) break;
+    const value = next.value;
+    if (!(value instanceof Uint8Array)) throw new ModelProviderError('server');
+    size += value.byteLength;
+    if (size > IN_HOUSE_MAX_ANSWER_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      throw new ModelProviderError('server');
+    }
+    chunks.push(value);
+  }
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks));
+  } catch {
+    throw new ModelProviderError('server');
   }
 }
 
 /** The checked turn of a contract answer; throws a {@link ModelProviderError} otherwise. */
-function turnOf(body: unknown, model: string, offered: ReadonlySet<string>): ModelTurn {
+function turnOf(
+  body: unknown,
+  model: string,
+  offered: ReadonlySet<string>,
+  maxOutputTokens: number,
+): ModelTurn {
   if (typeof body !== 'object' || body === null || Array.isArray(body)) {
     throw new ModelProviderError('server');
   }
@@ -138,7 +182,9 @@ function turnOf(body: unknown, model: string, offered: ReadonlySet<string>): Mod
     typeof usage !== 'object' ||
     usage === null ||
     !isCount(usage.inputTokens) ||
-    !isCount(usage.outputTokens)
+    !isCount(usage.outputTokens) ||
+    // More output than asked for is not a model that honoured the request; the count feeds the caps.
+    usage.outputTokens > maxOutputTokens
   ) {
     throw new ModelProviderError('server');
   }
@@ -147,6 +193,7 @@ function turnOf(body: unknown, model: string, offered: ReadonlySet<string>): Mod
   }
   if (!Array.isArray(answer.blocks)) throw new ModelProviderError('server');
   const blocks: ModelBlock[] = [];
+  const callIds = new Set<string>();
   for (const raw of answer.blocks as unknown[]) {
     if (typeof raw !== 'object' || raw === null) throw new ModelProviderError('server');
     const block = raw as Record<string, unknown>;
@@ -157,13 +204,18 @@ function turnOf(body: unknown, model: string, offered: ReadonlySet<string>): Mod
       typeof block.id === 'string' &&
       block.id.length > 0 &&
       block.id.length <= 200 &&
+      !callIds.has(block.id) &&
       typeof block.name === 'string' &&
-      offered.has(block.name)
+      offered.has(block.name) &&
+      typeof block.input === 'object' &&
+      block.input !== null &&
+      !Array.isArray(block.input)
     ) {
+      callIds.add(block.id);
       blocks.push({ type: 'tool-call', id: block.id, name: block.name, input: block.input });
     } else {
-      // A tool the request did not offer, a result block, or an unknown type: outside the
-      // contract, so the whole answer is refused rather than partly used.
+      // A tool the request did not offer, a repeated call id, an input that is not an object, a
+      // result block, or an unknown type: outside the contract, so the whole answer is refused.
       throw new ModelProviderError('server');
     }
   }

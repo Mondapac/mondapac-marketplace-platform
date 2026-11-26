@@ -357,17 +357,39 @@ ADR-0026 decision 9 and ADR-0042 decision 7, so ADR-0053 supersedes those points
   once the owner's written approval is recorded in ADR-0052.
 - **Built in G6a (contract and adapter, no stage yet).** The in-house model is the route kind
   `in-house-http` of provider `mondapac`, called through the HTTP contract `mondapac-model/1`
-  (`platform-ai-in-house-contract-v1.md`, the document shared with the partner team): our own
-  message format, the exact model version id echoed in the answer (another version or contract
-  counts as the route being down), token counts required, a 1 MiB answer cap, only tools the
-  request offered, redirects never followed. The endpoint is the catalogue row's `endpoint` (an
-  `https://` DNS host, no port, user, query or fragment; by PR only, `catalogue/in-house.ts`, empty
-  for now) and the key is `AI_IN_HOUSE_API_KEY` per Market, sent as a bearer token (mTLS:
-  FE-20261126-ai-gateway-in-house-mtls). A family belongs to one provider; a `mondapac` family is
-  never an External models choice, never in its scorecard, and the router skips it in an external
-  list or as the saver model even when a stale or restored value names it: only the in-house stages
-  (G6b to G6e) will route to it. Each route kind has its adapter behind one `ModelProvider`
-  (`route-providers.ts`). No migration: `ai_calls.provider` already takes any provider id.
+  (`platform-ai-in-house-contract-v1.md`, the document shared with the partner team). The adapter
+  (`in-house-http.provider.ts`) sends our own message format and checks the answer strictly: the
+  exact model version echoed (another version or contract counts as the route being down), token
+  counts required and output within `maxOutputTokens`, only tools the request offered with an
+  object input and unique ids, an uncompressed UTF-8 body read as a stream and cut at 1 MiB,
+  redirects never followed. The endpoint is the catalogue row's `endpoint`, by PR only
+  (`catalogue/in-house.ts`, empty for now): it must be written exactly as it is called (`https://`,
+  lowercase ASCII DNS host, no IDN, special-use or wildcard-IP name, no port, user, query, fragment
+  or escapes), the call address is built from its parsed form, and every in-house row shares one
+  origin because the Market's one key (`AI_IN_HOUSE_API_KEY`, bearer token; mTLS:
+  FE-20261126-ai-gateway-in-house-mtls) goes to it (Hassan, G6a review). A family belongs to one
+  provider. A `mondapac` family is never an External models choice nor in its scorecard
+  (`router.families()` is external only; `inHouseFamilies()` lists the rest), and the router skips
+  it in an external list or as the saver model even when a stale or restored value names it
+  (shown as `unknown-model`; a distinct problem code comes with the G6b screens). The evaluation and
+  playground server routes can take an in-house family on purpose, so a version can earn its pass;
+  their panel lists stay external until G6e. Each route kind has its adapter behind one
+  `ModelProvider` (`route-providers.ts`). No migration: `ai_calls.provider` takes any provider id.
+- **In-house route readiness (before any stage other than off).** All of these must hold, else
+  every stage stays off (ADR-0052 decision 3, ADR-0053 decision 3): (1) a PR adds the row:
+  endpoint, region, exact model version id, the price the platform counts it at, retirement day;
+  (2) Hassan records his check of no retention, no training and the region in `dataTerms` and in
+  ADR-0052's verification log; (3) the connect-time address check is built
+  (FE-20261126-ai-gateway-in-house-connect-check: the endpoint never resolves to a private,
+  loopback or link-local address); (4) Kazem puts the Market's key in the secret store; (5) the
+  version has a recorded evaluation pass for the capability (`evaluations/results.ts`); (6) for
+  shadow with customer data, the owner's written approval is recorded in ADR-0052. The health
+  check (FE-20261126-ai-gateway-in-house-health-check) comes before percent or default (G6d).
+- **G6 slices.** G6a contract and adapter; G6b stage settings per task type (off, shadow, percent,
+  default; shares; rollback limits with server ceiling and minimum sample; TOTP rules); G6c shadow
+  runs (single-round capabilities without tools, metrics only, same budget); G6d percent and
+  default routing with auto-rollback; G6e the panel tab (with in-house versions on the evaluation
+  and playground tabs). Stage, shadow and rollout code goes in `platform/ai/own-model/`.
 
 **AI Gateway page.** Tabs Overview (today's and this month's cost against the caps, requests,
 errors, latency and fallbacks per capability), Limits (caps, guest share, alert and saver

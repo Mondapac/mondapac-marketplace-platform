@@ -91,12 +91,42 @@ const REGION = /^[a-z]{2}(?:-[a-z]+)+-\d$/;
  */
 const BEDROCK_MODEL = /^(?:au\.)?anthropic\./;
 
+/** Top-level names that never reach a public partner host (RFC 6761, RFC 6762, RFC 8375, RFC 7686). */
+const SPECIAL_USE_TLDS = new Set([
+  'localhost',
+  'local',
+  'internal',
+  'test',
+  'invalid',
+  'example',
+  'arpa',
+  'onion',
+  'lan',
+  'home',
+  'corp',
+]);
+/** DNS services that answer any embedded IP address, so a name of theirs can point anywhere. */
+const WILDCARD_IP_SUFFIXES = [
+  'nip.io',
+  'sslip.io',
+  'xip.io',
+  'traefik.me',
+  'localtest.me',
+  'lvh.me',
+];
+const ENDPOINT_HOST = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+const ENDPOINT_PATH = /^(?:\/[A-Za-z0-9_-][A-Za-z0-9._-]*)*\/?$/;
+
 /**
- * Why an in-house endpoint is not allowed, or null: `https://`, a DNS host name (no IP literal, no
- * `localhost`), no user, port, query or fragment, a path of plain segments only (Hassan: the
- * address is code, so it is checked as strictly as a fixed host).
+ * Why an in-house endpoint is not allowed, or null (Hassan, G6a review 2 and 3). The address is code,
+ * so it is checked as strictly as a fixed host, and the text in the row must be exactly what is
+ * called: `https://`, a lowercase ASCII DNS host name (no IP literal, no `xn--` label, no special-use
+ * or wildcard-IP name), no user, port, query or fragment, a path of plain segments, and nothing a URL
+ * parser would quietly rewrite (spaces, tabs, Unicode, `%` escapes, `..`, a default port).
  */
 export function inHouseEndpointProblem(endpoint: string): string | null {
+  if (endpoint.length > 200) return 'longer than 200 characters';
+  if (!/^[\x21-\x7e]+$/.test(endpoint)) return 'has other than printable ASCII';
   let url: URL;
   try {
     url = new URL(endpoint);
@@ -110,14 +140,31 @@ export function inHouseEndpointProblem(endpoint: string): string | null {
     return 'carries a query or fragment';
   }
   const host = url.hostname;
-  if (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(host)) {
-    return 'the host is not a DNS name';
+  if (!ENDPOINT_HOST.test(host)) return 'the host is not a DNS name';
+  // A default port (`:443`) is dropped by the parser, so it is looked for in the text.
+  if (/^https:\/\/[^/]*:/.test(endpoint)) return 'carries a port';
+  const labels = host.split('.');
+  if (labels.some((label) => label.startsWith('xn--'))) return 'the host has an IDN label';
+  if (SPECIAL_USE_TLDS.has(labels[labels.length - 1]!)) return 'the host is a special-use name';
+  if (WILDCARD_IP_SUFFIXES.some((suffix) => host === suffix || host.endsWith(`.${suffix}`))) {
+    return 'the host is a wildcard-IP name';
   }
-  if (!/^(?:\/[A-Za-z0-9._-]+)*\/?$/.test(url.pathname) || url.pathname.includes('..')) {
+  if (!ENDPOINT_PATH.test(url.pathname) || endpoint.includes('%')) {
     return 'the path has other than plain segments';
   }
-  if (endpoint.length > 200) return 'longer than 200 characters';
+  if (
+    endpoint !== `${url.origin}${url.pathname}` &&
+    endpoint !== `${url.origin}${url.pathname}`.replace(/\/$/, '')
+  ) {
+    return 'is not written in its canonical form';
+  }
   return null;
+}
+
+/** The call address of a valid in-house endpoint, built from its parsed form (contract path `/v1/messages`). */
+export function inHouseCallUrl(endpoint: string): string {
+  const url = new URL(endpoint);
+  return `${url.origin}${url.pathname.replace(/\/$/, '')}/v1/messages`;
 }
 
 /** Why a row is invalid, or null. Checked once, when the catalogue is loaded. */
@@ -169,6 +216,7 @@ export class RouteCatalogue {
   constructor(rows: readonly RouteRow[]) {
     const ids = new Set<string>();
     const makers = new Map<string, string>();
+    let inHouseOrigin: string | null = null;
     for (const row of rows) {
       const problem = routeRowProblem(row);
       if (problem !== null) throw new Error(`AI route catalogue: ${problem}`);
@@ -179,6 +227,15 @@ export class RouteCatalogue {
         throw new Error(`AI route catalogue: the family ${row.family} has two providers`);
       }
       makers.set(row.family, row.provider);
+      if (row.route === 'in-house-http' && row.endpoint !== undefined) {
+        // One key per Market goes to the in-house endpoint, so every in-house row has the same
+        // origin: a second host (a staging server, say) never receives the key (Hassan, G6a 4).
+        const origin = new URL(row.endpoint).origin;
+        if (inHouseOrigin !== null && inHouseOrigin !== origin) {
+          throw new Error(`AI route catalogue: ${row.id} has another in-house origin`);
+        }
+        inHouseOrigin = origin;
+      }
     }
     this.#rows = Object.freeze(rows.map((row) => Object.freeze({ ...row })));
   }
