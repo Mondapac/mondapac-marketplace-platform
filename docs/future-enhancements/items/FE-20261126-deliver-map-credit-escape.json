@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261126-deliver-map-credit-escape",
+  "area": "storefront",
+  "title": "پاک‌سازی متن credit مرز پیش از رسیدن به attribution نقشهٔ Mapbox",
+  "desc": "متن credit منبع مرز (attribution و licence از config/service-area-boundaries) در attribution نقشهٔ Mapbox گذاشته می‌شود که HTML می‌خواند. امروز منبع فقط config مخزن است، ولی بهتر است بارگذار API یا area-outline.ts نویسه‌های <>&\" را رد یا escape کند تا متن هرگز HTML نشود.",
+  "src": "بازبینی امنیتی حسن روی PR 1412 (مرز منطقهٔ ارسال)",
+  "date": "2026-11-26",
+  "trig": "پیش از آنکه منبع مرز از جایی جز config مخزن بیاید (مثلاً پنل ادمین)",
+  "prio": "پایین",
+  "status": "موکول"
+}
