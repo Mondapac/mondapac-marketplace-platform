@@ -91,6 +91,7 @@ export const HELP_REGISTRY: HelpRegistry = {
     { route: '/settings/roles/[roleId]', slug: 'settings-roles-roleId' },
     { route: '/settings/ai', slug: 'settings-ai' },
     { route: '/settings/ai-gateway', slug: 'settings-ai-gateway' },
+    { route: '/settings/ai-models', slug: 'settings-ai-models' },
     { route: '/settings/account-deletion', slug: 'settings-account-deletion' },
     { route: '/settings/ship-to-retention', slug: 'settings-ship-to-retention' },
     { route: '/account/profile', slug: 'account-profile' },

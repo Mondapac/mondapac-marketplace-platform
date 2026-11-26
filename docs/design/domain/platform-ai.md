@@ -544,8 +544,17 @@ settings/admin/ai-gateway/emergency-stop` (protected key `settings.ai-gateway.ma
   time with a restore. The step-up dialog asks in place; the page never decides what needs a code.
   The history is a plain list of at most 50 rows (the server cap), not a super list: this is
   stated on the page; whether it must become one is the owner's open question. The history of the
-  model lists (`ai-models/history`) comes with G5b. Files: `apps/admin/src/ai-gateway/`,
+  model lists (`ai-models/history`) is on the AI Models page (G5b). Files: `apps/admin/src/ai-gateway/`,
   `apps/admin/app/(shell)/settings/ai-gateway/`, BFF allow-list, settings navigation, help, i18n.
+
+- **Built in G5b (admin page Settings > AI Models, `/settings/ai-models`, External models tab).**
+  Per task type an ordered list of at most three model families, chosen only among the families the
+  server lists as usable in the Market (the panel never types a model id), a saver model, and the
+  saver threshold. A preview lists each change before saving; saving and every restore ask for the
+  two-step code. A saved model that is no longer usable (retired, no key, not evaluated) is shown as
+  an alert. The Mondapac Intelligence tab is a placeholder until G6. Ordering uses Up and Down
+  buttons (keyboard and phone friendly); drag and drop, the evaluation scorecard and the playground
+  come in later PRs (G5c, G5d).
 
 ## 9. Security (Hassan)
 
