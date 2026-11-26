@@ -27,6 +27,11 @@ import { createTestApp } from './support/test-app';
 import { ViewAiGatewaySettings } from '../src/modules/settings/application/use-cases/view-ai-gateway-settings.use-case';
 import { ChangeAiGatewayLimits } from '../src/modules/settings/application/use-cases/change-ai-gateway-limits.use-case';
 import { ChangeAiGatewayEmergencyStop } from '../src/modules/settings/application/use-cases/change-ai-gateway-emergency-stop.use-case';
+import { ChangeAiCapabilities } from '../src/modules/settings/application/use-cases/change-ai-capabilities.use-case';
+import { RevertAiGatewaySetting } from '../src/modules/settings/application/use-cases/revert-ai-gateway-setting.use-case';
+import { RevertAiModelsSetting } from '../src/modules/settings/application/use-cases/revert-ai-models-setting.use-case';
+import { ViewAiGatewayHistory } from '../src/modules/settings/application/use-cases/view-ai-gateway-history.use-case';
+import { ViewAiModelsHistory } from '../src/modules/settings/application/use-cases/view-ai-models-history.use-case';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 import { ViewAiEvaluations } from '../src/modules/settings/application/use-cases/view-ai-evaluations.use-case';
 import { ViewAiEvaluation } from '../src/modules/settings/application/use-cases/view-ai-evaluation.use-case';
@@ -133,6 +138,16 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
           .useValue(stub('change-ai-limits'))
           .overrideProvider(ChangeAiGatewayEmergencyStop)
           .useValue(stub('change-ai-stop'))
+          .overrideProvider(ChangeAiCapabilities)
+          .useValue(stub('change-ai-capabilities'))
+          .overrideProvider(ViewAiGatewayHistory)
+          .useValue(stub('ai-gateway-history'))
+          .overrideProvider(ViewAiModelsHistory)
+          .useValue(stub('ai-models-history'))
+          .overrideProvider(RevertAiGatewaySetting)
+          .useValue(stub('revert-ai-gateway'))
+          .overrideProvider(RevertAiModelsSetting)
+          .useValue(stub('revert-ai-models'))
           .overrideProvider(ViewAiEvaluations)
           .useValue(stub('view-evaluations'))
           .overrideProvider(ViewAiEvaluation)
@@ -655,6 +670,113 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
     expect(calls[1]?.input).toEqual(caps);
     expect(calls[4]?.input).toEqual(body);
   });
+  it('switches capabilities, reads a setting history and reverts it with closed bodies (G4d3)', async () => {
+    await boot();
+    const session = sessionOf('admin', 9);
+    const switches = '/settings/admin/ai-gateway/capabilities';
+    const body = {
+      changes: [{ code: 'ai-capability-assistant-buyer-chat', value: 'on', expectedVersion: 1 }],
+    };
+    next = err({ code: 'second-factor.required', actionKey: 'settings.ai-capability.resume' });
+    const noCode = await call('put', switches, 'admin', session, body);
+    expect(noCode.status).toBe(403);
+    expect(noCode.body).toEqual({
+      statusCode: 403,
+      code: 'second-factor.required',
+      details: { actionKey: 'settings.ai-capability.resume' },
+    });
+    next = ok([]);
+    expect((await call('put', switches, 'admin', session, body)).status).toBe(200);
+    expect((await call('put', switches, 'admin', session, { ...body, value: 'on' })).status).toBe(
+      400,
+    );
+
+    const at = START;
+    next = ok([
+      {
+        code: 'ai-cap-market-day',
+        version: 2,
+        previousValue: 'none',
+        value: '100',
+        changedAt: at,
+        changedBy: null,
+        note: null,
+        current: true,
+      },
+    ]);
+    const history = await call(
+      'get',
+      '/settings/admin/ai-gateway/history?code=ai-cap-market-day&limit=10',
+      'admin',
+      session,
+    );
+    expect(history.status).toBe(200);
+    expect(history.headers['cache-control']).toBe('no-store');
+    expect(history.body).toEqual({
+      history: [
+        {
+          code: 'ai-cap-market-day',
+          version: 2,
+          previousValue: 'none',
+          value: '100',
+          changedAt: at.toString(),
+          changedBy: null,
+          note: null,
+          current: true,
+        },
+      ],
+    });
+    next = ok([]);
+    expect(
+      (await call('get', '/settings/admin/ai-models/history?code=ai-models-chat', 'admin', session))
+        .status,
+    ).toBe(200);
+
+    const revert = { code: 'ai-cap-market-day', version: 1, expectedVersion: 2 };
+    next = err({ code: 'second-factor.required', actionKey: 'settings.ai-settings.revert' });
+    expect(
+      (await call('post', '/settings/admin/ai-gateway/revert', 'admin', session, revert)).status,
+    ).toBe(403);
+    next = ok({ ...CHANGED, updatedAt: START });
+    const done = await call('post', '/settings/admin/ai-gateway/revert', 'admin', session, revert);
+    expect(done.status).toBe(200);
+    next = err({ code: 'settings.conflict' });
+    expect(
+      (await call('post', '/settings/admin/ai-models/revert', 'admin', session, revert)).status,
+    ).toBe(409);
+    expect(
+      (
+        await call('post', '/settings/admin/ai-gateway/revert', 'admin', session, {
+          ...revert,
+          x: 1,
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await call(
+          'post',
+          '/settings/admin/ai-gateway/revert',
+          'admin',
+          { cookie: session.cookie },
+          revert,
+        )
+      ).status,
+    ).toBe(403);
+    expect(calls.map((c) => c.name)).toEqual([
+      'change-ai-capabilities',
+      'change-ai-capabilities',
+      'ai-gateway-history',
+      'ai-models-history',
+      'revert-ai-gateway',
+      'revert-ai-gateway',
+      'revert-ai-models',
+    ]);
+    expect(calls[2]?.input).toEqual({ code: 'ai-cap-market-day', limit: 10 });
+    expect(calls[3]?.input).toEqual({ code: 'ai-models-chat', limit: undefined });
+    expect(calls[4]?.input).toEqual({ ...revert, note: undefined });
+  });
+
   it('serves the AI evaluation runs and the playground (G4c): step-up on a run, closed bodies', async () => {
     await boot();
     const session = sessionOf('admin', 8);

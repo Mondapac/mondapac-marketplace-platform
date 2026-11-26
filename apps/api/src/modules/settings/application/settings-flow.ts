@@ -382,6 +382,11 @@ export async function changeSetting(
     /** The admin's note for the reviewer; needed only where the area is reviewed. */
     readonly note?: unknown;
   },
+  /**
+   * The admin step-up action whose fresh proof the change spends in its unit, after the version
+   * check; with `when`, only when the change meets it (the AI writer switched on, G4d3).
+   */
+  stepUp?: StepUpRule,
 ): Promise<Result<SettingChangeView, SettingsFailure>> {
   const adminId = adminAccountId(context);
   if (adminId === null) return err({ code: 'access.denied' });
@@ -389,9 +394,20 @@ export async function changeSetting(
   if (Array.isArray(checked)) return err({ code: 'validation.failed', fields: checked });
   const now = deps.clock.now();
   const reviewPolicy = await settingsReview(deps, context);
-  return deps.unitOfWork.run<SettingChangeView, SettingsFailure>(context.market, () =>
-    applyChecked(deps, context, adminId, checked, now, reviewPolicy, input.note),
-  );
+  return deps.unitOfWork.run<SettingChangeView, SettingsFailure>(context.market, async () => {
+    if (stepUp !== undefined) {
+      const row = await deps.settings.find(context.market, checked.definition.code);
+      // A stale version spends no proof (applyChecked answers the conflict).
+      if ((row?.version ?? 0) === checked.seen) {
+        const was = row?.value ?? checked.definition.defaultValue;
+        if (stepUp.when === undefined || stepUp.when(checked.definition.code, was, checked.next)) {
+          const spent = await deps.stepUp.consume(context, stepUp.action);
+          if (!spent.ok) return err(stepUpFailure(spent.error));
+        }
+      }
+    }
+    return applyChecked(deps, context, adminId, checked, now, reviewPolicy, input.note);
+  });
 }
 
 /**

@@ -161,3 +161,18 @@ FE-20261125-offer-review-stop-reminder, -stop-scopes, -stop-recent-sampling.
   insert-only delete triggers for that and switches them on again.
 - A revert of a rejected review can leave the day cap above the month cap (the page refuses it,
   a revert is never blocked); the gateway enforces both lines independently on every call.
+
+## AI capability switches, history and panel revert (AI Gateway G4d3)
+
+Three more choice settings, `ai-capability-assistant-buyer-chat`,
+`ai-capability-catalog-description-writer-seller` and
+`ai-capability-catalog-description-writer-admin` (`off|on`, default `on`, safe value `off`), are
+read by the gateway through `SettingsAiGatewayControls` as `capabilities` and changed with `PUT
+settings/admin/ai-gateway/capabilities` (switching on spends `settings.ai-capability.resume`).
+`ChangeAiSetting` (the writer's module switch) spends the same action for off to on, through the
+optional step-up rule `changeSetting` now takes. The repository gained `history(market, code,
+limit)` and `historyVersion(market, code, version)`, both on the history table's primary key, for
+`GET .../ai-gateway/history`, `GET .../ai-models/history` and the two `POST .../revert` routes
+(`application/ai-settings-history.ts`): a revert is a forward change through `changeSettings` and
+always spends `settings.ai-settings.revert`. The review reverter still never allows more AI. Full
+note: docs/design/domain/platform-ai.md (Built in G4d3).

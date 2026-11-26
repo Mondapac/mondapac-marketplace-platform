@@ -11,6 +11,7 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 import { callApi } from '../api/client.ts';
 import { formOf, refusedFields, settingsOf } from './assistant-form.ts';
 import { AssistantSettingsPanel } from './assistant-settings-panel.tsx';
+import { StepUpProvider } from '../step-up/step-up.tsx';
 import type { AssistantSettings, AssistantSettingsAnswer } from './assistant-types.ts';
 
 const call = vi.mocked(callApi);
@@ -304,6 +305,54 @@ describe('AssistantSettingsPanel', () => {
     expect(screen.getByText('Saved version 1')).toBeTruthy();
     // Saved: the fields are the saved values again, so the bar is gone.
     expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+  });
+
+  it('asks for the two-step code in place to switch the assistant on, then saves (G4d3)', async () => {
+    HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+    const assign = vi.fn();
+    vi.stubGlobal('location', { ...window.location, assign });
+    call
+      .mockResolvedValueOnce({
+        ok: false,
+        failure: {
+          status: 403,
+          code: 'second-factor.required',
+          details: { actionKey: 'assistant.settings.resume' },
+        },
+      })
+      .mockResolvedValueOnce({ ok: true, status: 200, body: { code: 'step-up-verified' } })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        body: answer({ enabled: true }, { version: 1 }),
+      });
+    render(
+      wrap(
+        <StepUpProvider>
+          <AssistantSettingsPanel initial={answer()} canManage csrfToken="csrf" />
+        </StepUpProvider>,
+      ),
+    );
+    fireEvent.click(screen.getByLabelText('Assistant switched on'));
+    save();
+    const dialog = await screen.findByRole('dialog', { name: 'Confirm it is you' });
+    expect(dialog.textContent).toContain('to switch the shopping assistant on');
+    const [first] = screen.getAllByRole('textbox', { name: /Digit \d of 6/ });
+    fireEvent.paste(first as HTMLElement, { clipboardData: { getData: () => '123456' } });
+    await waitFor(() => expect(screen.getByText('Saved version 1')).toBeTruthy());
+    expect(call.mock.calls.map(([method, path]) => [method, path])).toEqual([
+      ['PUT', 'assistant/admin/settings'],
+      ['POST', 'identity/admin/step-up/verify'],
+      ['PUT', 'assistant/admin/settings'],
+    ]);
+    // In place: no sign-out and no page change.
+    expect(assign).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 
   it('names bad fields once they are left, before calling the API', () => {

@@ -6,7 +6,14 @@ import { CHANGE_TRAIL } from '../../platform/audit/change-trail';
 import { changeTrailProvider, IdentityModule } from '../identity';
 import { ASSISTANT_LISTS } from './application/insights-saved-filter-list';
 import { ListsModule, registerLists } from '../lists';
-import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
+import {
+  registerPermissions,
+  registerStepUpActions,
+  STEP_UP_CONSUMER,
+  USE_CASE_GATE,
+  type UseCaseGate,
+} from '../../platform/authz';
+import { ASSISTANT_STEP_UP_ACTIONS } from './contracts/step-up';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { registerEvents } from '../../platform/events/event-catalogue';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
@@ -81,6 +88,7 @@ const PORTS: readonly [keyof AssistantDependencies, InjectionToken][] = [
   ['quickPrompts', QUICK_PROMPTS],
   ['previewTokens', PREVIEW_TOKENS],
   ['trail', CHANGE_TRAIL],
+  ['stepUp', STEP_UP_CONSUMER],
 ];
 
 /** Every assistant use case shares one dependency object, built from the same ports. */
@@ -136,6 +144,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     registerAuditActions('assistant', ASSISTANT_AUDIT_ACTIONS),
     registerCapabilities('assistant', ASSISTANT_AI_CAPABILITIES),
     registerPermissions('assistant', ASSISTANT_PERMISSIONS),
+    registerStepUpActions('assistant', ASSISTANT_STEP_UP_ACTIONS),
     // The insights list's saved filters, through the generic routes of `lists` (rule 14).
     registerLists('assistant', ASSISTANT_LISTS),
     SubjectRateLimits,

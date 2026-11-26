@@ -135,6 +135,9 @@ const BY_CODE: Readonly<Record<string, string>> = {
   'request.throttled': 'throttled',
   'request.csrf': 'csrf',
   'access.denied': 'denied',
+  // Switching on needs a two-step code (G4d3); the dialog asks, this is what is left after it.
+  'second-factor.required': 'second-factor',
+  'second-factor.enrolment-required': 'second-factor',
 };
 
 /** The message key (under `settings.assistant.error`) for a failed write. */

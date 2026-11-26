@@ -18,6 +18,7 @@ import { MarketRegistry } from '../../../platform/market-config/market-registry'
 import { SETTINGS_AUDIT_ACTIONS } from '../domain/audit';
 import type {
   MarketSettingChange,
+  MarketSettingHistoryRecord,
   MarketSettingRecord,
   MarketSettingRepository,
 } from './ports/market-setting.repository';
@@ -50,6 +51,11 @@ import { SettingsAiGatewayControls } from './ai-gateway-controls-reader';
 import { NO_CAPS, NO_MODEL_LISTS } from '../../../platform/ai/gateway-controls';
 import type { AiModelChoices, ModelChoiceProblem } from '../../../platform/ai/model-choices';
 import { ChangeAiModels } from './use-cases/change-ai-models.use-case';
+import { ChangeAiCapabilities } from './use-cases/change-ai-capabilities.use-case';
+import { RevertAiGatewaySetting } from './use-cases/revert-ai-gateway-setting.use-case';
+import { RevertAiModelsSetting } from './use-cases/revert-ai-models-setting.use-case';
+import { ViewAiGatewayHistory } from './use-cases/view-ai-gateway-history.use-case';
+import { ViewAiModelsHistory } from './use-cases/view-ai-models-history.use-case';
 import { ViewAiModels } from './use-cases/view-ai-models.use-case';
 
 // The settings store in memory on both Market fixtures: the default in force before any change,
@@ -79,7 +85,9 @@ class RecordingAudit implements AuditWriter {
 /** Rows keyed by Market and code, as the table keys them; `history` is the insert-only table. */
 class MemorySettings implements MarketSettingRepository {
   readonly rows = new Map<string, MarketSettingRecord>();
-  readonly history: MarketSettingChange[] = [];
+  readonly written: MarketSettingChange[] = [];
+  /** The Market of each row of {@link written}. */
+  readonly writtenIn: string[] = [];
   failReads = false;
   private key = (market: MarketContext, code: string) => `${market.marketId}/${code}`;
 
@@ -105,8 +113,41 @@ class MemorySettings implements MarketSettingRepository {
       updatedAt: change.changedAt,
       updatedBy: change.changedBy,
     });
-    this.history.push(change);
+    this.written.push(change);
+    this.writtenIn.push(market.marketId);
     return Promise.resolve(true);
+  }
+  private historyRows(market: MarketContext, code: string): MarketSettingHistoryRecord[] {
+    return this.written
+      .filter((row, index) => this.writtenIn[index] === market.marketId && row.code === code)
+      .map((row) => ({
+        code: row.code,
+        version: row.version,
+        previousValue: row.previousValue,
+        value: row.value,
+        changedAt: row.changedAt,
+        changedBy: row.changedBy,
+        note: row.note,
+      }));
+  }
+  history(
+    market: MarketContext,
+    code: string,
+    limit: number,
+  ): Promise<readonly MarketSettingHistoryRecord[]> {
+    if (this.failReads) return Promise.reject(new Error('store down'));
+    const rows = this.historyRows(market, code).sort((a, b) => b.version - a.version);
+    return Promise.resolve(rows.slice(0, limit));
+  }
+  historyVersion(
+    market: MarketContext,
+    code: string,
+    version: number,
+  ): Promise<MarketSettingHistoryRecord | null> {
+    if (this.failReads) return Promise.reject(new Error('store down'));
+    return Promise.resolve(
+      this.historyRows(market, code).find((row) => row.version === version) ?? null,
+    );
   }
 }
 
@@ -196,7 +237,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
   it('changes a setting from the version seen, with history and one audit row', async () => {
     const first = await change({ code: 'list-paging', value: 'prev-next', expectedVersion: 0 });
     expect(first.ok && first.value).toMatchObject({ value: 'prev-next', version: 1 });
-    expect(store.history).toEqual([
+    expect(store.written).toEqual([
       expect.objectContaining({ code: 'list-paging', previousValue: null, value: 'prev-next' }),
     ]);
     expect(audit.entries).toHaveLength(1);
@@ -207,7 +248,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
     });
     const second = await change({ code: 'list-paging', value: 'pages', expectedVersion: 1 });
     expect(second.ok && second.value.version).toBe(2);
-    expect(store.history[1]).toMatchObject({ previousValue: 'prev-next', version: 2 });
+    expect(store.written[1]).toMatchObject({ previousValue: 'prev-next', version: 2 });
     const paging = await new ReadListPaging(gate, deps).execute(adminCtx(), {});
     expect(paging.ok && paging.value).toBe('pages');
   });
@@ -216,14 +257,14 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
     await change({ code: 'list-paging', value: 'prev-next', expectedVersion: 0 });
     const stale = await change({ code: 'list-paging', value: 'pages', expectedVersion: 0 });
     expect(!stale.ok && stale.error.code).toBe('settings.conflict');
-    expect(store.history).toHaveLength(1);
+    expect(store.written).toHaveLength(1);
     expect(audit.entries).toHaveLength(1);
   });
 
   it('ignores a repeat of the value in force: no history, no audit row, same version', async () => {
     const repeat = await change({ code: 'list-paging', value: 'pages', expectedVersion: 0 });
     expect(repeat.ok && repeat.value).toMatchObject({ value: 'pages', version: 0 });
-    expect(store.history).toHaveLength(0);
+    expect(store.written).toHaveLength(0);
     expect(audit.entries).toHaveLength(0);
   });
 
@@ -245,7 +286,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
     expect(!result.ok && result.error.code).toBe('validation.failed');
     const fields = !result.ok && 'fields' in result.error ? result.error.fields : [];
     expect(fields.map((field) => field.path)).toContain(path);
-    expect(store.history).toHaveLength(0);
+    expect(store.written).toHaveLength(0);
   });
 
   it('refuses a change by anyone but an admin and in an acting-as session', async () => {
@@ -254,7 +295,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       const result = await change(input, context);
       expect(result.ok).toBe(false);
     }
-    expect(store.history).toHaveLength(0);
+    expect(store.written).toHaveLength(0);
   });
 
   it('keeps one Market from seeing the value of another', async () => {
@@ -311,7 +352,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         expectedVersion: 0,
       });
       expect(first.ok && first.value).toMatchObject({ value: 'single-store', version: 1 });
-      expect(store.history).toEqual([
+      expect(store.written).toEqual([
         expect.objectContaining({
           code: 'cart-mode',
           previousValue: null,
@@ -334,7 +375,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         expectedVersion: 1,
       });
       expect(back.ok && back.value.version).toBe(2);
-      expect(store.history[1]).toMatchObject({ previousValue: 'single-store', version: 2 });
+      expect(store.written[1]).toMatchObject({ previousValue: 'single-store', version: 2 });
     });
 
     it('refuses a stale version, a repeat changes nothing, bad input is refused', async () => {
@@ -359,7 +400,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         const result = await changeCart(input);
         expect(!result.ok && result.error.code).toBe('validation.failed');
       }
-      expect(store.history).toHaveLength(1);
+      expect(store.written).toHaveLength(1);
       expect(audit.entries).toHaveLength(1);
     });
 
@@ -368,7 +409,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       for (const context of [sellerCtx(), anonymous, actingAs(adminCtx())]) {
         expect((await changeCart(input, context)).ok).toBe(false);
       }
-      expect(store.history).toHaveLength(0);
+      expect(store.written).toHaveLength(0);
     });
 
     it('answers the mode through the facade to a guest, a customer and a panel user', async () => {
@@ -488,7 +529,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       expect(await reverter.describe(adminCtx(), ['ai-description-writer-tier'])).toEqual(
         new Map(),
       );
-      expect(store.history).toHaveLength(0);
+      expect(store.written).toHaveLength(0);
       expect(audit.entries).toHaveLength(0);
     });
 
@@ -501,7 +542,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         const result = await changeAi(input);
         expect(!result.ok && result.error.code).toBe('validation.failed');
       }
-      expect(store.history).toHaveLength(0);
+      expect(store.written).toHaveLength(0);
     });
 
     it('refuses a change by a seller, an anonymous caller and an acting-as session', async () => {
@@ -509,7 +550,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       for (const context of [sellerCtx(), anonymous, actingAs(adminCtx())]) {
         expect((await changeAi(input, context)).ok).toBe(false);
       }
-      expect(store.history).toHaveLength(0);
+      expect(store.written).toHaveLength(0);
     });
 
     it('keeps the switch of one Market from turning the writer on in another', async () => {
@@ -618,7 +659,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         version: 2,
         updatedBy: ADMIN,
       });
-      expect(store.history[1]).toMatchObject({ previousValue: 'prev-next', value: 'pages' });
+      expect(store.written[1]).toMatchObject({ previousValue: 'prev-next', value: 'pages' });
       expect(audit.entries).toEqual([
         expect.objectContaining({
           action: 'settings.market-setting.changed',
@@ -672,7 +713,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       for (const before of [{ value: 25 }, { value: null }, {}]) {
         expect(await revert({ before, after: { value: 'pages' } })).toBe('gone');
       }
-      expect(store.history).toHaveLength(0);
+      expect(store.written).toHaveLength(0);
     });
 
     it('refuses to revert as anyone but a signed-in admin acting as themselves', async () => {
@@ -681,7 +722,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       for (const context of [sellerCtx(), anonymous, actingAs(adminCtx())]) {
         await expect(revert(request, context)).rejects.toThrow();
       }
-      expect(store.history).toHaveLength(1);
+      expect(store.written).toHaveLength(1);
     });
 
     it('answers changed-since once the setting moved on, and gone for a value no longer defined', async () => {
@@ -693,7 +734,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       expect(await revert({ before: { value: 'endless' }, after: { value: 'pages' } })).toBe(
         'gone',
       );
-      expect(store.history).toHaveLength(2);
+      expect(store.written).toHaveLength(2);
       const unknown = await new SettingsReverter(deps).revert(adminCtx(), {
         requestId: id<'SystemRequest'>(0x5e2),
         subjectRef: 'retired-setting',
@@ -756,7 +797,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       });
       const cleared = await changeTarget({ target: null, expectedVersion: 1 });
       expect(cleared.ok && cleared.value).toMatchObject({ value: 'none', version: 2 });
-      expect(store.history.map((row) => row.value)).toEqual([`${currency}:24000000`, 'none']);
+      expect(store.written.map((row) => row.value)).toEqual([`${currency}:24000000`, 'none']);
       const other = testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default');
       expect(await store.find(other, 'monthly-revenue-target')).toBeNull();
     });
@@ -785,7 +826,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       expect(!out.ok && 'fields' in out.error && out.error.fields.map((f) => f.path)).toEqual(
         paths,
       );
-      expect(store.history).toHaveLength(0);
+      expect(store.written).toHaveLength(0);
     });
 
     it('refuses acting-as and a stale version, and reverts to the target before', async () => {
@@ -862,7 +903,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         ['offer-review-sampling', '10', 1],
         ['offer-review-mode', 'all', 1],
       ]);
-      expect(store.history.map((row) => [row.code, row.previousValue, row.value])).toEqual([
+      expect(store.written.map((row) => [row.code, row.previousValue, row.value])).toEqual([
         ['offer-review-probation-offers', null, '20'],
         ['offer-review-sampling', null, '10'],
         ['offer-review-mode', null, 'all'],
@@ -900,7 +941,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         ],
       });
       expect(!stale.ok && stale.error.code).toBe('settings.conflict');
-      expect(store.history).toHaveLength(1);
+      expect(store.written).toHaveLength(1);
       expect(await store.find(market, 'offer-review-sampling')).toBeNull();
     });
 
@@ -922,7 +963,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         ],
       });
       expect(!refused.ok && refused.error.code).toBe('validation.failed');
-      expect(store.history).toHaveLength(0);
+      expect(store.written).toHaveLength(0);
     });
 
     it('accepts each bound itself, as a number or as decimal text', async () => {
@@ -1032,7 +1073,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       expect(!refused.ok && refused.error.code).toBe('validation.failed');
       expect(review.opened).toHaveLength(0);
       expect(!refused.ok && refused.error).toMatchObject({ fields: [{ path: 'note' }] });
-      expect(store.history).toHaveLength(0);
+      expect(store.written).toHaveLength(0);
     });
 
     it('refuses an empty list, a setting named twice, and a list that is not one', async () => {
@@ -1041,7 +1082,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         const refused = await saveOfferReview({ changes });
         expect(!refused.ok && refused.error.code).toBe('validation.failed');
       }
-      expect(store.history).toHaveLength(0);
+      expect(store.written).toHaveLength(0);
     });
 
     it('refuses anyone but an admin acting as themselves', async () => {
@@ -1050,7 +1091,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         const refused = await saveOfferReview({ changes }, context);
         expect(!refused.ok && refused.error.code).toBe('access.denied');
       }
-      expect(store.history).toHaveLength(0);
+      expect(store.written).toHaveLength(0);
     });
 
     it('opens one review request per changed setting, and a revert restores a number', async () => {
@@ -1112,7 +1153,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         ok: false,
         error: { code: 'validation.failed', fields: [{ path: 'note', code: 'too-long' }] },
       });
-      expect(store.history).toHaveLength(0);
+      expect(store.written).toHaveLength(0);
     });
 
     it('switches on at once, audited; the banner names who and when, and the policy reads it', async () => {
@@ -1154,7 +1195,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
           actionKey: 'settings.offer-review-emergency-stop.change',
         },
       });
-      expect(store.history).toHaveLength(0);
+      expect(store.written).toHaveLength(0);
       proofLeft = true;
       expect((await stop({ value: 'on', expectedVersion: 0, note: 'Fraud wave' })).ok).toBe(true);
       expect(spentProofs).toEqual(['settings.offer-review-emergency-stop.change']);
@@ -1171,7 +1212,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         ok: false,
         error: { code: 'second-factor.required', actionKey: 'settings.offer-review.change' },
       });
-      expect(store.history).toHaveLength(0);
+      expect(store.written).toHaveLength(0);
       proofLeft = true;
       expect((await page()).ok).toBe(true);
       expect(spentProofs).toEqual(['settings.offer-review.change']);
@@ -1226,6 +1267,12 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       ...NO_CAPS,
       capabilities: { 'assistant.buyer-chat': { day: 10_000_000, month: 200_000_000 } },
     };
+    /** No row: every capability switch on (G4d3). */
+    const ALL_ON = {
+      'assistant.buyer-chat': true,
+      'catalog.description-writer.seller': true,
+      'catalog.description-writer.admin': true,
+    };
 
     it('shows the stop off and every cap none by default (the evaluation budget 0, G4c; the buyer chat its own defaults, G4d2); the gateway reads no other cap and no stop', async () => {
       const view = await new ViewAiGatewaySettings(gate, deps).execute(adminCtx(), {});
@@ -1241,11 +1288,15 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         ['ai-cap-evaluation-month', '0', 0],
         ['ai-cap-buyer-chat-day', '10000000', 0],
         ['ai-cap-buyer-chat-month', '200000000', 0],
+        ['ai-capability-assistant-buyer-chat', 'on', 0],
+        ['ai-capability-catalog-description-writer-seller', 'on', 0],
+        ['ai-capability-catalog-description-writer-admin', 'on', 0],
       ]);
       expect(await controls()).toEqual({
         stopped: false,
         caps: DEFAULT_CAPS,
         models: NO_MODEL_LISTS,
+        capabilities: ALL_ON,
       });
     });
 
@@ -1276,7 +1327,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
           ok: false,
           error: { code: 'second-factor.required', actionKey: 'settings.ai-gateway-limits.raise' },
         });
-        expect(store.history).toHaveLength(1);
+        expect(store.written).toHaveLength(1);
       }
       // One raise among several lowered caps still needs the code.
       proofLeft = false;
@@ -1318,7 +1369,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       );
       expect((await controls()).stopped).toBe(true);
       // The reason is kept on the history row although the area is not reviewed (Hassan, PR 1362).
-      expect(store.history.at(-1)).toMatchObject({ value: 'on', note: 'Leak suspected' });
+      expect(store.written.at(-1)).toMatchObject({ value: 'on', note: 'Leak suspected' });
       expect(audit.entries.at(-1)).toMatchObject({
         action: 'settings.market-setting.changed',
         targetId: 'ai-gateway-emergency-stop',
@@ -1386,7 +1437,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       });
     });
 
-    it('reads a stored value the definition does not allow as the tightest (cap 0, stop on)', async () => {
+    it('reads a stored value the definition does not allow as the tightest (cap 0, stop on, switch off)', async () => {
       store.rows.set(`${market.marketId}/ai-cap-capability-day`, {
         code: 'ai-cap-capability-day',
         value: 'lots',
@@ -1401,10 +1452,19 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         updatedAt: T0,
         updatedBy: ADMIN,
       });
+      store.rows.set(`${market.marketId}/ai-capability-assistant-buyer-chat`, {
+        code: 'ai-capability-assistant-buyer-chat',
+        value: 'yes',
+        version: 1,
+        updatedAt: T0,
+        updatedBy: ADMIN,
+      });
       expect(await controls()).toEqual({
         stopped: true,
         caps: { ...DEFAULT_CAPS, capabilityDay: 0 },
         models: NO_MODEL_LISTS,
+        // An invalid switch is off (G4d3).
+        capabilities: { ...ALL_ON, 'assistant.buyer-chat': false },
       });
     });
 
@@ -1449,7 +1509,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
             },
           });
         }
-        expect(store.history).toHaveLength(0);
+        expect(store.written).toHaveLength(0);
         proofLeft = true;
         expect((await limits({ changes: [cap(MONTH, 'none')] })).ok).toBe(true);
         expect(spentProofs).toEqual(['settings.ai-gateway-limits.raise']);
@@ -1473,7 +1533,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
           },
         });
         expect(spentProofs).toEqual([]);
-        expect(store.history).toHaveLength(0);
+        expect(store.written).toHaveLength(0);
         // Both together, day not above month (equal), and `none` on either side pass.
         expect((await limits({ changes: [cap(DAY, '5000000'), cap(MONTH, '5000000')] })).ok).toBe(
           true,
@@ -1628,13 +1688,13 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
           error: { code: 'second-factor.required', actionKey: 'settings.ai-models.change' },
         });
       }
-      expect(store.history).toHaveLength(0);
+      expect(store.written).toHaveLength(0);
     });
 
     it('writes nothing for a save of the values in force, and asks the code when any value changes', async () => {
       proofLeft = false;
       expect((await change({ changes: [set('ai-saver-percent', '80')] })).ok).toBe(true);
-      expect(store.history).toHaveLength(0);
+      expect(store.written).toHaveLength(0);
       expect(audit.entries.filter((entry) => entry.action.startsWith('settings.ai-'))).toEqual([]);
       expect(review.opened).toEqual([]);
       // A save of the values in force with one real change spends the code.
@@ -1644,7 +1704,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         ok: false,
         error: { code: 'second-factor.required', actionKey: 'settings.ai-models.change' },
       });
-      expect(store.history).toHaveLength(0);
+      expect(store.written).toHaveLength(0);
     });
 
     it('saves a list, a saver model and the threshold; audited by count; the gateway reads them', async () => {
@@ -1721,7 +1781,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         },
       });
       expect(spentProofs).toEqual([]);
-      expect(store.history).toHaveLength(0);
+      expect(store.written).toHaveLength(0);
     });
 
     it('checks a saver model alone against the list in force, and only the task types changed', async () => {
@@ -1775,7 +1835,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         expect((await change({ changes: [set('ai-saver-percent', value)] })).ok).toBe(false);
       }
       expect((await change({ changes: [set('ai-cap-market-day', '1')] })).ok).toBe(false);
-      expect(store.history).toHaveLength(0);
+      expect(store.written).toHaveLength(0);
     });
 
     it('is reviewed at high risk where the area is reviewed, and a rejected change is reverted', async () => {
@@ -1849,6 +1909,386 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
           error: { code: 'access.denied' },
         });
       }
+    });
+  });
+
+  describe('the AI capability switches, history and panel revert (G4d3)', () => {
+    const BUYER_CHAT = 'ai-capability-assistant-buyer-chat';
+    const WRITER_SELLER = 'ai-capability-catalog-description-writer-seller';
+    const switches = (input: Record<string, unknown>, context = adminCtx()) =>
+      new ChangeAiCapabilities(gate, deps).execute(context, input);
+    const limits = (input: Record<string, unknown>, context = adminCtx()) =>
+      new ChangeAiGatewayLimits(gate, deps).execute(context, input);
+    const aiStop = (input: Record<string, unknown>, context = adminCtx()) =>
+      new ChangeAiGatewayEmergencyStop(gate, deps).execute(context, input);
+    const controls = () => new SettingsAiGatewayControls(deps).read(adminCtx());
+    const set = (codeOf: string, value: unknown, expectedVersion = 0) => ({
+      code: codeOf,
+      value,
+      expectedVersion,
+    });
+    const names = {
+      namesOf: (_c: CallContext, ids: readonly string[]) =>
+        Promise.resolve(new Map(ids.map((accountId) => [accountId, 'Leila Admin']))),
+    };
+    const gatewayHistory = (input: Record<string, unknown>, context = adminCtx()) =>
+      new ViewAiGatewayHistory(gate, { settings: deps, names }).execute(context, input);
+    const modelsHistory = (input: Record<string, unknown>, context = adminCtx()) =>
+      new ViewAiModelsHistory(gate, { settings: deps, names }).execute(context, input);
+    const revertGateway = (input: Record<string, unknown>, context = adminCtx()) =>
+      new RevertAiGatewaySetting(gate, deps).execute(context, input);
+    /** Only `fam-a` may be chosen now; anything else is no longer usable (a retired family). */
+    const choices = {
+      check: (_m: string, _t: string, list: readonly string[], saver: string | null) => ({
+        list: list.map((family) => (family === 'fam-a' ? null : ('retired' as const))),
+        saver: saver === null ? null : ('saver-not-cheaper' as const),
+      }),
+    };
+    const revertModels = (input: Record<string, unknown>, context = adminCtx()) =>
+      new RevertAiModelsSetting(gate, deps, choices).execute(context, input);
+    const reviewRevert = (subjectRef: string, before: string, after: string) =>
+      new SettingsReverter(deps).revert(adminCtx(), {
+        requestId: id<'SystemRequest'>(0x5e5),
+        subjectRef,
+        before: { value: before },
+        after: { value: after },
+      });
+
+    it('switches a capability off without a two-step code, audited; the gateway reads it off', async () => {
+      proofLeft = false;
+      const saved = await switches({ changes: [set(BUYER_CHAT, 'off')] });
+      expect(saved.ok && saved.value.map(({ value, version }) => [value, version])).toEqual([
+        ['off', 1],
+      ]);
+      expect(spentProofs).toEqual([]);
+      expect(audit.entries.at(-1)).toMatchObject({
+        action: 'settings.market-setting.changed',
+        targetId: BUYER_CHAT,
+        before: { value: 'on' },
+        after: { value: 'off', version: 1 },
+      });
+      expect((await controls()).capabilities).toEqual({
+        'assistant.buyer-chat': false,
+        'catalog.description-writer.seller': true,
+        'catalog.description-writer.admin': true,
+      });
+    });
+
+    it('needs a fresh two-step code to switch a capability on, and saves nothing without one', async () => {
+      await switches({ changes: [set(WRITER_SELLER, 'off')] });
+      proofLeft = false;
+      expect(await switches({ changes: [set(WRITER_SELLER, 'on', 1)] })).toEqual({
+        ok: false,
+        error: { code: 'second-factor.required', actionKey: 'settings.ai-capability.resume' },
+      });
+      expect(store.written).toHaveLength(1);
+      expect((await controls()).capabilities['catalog.description-writer.seller']).toBe(false);
+      proofLeft = true;
+      expect((await switches({ changes: [set(WRITER_SELLER, 'on', 1)] })).ok).toBe(true);
+      expect(spentProofs).toEqual(['settings.ai-capability.resume']);
+      expect((await controls()).capabilities['catalog.description-writer.seller']).toBe(true);
+    });
+
+    it('takes only off or on, only switch codes, and refuses a stale version and acting-as', async () => {
+      for (const value of ['yes', '', 1, null]) {
+        const refused = await switches({ changes: [set(BUYER_CHAT, value)] });
+        expect(!refused.ok && refused.error.code).toBe('validation.failed');
+      }
+      const otherCode = await switches({ changes: [set('ai-gateway-emergency-stop', 'on')] });
+      expect(!otherCode.ok && otherCode.error.code).toBe('validation.failed');
+      await switches({ changes: [set(BUYER_CHAT, 'off')] });
+      expect(await switches({ changes: [set(BUYER_CHAT, 'on', 0)] })).toEqual({
+        ok: false,
+        error: { code: 'settings.conflict' },
+      });
+      expect(await switches({ changes: [set(BUYER_CHAT, 'on', 1)] }, actingAs(adminCtx()))).toEqual(
+        { ok: false, error: { code: 'access.denied' } },
+      );
+      expect(spentProofs).toEqual([]);
+    });
+
+    it('never switches a capability on by a review revert; restoring off goes ahead', async () => {
+      await switches({ changes: [set(BUYER_CHAT, 'off')] });
+      expect(await reviewRevert(BUYER_CHAT, 'on', 'off')).toBe('not-permitted');
+      expect((await controls()).capabilities['assistant.buyer-chat']).toBe(false);
+      await switches({ changes: [set(BUYER_CHAT, 'on', 1)] });
+      expect(await reviewRevert(BUYER_CHAT, 'off', 'on')).toBe('reverted');
+      expect((await controls()).capabilities['assistant.buyer-chat']).toBe(false);
+    });
+
+    it("spends a two-step code to switch the writer's module switch on, never to switch it off", async () => {
+      const changeAi = (input: Record<string, unknown>) =>
+        new ChangeAiSetting(gate, deps).execute(adminCtx(), input);
+      proofLeft = false;
+      expect(
+        await changeAi({ code: 'ai-description-writer', value: 'on', expectedVersion: 0 }),
+      ).toEqual({
+        ok: false,
+        error: { code: 'second-factor.required', actionKey: 'settings.ai-capability.resume' },
+      });
+      expect(store.written).toHaveLength(0);
+      proofLeft = true;
+      const on = await changeAi({ code: 'ai-description-writer', value: 'on', expectedVersion: 0 });
+      expect(on.ok && on.value.version).toBe(1);
+      expect(spentProofs).toEqual(['settings.ai-capability.resume']);
+      // A stale version spends no proof.
+      const stale = await changeAi({
+        code: 'ai-description-writer',
+        value: 'on',
+        expectedVersion: 0,
+      });
+      expect(!stale.ok && stale.error.code).toBe('settings.conflict');
+      proofLeft = false;
+      const off = await changeAi({
+        code: 'ai-description-writer',
+        value: 'off',
+        expectedVersion: 1,
+      });
+      expect(off.ok).toBe(true);
+      expect(spentProofs).toEqual(['settings.ai-capability.resume']);
+    });
+
+    it('lists the latest changes of one setting, newest first, with the admin and which is in force', async () => {
+      await limits({ changes: [set('ai-cap-market-day', '100')] });
+      await limits({ changes: [set('ai-cap-market-day', '50', 1)] });
+      await limits({ changes: [set('ai-cap-market-day', '25', 2)] });
+      const read = await gatewayHistory({ code: 'ai-cap-market-day' });
+      expect(
+        read.ok &&
+          read.value.map((row) => [row.version, row.previousValue, row.value, row.current]),
+      ).toEqual([
+        [3, '50', '25', true],
+        [2, '100', '50', false],
+        [1, null, '100', false],
+      ]);
+      expect(read.ok && read.value[0]).toMatchObject({ changedBy: 'Leila Admin', note: null });
+      const two = await gatewayHistory({ code: 'ai-cap-market-day', limit: 2 });
+      expect(two.ok && two.value.map((row) => row.version)).toEqual([3, 2]);
+      // The models page reads only its own codes, and the gateway page only its own.
+      expect(
+        !(await modelsHistory({ code: 'ai-cap-market-day' })).ok &&
+          (await gatewayHistory({ code: 'ai-models-chat' })).ok === false,
+      ).toBe(true);
+      for (const limit of [0, 51, '5', 1.5]) {
+        const refused = await gatewayHistory({ code: 'ai-cap-market-day', limit });
+        expect(!refused.ok && refused.error.code).toBe('validation.failed');
+      }
+    });
+
+    it("never reads another Market's history", async () => {
+      await limits({ changes: [set('ai-cap-market-day', '100')] });
+      const other = testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default');
+      const otherAdmin = testCallContext(
+        other,
+        testAuthenticatedActor(other, {
+          population: 'admin',
+          accountId: ADMIN,
+          sessionId: id<'Session'>(0x64),
+          sellerId: null,
+        }),
+        'settings-other-abcd',
+      );
+      expect(await gatewayHistory({ code: 'ai-cap-market-day' }, otherAdmin)).toEqual({
+        ok: true,
+        value: [],
+      });
+      expect(
+        await revertGateway(
+          { code: 'ai-cap-market-day', version: 1, expectedVersion: 0 },
+          otherAdmin,
+        ),
+      ).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'version', code: 'value' }] },
+      });
+    });
+
+    it('reverts as a forward change that always spends the revert code, and may allow more AI', async () => {
+      await limits({ changes: [set('ai-cap-market-day', '500')] });
+      await limits({ changes: [set('ai-cap-market-day', '100', 1)] });
+      spentProofs = [];
+      proofLeft = false;
+      const refused = await revertGateway({
+        code: 'ai-cap-market-day',
+        version: 1,
+        expectedVersion: 2,
+      });
+      expect(refused).toEqual({
+        ok: false,
+        error: { code: 'second-factor.required', actionKey: 'settings.ai-settings.revert' },
+      });
+      expect(store.written).toHaveLength(2);
+      proofLeft = true;
+      const reverted = await revertGateway({
+        code: 'ai-cap-market-day',
+        version: 1,
+        expectedVersion: 2,
+      });
+      expect(reverted.ok && [reverted.value.value, reverted.value.version]).toEqual(['500', 3]);
+      // The raise came back with the revert's own code, not the Limits tab's.
+      expect(spentProofs).toEqual(['settings.ai-settings.revert']);
+      expect((await controls()).caps.marketDay).toBe(500);
+      expect(audit.entries.at(-1)).toMatchObject({
+        action: 'settings.ai-cap.changed',
+        before: { microUsd: 100 },
+        after: { microUsd: 500, version: 3 },
+      });
+      expect(store.written.at(-1)).toMatchObject({
+        previousValue: '100',
+        value: '500',
+        version: 3,
+      });
+      // Version 0 is the default; a tightening revert spends the code too.
+      const toDefault = await revertGateway({
+        code: 'ai-cap-market-day',
+        version: 0,
+        expectedVersion: 3,
+      });
+      expect(toDefault.ok && toDefault.value.value).toBe('none');
+      expect(spentProofs).toEqual(['settings.ai-settings.revert', 'settings.ai-settings.revert']);
+    });
+
+    it('refuses a revert to the value already in force before any proof is spent (PR 1375)', async () => {
+      await limits({ changes: [set('ai-cap-market-day', '100')] });
+      await limits({ changes: [set('ai-cap-market-day', '50', 1)] });
+      await limits({ changes: [set('ai-cap-market-day', '100', 2)] });
+      spentProofs = [];
+      const written = store.written.length;
+      const same = {
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'version', code: 'same' }] },
+      };
+      // Version 1 holds 100, the value in force now; so does version 3 itself.
+      expect(
+        await revertGateway({ code: 'ai-cap-market-day', version: 1, expectedVersion: 3 }),
+      ).toEqual(same);
+      expect(
+        await revertGateway({ code: 'ai-cap-market-day', version: 3, expectedVersion: 3 }),
+      ).toEqual(same);
+      // The default while no change was made is the value in force too.
+      expect(await revertGateway({ code: BUYER_CHAT, version: 0, expectedVersion: 0 })).toEqual(
+        same,
+      );
+      expect(
+        await revertModels({ code: 'ai-models-chat', version: 0, expectedVersion: 0 }),
+      ).toEqual(same);
+      expect(spentProofs).toEqual([]);
+      expect(store.written).toHaveLength(written);
+    });
+
+    it('refuses a stale version, a version not in the history, and an unknown code', async () => {
+      await switches({ changes: [set(BUYER_CHAT, 'off')] });
+      expect(await revertGateway({ code: BUYER_CHAT, version: 0, expectedVersion: 0 })).toEqual({
+        ok: false,
+        error: { code: 'settings.conflict' },
+      });
+      expect(await revertGateway({ code: BUYER_CHAT, version: 7, expectedVersion: 1 })).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'version', code: 'value' }] },
+      });
+      for (const input of [
+        { code: 'ai-models-chat', version: 0, expectedVersion: 1 },
+        { code: BUYER_CHAT, version: -1, expectedVersion: 1 },
+        { code: BUYER_CHAT, version: 0, expectedVersion: '1' },
+      ]) {
+        const refused = await revertGateway(input);
+        expect(!refused.ok && refused.error.code).toBe('validation.failed');
+      }
+      expect(spentProofs).toEqual([]);
+      expect(
+        await revertGateway(
+          { code: BUYER_CHAT, version: 0, expectedVersion: 1 },
+          actingAs(adminCtx()),
+        ),
+      ).toEqual({ ok: false, error: { code: 'access.denied' } });
+      expect((await controls()).capabilities['assistant.buyer-chat']).toBe(false);
+    });
+
+    it('keeps the page checks on a revert: the chat day cap never above its month, a reason for the stop', async () => {
+      await limits({ changes: [set('ai-cap-buyer-chat-day', '300')] });
+      await limits({
+        changes: [set('ai-cap-buyer-chat-day', '100', 1), set('ai-cap-buyer-chat-month', '200')],
+      });
+      const above = await revertGateway({
+        code: 'ai-cap-buyer-chat-day',
+        version: 1,
+        expectedVersion: 2,
+      });
+      expect(above).toEqual({
+        ok: false,
+        error: {
+          code: 'validation.failed',
+          fields: [{ path: 'ai-cap-buyer-chat-day', code: 'range' }],
+        },
+      });
+      await aiStop({ value: 'on', expectedVersion: 0, note: 'Leak suspected' });
+      const noReason = await revertGateway({
+        code: 'ai-gateway-emergency-stop',
+        version: 0,
+        expectedVersion: 1,
+      });
+      expect(noReason).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'note', code: 'required' }] },
+      });
+      const spentBefore = spentProofs.length;
+      const resumed = await revertGateway({
+        code: 'ai-gateway-emergency-stop',
+        version: 0,
+        expectedVersion: 1,
+        note: 'Leak fixed',
+      });
+      expect(resumed.ok && resumed.value.value).toBe('off');
+      expect(spentProofs.slice(spentBefore)).toEqual(['settings.ai-settings.revert']);
+      expect(store.written.at(-1)).toMatchObject({ value: 'off', note: 'Leak fixed' });
+    });
+
+    it('runs the model list checks again on a revert of the models page', async () => {
+      // Saved while both families could be chosen; `fam-b` has since been retired.
+      store.rows.set(`${market.marketId}/ai-models-chat`, {
+        code: 'ai-models-chat',
+        value: 'fam-b',
+        version: 1,
+        updatedAt: T0,
+        updatedBy: ADMIN,
+      });
+      store.written.push({
+        code: 'ai-models-chat',
+        value: 'fam-b',
+        previousValue: null,
+        version: 1,
+        changedAt: T0,
+        changedBy: ADMIN,
+        note: null,
+      });
+      store.writtenIn.push(market.marketId);
+      const history = await modelsHistory({ code: 'ai-models-chat' });
+      expect(history.ok && history.value.map((row) => [row.version, row.value])).toEqual([
+        [1, 'fam-b'],
+      ]);
+      store.rows.set(`${market.marketId}/ai-models-chat`, {
+        code: 'ai-models-chat',
+        value: 'fam-a',
+        version: 2,
+        updatedAt: T0,
+        updatedBy: ADMIN,
+      });
+      const refused = await revertModels({
+        code: 'ai-models-chat',
+        version: 1,
+        expectedVersion: 2,
+      });
+      expect(refused).toEqual({
+        ok: false,
+        error: {
+          code: 'validation.failed',
+          fields: [{ path: 'ai-models-chat.0', code: 'retired' }],
+        },
+      });
+      expect(spentProofs).toEqual([]);
+      const toNone = await revertModels({ code: 'ai-models-chat', version: 0, expectedVersion: 2 });
+      expect(toNone.ok && toNone.value.value).toBe('none');
+      expect(spentProofs).toEqual(['settings.ai-settings.revert']);
     });
   });
 });

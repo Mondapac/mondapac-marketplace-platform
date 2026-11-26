@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261126-ai-gateway-panel-switches-history",
+  "area": "admin",
+  "title": "درگاه AI: بخش سوئیچ قابلیت‌ها و تاریخچه با بازگردانی در صفحهٔ AI Gateway پنل ادمین",
+  "desc": "در G4d3 سمت سرور کامل شد: PUT settings/admin/ai-gateway/capabilities (روشن کردن با کد دومرحله‌ای settings.ai-capability.resume، خاموش کردن بدون کد)، GET .../ai-gateway/history و .../ai-models/history (حداکثر ۵۰ ردیف آخر یک تنظیم) و POST .../ai-gateway/revert و .../ai-models/revert (همیشه با کد settings.ai-settings.revert). صفحهٔ AI Gateway پنل ادمین هنوز ساخته نشده (G5، طراحی با رضا)، پس بخش سوئیچ‌ها (عنوان و دکمه‌ها در یک ردیف، بی زیرعنوان)، فهرست تاریخچه با اقدام بازگردانی و درخواست کد در همان صفحه همراه G5 ساخته شوند. مسیرها باید به allowlist بی‌اف‌اف پنل اضافه شوند. فهرست تاریخچه حداکثر ۵۰ ردیف است و سوپر لیست لازم ندارد؛ این حد در صفحه نوشته شود.",
+  "src": "docs/design/domain/platform-ai.md (Built in G4d3)",
+  "date": "2026-11-26",
+  "trig": "همراه G5 (صفحه‌های AI Models و AI Gateway پنل ادمین)",
+  "prio": "متوسط",
+  "status": "موکول"
+}

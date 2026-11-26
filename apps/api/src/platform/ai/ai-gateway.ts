@@ -78,6 +78,7 @@ const CLOSED_CONTROLS: AiMarketControls = Object.freeze({
     capabilities: Object.freeze({}),
   }),
   models: NO_MODEL_LISTS,
+  capabilities: Object.freeze({}),
 });
 
 /**
@@ -335,7 +336,8 @@ export class AiGateway {
   }
 
   /**
-   * The switches, the Market's gateway settings and the route, in order; the settings come with
+   * The switches (kill switch, the Market's emergency stop, its switch of the capability, the
+   * seller's), the Market's gateway settings and the route, in order; the settings come with
    * an "on". Throws when the gateway settings cannot be read (the callers answer off).
    */
   async #evaluate(
@@ -355,6 +357,10 @@ export class AiGateway {
     // The Market's emergency stop and caps (G4); a store that cannot be read throws: off.
     const controls = await this.controls.read(context);
     if (controls.stopped) return off('emergency-stop');
+    // The Market's switch of this capability (G4d3): a missing entry is off, like a failed read.
+    if (!Object.hasOwn(controls.capabilities, spec.id) || controls.capabilities[spec.id] !== true) {
+      return off('off');
+    }
     if (spec.sellerScoped) {
       const sellerId = options.sellerId;
       if (sellerId === undefined) return off('off');

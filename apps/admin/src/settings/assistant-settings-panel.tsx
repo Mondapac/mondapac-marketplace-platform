@@ -24,6 +24,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useState, type ReactNode } from 'react';
 import { shortInstantInZone } from '../shared/format.ts';
 import { callApi } from '../api/client.ts';
+import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { SettingsConflictView } from './conflict-view.tsx';
 import { useChangeHistory } from './last-changed.tsx';
 import {
@@ -168,6 +169,7 @@ export function AssistantSettingsPanel({
   readonly averageCostUsd?: number | null;
 }) {
   const t = useTranslations();
+  const guarded = useGuardedCall();
   // The fields the server refused on the last save (a rule only it knows); the rest is worked out live.
   const [refusedKeys, setRefusedKeys] = useState<readonly FieldKey[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
@@ -216,13 +218,16 @@ export function AssistantSettingsPanel({
     setRefusedKeys([]);
     const result = await settings.run(
       async (expectedVersion): Promise<SaveResult<AssistantSettingsAnswer>> => {
-        const reply = await callApi<AssistantSettingsAnswer>(
+        // Switching the assistant on asks for the admin's two-step code in place (G4d3).
+        const reply = await guarded<AssistantSettingsAnswer>(
           'PUT',
           ASSISTANT_SETTINGS_PATH,
           { expectedVersion, settings: check.settings },
           csrfToken,
         );
         if (reply.ok) return { status: 'saved', saved: reply.body };
+        // The admin closed the code dialog: the form stays as it was, with no message.
+        if (isStepUpCancelled(reply)) return { status: 'failed' };
         if (reply.failure.status === 401) {
           window.location.assign('/session-ended');
         } else if (reply.failure.code === 'assistant.conflict') {

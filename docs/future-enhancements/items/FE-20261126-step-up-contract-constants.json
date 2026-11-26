@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261126-step-up-contract-constants",
+  "area": "infra",
+  "title": "آزمون قرارداد step-up: خواندن ثابت‌های همهٔ ماژول‌ها در دکوراتور",
+  "desc": "test/contracts/step-up-enforcement.contract.spec.ts تا G4d3 فقط کلیدهای متنی را در @RequiresStepUp می‌خواند؛ در G4d3 ثابت‌های settings و assistant هم خوانده می‌شوند. ماژول‌های customers، ordering و catalog ثابت‌های خود (مثل CUSTOMERS_EXPORT_STEP_UP) را در دکوراتور به کار می‌برند که هنوز حل نمی‌شوند و آزمون از آن‌ها می‌گذرد. همهٔ فایل‌های contracts/step-up را به همان نقشهٔ ثابت‌ها اضافه کنید و settings و assistant را از فهرست ENFORCED_INSIDE_THE_FLOW با دقت جدا نگه دارید.",
+  "src": "G4d3 (Hossein), test/contracts/step-up-enforcement.contract.spec.ts",
+  "date": "2026-11-26",
+  "trig": "وقتی یک کنش step-up تازه با ثابت در دکوراتور اضافه شود",
+  "prio": "پایین",
+  "status": "موکول"
+}

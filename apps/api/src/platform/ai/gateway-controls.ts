@@ -78,11 +78,17 @@ export interface AiMarketControls {
   readonly stopped: boolean;
   readonly caps: AiCaps;
   readonly models: AiModelLists;
+  /**
+   * The Market's per-capability switches (AI Gateway page, G4d3), by capability id: true is on. A
+   * capability without an entry, or with any other value, is off; the gateway checks it right after
+   * the emergency stop and before the seller switch (SEL-25, which stays owned by sellers).
+   */
+  readonly capabilities: Readonly<Record<string, boolean>>;
 }
 
 /**
  * The Market's AI Gateway settings (the Limits tab and the emergency stop of the AI Gateway page,
- * design section 8), owned by `settings` (ADR-0042) and read here through this port, so `platform/`
+ * design section 8) and its capability switches (G4d3), owned by `settings` (ADR-0042) and read here through this port, so `platform/`
  * imports no module. `settings` implements it and the composition root binds it
  * (`AiModule.register`); unbound, boot fails in both roles.
  *

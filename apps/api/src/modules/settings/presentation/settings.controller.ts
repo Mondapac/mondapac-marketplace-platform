@@ -41,6 +41,11 @@ import { ChangeAiGatewayEmergencyStop } from '../application/use-cases/change-ai
 import { ChangeAiGatewayLimits } from '../application/use-cases/change-ai-gateway-limits.use-case';
 import { ChangeAiSetting } from '../application/use-cases/change-ai-setting.use-case';
 import { ChangeAiModels } from '../application/use-cases/change-ai-models.use-case';
+import { ChangeAiCapabilities } from '../application/use-cases/change-ai-capabilities.use-case';
+import { RevertAiGatewaySetting } from '../application/use-cases/revert-ai-gateway-setting.use-case';
+import { RevertAiModelsSetting } from '../application/use-cases/revert-ai-models-setting.use-case';
+import { ViewAiGatewayHistory } from '../application/use-cases/view-ai-gateway-history.use-case';
+import { ViewAiModelsHistory } from '../application/use-cases/view-ai-models-history.use-case';
 import { ViewAiModels } from '../application/use-cases/view-ai-models.use-case';
 import { CancelAiEvaluation } from '../application/use-cases/cancel-ai-evaluation.use-case';
 import { EstimateAiEvaluation } from '../application/use-cases/estimate-ai-evaluation.use-case';
@@ -93,6 +98,9 @@ import {
   settingsListBody,
   AiModelsBody,
   aiModelsBody,
+  RevertSettingRequest,
+  SettingHistoryBody,
+  settingHistoryBody,
   AiEvaluationCancelledBody,
   AiEvaluationEstimateBody,
   aiEvaluationEstimateBody,
@@ -127,6 +135,10 @@ function logRoute(logger: Logger, msg: string, context: CallContext, outcome: st
     correlationId: context.correlationId,
   });
 }
+
+/** A `limit` query as a number when it is plain digits; anything else reaches the use case as is. */
+const limitOf = (limit: unknown): unknown =>
+  typeof limit === 'string' && /^[0-9]{1,3}$/.test(limit) ? Number(limit) : limit;
 
 /** The editable Market settings, for admins. Every answer is `Cache-Control: no-store`. */
 
@@ -168,6 +180,11 @@ export class AdminSettingsController {
     private readonly cancelEvaluation: CancelAiEvaluation,
     private readonly viewPlaygroundSamples: ViewAiPlaygroundSamples,
     private readonly runPlayground: RunAiPlayground,
+    private readonly changeAiCapabilities: ChangeAiCapabilities,
+    private readonly viewAiGatewayHistory: ViewAiGatewayHistory,
+    private readonly viewAiModelsHistory: ViewAiModelsHistory,
+    private readonly revertAiGateway: RevertAiGatewaySetting,
+    private readonly revertAiModels: RevertAiModelsSetting,
   ) {}
 
   // AI Gateway G4c: evaluation runs and the playground (design section 8, Tab 1). The fixed paths
@@ -454,6 +471,98 @@ export class AdminSettingsController {
     return settingsChangeListBody(result.value);
   }
 
+  @Get('ai-models/history')
+  @ApiOperation({
+    summary: 'The history of one AI models setting of the Market (admin)',
+    description:
+      'Needs settings.ai-gateway.view. The latest changes of one setting of the AI models (`code`), ' +
+      'newest first, at most `limit` (1 to 50, default 50): each version with the value before ' +
+      'and after, when, the admin (display name, or null) and the note, and which one is in ' +
+      'force. Older changes stay in the audit log.',
+  })
+  @ApiQuery({ name: 'code', required: true })
+  @ApiQuery({ name: 'limit', required: false })
+  @ApiOkResponse({ type: SettingHistoryBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  async aiModelsHistory(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Query('code') code?: unknown,
+    @Query('limit') limit?: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.viewAiModelsHistory.execute(context, { code, limit: limitOf(limit) });
+    logRoute(
+      this.#logger,
+      'settings.view-ai-models-history-route',
+      context,
+      result.ok ? 'read' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return settingHistoryBody(result.value);
+  }
+
+  // Every revert spends a two-step code in the use case's own unit, after the server checks.
+  @Post('ai-models/revert')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Revert one AI models setting of the Market to an earlier version (admin)',
+    description:
+      'Needs the protected settings.ai-models.manage; refused in an acting-as session. Brings `code` back to ' +
+      'the value of `version` (0: the default) from the version in force the admin saw ' +
+      '(`expectedVersion`; a stale one is 409 settings.conflict). A forward change: a new ' +
+      'version with its history and audit row and, where reviewed, a high-risk review request. ' +
+      "The External models tab's server checks run again on the page as it would stand (400 " +
+      'validation.failed, as for PUT ai-models). ' +
+      'Every revert needs a fresh two-step proof of this admin (`POST ' +
+      'identity/admin/step-up/verify` for settings.ai-settings.revert; without it 403 ' +
+      'second-factor.required with details.actionKey). A version not in the history is 400 ' +
+      'validation.failed on `version`, and the value already in force is validation.failed on ' +
+      '`version` with code `same` (no proof spent). In an incident use the direct change ' +
+      'instead (switch a capability off, lower a cap, switch the emergency stop on), which needs ' +
+      'no two-step code, since every revert asks for one. ' +
+      REVIEWED,
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: RevertSettingRequest })
+  @ApiOkResponse({ type: SettingChangeBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: STEP_UP_FORBIDDEN })
+  @ApiConflictResponse({ ...ERROR, description: 'settings.conflict' })
+  async revertAiModelsSetting(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() requestBody: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, requestBody, [
+      'code',
+      'version',
+      'expectedVersion',
+      'note',
+    ]);
+    if (invalid !== null) throw invalid;
+    const { code, version, expectedVersion, note } = requestBody as Record<string, unknown>;
+    const result = await this.revertAiModels.execute(context, {
+      code,
+      version,
+      expectedVersion,
+      note,
+    });
+    logRoute(
+      this.#logger,
+      'settings.revert-ai-models-setting-route',
+      context,
+      result.ok ? 'set' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return settingChangeBody(result.value);
+  }
+
   @Get('ai-gateway')
   @ApiOperation({
     summary: 'The AI Gateway settings of the Market (admin)',
@@ -463,7 +572,8 @@ export class AdminSettingsController {
       'ai-cap-guest-day (none by default, else whole US micro-dollars as decimal text; 0 allows ' +
       'nothing), ai-cap-evaluation-month (default 0, never none), and the buyer assistant ' +
       "chat's own ai-cap-buyer-chat-day and ai-cap-buyer-chat-month (defaults 10000000 and " +
-      '200000000, or none), each with its version (0 while the default is in force).',
+      '200000000, or none), and the capability switches ai-capability-<capability> (on by ' +
+      'default, or off), each with its version (0 while the default is in force).',
   })
   @ApiOkResponse({ type: SettingsListBody })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
@@ -574,6 +684,147 @@ export class AdminSettingsController {
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return settingsChangeListBody(result.value);
+  }
+
+  @Put('ai-gateway/capabilities')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Switch single AI capabilities of the Market off or on (admin)',
+    description:
+      'Needs the protected settings.ai-gateway.manage; refused in an acting-as session. ' +
+      '`changes` lists each changed switch once (ai-capability-assistant-buyer-chat, ' +
+      'ai-capability-catalog-description-writer-seller, ' +
+      'ai-capability-catalog-description-writer-admin; `off` or `on`, `on` by default) with the ' +
+      'version the admin saw; the switches are read with GET ai-gateway. Off: the capability is ' +
+      'off from the next call, with no two-step code. On: needs a fresh two-step proof of this ' +
+      'admin (`POST identity/admin/step-up/verify` for settings.ai-capability.resume; without it ' +
+      '403 second-factor.required with details.actionKey). The module switches and the seller ' +
+      'switch still apply. All or nothing: a stale version is 409 settings.conflict. Each change ' +
+      'is audited and, where reviewed, opens a high-risk review request; a rejected review never ' +
+      'switches a capability on. ' +
+      REVIEWED,
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: ChangeOfferReviewRequest })
+  @ApiOkResponse({ type: SettingsChangeListBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: STEP_UP_FORBIDDEN })
+  @ApiConflictResponse({ ...ERROR, description: 'settings.conflict' })
+  async putAiCapabilities(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() requestBody: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, requestBody, ['changes', 'note']);
+    if (invalid !== null) throw invalid;
+    const { changes, note } = requestBody as { changes?: unknown; note?: unknown };
+    const result = await this.changeAiCapabilities.execute(context, { changes, note });
+    logRoute(
+      this.#logger,
+      'settings.change-ai-capabilities-route',
+      context,
+      result.ok ? 'set' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return settingsChangeListBody(result.value);
+  }
+
+  @Get('ai-gateway/history')
+  @ApiOperation({
+    summary: 'The history of one AI Gateway setting of the Market (admin)',
+    description:
+      'Needs settings.ai-gateway.view. The latest changes of one setting of the AI Gateway (`code`), ' +
+      'newest first, at most `limit` (1 to 50, default 50): each version with the value before ' +
+      'and after, when, the admin (display name, or null) and the note, and which one is in ' +
+      'force. Older changes stay in the audit log.',
+  })
+  @ApiQuery({ name: 'code', required: true })
+  @ApiQuery({ name: 'limit', required: false })
+  @ApiOkResponse({ type: SettingHistoryBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  async aiGatewayHistory(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Query('code') code?: unknown,
+    @Query('limit') limit?: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.viewAiGatewayHistory.execute(context, {
+      code,
+      limit: limitOf(limit),
+    });
+    logRoute(
+      this.#logger,
+      'settings.view-ai-gateway-history-route',
+      context,
+      result.ok ? 'read' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return settingHistoryBody(result.value);
+  }
+
+  // Every revert spends a two-step code in the use case's own unit, after the server checks.
+  @Post('ai-gateway/revert')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Revert one AI Gateway setting of the Market to an earlier version (admin)',
+    description:
+      'Needs the protected settings.ai-gateway.manage; refused in an acting-as session. Brings `code` back to ' +
+      'the value of `version` (0: the default) from the version in force the admin saw ' +
+      '(`expectedVersion`; a stale one is 409 settings.conflict). A forward change: a new ' +
+      'version with its history and audit row and, where reviewed, a high-risk review request. ' +
+      'ai-cap-buyer-chat-day is still never above ai-cap-buyer-chat-month; a revert of ' +
+      'ai-gateway-emergency-stop always needs a note. ' +
+      'Every revert needs a fresh two-step proof of this admin (`POST ' +
+      'identity/admin/step-up/verify` for settings.ai-settings.revert; without it 403 ' +
+      'second-factor.required with details.actionKey). A version not in the history is 400 ' +
+      'validation.failed on `version`, and the value already in force is validation.failed on ' +
+      '`version` with code `same` (no proof spent). In an incident use the direct change ' +
+      'instead (switch a capability off, lower a cap, switch the emergency stop on), which needs ' +
+      'no two-step code, since every revert asks for one. ' +
+      REVIEWED,
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: RevertSettingRequest })
+  @ApiOkResponse({ type: SettingChangeBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: STEP_UP_FORBIDDEN })
+  @ApiConflictResponse({ ...ERROR, description: 'settings.conflict' })
+  async revertAiGatewaySetting(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() requestBody: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, requestBody, [
+      'code',
+      'version',
+      'expectedVersion',
+      'note',
+    ]);
+    if (invalid !== null) throw invalid;
+    const { code, version, expectedVersion, note } = requestBody as Record<string, unknown>;
+    const result = await this.revertAiGateway.execute(context, {
+      code,
+      version,
+      expectedVersion,
+      note,
+    });
+    logRoute(
+      this.#logger,
+      'settings.revert-ai-gateway-setting-route',
+      context,
+      result.ok ? 'set' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return settingChangeBody(result.value);
   }
 
   @Get('offer-review/emergency-stop')
@@ -828,6 +1079,9 @@ export class AdminSettingsController {
       'Needs the protected settings.ai.manage; refused in an acting-as session. The body names ' +
       'the setting and carries the version the admin saw: a stale edit is 409 settings.conflict. ' +
       'Audited with the previous and new value; asking for the value in force changes nothing. ' +
+      'Switching the writer on needs a fresh two-step proof of this admin (`POST ' +
+      'identity/admin/step-up/verify` for settings.ai-capability.resume; without it 403 ' +
+      'second-factor.required with details.actionKey); switching it off needs none. ' +
       REVIEWED,
   })
   @ApiHeader(CSRF)
@@ -835,7 +1089,7 @@ export class AdminSettingsController {
   @ApiOkResponse({ type: SettingChangeBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
-  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiForbiddenResponse({ ...ERROR, description: STEP_UP_FORBIDDEN })
   @ApiConflictResponse({ ...ERROR, description: 'settings.conflict' })
   async putAiSetting(
     @Call() context: CallContext,

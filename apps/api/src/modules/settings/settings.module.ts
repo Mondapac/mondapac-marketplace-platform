@@ -25,6 +25,11 @@ import { createSystemChangeRegistrar, SYSTEM_REQUEST_RECORDER } from '../system-
 import { ChangeAiSetting } from './application/use-cases/change-ai-setting.use-case';
 import { ChangeAiGatewayEmergencyStop } from './application/use-cases/change-ai-gateway-emergency-stop.use-case';
 import { ChangeAiModels } from './application/use-cases/change-ai-models.use-case';
+import { ChangeAiCapabilities } from './application/use-cases/change-ai-capabilities.use-case';
+import { RevertAiGatewaySetting } from './application/use-cases/revert-ai-gateway-setting.use-case';
+import { RevertAiModelsSetting } from './application/use-cases/revert-ai-models-setting.use-case';
+import { ViewAiGatewayHistory } from './application/use-cases/view-ai-gateway-history.use-case';
+import { ViewAiModelsHistory } from './application/use-cases/view-ai-models-history.use-case';
 import { ViewAiModels } from './application/use-cases/view-ai-models.use-case';
 import { AiModelChoices } from '../../platform/ai/model-choices';
 import { AiEvaluationControl } from '../../platform/ai/evaluations/evaluation-control';
@@ -121,6 +126,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ViewAiGatewaySettings,
       ChangeAiGatewayLimits,
       ChangeAiGatewayEmergencyStop,
+      ChangeAiCapabilities,
+      RevertAiGatewaySetting,
       ViewOfferReviewSettings,
       ChangeOfferReviewSettings,
       ChangeOfferReviewEmergencyStop,
@@ -153,6 +160,19 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       useFactory: (gate: UseCaseGate, choices: AiModelChoices, ...values: unknown[]) =>
         new ChangeAiModels(gate, dependenciesOf(values), choices),
     },
+    {
+      provide: RevertAiModelsSetting,
+      inject: [USE_CASE_GATE, AiModelChoices, ...PORTS.map(([, token]) => token)],
+      useFactory: (gate: UseCaseGate, choices: AiModelChoices, ...values: unknown[]) =>
+        new RevertAiModelsSetting(gate, dependenciesOf(values), choices),
+    },
+    // The panel's history of an AI setting (G4d3) names the admin of each change.
+    ...[ViewAiGatewayHistory, ViewAiModelsHistory].map((type): FactoryProvider => ({
+      provide: type,
+      inject: [USE_CASE_GATE, SETTINGS_ADMIN_NAMES, ...PORTS.map(([, token]) => token)],
+      useFactory: (gate: UseCaseGate, names: AdminNames, ...values: unknown[]) =>
+        new type(gate, { settings: dependenciesOf(values), names }),
+    })),
     // Evaluation runs and the playground (G4c) reach platform/ai through AiEvaluationControl;
     // AiModule is global, so it reaches this module without an import.
     ...[ViewAiEvaluations, ViewAiEvaluation, EstimateAiEvaluation, ViewAiPlaygroundSamples].map(

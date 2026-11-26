@@ -48,6 +48,7 @@ import {
 import { ids } from './outbox-support';
 import { testDatabaseUrl } from './test-database';
 import { assistantUsageReport } from './assistant-usage-report';
+import { FakeStepUp } from '../support/step-up-fakes';
 
 // The assistant settings history as the application role, in both Market fixtures: the real use
 // cases on the real unit of work store every field and read them back, version by version, never
@@ -121,6 +122,7 @@ describe.each(TEST_MARKETS)('assistant settings store in market %s (database)', 
     quickPrompts: new FixedQuickPrompts(),
     previewTokens: new FakePreviewTokens(),
     trail: dbChangeTrail('assistant', catalogue, db.unitOfWork, actors),
+    stepUp: new FakeStepUp(),
   });
   const auditRows = async (target: MarketContext) =>
     (

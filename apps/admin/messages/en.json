@@ -4466,6 +4466,7 @@
         "throttled": "Too many attempts. Wait a moment and try again.",
         "csrf": "Your session needs a refresh. Reload the page and try again.",
         "denied": "Your role cannot change the shopping assistant settings.",
+        "second-factor": "Switching the assistant on needs your two-step code. Save again and enter the code.",
         "unavailable": "The settings are not available right now. Try again shortly.",
         "unknown": "Something went wrong. Try again."
       },
@@ -9627,6 +9628,19 @@
     "body-backup": "Enter one of your recovery codes to {action}. Each recovery code works once.",
     "wait-note": "Just signed in? Wait for your authenticator app to show a new code before you enter it. The code you used to sign in cannot be used again.",
     "action": {
+      "settings": {
+        "ai-capability": {
+          "resume": "switch AI on"
+        },
+        "ai-settings": {
+          "revert": "restore an earlier AI setting"
+        }
+      },
+      "assistant": {
+        "settings": {
+          "resume": "switch the shopping assistant on"
+        }
+      },
       "commission-payouts": {
         "dispute": {
           "attribute": "record a dispute decision"
@@ -14615,6 +14629,7 @@
       "conflict": "Someone else changed this. The values were reloaded.",
       "denied": "You don't have permission to change this setting.",
       "acting-as": "Write with AI settings can't be changed while you are acting as a seller.",
+      "second-factor": "Switching Write with AI on needs your two-step code. Try again and enter the code.",
       "csrf": "Your session expired. Reload the page.",
       "throttled": "Too many attempts. Wait a moment and try again.",
       "unavailable": "The service isn't available right now. Try again.",

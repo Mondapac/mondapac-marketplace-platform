@@ -1,5 +1,6 @@
 import type { Clock } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
+import type { StepUpProofConsumer } from '../../../platform/authz';
 import type { ChangeTrail } from '../../../platform/audit/change-trail';
 import type { OutboxWriter } from '../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
@@ -39,4 +40,6 @@ export interface AssistantDependencies {
   readonly quickPrompts: QuickPrompts;
   /** "Last changed by" and the history of the settings, from this module's audit rows. */
   readonly trail: ChangeTrail;
+  /** The admin's fresh two-step proof, spent when the assistant is switched on (G4d3). */
+  readonly stepUp: StepUpProofConsumer;
 }

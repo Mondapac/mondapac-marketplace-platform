@@ -51,6 +51,16 @@ forward (the former defaults on a Market's first row) and nothing reads them. Th
 change no longer names the caps (the fields stay optional in the catalogue for the older rows);
 a cap change is audited by settings as `settings.ai-cap.changed`.
 
+## Switching on needs a two-step code (AI Gateway G4d3)
+
+`PUT /assistant/admin/settings` that moves `enabled` from false to true spends the admin's fresh
+two-step proof for `assistant.settings.resume` (an admin step-up action assistant registers,
+locked on) in the save's unit, after the version check: without it the answer is 403
+`second-factor.required` with `details.actionKey` and nothing is saved. Switching off and every
+other change need none. The admin panel asks for the code in place and repeats the save. On top of
+this switch the gateway has its own per-Market switch of the buyer chat
+(`ai-capability-assistant-buyer-chat`, docs/design/domain/platform-ai.md, Built in G4d3).
+
 ## Not settings
 
 The guardrails of plan section 5 (numbers only from server cards, certification only from

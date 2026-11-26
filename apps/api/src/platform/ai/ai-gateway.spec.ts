@@ -387,6 +387,75 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
       expect(provider.requests).toHaveLength(0);
     });
 
+    describe.each([[AU], [ZZ]])("the Market's capability switches (G4d3) in %s", (market) => {
+      const both = () => gatewayOf(false, capsOf(), ['AU', 'ZZ']);
+
+      it('is off for a capability switched off, before the seller switch, and calls nothing', async () => {
+        const gateway = both();
+        controls.switchOff('alpha.seller-writer', [market.marketId]);
+        const seller = sellerContext(market);
+        expect(await gateway.status('alpha.seller-writer', seller, { sellerId: SELLER })).toEqual({
+          on: false,
+          reason: 'off',
+        });
+        expect(
+          await gateway.run('alpha.seller-writer', seller, REQUEST, { sellerId: SELLER }),
+        ).toEqual({ ok: false, reason: 'off', costMicroUsd: 0 });
+        // The seller switch is never asked: the Market's switch comes first.
+        switchThrows = true;
+        expect((await gateway.status('alpha.seller-writer', seller, { sellerId: SELLER })).on).toBe(
+          false,
+        );
+        // Another capability of the Market, and the same one in the other Market, stay on.
+        expect(await gateway.status('alpha.admin-writer', adminContext(market), {})).toEqual({
+          on: true,
+        });
+        const other = market.marketId === 'AU' ? ZZ : AU;
+        switchThrows = false;
+        expect(
+          await gateway.status('alpha.seller-writer', sellerContext(other), { sellerId: SELLER }),
+        ).toEqual({ on: true });
+        expect(provider.requests).toHaveLength(0);
+        expect(store.reservations.size).toBe(0);
+      });
+
+      it('is off for a capability without a switch, or with a switch that is not exactly on', async () => {
+        const gateway = both();
+        controls.switches.set(market.marketId, { 'alpha.buyer-chat': true });
+        expect(await gateway.status('alpha.admin-writer', adminContext(market), {})).toEqual({
+          on: false,
+          reason: 'off',
+        });
+        controls.switches.set(market.marketId, {
+          'alpha.admin-writer': 'on' as unknown as boolean,
+        });
+        expect(await gateway.status('alpha.admin-writer', adminContext(market), {})).toEqual({
+          on: false,
+          reason: 'off',
+        });
+        controls.switches.set(market.marketId, { 'alpha.admin-writer': true });
+        expect(await gateway.status('alpha.admin-writer', adminContext(market), {})).toEqual({
+          on: true,
+        });
+      });
+
+      it('is off when the switches cannot be read, and the emergency stop still comes first', async () => {
+        const gateway = both();
+        controls.failing = true;
+        expect(await gateway.status('alpha.admin-writer', adminContext(market), {})).toEqual({
+          on: false,
+          reason: 'off',
+        });
+        controls.failing = false;
+        controls.stopped.add(market.marketId);
+        controls.switchOff('alpha.admin-writer', [market.marketId]);
+        expect(await gateway.status('alpha.admin-writer', adminContext(market), {})).toEqual({
+          on: false,
+          reason: 'emergency-stop',
+        });
+      });
+    });
+
     it('never reads the settings for a caller it refuses first (acting-as, kill switch)', async () => {
       const gateway = gatewayOf(true);
       await gateway.status('alpha.admin-writer', adminContext(), {});

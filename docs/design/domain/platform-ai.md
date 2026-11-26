@@ -498,6 +498,45 @@ settings/admin/ai-gateway/emergency-stop` (protected key `settings.ai-gateway.ma
   from `ASSISTANT_EVAL_FAMILY` (required, checked against the catalogue; workflow input `model`)
   and gives it to each Market as its list through a fake `AiGatewayControls`. The admin panel's
   tier pickers and model rows are removed.
+- **Built in G4d3 (capability switches, TOTP to switch AI on, panel revert).** Option A of
+  Mohammad's G4d plan: **a gateway switch per capability**, kept apart from the module switches.
+  Settings codes `ai-capability-assistant-buyer-chat`, `ai-capability-catalog-description-writer-seller`
+  and `ai-capability-catalog-description-writer-admin` (`off|on`, default `on` so nothing live
+  changes, safe value `off`; dashes, since a code holds no dot), mapped to the capability ids by
+  `AI_CAPABILITY_SWITCHES` (strings; a contract test checks they are exactly the registered
+  capabilities and that only assistant and catalog register any). `AiMarketControls.capabilities`
+  maps a capability id to true for on; `AiGateway.#evaluate` checks it right after the emergency
+  stop and before the seller switch (SEL-25 stays in sellers), and a missing entry, any value but
+  `true` or an unreadable store is `off` (both fixtures in `ai-gateway.spec.ts`). Evaluation runs
+  and the playground do not read the switches (an evaluation is how a capability earns its "on").
+  The switches show in `GET settings/admin/ai-gateway` and change with `PUT
+  settings/admin/ai-gateway/capabilities` (`settings.ai-gateway.manage`, all or nothing, audited
+  as `settings.market-setting.changed`, high risk where reviewed): off spends no code, on spends
+  `settings.ai-capability.resume`; `loosensAi` treats off to on as loosening, so the review
+  reverter never switches one on. **The module switches stay** (the writer's `ai-description-writer`,
+  the assistant's `enabled`), and switching either on now spends a fresh code too: the writer's
+  `PUT settings/admin/ai` spends `settings.ai-capability.resume` for off to on (after the version
+  check; a stale version spends none), and the assistant's `PUT assistant/admin/settings` spends
+  the new `assistant.settings.resume` for `enabled` false to true (registered by assistant;
+  `AssistantDependencies.stepUp`). The admin panel's AI settings and assistant settings pages ask
+  for the code in place through the shared step-up dialog. **Panel revert**: `GET
+  settings/admin/ai-gateway/history` and `GET settings/admin/ai-models/history` (`code`, `limit` 1
+  to 50, default 50; `settings.ai-gateway.view`) answer one setting's latest changes newest first
+  (version, value before and after, time, the admin's display name, the note, which is in force),
+  read through `MarketSettingRepository.history` and `historyVersion` on the history table's
+  primary key (no migration). `POST settings/admin/ai-gateway/revert` (`settings.ai-gateway.manage`)
+  and `POST settings/admin/ai-models/revert` (`settings.ai-models.manage`) take `{ code, version,
+  expectedVersion, note? }` (version 0 is the default) and are a forward change through
+  `changeSettings`: the version check (a stale one is `settings.conflict`), the page's check as it
+  would stand (the buyer chat's day-not-above-month pair; the External models tab's catalogue
+  checks, so a family retired since is refused), history, audit and review. **Every revert spends
+  `settings.ai-settings.revert`**, whatever it restores, and it is the only revert that may allow
+  more AI; a revert of the emergency stop needs a note, as its own change does. A version missing
+  from the Market's history is `validation.failed` on `version`, so one Market never restores
+  another's value. The admin panel's AI Gateway page is G5's, so its switches section and the
+  history list with its revert action are deferred to it
+  (FE-20261126-ai-gateway-panel-switches-history); the list is capped at 50 rows by the server and
+  is not a super list. No migration in G4d3: step-up actions are declared in code.
 
 ## 9. Security (Hassan)
 
@@ -663,3 +702,5 @@ the guarded `prisma.tx(market)` client. Each table has an explicit GRANT and `do
 | FE-20261125-ai-gateway-assistant-cap-to-gateway | Move the assistant's day and month cap values into the gateway's caps (with G4)                        |
 | FE-20261125-ai-gateway-evaluation-tool-capabilities | G4c2: evaluation runs and the playground for capabilities with tools (the buyer chat) |
 | FE-20261125-ai-gateway-evaluation-requester-recheck | Re-check the requesting admin's access before a queued evaluation run starts (accepted risk in G4c1) |
+| FE-20261126-ai-gateway-panel-switches-history | G5: the AI Gateway page's capability switches section and the history list with its revert (server built in G4d3) |
+| FE-20261126-ai-gateway-buyer-chat-down-disables | G4d2 rollback hardening: a gateway chat cap of 0 switches the assistant off on rollback (Hassan, PR 1374) |

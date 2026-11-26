@@ -115,14 +115,22 @@ export class AdminAssistantSettingsController {
       'the version the screen read; a different current version answers assistant.conflict. The ' +
       'same settings again change nothing. Every change is a new version in an insert-only ' +
       'history and an audit row. An option not available yet answers validation.failed with ' +
-      'code unavailable.',
+      'code unavailable. Switching the assistant on (enabled false to true) needs a fresh ' +
+      'two-step proof of this admin (`POST identity/admin/step-up/verify` for ' +
+      'assistant.settings.resume; without it 403 second-factor.required with ' +
+      'details.actionKey); switching it off or any other change needs none.',
   })
   @ApiHeader(CSRF)
   @ApiBody({ type: SetAssistantSettingsRequest })
   @ApiOkResponse({ type: AssistantSettingsBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
-  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiForbiddenResponse({
+    ...ERROR,
+    description:
+      'access.denied, request.csrf, second-factor.required (details.actionKey) or ' +
+      'second-factor.enrolment-required',
+  })
   @ApiConflictResponse({
     ...ERROR,
     description:

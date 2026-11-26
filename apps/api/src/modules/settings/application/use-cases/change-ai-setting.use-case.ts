@@ -2,6 +2,7 @@ import { err } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { SETTINGS_AI_MANAGE } from '../../contracts/permissions';
+import { SETTINGS_AI_CAPABILITY_RESUME_STEP_UP } from '../../contracts/step-up';
 import { AI_DESCRIPTION_WRITER_CODE } from '../../domain/definitions';
 import type { SettingsDependencies } from '../settings-dependencies';
 import { changeSetting, type SettingsFailure, type SettingChangeView } from '../settings-flow';
@@ -20,7 +21,9 @@ const AI_CODES: readonly string[] = [AI_DESCRIPTION_WRITER_CODE];
 /**
  * `settings.change-ai-setting`: an admin changes one AI setting of the Market (the description
  * writer's switch) from the version they saw. Protected key; refused in
- * acting-as, audited, idempotent, and a stale version is a conflict.
+ * acting-as, audited, idempotent, and a stale version is a conflict. Switching the writer on
+ * spends the admin's fresh two-step code in the change's unit (`settings.ai-capability.resume`,
+ * G4d3); switching it off needs none, and a revert of a review never switches it on.
  */
 export class ChangeAiSetting extends UseCase<Input, SettingChangeView, SettingsFailure> {
   static override readonly access: AccessDeclaration = {
@@ -45,6 +48,9 @@ export class ChangeAiSetting extends UseCase<Input, SettingChangeView, SettingsF
         err({ code: 'validation.failed', fields: [{ path: 'code', code: 'value' }] }),
       );
     }
-    return changeSetting(this.deps, context, code, input);
+    return changeSetting(this.deps, context, code, input, {
+      action: SETTINGS_AI_CAPABILITY_RESUME_STEP_UP,
+      when: (_code, was, next) => was !== 'on' && next === 'on',
+    });
   }
 }

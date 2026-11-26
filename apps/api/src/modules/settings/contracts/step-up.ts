@@ -19,6 +19,17 @@ export const SETTINGS_AI_MODELS_STEP_UP = 'settings.ai-models.change';
  * evaluations`, AI Gateway G4c): it spends the evaluation budget on a real model.
  */
 export const SETTINGS_AI_EVALUATION_STEP_UP = 'settings.ai-evaluation.run';
+/**
+ * Switching a capability of the AI Gateway on (`PUT settings/admin/ai-gateway/capabilities`, G4d3);
+ * switching one off needs none.
+ */
+export const SETTINGS_AI_CAPABILITY_RESUME_STEP_UP = 'settings.ai-capability.resume';
+/**
+ * Every revert of an AI setting to an earlier version from the panel (`POST
+ * settings/admin/ai-gateway/revert` and `POST settings/admin/ai-models/revert`, G4d3): the only
+ * way a revert may allow more AI, so it always needs the admin's fresh code (design section 8).
+ */
+export const SETTINGS_AI_SETTINGS_REVERT_STEP_UP = 'settings.ai-settings.revert';
 
 /**
  * The step-up actions settings owns (Hassan, PR 2b). Both are admin actions: a platform admin
@@ -46,4 +57,17 @@ export const SETTINGS_STEP_UP_ACTIONS: readonly StepUpActionDeclaration[] = [
   { key: SETTINGS_AI_MODELS_STEP_UP, defaultRequired: true, locked: true, audience: 'admin' },
   // An evaluation run (G4c): the estimated cost is confirmed with TOTP (design section 8).
   { key: SETTINGS_AI_EVALUATION_STEP_UP, defaultRequired: true, locked: true, audience: 'admin' },
+  // A capability switched on, and every panel revert of an AI setting (G4d3).
+  {
+    key: SETTINGS_AI_CAPABILITY_RESUME_STEP_UP,
+    defaultRequired: true,
+    locked: true,
+    audience: 'admin',
+  },
+  {
+    key: SETTINGS_AI_SETTINGS_REVERT_STEP_UP,
+    defaultRequired: true,
+    locked: true,
+    audience: 'admin',
+  },
 ];

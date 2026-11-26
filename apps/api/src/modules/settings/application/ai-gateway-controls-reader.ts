@@ -18,6 +18,7 @@ import {
   AI_CAP_MARKET_MONTH_CODE,
   AI_CAP_NONE,
   AI_CAP_SELLER_DAY_CODE,
+  AI_CAPABILITY_SWITCHES,
   AI_GATEWAY_EMERGENCY_STOP_CODE,
   AI_MODEL_TASKS,
   AI_SAVER_PERCENT_CODE,
@@ -32,7 +33,7 @@ import type { SettingsDependencies } from './settings-dependencies';
 
 /**
  * settings' implementation of `platform/ai`'s {@link AiGatewayControls} port (G4; ADR-0042): the
- * Market's AI emergency stop, caps and model lists (G4b), read for the AI Gateway before each
+ * Market's AI emergency stop, caps and model lists (G4b) and capability switches (G4d3), read for the AI Gateway before each
  * `status` and `run`.
  *
  * Not a use case: the gateway calls it for every actor it serves (a guest, a customer, a seller,
@@ -86,7 +87,17 @@ export class SettingsAiGatewayControls implements AiGatewayControls {
       savers,
       saverAtPercent: Number(value(AI_SAVER_PERCENT_CODE)),
     };
-    return { stopped: value(AI_GATEWAY_EMERGENCY_STOP_CODE) !== 'off', caps, models };
+    // The capability switches (G4d3): `on` by default, an invalid stored value is `off`.
+    const capabilities: Record<string, boolean> = {};
+    for (const [code, capability] of Object.entries(AI_CAPABILITY_SWITCHES)) {
+      capabilities[capability] = value(code) === 'on';
+    }
+    return {
+      stopped: value(AI_GATEWAY_EMERGENCY_STOP_CODE) !== 'off',
+      caps,
+      models,
+      capabilities,
+    };
   }
 }
 
