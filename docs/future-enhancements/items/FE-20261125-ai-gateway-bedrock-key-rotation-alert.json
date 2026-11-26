@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-ai-gateway-bedrock-key-rotation-alert",
+  "area": "assistant",
+  "title": "درگاه AI: یادآور انقضای کلید Bedrock",
+  "desc": "کلید بلندمدت Bedrock حداکثر ۹۰ روز اعتبار دارد. وقتی منقضی شود همهٔ AI استرالیا خاموش می‌شود (مسیر پشتیبان ندارد). یک هشدار ۱۴ روز پیش از انقضا به کاظم، و ثبت تاریخ انقضا در دفتر اسرار لازم است.",
+  "src": "docs/security/runbooks/ai-bedrock-sydney-route.md",
+  "date": "2026-11-25",
+  "trig": "همراه روشن شدن AI در استرالیا",
+  "prio": "متوسط",
+  "status": "موکول"
+}
