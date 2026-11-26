@@ -212,8 +212,8 @@ class RecordingRuntime implements AssistantRuntime {
   apiKeyConfigured(marketId: Parameters<AssistantRuntime['apiKeyConfigured']>[0]) {
     return this.inner.apiKeyConfigured(marketId);
   }
-  available(context: Parameters<AssistantRuntime['available']>[0]) {
-    return this.inner.available(context);
+  availability(context: Parameters<AssistantRuntime['availability']>[0]) {
+    return this.inner.availability(context);
   }
   async complete(
     context: Parameters<AssistantRuntime['complete']>[0],

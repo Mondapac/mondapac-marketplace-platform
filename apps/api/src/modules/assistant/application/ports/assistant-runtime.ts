@@ -11,6 +11,9 @@ export type ModelAnswer =
       readonly costMicroUsd: number;
     };
 
+/** The gateway's answer for the buyer chat: on, paused by a full cap, or off. */
+export type RuntimeAvailability = 'on' | 'over-budget' | 'off';
+
 /**
  * The model, through `platform/ai`'s gateway and the `assistant.buyer-chat` capability (ADR-0019
  * R7; docs/design/domain/platform-ai.md section 5). The API key never reaches this module: it
@@ -19,12 +22,14 @@ export type ModelAnswer =
 export interface AssistantRuntime {
   apiKeyConfigured(marketId: MarketId): boolean;
   /**
-   * The gateway would run the buyer chat for this caller: the caller is a buyer, the kill switch
-   * is not set, the Market's list for the chat task type has a usable route (no list: false,
-   * AI Gateway G4d1), and no AI budget cap of the chat is full. Never called inside a UnitOfWork: the gateway reads its budget
-   * in a unit of its own (an open unit makes it answer false).
+   * Whether the gateway would run the buyer chat for this caller now: `on` when the caller is a
+   * buyer, the kill switch and the emergency stop are not set and the Market's list for the chat
+   * task type has a usable route (no list: off, AI Gateway G4d1); `over-budget` when an AI budget
+   * cap of the chat is full (its own day or month cap, AI Gateway G4d2, or a Market or guest cap):
+   * the assistant is paused; `off` otherwise. Never called inside a UnitOfWork: the gateway reads
+   * its settings and budget in units of its own (an open unit makes it answer off).
    */
-  available(context: CallContext): Promise<boolean>;
+  availability(context: CallContext): Promise<RuntimeAvailability>;
   /** One model round of the buyer turn `turnId` (the gateway allows the chat's rounds per turn). */
   complete(
     context: CallContext,

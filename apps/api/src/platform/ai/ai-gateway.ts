@@ -13,6 +13,7 @@ import { callThroughPlan, costMicroUsd, type GatewayRun } from './model-call';
 import { ModelGateway } from './model-gateway';
 import { AiRouter, planPrice } from './routing/ai-router';
 import type { ModelRequest } from './model-provider';
+import type { ModelTokenPrice } from './catalogue/route-catalogue';
 import { maskRequest } from './personal-data-masker';
 import { SELLER_AI_SWITCH, type SellerAiSwitch } from './seller-ai-switch';
 import { AiUsage, type UsageScope } from './usage/ai-usage';
@@ -74,6 +75,7 @@ const CLOSED_CONTROLS: AiMarketControls = Object.freeze({
     sellerDay: 0,
     guestDay: 0,
     evaluationMonth: 0,
+    capabilities: Object.freeze({}),
   }),
   models: NO_MODEL_LISTS,
 });
@@ -119,6 +121,20 @@ function inAudience(spec: CapabilitySpec, actor: ActorContext): boolean {
 }
 
 /** Who a call is counted for: its capability, its seller, and the guest pool for a guest. */
+/**
+ * The most one call of the capability can cost at the plan's price: its largest input (two
+ * characters a token at the cap, counted one token a character) and its whole output allowance
+ * (Hassan, PR 1348 M1); 0 without a route.
+ */
+function largestCallOf(spec: CapabilitySpec, price: ModelTokenPrice | null): number {
+  return price === null
+    ? 0
+    : costMicroUsd(
+        { inputTokens: 2 * spec.maxInputTokens, outputTokens: spec.maxOutputTokens },
+        price,
+      );
+}
+
 function scopeOf(spec: CapabilitySpec, context: CallContext, options: GatewayOptions): UsageScope {
   return {
     capability: spec.id,
@@ -184,13 +200,7 @@ export class AiGateway {
       const price = planPrice(
         this.router.plan(context.market.marketId, spec, false, controls.models),
       );
-      const largest =
-        price === null
-          ? 0
-          : costMicroUsd(
-              { inputTokens: 2 * spec.maxInputTokens, outputTokens: spec.maxOutputTokens },
-              price,
-            );
+      const largest = largestCallOf(spec, price);
       const scope = scopeOf(spec, context, options);
       if (await this.usage.overBudget(context.market, scope, controls.caps, largest)) {
         return { on: false, reason: 'over-budget' };
@@ -199,6 +209,32 @@ export class AiGateway {
     } catch {
       return { on: false, reason: 'off' };
     }
+  }
+
+  /**
+   * Which of the capability's own caps (its day, then its month; G4d2) is full for the caller's
+   * Market: it cannot take the most one call of the capability can cost, the measure `status`
+   * uses. Null when neither is full; the Market, seller and guest caps are not the capability's
+   * and are left out. Reads the caps and the budget in read-only units of their own, so it is
+   * never called inside a UnitOfWork. Throws when the settings or the budget cannot be read (the
+   * caller then records nothing). Read through `AiUsageReport` (`CapabilityUsageReport.capReached`).
+   */
+  async capabilityCapReached(
+    capability: string,
+    context: CallContext,
+  ): Promise<'day' | 'month' | null> {
+    const spec = this.registry.get(capability);
+    if (spec === undefined) throw new Error(`"${capability}" is not a registered capability`);
+    const controls = await this.controls.read(context);
+    const price = planPrice(
+      this.router.plan(context.market.marketId, spec, false, controls.models),
+    );
+    return this.usage.capabilityCapFull(
+      context.market,
+      capability,
+      controls.caps,
+      largestCallOf(spec, price),
+    );
   }
 
   /** One model round (one `run` per round of a tool loop). Never throws. */

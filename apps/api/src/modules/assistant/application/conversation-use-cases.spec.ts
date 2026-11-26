@@ -149,6 +149,7 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
     tools = new FakeTools();
     conversations = new MemoryConversations();
     spend = new MemorySpend();
+    spend.unitOfWork = unitOfWork;
     outbox = new RecordingOutbox();
     limits = new MemoryLimits();
     clock = new FixedClock(T0);
@@ -698,18 +699,26 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
       },
     );
 
-    it('fails closed, before any model call, when the spend cannot be read (Hassan, PR 1356)', async () => {
-      spend.totals = () => Promise.reject(new Error('gateway usage down'));
+    it('fails closed, before any model call, when the gateway cannot be asked (Hassan, PR 1356)', async () => {
+      runtime.availability = () => Promise.reject(new Error('gateway usage down'));
       await expect(asGuest('Hi')).rejects.toThrow('gateway usage down');
       expect(runtime.requests).toHaveLength(0);
     });
 
-    it('is off for a customer and a guest while an AI budget cap is full (AI Gateway G2)', async () => {
+    it('is paused for a customer and a guest while an AI budget cap is full: the gateway’s cap answer (G4d2)', async () => {
       runtime.overBudget = true;
-      expect(await asCustomer('Hi')).toEqual({ ok: false, error: { code: 'assistant.off' } });
-      expect(await asGuest('Hi')).toEqual({ ok: false, error: { code: 'assistant.off' } });
+      expect(await asCustomer('Hi')).toEqual({ ok: false, error: { code: 'assistant.paused' } });
+      expect(await asGuest('Hi')).toEqual({ ok: false, error: { code: 'assistant.paused' } });
       expect(runtime.requests).toHaveLength(0);
       expect([...spend.days.values()]).toEqual([]);
+      // Paused before the turn: no model call, so no cap answer asked and no event.
+      expect(spend.capReads).toBe(0);
+      expect(outbox.events).toEqual([]);
+    });
+
+    it('is off, not paused, when the gateway answers off for any other reason', async () => {
+      runtime.routed = false;
+      expect(await asCustomer('Hi')).toEqual({ ok: false, error: { code: 'assistant.off' } });
     });
 
     it('ends a turn the gateway refuses for budget mid-turn with the notice and the support card', async () => {
@@ -768,24 +777,32 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
   });
 
   describe('spend', () => {
-    it('counts every call and pauses the Market once the daily cap is reached', async () => {
-      settings.current = on({ dailySpendCapUsdCents: 100, monthlySpendCapUsdCents: 1000 });
+    // G4d2: the chat's day and month caps are the gateway's (`ai-cap-buyer-chat-day`, `-month`);
+    // the gateway refuses a call a cap cannot take, and after each turn the assistant asks it which
+    // of the chat's caps is full, recording the day's auto-off and the admins' event once.
+    it('pauses the Market on the gateway’s cap answer and writes one daily event a Market day', async () => {
       runtime.script.push(answer({ text: 'One.', costMicroUsd: 600_000 }));
-      runtime.script.push(answer({ text: 'Two.', costMicroUsd: 600_000 }));
       expect((await asCustomer('One')).ok).toBe(true);
+      expect(outbox.events).toEqual([]);
+      // The second turn fills the chat's day cap at the gateway.
+      runtime.script.push(() => {
+        spend.capFull = 'daily';
+        return answer({ text: 'Two.', costMicroUsd: 600_000 });
+      });
       expect((await asCustomer('Two')).ok).toBe(true);
+      // The gateway now refuses the chat: paused, before any model call.
+      runtime.overBudget = true;
       expect(await asCustomer('Three')).toEqual({
         ok: false,
         error: { code: 'assistant.paused' },
       });
-      const totals = await spend.totals(market, T0.toZonedDateTimeISO('UTC').toPlainDate());
+      const today = T0.toZonedDateTimeISO('UTC').toPlainDate();
+      const totals = await spend.totals(market, today);
       expect(totals).toMatchObject({
-        todayMicroUsd: 1_200_000,
         conversationsToday: 1,
         lastAutoOff: { at: T0, cap: 'daily' },
       });
       // One event for the admins' bell notice: which cap, no amount, on the Market's spend day.
-      const today = T0.toZonedDateTimeISO('UTC').toPlainDate();
       expect(outbox.events).toEqual([
         expect.objectContaining({
           type: AssistantSpendCapReached.type,
@@ -797,20 +814,19 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
           marketId: market.marketId,
         }),
       ]);
-      // The next day the daily cap starts again.
+      // The next day the day cap starts again: a turn runs, and the answer of a full cap that day
+      // records a new auto-off and one more event.
+      runtime.overBudget = false;
       clock.set(T0.add({ hours: 24 }));
       expect((await asCustomer('Next day', SECOND)).ok).toBe(true);
-      expect(outbox.events).toHaveLength(1);
+      expect(outbox.events).toHaveLength(2);
+      spend.capFull = null;
+      expect((await asCustomer('Again', SECOND)).ok).toBe(true);
+      expect(outbox.events).toHaveLength(2);
     });
 
-    it('writes the monthly event when a turn reaches the monthly cap', async () => {
-      settings.current = on({ dailySpendCapUsdCents: 1000, monthlySpendCapUsdCents: 100 });
-      await spend.add(market, Temporal.PlainDate.from('2026-10-01'), {
-        microUsd: 500_000,
-        inputTokens: 0,
-        outputTokens: 0,
-        conversations: 0,
-      });
+    it('writes the monthly event when the gateway answers the month cap full', async () => {
+      spend.capFull = 'monthly';
       runtime.script.push(answer({ text: 'One.', costMicroUsd: 600_000 }));
       expect((await asCustomer('One')).ok).toBe(true);
       expect(outbox.events).toEqual([
@@ -823,16 +839,10 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
     });
 
     it('writes no second event when another turn already switched the day off', async () => {
-      settings.current = on({ dailySpendCapUsdCents: 100, monthlySpendCapUsdCents: 1000 });
+      spend.capFull = 'daily';
       const today = T0.toZonedDateTimeISO('UTC').toPlainDate();
-      // While this turn waits on the model, another turn of the same day reaches the cap first.
+      // While this turn waits on the model, another turn of the same day records the cap first.
       runtime.script.push(() => {
-        void spend.add(market, today, {
-          microUsd: 1_000_000,
-          inputTokens: 0,
-          outputTokens: 0,
-          conversations: 0,
-        });
         void spend.markAutoOff(market, today, 'daily', T0);
         return answer({ text: 'One.', costMicroUsd: 600_000 });
       });
@@ -841,16 +851,12 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
       expect((await spend.totals(market, today)).lastAutoOff).toEqual({ at: T0, cap: 'daily' });
     });
 
-    it('pauses the Market at the monthly cap', async () => {
-      settings.current = on({ dailySpendCapUsdCents: 100, monthlySpendCapUsdCents: 100 });
-      await spend.add(market, Temporal.PlainDate.from('2026-10-01'), {
-        microUsd: 1_000_000,
-        inputTokens: 0,
-        outputTokens: 0,
-        conversations: 0,
-      });
-      expect(await asCustomer('Hi')).toEqual({ ok: false, error: { code: 'assistant.paused' } });
-      // Paused before the turn: no model call, so no new auto-off and no event.
+    it('asks for the cap answer outside any unit, and a failed read records nothing but answers the buyer', async () => {
+      spend.capFailing = true;
+      runtime.script.push(answer({ text: 'One.', costMicroUsd: 600_000 }));
+      const reply = await asCustomer('One');
+      expect(reply.ok && reply.value.sentences).toEqual(['One.']);
+      expect(spend.capReads).toBe(1);
       expect(outbox.events).toEqual([]);
     });
   });

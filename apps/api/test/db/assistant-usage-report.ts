@@ -7,6 +7,7 @@ import {
   ASSISTANT_AI_CAPABILITIES,
   BUYER_CHAT,
 } from '../../src/modules/assistant/contracts/ai-capabilities';
+import type { AiGateway } from '../../src/platform/ai/ai-gateway';
 import { CapabilityRegistry } from '../../src/platform/ai/capability-registry';
 import {
   AiUsageReport,
@@ -26,11 +27,22 @@ const ids: IdGenerator = {
  * The gateway's usage report on the real store, with the assistant's capabilities registered, for
  * the assistant's database tests (AI Gateway G7).
  */
-export function assistantUsageReport(prisma: PrismaService): CapabilityUsageReport {
+export function assistantUsageReport(
+  prisma: PrismaService,
+  /**
+   * The gateway's cap answer for the buyer chat (G4d2), as `AiGateway.capabilityCapReached` gives
+   * it; the real computation against the gateway caps is in platform-ai-usage.db-spec. Default:
+   * no cap full.
+   */
+  capReached: () => Promise<'day' | 'month' | null> = () => Promise.resolve(null),
+): CapabilityUsageReport {
   const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
   const registry = new CapabilityRegistry();
   registry.register('assistant', ASSISTANT_AI_CAPABILITIES);
-  return new AiUsageReport(new PrismaAiUsageStore(prisma, ids), registry, markets).for('assistant');
+  const gateway = { capabilityCapReached: capReached } as unknown as AiGateway;
+  return new AiUsageReport(new PrismaAiUsageStore(prisma, ids), registry, markets, gateway).for(
+    'assistant',
+  );
 }
 
 /**
@@ -76,7 +88,7 @@ export function settlingRuntime(
 ): AssistantRuntime {
   return {
     apiKeyConfigured: (marketId) => runtime.apiKeyConfigured(marketId),
-    available: (context) => runtime.available(context),
+    availability: (context) => runtime.availability(context),
     complete: async (context, request, timeoutMs, turnId) => {
       const answer = await runtime.complete(context, request, timeoutMs, turnId);
       if (answer.costMicroUsd > 0) {

@@ -9,7 +9,7 @@ assistant ships **off**.
 | Route                                                                     | Who                                                                         | What                                                                                                                             |
 | ------------------------------------------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /assistant/admin/settings`                                           | admin, `assistant.settings.view` (viewer role, seed version 14)             | Settings in force, `version` (0 = defaults), `apiKey: set / not-set`, options not available yet                                  |
-| `PUT /assistant/admin/settings`                                           | admin, `assistant.settings.manage` (protected: Platform Administrator only) | `{ expectedVersion, settings }`, every field and no other (`modelTier` is refused since AI Gateway G4d1); stale version answers 409 `assistant.conflict`; same settings again change nothing |
+| `PUT /assistant/admin/settings`                                           | admin, `assistant.settings.manage` (protected: Platform Administrator only) | `{ expectedVersion, settings }`, every field and no other (`modelTier` is refused since AI Gateway G4d1, `dailySpendCapUsdCents` and `monthlySpendCapUsdCents` since G4d2); stale version answers 409 `assistant.conflict`; same settings again change nothing |
 | `GET /assistant/storefront?visitor=&lang=` (header `x-assistant-preview`) | anyone, no session read                                                     | `{ enabled, guestsAllowed, replyLanguage, welcomeText, retentionDays, quickPrompts, preview }` only                              |
 | `POST /assistant/admin/preview-token`                                     | admin session, CSRF, `assistant.settings.manage`                            | `{ token, expiresAt }` (conversation.md)                                                                                         |
 
@@ -28,8 +28,6 @@ SELECT and INSERT only) and one `assistant.settings.changed` audit row (versions
 | `customerMessageLimit`        | 5 to 120 per 10 minutes                                                             | 40                        |
 | `retention`                   | `none` / `30-days` / `12-months` (a guest is kept 30 days at most)                  | `30-days`                 |
 | `replyLanguage`               | `buyer` / `english`                                                                 | `buyer`                   |
-| `dailySpendCapUsdCents`       | 100 to 100,000, at most the monthly cap                                             | 1,000                     |
-| `monthlySpendCapUsdCents`     | 100 to 2,000,000                                                                    | 20,000                    |
 | `supportHandoff`              | `email-link` / `in-panel-form` (not available yet)                                  | `email-link`              |
 | `basketProposals`             | true / false: the assistant may plan a typed or pasted list into a basket card      | false                     |
 | `welcomeText`                 | null, or 1 to 200 characters without control characters, bidi overrides, `<` or `>` | null (storefront default) |
@@ -38,6 +36,20 @@ The database CHECKs repeat these bounds.
 
 `basketProposals` is required like every field: a PUT without it answers 400 (a breaking change for
 any client but the admin panel, which carries it; its switch comes with S1-F2).
+
+## Spend caps (AI Gateway G4d2)
+
+The chat's daily and monthly spend caps are no longer assistant settings: they are the AI Gateway
+caps `ai-cap-buyer-chat-day` and `ai-cap-buyer-chat-month` (US micro-dollars or `none`, defaults
+10 000 000 and 200 000 000, the former US$10 and US$200; Settings › AI Gateway, Limits), checked
+by the gateway when it reserves each call (docs/design/domain/platform-ai.md section 7). A PUT
+that still sends `dailySpendCapUsdCents` or `monthlySpendCapUsdCents` answers 400 `unknown-field`.
+Migration `20261126030000_ai_gateway_buyer_chat_caps` copied each Market's latest values (cents x
+10 000) where they differed from the defaults. The two columns stay until a migration drops them
+(FE-20261126-ai-gateway-drop-assistant-cap-columns): a new row carries the previous row's values
+forward (the former defaults on a Market's first row) and nothing reads them. The audit row of a
+change no longer names the caps (the fields stay optional in the catalogue for the older rows);
+a cap change is audited by settings as `settings.ai-cap.changed`.
 
 ## Not settings
 
@@ -72,9 +84,9 @@ status card and a read-only summary; the Platform Administrator gets the form. T
 only whether the model key is set (no model tier picker since AI Gateway G4d1). Saving sends
 `expectedVersion`; on a 409 the page reads the settings again and asks the admin to make the
 change again.
-Spend today and this month (against the caps), conversations today and the last automatic
-switch-off are now in the read's `spend` (package 4); wiring them into the status card is a
-follow-up of the admin tab. The cost estimate per conversation is not computed by the server.
+Spend today and this month, conversations today and the last automatic switch-off are in the
+read's `spend` (package 4) and on the status card; since AI Gateway G4d2 the page has no cap
+inputs and the card shows the spend without a cap (the caps are on the AI Gateway page, G5). The cost estimate per conversation is not computed by the server.
 
 ## Storefront extras (stage 0, B4)
 

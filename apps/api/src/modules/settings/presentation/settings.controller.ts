@@ -461,7 +461,9 @@ export class AdminSettingsController {
       'Needs settings.ai-gateway.view. ai-gateway-emergency-stop (off by default) and the caps ' +
       'ai-cap-market-day, ai-cap-market-month, ai-cap-capability-day, ai-cap-seller-day and ' +
       'ai-cap-guest-day (none by default, else whole US micro-dollars as decimal text; 0 allows ' +
-      'nothing), each with its version (0 while the default is in force).',
+      'nothing), ai-cap-evaluation-month (default 0, never none), and the buyer assistant ' +
+      "chat's own ai-cap-buyer-chat-day and ai-cap-buyer-chat-month (defaults 10000000 and " +
+      '200000000, or none), each with its version (0 while the default is in force).',
   })
   @ApiOkResponse({ type: SettingsListBody })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
@@ -491,7 +493,9 @@ export class AdminSettingsController {
     description:
       'Needs the protected settings.ai-gateway.manage; refused in an acting-as session. ' +
       '`changes` lists each changed cap once with the version the admin saw; a value is `none` ' +
-      'or whole US micro-dollars (0 to 1000000000000). Raising or lifting any cap needs a fresh ' +
+      'or whole US micro-dollars (0 to 1000000000000); ai-cap-buyer-chat-day may not be above ' +
+      'ai-cap-buyer-chat-month when both are numbers (validation.failed, path ' +
+      'ai-cap-buyer-chat-day). Raising or lifting any cap needs a fresh ' +
       'two-step proof of this admin (`POST identity/admin/step-up/verify` for ' +
       'settings.ai-gateway-limits.raise; without it 403 second-factor.required with ' +
       'details.actionKey); lowering needs none. All or nothing: a stale version is 409 ' +

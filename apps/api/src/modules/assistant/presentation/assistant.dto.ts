@@ -46,18 +46,6 @@ export class AssistantSettingsFields {
   @ApiProperty({ enum: REPLY_LANGUAGES, description: "Default buyer (the buyer's language)." })
   replyLanguage!: string;
   @ApiProperty({
-    minimum: BOUNDS.dailySpendCapUsdCents.min,
-    maximum: BOUNDS.dailySpendCapUsdCents.max,
-    description: 'US cents. Default 1000. At most the monthly cap.',
-  })
-  dailySpendCapUsdCents!: number;
-  @ApiProperty({
-    minimum: BOUNDS.monthlySpendCapUsdCents.min,
-    maximum: BOUNDS.monthlySpendCapUsdCents.max,
-    description: 'US cents. Default 20000.',
-  })
-  monthlySpendCapUsdCents!: number;
-  @ApiProperty({
     enum: SUPPORT_HANDOFFS,
     description: 'Default email-link; in-panel-form is not available yet.',
   })

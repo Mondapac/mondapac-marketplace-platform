@@ -2,7 +2,11 @@ import type { CallContext, MarketId } from '@mondapac/shared-kernel';
 import type { AiGateway } from '../../../platform/ai/ai-gateway';
 import type { ModelRequest } from '../../../platform/ai/model-provider';
 import { BUYER_CHAT } from '../contracts/ai-capabilities';
-import type { AssistantRuntime, ModelAnswer } from '../application/ports/assistant-runtime';
+import type {
+  AssistantRuntime,
+  ModelAnswer,
+  RuntimeAvailability,
+} from '../application/ports/assistant-runtime';
 
 /**
  * {@link AssistantRuntime} on `platform/ai`'s gateway (this file is on its boundary allow-list),
@@ -17,8 +21,11 @@ export class GatewayAssistantRuntime implements AssistantRuntime {
     return this.gateway.setup(marketId).keyConfigured;
   }
 
-  async available(context: CallContext): Promise<boolean> {
-    return (await this.gateway.status(BUYER_CHAT, context, {})).on;
+  async availability(context: CallContext): Promise<RuntimeAvailability> {
+    const status = await this.gateway.status(BUYER_CHAT, context, {});
+    if (status.on) return 'on';
+    // A full cap is the gateway's cap answer: the assistant shows itself paused (G4d2).
+    return status.reason === 'over-budget' ? 'over-budget' : 'off';
   }
 
   async complete(

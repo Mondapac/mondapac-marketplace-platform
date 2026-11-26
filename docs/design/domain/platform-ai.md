@@ -251,6 +251,38 @@ number so the partner team can work in parallel (G6).
   the buyer capabilities' calls by anonymous visitors.
 - **Moving the buyer assistant's cap.** G2 only counts in parallel and moves nothing.
   `assistant.spend_days` moves to the gateway in its own later PR, in steps (section 10).
+- **Built in G4d2 (a capability's own caps; the buyer assistant's caps move to the gateway).**
+  `AiCaps.capabilities` maps a capability id to its own `{ day, month }` (micro-dollars, null not
+  capped); `settings` fills it only for the buyer chat (`AI_BUYER_CHAT_CAPABILITY`, a string
+  constant, with a contract test that it is a registered capability) from `ai-cap-buyer-chat-day`
+  and `ai-cap-buyer-chat-month` (`none` or 0 to 10^12, safe value 0, defaults 10 000 000 and
+  200 000 000, the assistant's former US$10 and US$200, so a Market without a row is not
+  uncapped). On the Limits tab and in `GET settings/admin/ai-gateway`; the day cap may not be
+  above the month cap when both are numbers (`validation.failed`, path `ai-cap-buyer-chat-day`,
+  checked on the page as it would stand, before any proof); raising or lifting either spends
+  `settings.ai-gateway-limits.raise`, lowering spends none; audited as `settings.ai-cap.changed`.
+  **The day line uses the stricter of the capability's own day cap and `ai-cap-capability-day`**
+  (each when set). **Every reservation also holds the capability's month counter** (period
+  `month`, scope `capability`, the Market's month), capped by the capability's own month cap or
+  counted only: one more conditional UPDATE per attempt, and a month cap set in the middle of a
+  month counts the whole month. A reservation row records it (`capability_month`), so the settle
+  and the sweeper correct exactly the lines it held: a reservation of a release before G4d2 (false)
+  never touches the month counter. `AiGateway.capabilityCapReached` answers which of the
+  capability's own caps cannot take its largest call (the `status` measure), read by a module
+  through `CapabilityUsageReport.capReached` outside any unit. The assistant no longer validates,
+  stores or audits the caps (its PUT refuses the two fields as unknown); a full cap is the
+  gateway's `over-budget`, which the assistant answers `assistant.paused`, and after a turn it asks
+  `capReached` and records the day's "cap reached" with the `AssistantSpendCapReached` event once
+  a Market day, in a unit of its own after the turn's (the storefront read still answers off while
+  the gateway is over budget, as since G2). Migration `20261126030000_ai_gateway_buyer_chat_caps`
+  adds `capability_month` (default false), copies each Market's latest assistant caps (cents x
+  10 000) to settings rows and history rows (version 1, the admin and time of that assistant
+  version, no note) only where they differ from the defaults, and fills the capability month
+  counters from the day counters (`ON CONFLICT DO NOTHING`, rerunnable); its `down.sql` removes
+  the two settings' rows and history, the capability month counters and the column. During the
+  rollout, reservations of old pods are not on the month counter, and the few in flight when the
+  migration ran stay held there for that month (over-counts, never under-counts). The assistant's
+  cap columns stay (FE-20261126-ai-gateway-drop-assistant-cap-columns).
 
 ## 8. Admin panel: «AI Models» and gateway settings
 
@@ -550,8 +582,9 @@ the guarded `prisma.tx(market)` client. Each table has an explicit GRANT and `do
     switch's `down.sql` copies what only the new homes hold back into `spend_days`, so the G7a
     release can run again. While G7a and G7b pods run side by side during the rollout, a day can
     send the cap event twice and G7a pods read less spend; roll out quickly (Mojtaba, PR 1356).
-    The cap values stay in the assistant's settings until G4 moves them to the gateway's caps
-    (FE-20261125-ai-gateway-assistant-cap-to-gateway); step 4 is FE-20261125-ai-gateway-drop-spend-days.
+    The cap values moved to the gateway's caps in G4d2 (section 7; the turn's cost is still settled
+    in `run`, and the cap answer is read after the turn's unit); step 4 is
+    FE-20261125-ai-gateway-drop-spend-days.
 
 ## 11. Monitoring and audit
 

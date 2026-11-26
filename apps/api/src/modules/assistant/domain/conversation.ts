@@ -1,6 +1,6 @@
 import { parseId } from '@mondapac/shared-kernel';
 import type { Result } from '@mondapac/shared-kernel';
-import type { AssistantSettings, Retention } from './assistant-settings';
+import type { Retention } from './assistant-settings';
 import { maskPersonalData } from './personal-data';
 import { SITE_PAGES, type SitePage } from './tools';
 
@@ -69,22 +69,8 @@ export function retentionDaysOf(retention: Retention, caller: 'guest' | 'custome
   }
 }
 
-/** Spend is counted in micro US dollars (1e-6 USD); the caps are set in US cents. */
-export const MICRO_USD_PER_CENT = 10_000;
-
-// The cost of each call is computed by platform/ai's gateway (`AiGateway.run`), at the route's price.
-
-/** Which cap the Market's spend has reached, if any; the daily one is checked first. */
-export function capReached(
-  settings: Pick<AssistantSettings, 'dailySpendCapUsdCents' | 'monthlySpendCapUsdCents'>,
-  spend: { readonly todayMicroUsd: number; readonly monthMicroUsd: number },
-): 'daily' | 'monthly' | null {
-  if (spend.todayMicroUsd >= settings.dailySpendCapUsdCents * MICRO_USD_PER_CENT) return 'daily';
-  if (spend.monthMicroUsd >= settings.monthlySpendCapUsdCents * MICRO_USD_PER_CENT) {
-    return 'monthly';
-  }
-  return null;
-}
+// The cost of each call is computed and capped by platform/ai's gateway (`AiGateway.run`), at the
+// route's price; the chat's day and month caps are the gateway's (AI Gateway G4d2).
 
 /** The longest title of a conversation in the buyer's list, in characters (stage 0, B2). */
 export const TITLE_CHARACTERS = 30;

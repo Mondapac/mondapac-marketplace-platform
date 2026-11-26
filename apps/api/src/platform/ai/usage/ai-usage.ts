@@ -3,13 +3,14 @@ import { err, ok, Temporal } from '@mondapac/shared-kernel';
 import type { Clock, IdGenerator, MarketContext } from '@mondapac/shared-kernel';
 import type { MarketRegistry } from '../../market-config/market-registry';
 import type { UnitOfWork } from '../../unit-of-work/unit-of-work';
-import { NO_CAPS, type AiCaps } from '../gateway-controls';
+import { NO_CAPS, type AiCaps, type CapabilityCaps } from '../gateway-controls';
 import {
   counterKeyText,
   LATENCY_BUCKETS_MS,
   type AiUsageStore,
   type BudgetCounterKey,
   type BudgetLine,
+  type BudgetPeriod,
   type CallOutcome,
   type ReservationRecord,
 } from './ai-usage-store';
@@ -111,9 +112,16 @@ export class AiUsage {
 
   /**
    * The counters of a scope on a day, in the one fixed order every unit takes them, most specific
-   * first: the seller's day or the guest pool's day, the capability's day, the Market's day, then
-   * the Market's month. The Market rows every call shares are locked last, so they are held for
-   * the shortest time before the commit (Mojtaba, PR 1348 finding 1).
+   * first: the seller's day or the guest pool's day, the capability's day, the capability's month
+   * (G4d2), the Market's day, then the Market's month. The Market rows every call shares are
+   * locked last, so they are held for the shortest time before the commit (Mojtaba, PR 1348
+   * finding 1).
+   *
+   * The capability's day is capped by the stricter of its own day cap and the general
+   * capability-day cap; its month only by its own month cap. The month line is held by every new
+   * reservation, capped or not, so a month cap set in the middle of a month counts the whole
+   * month, and the settle always corrects the lines that were held: a reservation made before G4d2
+   * (`capabilityMonth` false on its row) never held the month line, and its settle leaves it.
    */
   linesOf(
     market: MarketContext,
@@ -121,6 +129,8 @@ export class AiUsage {
     day: Temporal.PlainDate,
     /** Required (Hassan and Mohammad, PR 1362): a forgotten argument must never lift a cap. */
     caps: AiCaps,
+    /** Whether the capability's month line is one of the lines (false only for a pre-G4d2 reservation). */
+    capabilityMonth = true,
   ): BudgetLine[] {
     // An evaluation or playground call counts only on the evaluation budget (G4c): the Market's
     // day and month, which the capabilities share, never move for it.
@@ -154,14 +164,24 @@ export class AiUsage {
         capMicroUsd: caps.guestDay,
       });
     }
-    lines.push(
-      {
-        period: 'day',
-        periodStart: day,
+    const own = capabilityCapsOf(caps, scope.capability);
+    lines.push({
+      period: 'day',
+      periodStart: day,
+      scope: 'capability',
+      scopeKey: scope.capability,
+      capMicroUsd: stricter(own?.day ?? null, caps.capabilityDay),
+    });
+    if (capabilityMonth) {
+      lines.push({
+        period: 'month',
+        periodStart: day.with({ day: 1 }),
         scope: 'capability',
         scopeKey: scope.capability,
-        capMicroUsd: caps.capabilityDay,
-      },
+        capMicroUsd: own?.month ?? null,
+      });
+    }
+    lines.push(
       {
         period: 'day',
         periodStart: day,
@@ -211,6 +231,39 @@ export class AiUsage {
   }
 
   /**
+   * Which of the capability's own lines (its day, then its month) cannot take `roomMicroUsd` more
+   * now (G4d2): the cap answer a host module turns into its once-a-day "cap reached" record. The
+   * Market, seller and guest lines are left out (they are not the capability's). Null when neither
+   * is capped or both have room. Reads in a read-only unit of its own; throws on a store failure.
+   */
+  async capabilityCapFull(
+    market: MarketContext,
+    capability: string,
+    caps: AiCaps,
+    roomMicroUsd = 0,
+  ): Promise<BudgetPeriod | null> {
+    const day = this.dayOf(market, this.clock.now());
+    const own = this.linesOf(
+      market,
+      { capability, sellerId: null, guest: false },
+      day,
+      caps,
+    ).filter((line) => line.scope === 'capability' && line.capMicroUsd !== null);
+    if (own.length === 0) return null;
+    const held = await this.unitOfWork.run(
+      market,
+      async () => ok(await this.store.heldOf(market, own)),
+      { readOnly: true },
+    );
+    if (!held.ok) throw new Error('capability caps not read');
+    const room = Math.max(1, roomMicroUsd);
+    const full = own.find(
+      (line) => line.capMicroUsd! - (held.value.get(counterKeyText(line)) ?? 0) < room,
+    );
+    return full?.period ?? null;
+  }
+
+  /**
    * The share of the Market's month cap already taken (held and spent), for saver mode (design
    * section 6), or null when the Market has no month cap. Reads in a read-only unit of its own.
    * Throws on a store failure; the gateway then keeps the normal order.
@@ -222,7 +275,7 @@ export class AiUsage {
       { capability: '', sellerId: null, guest: false },
       day,
       caps,
-    ).find((line) => line.period === 'month')!;
+    ).find((line) => line.period === 'month' && line.scope === 'market')!;
     if (month.capMicroUsd === null) return null;
     const held = await this.unitOfWork.run(
       market,
@@ -277,6 +330,7 @@ export class AiUsage {
           capability: scope.capability,
           sellerId: scope.sellerId,
           guest: scope.guest,
+          capabilityMonth: true,
           estimateMicroUsd,
           createdAt: now,
           expiresAt: now.add(ttl),
@@ -364,7 +418,7 @@ export class AiUsage {
           await this.store.adjust(
             market,
             // `adjust` moves held and spent on the keys only and never checks a cap.
-            this.linesOf(market, scope, day, NO_CAPS),
+            this.linesOf(market, scope, day, NO_CAPS, taken.capabilityMonth),
             heldDelta,
             cost,
           );
@@ -434,7 +488,7 @@ export class AiUsage {
             await this.store.adjust(
               market,
               // `adjust` never checks a cap.
-              this.linesOf(market, scopeOf(taken), taken.day, NO_CAPS),
+              this.linesOf(market, scopeOf(taken), taken.day, NO_CAPS, taken.capabilityMonth),
               0,
               taken.estimateMicroUsd,
             );
@@ -501,6 +555,18 @@ export class AiUsage {
       ? undefined
       : this.clock.now().add(Temporal.Duration.from({ milliseconds: runForMs }));
   }
+}
+
+/** A capability's own caps (G4d2), never a key of the object's prototype. */
+function capabilityCapsOf(caps: AiCaps, capability: string): CapabilityCaps | undefined {
+  return Object.hasOwn(caps.capabilities, capability) ? caps.capabilities[capability] : undefined;
+}
+
+/** The stricter of two caps; null only when neither caps. */
+function stricter(a: number | null, b: number | null): number | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  return Math.min(a, b);
 }
 
 const scopeOf = (reservation: ReservationRecord): UsageScope => ({

@@ -30,6 +30,16 @@ function stored<T extends string>(options: readonly T[], value: string): T {
  */
 const RETIRED_MODEL_TIER = 'fast';
 
+/**
+ * The values the retired spend cap columns (NOT NULL, CHECK 100 to 100 000 and 100 to 2 000 000
+ * cents, day not above month) get on a Market's first row since AI Gateway G4d2: the former
+ * defaults. A later row carries the previous row's values forward, so a release before G4d2 that
+ * is rolled back to finds the caps it had. Never read: the chat's caps are the gateway's settings
+ * `ai-cap-buyer-chat-day` and `-month` (FE-20261126-ai-gateway-drop-assistant-cap-columns drops
+ * the columns).
+ */
+const RETIRED_CAPS = { dailySpendCapUsdCents: 1_000, monthlySpendCapUsdCents: 20_000 } as const;
+
 /** {@link AssistantSettingsRepository} on `assistant.settings`, scoped by `marketId`. */
 export class PrismaAssistantSettingsRepository implements AssistantSettingsRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -50,8 +60,6 @@ export class PrismaAssistantSettingsRepository implements AssistantSettingsRepos
       customerMessageLimit: row.customerMessageLimit,
       retention: stored(RETENTIONS, row.retention),
       replyLanguage: stored(REPLY_LANGUAGES, row.replyLanguage),
-      dailySpendCapUsdCents: row.dailySpendCapUsdCents,
-      monthlySpendCapUsdCents: row.monthlySpendCapUsdCents,
       supportHandoff: stored(SUPPORT_HANDOFFS, row.supportHandoff),
       basketProposals: row.basketProposals,
       welcomeText: row.welcomeText,
@@ -67,7 +75,13 @@ export class PrismaAssistantSettingsRepository implements AssistantSettingsRepos
     market: MarketContext,
     record: Parameters<AssistantSettingsRepository['append']>[1],
   ): Promise<boolean> {
-    const created = await this.prisma.tx(market).assistantSettings.createMany({
+    const tx = this.prisma.tx(market);
+    const previous = await tx.assistantSettings.findFirst({
+      where: { marketId: market.marketId },
+      orderBy: { version: 'desc' },
+      select: { dailySpendCapUsdCents: true, monthlySpendCapUsdCents: true },
+    });
+    const created = await tx.assistantSettings.createMany({
       data: [
         {
           marketId: market.marketId,
@@ -75,6 +89,7 @@ export class PrismaAssistantSettingsRepository implements AssistantSettingsRepos
           version: record.version,
           ...record.settings,
           modelTier: RETIRED_MODEL_TIER,
+          ...(previous ?? RETIRED_CAPS),
           changedAt: new Date(record.changedAt.epochMilliseconds),
           changedBy: record.changedBy,
         },

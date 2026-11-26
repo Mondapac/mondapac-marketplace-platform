@@ -157,6 +157,23 @@ export const AI_CAP_GUEST_DAY_CODE = 'ai-cap-guest-day';
  */
 export const AI_CAP_EVALUATION_MONTH_CODE = 'ai-cap-evaluation-month';
 
+/**
+ * The buyer assistant's chat (`assistant.buyer-chat`, registered by `assistant`), the one
+ * capability with caps of its own (G4d2). A string here, so settings imports no module; a contract
+ * test checks it is a registered capability.
+ */
+export const AI_BUYER_CHAT_CAPABILITY = 'assistant.buyer-chat';
+/**
+ * The buyer chat's own day and month caps (G4d2; they replace the assistant settings' spend caps):
+ * `none` or micro-dollars like the caps above. The defaults are the assistant's former defaults
+ * (US$10 a day, US$200 a month), so a Market that never set them is not uncapped. The day cap is
+ * never above the month cap when both are numbers (server check on the Limits tab).
+ */
+export const AI_CAP_BUYER_CHAT_DAY_CODE = 'ai-cap-buyer-chat-day';
+export const AI_CAP_BUYER_CHAT_MONTH_CODE = 'ai-cap-buyer-chat-month';
+export const AI_CAP_BUYER_CHAT_DAY_DEFAULT = '10000000';
+export const AI_CAP_BUYER_CHAT_MONTH_DEFAULT = '200000000';
+
 /** Every AI cap code, as the Limits tab shows and saves them. */
 export const AI_CAP_CODES: readonly string[] = Object.freeze([
   AI_CAP_MARKET_DAY_CODE,
@@ -165,7 +182,24 @@ export const AI_CAP_CODES: readonly string[] = Object.freeze([
   AI_CAP_SELLER_DAY_CODE,
   AI_CAP_GUEST_DAY_CODE,
   AI_CAP_EVALUATION_MONTH_CODE,
+  AI_CAP_BUYER_CHAT_DAY_CODE,
+  AI_CAP_BUYER_CHAT_MONTH_CODE,
 ]);
+
+/**
+ * The Limits tab's check of the page as it would stand (G4d2): a capability's own day cap is never
+ * above its month cap when both are numbers. `none` on either side passes.
+ */
+export function capPairIssues(
+  values: ReadonlyMap<string, string>,
+): readonly { readonly path: string; readonly code: string }[] {
+  const day = capOf(values.get(AI_CAP_BUYER_CHAT_DAY_CODE) ?? AI_CAP_NONE);
+  const month = capOf(values.get(AI_CAP_BUYER_CHAT_MONTH_CODE) ?? AI_CAP_NONE);
+  if (day !== null && month !== null && day > month) {
+    return [{ path: AI_CAP_BUYER_CHAT_DAY_CODE, code: 'range' }];
+  }
+  return [];
+}
 
 /** Every AI Gateway setting code (the AI Gateway page). */
 export const AI_GATEWAY_CODES: readonly string[] = Object.freeze([
@@ -409,6 +443,24 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = Object.freeze([
     values: [],
     pattern: AI_CAP_VALUE,
     defaultValue: '0',
+    safeValue: '0',
+  },
+  {
+    code: AI_CAP_BUYER_CHAT_DAY_CODE,
+    label: 'AI cap: buyer assistant chat per day (US micro-dollars)',
+    values: [AI_CAP_NONE],
+    pattern: AI_CAP_VALUE,
+    defaultValue: AI_CAP_BUYER_CHAT_DAY_DEFAULT,
+    // An invalid stored value is read as 0: nothing allowed (ADR-0019 R8).
+    safeValue: '0',
+  },
+  {
+    code: AI_CAP_BUYER_CHAT_MONTH_CODE,
+    label: 'AI cap: buyer assistant chat per month (US micro-dollars)',
+    values: [AI_CAP_NONE],
+    pattern: AI_CAP_VALUE,
+    defaultValue: AI_CAP_BUYER_CHAT_MONTH_DEFAULT,
+    // An invalid stored value is read as 0: nothing allowed (ADR-0019 R8).
     safeValue: '0',
   },
   {

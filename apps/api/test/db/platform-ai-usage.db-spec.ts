@@ -113,6 +113,11 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
    * settings spec would wipe or read (the real list read is tested there, G4b).
    */
   let lists: AiModelLists = listsOf('model-fast');
+  /**
+   * Caps pinned for a case (G4d2), so a case never depends on a settings row surviving the
+   * parallel settings spec; null: the real reader's answer.
+   */
+  let pinnedCaps: AiCaps | null = null;
   const provider: ModelProvider = {
     call: () =>
       Promise.resolve({
@@ -156,7 +161,10 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
     gateway = app.get(AiGateway);
     const controls = app.get<AiGatewayControls>(AI_GATEWAY_CONTROLS, { strict: false });
     const read = controls.read.bind(controls);
-    controls.read = async (context) => ({ ...(await read(context)), models: lists });
+    controls.read = async (context) => {
+      const real = await read(context);
+      return { ...real, models: lists, caps: pinnedCaps ?? real.caps };
+    };
     sql = new Client({ connectionString: testDatabaseUrl() });
     await sql.connect();
     owner = new Client({ connectionString: ownerTestDatabaseUrl() });
@@ -389,6 +397,78 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
         expect(spy).not.toHaveBeenCalled();
       } finally {
         await setSetting(market, 'ai-cap-market-day', 'none');
+      }
+    });
+
+    it("holds a capability's own day and month caps at reservation, the month in the Market's month (G4d2)", async () => {
+      const scope = scopeOf();
+      withBudget({ capabilities: { [scope.capability]: { day: 1000, month: 1500 } } });
+      const first = await usage.reserve(
+        market,
+        scope,
+        caps,
+        600,
+        Temporal.Duration.from({ minutes: 1 }),
+      );
+      if (first === 'over-budget') throw new Error('unexpected');
+      const held = await sql.query<{ capability_month: boolean }>(
+        'SELECT capability_month FROM platform.ai_budget_reservations WHERE id = $1',
+        [first.id],
+      );
+      expect(held.rows).toEqual([{ capability_month: true }]);
+      await usage.settle(market, first, settled(600));
+      expect(
+        await usage.reserve(market, scope, caps, 600, Temporal.Duration.from({ minutes: 1 })),
+      ).toBe('over-budget');
+      const second = await usage.reserve(
+        market,
+        scope,
+        caps,
+        400,
+        Temporal.Duration.from({ minutes: 1 }),
+      );
+      if (second === 'over-budget') throw new Error('unexpected');
+      await usage.settle(market, second, settled(400));
+      expect(await counter(market, 'capability', scope.capability)).toEqual([
+        { held: 1000, spent: 1000 },
+      ]);
+      expect(await counter(market, 'capability', scope.capability, 'month')).toEqual([
+        { held: 1000, spent: 1000 },
+      ]);
+      const month = await sql.query<{ start: string }>(
+        `SELECT period_start::text AS start FROM platform.ai_budget_counters
+          WHERE market_id = $1 AND period = 'month' AND scope = 'capability' AND scope_key = $2`,
+        [market.marketId, scope.capability],
+      );
+      expect(month.rows).toEqual([
+        { start: usage.dayOf(market, clock.now()).with({ day: 1 }).toString() },
+      ]);
+      expect(await usage.capabilityCapFull(market, scope.capability, caps, 1)).toBe('day');
+    });
+
+    it("answers the buyer chat's cap through the gateway: the settings' defaults, then a full day or month (G4d2)", async () => {
+      const guest = testCallContext(market, 'anonymous');
+      // No row: the defaults (the assistant's former 1000 and 20000 cents).
+      const controls = app.get<AiGatewayControls>(AI_GATEWAY_CONTROLS, { strict: false });
+      expect((await controls.read(guest)).caps.capabilities['assistant.buyer-chat']).toEqual({
+        day: 10_000_000,
+        month: 200_000_000,
+      });
+      try {
+        pinnedCaps = capsOfBudget({
+          capabilities: { 'assistant.buyer-chat': { day: 0, month: null } },
+        });
+        // The buyer chat has no recorded evaluation pass here, so it has no route (status
+        // no-route); the cap answer is read all the same (a 0 cap is full at any price).
+        expect(await gateway.capabilityCapReached('assistant.buyer-chat', guest)).toBe('day');
+        pinnedCaps = capsOfBudget({
+          capabilities: { 'assistant.buyer-chat': { day: null, month: 0 } },
+        });
+        expect(await gateway.capabilityCapReached('assistant.buyer-chat', guest)).toBe('month');
+        pinnedCaps = capsOfBudget({});
+        expect(await gateway.capabilityCapReached('assistant.buyer-chat', guest)).toBeNull();
+      } finally {
+        pinnedCaps = null;
       }
     });
 

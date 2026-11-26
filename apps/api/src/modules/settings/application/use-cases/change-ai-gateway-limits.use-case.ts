@@ -2,7 +2,7 @@ import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { SETTINGS_AI_GATEWAY_MANAGE } from '../../contracts/permissions';
 import { SETTINGS_AI_GATEWAY_LIMITS_STEP_UP } from '../../contracts/step-up';
-import { AI_CAP_CODES, loosensAi } from '../../domain/definitions';
+import { AI_CAP_CODES, capPairIssues, loosensAi } from '../../domain/definitions';
 import type { SettingsDependencies } from '../settings-dependencies';
 import { changeSettings, type SettingChangeView, type SettingsFailure } from '../settings-flow';
 
@@ -19,7 +19,8 @@ interface Input {
  * version they saw, all or nothing. Raising or lifting a cap spends the admin's fresh two-step code
  * in the change's unit (`settings.ai-gateway-limits.raise`); lowering one never asks for it.
  * Refused in acting-as, audited per cap, reviewed at high risk where the area is reviewed, and the
- * gateway reads the new caps on its next call.
+ * gateway reads the new caps on its next call. The buyer chat's own day cap may not be above its
+ * month cap (G4d2; `validation.failed` with the path `ai-cap-buyer-chat-day`).
  */
 export class ChangeAiGatewayLimits extends UseCase<
   Input,
@@ -42,9 +43,15 @@ export class ChangeAiGatewayLimits extends UseCase<
     context: CallContext,
     input: Input,
   ): Promise<Result<readonly SettingChangeView[], SettingsFailure>> {
-    return changeSettings(this.deps, context, AI_CAP_CODES, input ?? {}, {
-      action: SETTINGS_AI_GATEWAY_LIMITS_STEP_UP,
-      when: loosensAi,
-    });
+    return changeSettings(
+      this.deps,
+      context,
+      AI_CAP_CODES,
+      input ?? {},
+      { action: SETTINGS_AI_GATEWAY_LIMITS_STEP_UP, when: loosensAi },
+      // The buyer chat's day cap is never above its month cap (G4d2), checked on the page as it
+      // would stand, before any proof is spent.
+      (values) => capPairIssues(values),
+    );
   }
 }

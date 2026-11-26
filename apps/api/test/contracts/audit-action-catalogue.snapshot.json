@@ -856,17 +856,17 @@
     "targetId": "enumOf(assistant-settings)",
     "actors": ["authenticated"],
     "before": {
-      "dailySpendCapUsdCents": "integer",
+      "dailySpendCapUsdCents": "optional(integer)",
       "enabled": "boolean",
-      "monthlySpendCapUsdCents": "integer",
+      "monthlySpendCapUsdCents": "optional(integer)",
       "retentionDays": "integer",
       "users": "enumOf(guests-and-customers|customers-only)",
       "version": "integer"
     },
     "after": {
-      "dailySpendCapUsdCents": "integer",
+      "dailySpendCapUsdCents": "optional(integer)",
       "enabled": "boolean",
-      "monthlySpendCapUsdCents": "integer",
+      "monthlySpendCapUsdCents": "optional(integer)",
       "retentionDays": "integer",
       "users": "enumOf(guests-and-customers|customers-only)",
       "version": "integer"
@@ -3716,7 +3716,7 @@
   {
     "action": "settings.ai-cap.changed",
     "targetType": "settings.market-setting",
-    "targetId": "enumOf(ai-cap-market-day|ai-cap-market-month|ai-cap-capability-day|ai-cap-seller-day|ai-cap-guest-day|ai-cap-evaluation-month)",
+    "targetId": "enumOf(ai-cap-market-day|ai-cap-market-month|ai-cap-capability-day|ai-cap-seller-day|ai-cap-guest-day|ai-cap-evaluation-month|ai-cap-buyer-chat-day|ai-cap-buyer-chat-month)",
     "actors": ["authenticated"],
     "before": {
       "microUsd": "optional(integer)"

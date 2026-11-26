@@ -1,5 +1,5 @@
 import { testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
-import type { AiGateway, GatewayRun } from '../../../platform/ai/ai-gateway';
+import type { AiGateway, GatewayRun, GatewayStatus } from '../../../platform/ai/ai-gateway';
 import type { ModelRequest, ModelTurn } from '../../../platform/ai/model-provider';
 import { BUYER_CHAT } from '../contracts/ai-capabilities';
 import { GatewayAssistantRuntime } from './gateway-assistant-runtime';
@@ -16,7 +16,11 @@ describe.each([
   ['ZZ', testMarketContext('ZZ', 'default')],
 ])('GatewayAssistantRuntime (%s)', (_code, market) => {
   const context = testCallContext(market, 'anonymous');
-  const runtimeOf = (run: GatewayRun, calls: unknown[] = []) =>
+  const runtimeOf = (
+    run: GatewayRun,
+    calls: unknown[] = [],
+    status: GatewayStatus = { on: false, reason: 'kill-switch' },
+  ) =>
     new GatewayAssistantRuntime({
       run: (...args: unknown[]) => {
         calls.push(args);
@@ -24,7 +28,7 @@ describe.each([
       },
       status: (...args: unknown[]) => {
         calls.push(args);
-        return Promise.resolve({ on: false, reason: 'kill-switch' });
+        return Promise.resolve(status);
       },
       setup: () => ({ killSwitch: false, keyConfigured: true }),
     } as unknown as AiGateway);
@@ -67,8 +71,22 @@ describe.each([
   it('is unavailable when the gateway says off (no route without a chat list), and reads the key status only', async () => {
     const calls: unknown[] = [];
     const runtime = runtimeOf({ ok: false, reason: 'off', costMicroUsd: 0 }, calls);
-    expect(await runtime.available(context)).toBe(false);
+    expect(await runtime.availability(context)).toBe('off');
     expect(calls).toEqual([[BUYER_CHAT, context, {}]]);
     expect(runtime.apiKeyConfigured(market.marketId)).toBe(true);
+  });
+
+  // G4d2: the chat's caps are the gateway's; a full one is the gateway's cap answer, which the
+  // assistant shows as paused. Every other reason the gateway gives is off.
+  it.each([
+    [{ on: true }, 'on'],
+    [{ on: false, reason: 'over-budget' }, 'over-budget'],
+    [{ on: false, reason: 'kill-switch' }, 'off'],
+    [{ on: false, reason: 'emergency-stop' }, 'off'],
+    [{ on: false, reason: 'no-route' }, 'off'],
+    [{ on: false, reason: 'off' }, 'off'],
+  ] as const)('answers the gateway status %o as %s', async (status, expected) => {
+    const runtime = runtimeOf({ ok: false, reason: 'off', costMicroUsd: 0 }, [], status);
+    expect(await runtime.availability(context)).toBe(expected);
   });
 });

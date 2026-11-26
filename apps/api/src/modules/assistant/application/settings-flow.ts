@@ -47,7 +47,7 @@ export interface AssistantSettingsView {
   readonly unavailableOptions: typeof UNAVAILABLE_OPTIONS;
   /**
    * Read-only figures for the tab (plan section 11): spend today and this month in micro US
-   * dollars (the caps are in cents), conversations started today, and the last time a cap
+   * dollars (the caps are the AI Gateway's since G4d2), conversations started today, and the last time a cap
    * switched the assistant off. Days are the Market's own calendar.
    */
   readonly spend: {
@@ -115,8 +115,9 @@ function auditSnapshot(version: number, settings: AssistantSettings) {
     enabled: settings.enabled,
     users: settings.users,
     retentionDays: RETENTION_DAYS[settings.retention],
-    dailySpendCapUsdCents: settings.dailySpendCapUsdCents,
-    monthlySpendCapUsdCents: settings.monthlySpendCapUsdCents,
+    // The caps are the AI Gateway's since G4d2 (audited there); a new row never names them.
+    dailySpendCapUsdCents: null,
+    monthlySpendCapUsdCents: null,
   };
 }
 
@@ -249,7 +250,8 @@ export async function viewStorefrontAssistant(
   if (!read.ok) return read;
   const settings = read.value;
   // Outside the unit: the gateway reads its budget in a unit of its own (AI Gateway G2).
-  const configured = await deps.runtime.available(context);
+  // Off or paused by a full cap: the storefront shows no assistant (as before G4d2).
+  const configured = (await deps.runtime.availability(context)) === 'on';
   if (!configured || !inRollout(settings, context.market.marketId, visitorKey, preview)) {
     return ok(STOREFRONT_OFF);
   }

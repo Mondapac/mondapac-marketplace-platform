@@ -425,6 +425,18 @@ describe.each(TEST_MARKETS)('assistant settings over HTTP in market %s', (code) 
     expect(tier.body).toMatchObject({
       details: { fields: [{ path: 'settings.modelTier', code: 'unknown-field' }] },
     });
+    // The spend caps went in AI Gateway G4d2 (they are the gateway caps ai-cap-buyer-chat-day and
+    // -month): a body that still sends either is refused, not ignored.
+    for (const field of ['dailySpendCapUsdCents', 'monthlySpendCapUsdCents']) {
+      const capped = await call('put', 'admin', session, {
+        expectedVersion: 0,
+        settings: { ...settings, [field]: 1_000 },
+      });
+      expect(capped.status).toBe(400);
+      expect(capped.body).toMatchObject({
+        details: { fields: [{ path: `settings.${field}`, code: 'unknown-field' }] },
+      });
+    }
     const notObject = await call('put', 'admin', session, { expectedVersion: 0, settings: [] });
     expect(notObject.status).toBe(400);
     expect(notObject.body).toMatchObject({

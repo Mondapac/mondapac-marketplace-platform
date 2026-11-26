@@ -1221,8 +1221,13 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       value,
       expectedVersion,
     });
+    /** No row: no cap but the buyer chat's own, whose defaults are the assistant's former ones (G4d2). */
+    const DEFAULT_CAPS = {
+      ...NO_CAPS,
+      capabilities: { 'assistant.buyer-chat': { day: 10_000_000, month: 200_000_000 } },
+    };
 
-    it('shows the stop off and every cap none by default (the evaluation budget 0, G4c); the gateway reads no cap and no stop', async () => {
+    it('shows the stop off and every cap none by default (the evaluation budget 0, G4c; the buyer chat its own defaults, G4d2); the gateway reads no other cap and no stop', async () => {
       const view = await new ViewAiGatewaySettings(gate, deps).execute(adminCtx(), {});
       expect(
         view.ok && view.value.map(({ code, value, version }) => [code, value, version]),
@@ -1234,8 +1239,14 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         ['ai-cap-seller-day', 'none', 0],
         ['ai-cap-guest-day', 'none', 0],
         ['ai-cap-evaluation-month', '0', 0],
+        ['ai-cap-buyer-chat-day', '10000000', 0],
+        ['ai-cap-buyer-chat-month', '200000000', 0],
       ]);
-      expect(await controls()).toEqual({ stopped: false, caps: NO_CAPS, models: NO_MODEL_LISTS });
+      expect(await controls()).toEqual({
+        stopped: false,
+        caps: DEFAULT_CAPS,
+        models: NO_MODEL_LISTS,
+      });
     });
 
     it('lowers a cap without a two-step code, audited in micro-dollars; the gateway reads it', async () => {
@@ -1251,7 +1262,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         before: { microUsd: null },
         after: { microUsd: 5_000_000, version: 1 },
       });
-      expect((await controls()).caps).toEqual({ ...NO_CAPS, marketDay: 5_000_000 });
+      expect((await controls()).caps).toEqual({ ...DEFAULT_CAPS, marketDay: 5_000_000 });
       // Lower again, and to 0 (nothing allowed): still no code.
       expect((await limits({ changes: [cap('ai-cap-market-day', '0', 1)] })).ok).toBe(true);
       expect((await controls()).caps.marketDay).toBe(0);
@@ -1392,8 +1403,95 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       });
       expect(await controls()).toEqual({
         stopped: true,
-        caps: { ...NO_CAPS, capabilityDay: 0 },
+        caps: { ...DEFAULT_CAPS, capabilityDay: 0 },
         models: NO_MODEL_LISTS,
+      });
+    });
+
+    describe("the buyer chat's own day and month caps (G4d2)", () => {
+      const DAY = 'ai-cap-buyer-chat-day';
+      const MONTH = 'ai-cap-buyer-chat-month';
+      const chat = async () => (await controls()).caps.capabilities['assistant.buyer-chat'];
+
+      it('lowers either without a two-step code, audited in micro-dollars; the gateway reads them', async () => {
+        proofLeft = false;
+        const saved = await limits({ changes: [cap(DAY, '5000000'), cap(MONTH, '150000000')] });
+        expect(saved.ok).toBe(true);
+        expect(spentProofs).toEqual([]);
+        expect(audit.entries.slice(-2)).toMatchObject([
+          {
+            action: 'settings.ai-cap.changed',
+            targetId: DAY,
+            before: { microUsd: 10_000_000 },
+            after: { microUsd: 5_000_000, version: 1 },
+          },
+          {
+            action: 'settings.ai-cap.changed',
+            targetId: MONTH,
+            before: { microUsd: 200_000_000 },
+            after: { microUsd: 150_000_000, version: 1 },
+          },
+        ]);
+        expect(await chat()).toEqual({ day: 5_000_000, month: 150_000_000 });
+      });
+
+      it('needs the two-step code to raise or lift either', async () => {
+        for (const [code_, value] of [
+          [DAY, '10000001'],
+          [MONTH, 'none'],
+        ] as const) {
+          proofLeft = false;
+          expect(await limits({ changes: [cap(code_, value)] })).toEqual({
+            ok: false,
+            error: {
+              code: 'second-factor.required',
+              actionKey: 'settings.ai-gateway-limits.raise',
+            },
+          });
+        }
+        expect(store.history).toHaveLength(0);
+        proofLeft = true;
+        expect((await limits({ changes: [cap(MONTH, 'none')] })).ok).toBe(true);
+        expect(spentProofs).toEqual(['settings.ai-gateway-limits.raise']);
+        expect(await chat()).toEqual({ day: 10_000_000, month: null });
+      });
+
+      it('refuses a day cap above the month cap, on the page as it would stand, before any proof', async () => {
+        proofLeft = true;
+        expect(await limits({ changes: [cap(MONTH, '5000000')] })).toEqual({
+          ok: false,
+          error: {
+            code: 'validation.failed',
+            fields: [{ path: DAY, code: 'range' }],
+          },
+        });
+        expect(await limits({ changes: [cap(DAY, '200000001')] })).toEqual({
+          ok: false,
+          error: {
+            code: 'validation.failed',
+            fields: [{ path: DAY, code: 'range' }],
+          },
+        });
+        expect(spentProofs).toEqual([]);
+        expect(store.history).toHaveLength(0);
+        // Both together, day not above month (equal), and `none` on either side pass.
+        expect((await limits({ changes: [cap(DAY, '5000000'), cap(MONTH, '5000000')] })).ok).toBe(
+          true,
+        );
+        expect((await limits({ changes: [cap(MONTH, 'none', 1)] })).ok).toBe(true);
+        expect((await limits({ changes: [cap(DAY, '900000000', 1)] })).ok).toBe(true);
+        expect(await chat()).toEqual({ day: 900_000_000, month: null });
+      });
+
+      it('reads an invalid stored value as 0 (nothing allowed)', async () => {
+        store.rows.set(`${market.marketId}/${MONTH}`, {
+          code: MONTH,
+          value: 'lots',
+          version: 1,
+          updatedAt: T0,
+          updatedBy: ADMIN,
+        });
+        expect(await chat()).toEqual({ day: 10_000_000, month: 0 });
       });
     });
 

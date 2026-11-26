@@ -44,6 +44,8 @@ export const AI_CAP_TARGET_IDS = [
   'ai-cap-seller-day',
   'ai-cap-guest-day',
   'ai-cap-evaluation-month',
+  'ai-cap-buyer-chat-day',
+  'ai-cap-buyer-chat-month',
 ] as const;
 
 /** Every AI model list and saver model code (AI Gateway G4b), the target id of its audit row. */
