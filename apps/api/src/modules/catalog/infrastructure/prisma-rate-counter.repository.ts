@@ -113,8 +113,9 @@ export class PrismaRateCounterRepository implements RateCounterRepository, RateC
   }
 
   /**
-   * A mark's window outlives the purge's 48 hours: a mark goes only once its 30 days have also
-   * passed since `startedBefore` (Mojtaba L3), so an open mark is never purged.
+   * A mark's window outlives the purge's 48 hours: a mark goes only when it started 30 days before
+   * `startedBefore`, that is 48 hours after its window closed (Mojtaba L3), so an open mark is
+   * never purged.
    */
   async purgeStartedBefore(
     market: MarketContext,

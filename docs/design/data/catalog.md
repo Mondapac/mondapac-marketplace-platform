@@ -928,7 +928,7 @@ module's rate-counter key, fixed window, `count >= 0`, reserve before the work, 
 slice 7b) and `submit-preview-contact.seller.month`. The last is a mark, not a limit: a submit
 preview that told the seller `contact-text` counts it, each use restarts its 30-day window, the
 submit and the live edit only read whether it is open (`isOpen`, one primary-key read), and the purge
-keeps it until 30 days after its window closed. The list in code is `RATE_COUNTER_KINDS`, checked
+keeps it until 48 hours after its window closed (no catalog job runs the purge yet: FE-20261126-catalog-rate-counter-purge-job). The list in code is `RATE_COUNTER_KINDS`, checked
 against the CHECK by a db spec. The bulk-approve cap of 50 (D 17.1 item 11) and the facade batch
 limits are request validation: **no storage**.
 
@@ -1852,7 +1852,7 @@ delete and the sweep both fail.
 
 | Rows | Rule |
 |---|---|
-| `rate_counters` | Hourly: windows older than 48 h (a preview contact mark: 30 days after its window closed) |
+| `rate_counters` | Hourly: windows older than 48 h (a preview contact mark: 48 h after its 30-day window closed) |
 | `tag_reevaluation_requests` | Settled or superseded after 30 days |
 | `inbox` | Platform prune job |
 | Revisions, decisions, histories | Kept (ADR-0009 d7: published revisions kept; VER-06 references them) |

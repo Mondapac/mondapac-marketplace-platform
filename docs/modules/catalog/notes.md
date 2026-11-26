@@ -521,7 +521,7 @@ Built from `/mnt/project-files/handoffs/offer-approval-7b-preview-handoff.md` (d
   seller could edit a description until the filter stops matching, unseen. A preview that answers
   `contact-text` counts `submit-preview-contact.seller.month` on the seller: 30 days from the latest
   such preview (each one restarts the window, `RateLimit.restartsOnUse`); never refused; the
-  48-hour purge keeps an open mark and deletes it 30 days after it closed. Two paths read it
+  48-hour purge keeps an open mark and deletes it 48 hours after it closed. Two paths read it
   (`application/offer-post-review/preview-contact-mark.ts`, `RateCounterWindows.isOpen`, before
   the unit): the submit, for an Offer published at once, and the edit of a live Offer (also the
   import row edit), for a new description applied at once. Either writes the post-publication
