@@ -32,8 +32,6 @@ export interface AssistantSettings {
   readonly customerMessageLimit: number;
   readonly retention: Retention;
   readonly replyLanguage: ReplyLanguage;
-  readonly dailySpendCapUsdCents: number;
-  readonly monthlySpendCapUsdCents: number;
   readonly supportHandoff: SupportHandoff;
   /** "Basket proposals from a list" (stage 1). Default off. */
   readonly basketProposals: boolean;
