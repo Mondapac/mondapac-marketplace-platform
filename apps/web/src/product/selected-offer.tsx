@@ -124,7 +124,7 @@ export function SelectedGallery() {
       thumbs={thumbs}
       sets={sets}
       certifications={offer.certifications.filter((badge) => badge.sellerClaim !== true)}
-      special={offer.wasPrice !== undefined}
+      special={offer.onSpecial === true || offer.wasPrice !== undefined}
     />
   );
 }
@@ -205,7 +205,7 @@ function BuyBoxOf({
 }) {
   const t = useTranslations('product');
   const locale = useLocale();
-  const special = offer.wasPrice !== undefined;
+  const special = offer.onSpecial === true || offer.wasPrice !== undefined;
   const lowest = others.reduce<ProductOffer | undefined>(
     (low, o) => (low === undefined || o.price.amount < low.price.amount ? o : low),
     undefined,

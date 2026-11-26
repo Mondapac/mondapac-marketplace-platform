@@ -88,6 +88,13 @@ describe('seller pages with real data', () => {
     expect(document.querySelector('.shop-text')).toBeNull();
   });
 
+  it('makes no delivery claim for a live store: the API has no per-store delivery area', () => {
+    const listing = listingOf(publicStoreOf(STORE), 'Greater Brisbane');
+    expect('deliversHere' in listing).toBe(false);
+    wrap(<StoreCard store={listing} location="inside" ratingsShown={false} />);
+    expect(document.body.textContent).not.toMatch(/outside|does not deliver/i);
+  });
+
   it('shows a store card without delivery terms or a product count', () => {
     wrap(
       <StoreCard

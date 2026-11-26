@@ -66,7 +66,7 @@ export function StoreCard({
           </li>
         ))}
         {rated ? null : <li className="new">{t('new-seller')}</li>}
-        {location === 'inside' && !store.deliversHere ? (
+        {location === 'inside' && store.deliversHere === false ? (
           <li className="off">
             <Icon name="pin" />
             {t('outside-area')}

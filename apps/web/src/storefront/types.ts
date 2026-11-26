@@ -237,6 +237,12 @@ export interface ProductOffer {
   readonly seller: SellerProfile;
   readonly price: Money;
   readonly wasPrice?: Money;
+  /**
+   * True when `price` is a seller's special in force now (the API gives `special.endsAt`), with or
+   * without a `wasPrice`: the page shows the "Special price" pill. A regular price shown struck
+   * through is the was-price rule's decision, never this flag's.
+   */
+  readonly onSpecial?: boolean;
   /** Badges built by certification from evaluateClaim for this offer. */
   readonly certifications: readonly CertificationBadge[];
   readonly lowStock?: number;
@@ -872,8 +878,11 @@ export interface SellerListing {
   readonly productCount?: number;
   /** Up to three products for the card's footer. */
   readonly thumbnails: readonly { readonly category: string; readonly imageUrl?: string }[];
-  /** Whether it delivers to the buyer's location; true when the location is not known. */
-  readonly deliversHere: boolean;
+  /**
+   * Whether it delivers to the buyer's location. Absent when that is not known: the API has no
+   * per-store delivery area, so the live sellers list never claims it.
+   */
+  readonly deliversHere?: boolean;
   /** Kilometres from the buyer's location; only when the location is inside the delivery area. */
   readonly distanceKm?: number;
 }

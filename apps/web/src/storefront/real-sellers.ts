@@ -199,7 +199,6 @@ export function listingOf(store: PublicStore, area: string): SellerListing {
     categories: [],
     sameDay: false,
     thumbnails: [],
-    deliversHere: true,
   };
   const logoImage = pictureOf(store.slug, store.logo, 'small', { width: 128, height: 128 });
   const withLogo: SellerListing = logoImage === undefined ? listing : { ...listing, logoImage };

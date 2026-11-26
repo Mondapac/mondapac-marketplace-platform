@@ -73,6 +73,7 @@ function featuredOffer(product: ProductCard): ProductOffer {
     ),
     price: product.price,
     ...(product.wasPrice ? { wasPrice: product.wasPrice } : {}),
+    ...(product.onSpecial === true || product.wasPrice ? { onSpecial: true } : {}),
     certifications: product.certifications,
     ...(product.lowStock === undefined ? {} : { lowStock: product.lowStock }),
     minimumOrder: summary.minimumOrder,
