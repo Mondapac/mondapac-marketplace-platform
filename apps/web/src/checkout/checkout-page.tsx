@@ -441,7 +441,7 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
             reasonId={`${reason}-form`}
           />
         </div>
-        <div className="ckside">
+        <div className="ckside" ref={measureSide}>
           <div className="cs stick alt">
             <div className="cks2">
               <h2>{t('summary-toggle')}</h2>
@@ -619,6 +619,21 @@ function MiniSummary({
       <TrustLines />
     </>
   );
+}
+
+/**
+ * The sticky side column's height, kept in `--ckside-h` for its `top` (globals.css): a column
+ * taller than the viewport then scrolls with the page until its bottom (Pay, help) is in view,
+ * and sticks there, with no scroll of its own. A ref callback, so it follows the column as it
+ * mounts and unmounts (React 19 runs the returned cleanup).
+ */
+function measureSide(node: HTMLDivElement | null) {
+  if (!node || typeof ResizeObserver === 'undefined') return;
+  const observer = new ResizeObserver(() => {
+    node.style.setProperty('--ckside-h', `${node.offsetHeight}px`);
+  });
+  observer.observe(node);
+  return () => observer.disconnect();
 }
 
 /** "Need help?": email and the delivery and returns answers (no chat or phone: not decided). */
