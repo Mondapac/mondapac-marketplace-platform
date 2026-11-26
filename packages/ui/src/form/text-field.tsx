@@ -88,7 +88,7 @@ export function TextField({
             ? [
                 'relative flex items-center overflow-hidden rounded-md border bg-surface shadow-sm',
                 'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-focus',
-                error ? 'border-critical-solid' : 'border-line',
+                error ? 'border-critical-solid' : 'border-line-input',
               ].join(' ')
             : 'relative flex items-center'
         }
