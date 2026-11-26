@@ -2,6 +2,7 @@ import type { Fetch } from './anthropic-messages.provider';
 import {
   IN_HOUSE_CONTRACT,
   IN_HOUSE_MAX_ANSWER_BYTES,
+  IN_HOUSE_MAX_REQUEST_BYTES,
   InHouseHttpProvider,
 } from './in-house-http.provider';
 import {
@@ -214,6 +215,13 @@ describe('the in-house model adapter, contract mondapac-model/1 (ADR-0052 decisi
     expect(
       await kindOf(answering(200, OK, headers).provider.call(CREDENTIALS, REQUEST, signal)),
     ).toBe('server');
+  });
+
+  it('refuses a request larger than the contract takes, sending nothing', async () => {
+    const { sent, provider } = answering(200, OK);
+    const big: ModelRequest = { ...REQUEST, system: 'x'.repeat(IN_HOUSE_MAX_REQUEST_BYTES) };
+    expect(await kindOf(provider.call(CREDENTIALS, big, signal))).toBe('client');
+    expect(sent).toEqual([]);
   });
 
   it('asks for an uncompressed answer', async () => {

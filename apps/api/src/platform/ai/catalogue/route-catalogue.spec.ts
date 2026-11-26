@@ -133,6 +133,12 @@ describe('the AI route catalogue (ADR-0052 decision 2)', () => {
       ).toEqual([]);
     });
 
+    it('refuses a checked-in in-house row until the connect-time address check is built', () => {
+      expect(() => checkedInCatalogue([testInHouseRoute('mi')])).toThrow(
+        /no in-house row before the connect-time address check/,
+      );
+    });
+
     it('takes an in-house row with its endpoint and keeps it out of the external families', () => {
       const catalogue = new RouteCatalogue([testRoute('m'), testInHouseRoute('mi')]);
       expect(catalogue.families()).toEqual(['m', 'mi']);

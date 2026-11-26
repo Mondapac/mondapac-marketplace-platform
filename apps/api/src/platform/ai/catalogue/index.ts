@@ -9,6 +9,12 @@ import { RouteCatalogue, type RouteRow } from './route-catalogue';
  * records it as evidence (Hassan, G3 review 1). Test catalogues may give any region.
  */
 export function checkedInRowProblem(row: RouteRow): string | null {
+  // Every caller, the evaluation job included, reaches a usable row; so no in-house row is checked
+  // in until the connect-time address check exists (FE-20261126-ai-gateway-in-house-connect-check,
+  // Hassan, G6a re-check). The PR that builds the check removes this guard.
+  if (row.route === 'in-house-http') {
+    return `${row.id}: no in-house row before the connect-time address check is built`;
+  }
   if (row.route === 'anthropic-api' && row.region !== null) {
     return `${row.id}: an anthropic-api row records no region until the adapter pins one`;
   }

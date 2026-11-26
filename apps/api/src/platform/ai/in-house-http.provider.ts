@@ -16,6 +16,9 @@ import {
  */
 export const IN_HOUSE_CONTRACT = 'mondapac-model/1';
 
+/** The largest request body sent, in bytes (contract section 2). */
+export const IN_HOUSE_MAX_REQUEST_BYTES = 1_048_576;
+
 /** The largest answer body read, in bytes; a bigger one is a server fault and is not parsed. */
 export const IN_HOUSE_MAX_ANSWER_BYTES = 1_048_576;
 
@@ -67,6 +70,25 @@ export class InHouseHttpProvider implements ModelProvider {
     }
     // Built from the parsed address, never from the raw text (Hassan, G6a review 2).
     const url = inHouseCallUrl(endpoint);
+    const payload = JSON.stringify({
+      contract: IN_HOUSE_CONTRACT,
+      model: credentials.model,
+      system: request.system,
+      messages: request.messages.map((message) => ({
+        role: message.role,
+        blocks: message.blocks,
+      })),
+      tools: request.tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+      })),
+      maxOutputTokens: request.maxOutputTokens,
+    });
+    // The contract takes at most 1 MiB; a larger request is refused here, before anything is sent.
+    if (Buffer.byteLength(payload, 'utf8') > IN_HOUSE_MAX_REQUEST_BYTES) {
+      throw new ModelProviderError('client');
+    }
     let response: Response;
     try {
       response = await this.fetchFn(url, {
@@ -83,21 +105,7 @@ export class InHouseHttpProvider implements ModelProvider {
           // The contract's terms, stated on every call: neither request nor answer is kept.
           'mondapac-retention': 'none',
         },
-        body: JSON.stringify({
-          contract: IN_HOUSE_CONTRACT,
-          model: credentials.model,
-          system: request.system,
-          messages: request.messages.map((message) => ({
-            role: message.role,
-            blocks: message.blocks,
-          })),
-          tools: request.tools.map((tool) => ({
-            name: tool.name,
-            description: tool.description,
-            inputSchema: tool.inputSchema,
-          })),
-          maxOutputTokens: request.maxOutputTokens,
-        }),
+        body: payload,
       });
     } catch (error) {
       if (signal.aborted) throw error;
