@@ -21,6 +21,7 @@ import { AiModelChoices } from './model-choices';
 import { ModelGateway } from './model-gateway';
 import { MODEL_PROVIDER } from './model-provider';
 import { AiRouter } from './routing/ai-router';
+import { AiModelUsage } from './usage/ai-model-usage';
 import { AiUsage } from './usage/ai-usage';
 import { aiReservationSweeperJob, aiUsageRetentionJob } from './usage/ai-usage-jobs';
 import { AiUsageReport } from './usage/ai-usage-report';
@@ -40,7 +41,8 @@ import { AI_USAGE_STORE, type AiUsageStore } from './usage/ai-usage-store';
  * sweeper`, `platform.ai-usage-retention`) are registered in both roles and run by the worker.
  * {@link AiUsageReport} is the one read of it a module gets (G7): its own capability's settled
  * cost per day and its "cap reached" record, never what is held or a call's detail.
- * {@link AiModelChoices} is settings' check of a Market's model lists against the catalogue (G4b).
+ * {@link AiModelChoices} is settings' check of a Market's model lists against the catalogue (G4b),
+ * and {@link AiModelUsage} its read of the last 30 days per model family and task type (G5e).
  * G4c: modules register their evaluation suites in the {@link EvaluationSuiteRegistry}; the job
  * `platform.ai-evaluation-runner` works evaluation runs through the evaluation gateway (not
  * exported), and {@link AiEvaluationControl} is settings' port for the run and playground API. The
@@ -103,12 +105,14 @@ export class AiModule {
         AiGateway,
         AiUsageReport,
         AiModelChoices,
+        AiModelUsage,
       ],
       exports: [
         AiGateway,
         CapabilityRegistry,
         AiUsageReport,
         AiModelChoices,
+        AiModelUsage,
         EvaluationSuiteRegistry,
         AiEvaluationControl,
       ],

@@ -54,6 +54,7 @@ import { RunAiPlayground } from '../application/use-cases/run-ai-playground.use-
 import { ViewAiEvaluation } from '../application/use-cases/view-ai-evaluation.use-case';
 import { ViewAiEvaluations } from '../application/use-cases/view-ai-evaluations.use-case';
 import { ViewAiPlaygroundSamples } from '../application/use-cases/view-ai-playground-samples.use-case';
+import { ViewAiModelUsage } from '../application/use-cases/view-ai-model-usage.use-case';
 import { ViewAiGatewaySettings } from '../application/use-cases/view-ai-gateway-settings.use-case';
 import { ViewAiSettings } from '../application/use-cases/view-ai-settings.use-case';
 import { ChangeOfferReviewSettings } from '../application/use-cases/change-offer-review-settings.use-case';
@@ -113,6 +114,8 @@ import {
   aiPlaygroundBody,
   AiPlaygroundSamplesBody,
   aiPlaygroundSamplesBody,
+  AiModelUsageBody,
+  aiModelUsageBody,
   RunAiEvaluationRequest,
   RunAiPlaygroundRequest,
 } from './settings.dto';
@@ -179,6 +182,7 @@ export class AdminSettingsController {
     private readonly runEvaluation: RunAiEvaluation,
     private readonly cancelEvaluation: CancelAiEvaluation,
     private readonly viewPlaygroundSamples: ViewAiPlaygroundSamples,
+    private readonly viewModelUsage: ViewAiModelUsage,
     private readonly runPlayground: RunAiPlayground,
     private readonly changeAiCapabilities: ChangeAiCapabilities,
     private readonly viewAiGatewayHistory: ViewAiGatewayHistory,
@@ -362,6 +366,28 @@ export class AdminSettingsController {
     logRoute(this.#logger, 'settings.view-ai-playground-samples-route', context, outcomeOf(result));
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return aiPlaygroundSamplesBody(result.value);
+  }
+
+  // AI Gateway G5e: the scorecard's usage and the change preview's monthly estimate.
+  @Get('ai-models/usage')
+  @ApiOperation({
+    summary: 'The AI usage of the last 30 days per model family and task type (admin)',
+    description:
+      'Needs settings.ai-gateway.view. Per catalogue model family: calls, failures, calls it ' +
+      'took as a later attempt (stood in), cost in US micro-dollars, the p95 latency bucket and ' +
+      'how many registered capabilities have a recorded evaluation pass. Per task type: calls, ' +
+      "tokens and what they would cost on each family at the Market's price. Evaluation and " +
+      'playground calls are left out. Numbers, codes and catalogue names only; no model text.',
+  })
+  @ApiOkResponse({ type: AiModelUsageBody })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  async aiModelUsage(@Call() context: CallContext, @Res({ passthrough: true }) response: Response) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.viewModelUsage.execute(context, {});
+    logRoute(this.#logger, 'settings.view-ai-model-usage-route', context, outcomeOf(result));
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return aiModelUsageBody(result.value);
   }
 
   // No two-step code: ids only, a small daily limit, nothing stored or changed.

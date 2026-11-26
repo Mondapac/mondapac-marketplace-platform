@@ -573,11 +573,33 @@ settings/admin/ai-gateway/emergency-stop` (protected key `settings.ai-gateway.ma
   each capability's verdict and each sample's outcome, checks, tokens, cost and time. A
   `pass-candidate` is shown as a candidate and never as a pass; no model text exists to show. The
   status of a running run is refreshed with a button (automatic refresh: FE-20261126-ai-gateway-
-  evaluation-live-progress). The usage metrics of the design's scorecard (cost per 1000 requests,
-  error rate, p95, fallbacks) wait for an API read of `ai_usage_days`
-  (FE-20261126-ai-gateway-scorecard-usage-metrics). Files: `apps/admin/src/ai-models/evaluation-*`,
+  evaluation-live-progress). The usage metrics of the design's scorecard came in G5e (below).
+  Files: `apps/admin/src/ai-models/evaluation-*`,
   BFF allow-list (the run id routes use the `:id` UUID templates), step-up label
   `settings.ai-evaluation.run`, help, i18n.
+
+- **Built in G5e (scorecard usage and the change preview's monthly estimate).** `GET
+  settings/admin/ai-models/usage` (view key `settings.ai-gateway.view`, no query, `no-store`)
+  answers the last 30 Market days, numbers and catalogue names only: per catalogue model family
+  its calls, failures (any outcome but `ok`), calls it took as a later attempt ("stood in"), cost,
+  the p95 latency bucket (the same fixed bounds as the day rows) and how many registered
+  capabilities have a recorded evaluation pass; per task type its calls and tokens and what those
+  tokens would cost on each family at the family's dearest usable route in the Market (null when
+  none is usable). The family figures come from `ai_calls` (90 days kept), because the day rows
+  have no model column; the task figures from `ai_usage_days`. Evaluation and playground calls
+  (`platform.ai-evaluation`) are left out. Reads are Prisma `groupBy` on the index ranges
+  `(market_id, occurred_at, id)` and `(market_id, day, capability, seller_id)` in one read-only
+  unit: one grouping for counts and cost and one count per latency bound, no raw SQL. The read
+  lives in `platform/ai/usage/ai-model-usage.ts`, imported only by settings' module file and its
+  use case (boundary rule `ai-model-usage-only-from-settings`). The panel shows a Scorecard
+  section first on the Evaluation tab (calls, cost per 1,000 calls, error rate, p95, stood in,
+  "n of m passed"), and the save preview estimates, per task type whose first model changes, the
+  window's tokens priced on the old and the new first model, with a total; saver models and the
+  threshold are not counted, and a failed read never blocks the save. Known limit: a route the
+  breaker set aside before any attempt makes the next attempt number 1, so it is not counted as
+  "stood in" (`ai_calls` has no fallback column; FE-20261126-ai-gateway-scorecard-fallback-flag).
+  Files: `apps/admin/src/ai-models/scorecard.tsx`, `usage-types.ts`, the preview in
+  `ai-models-panel.tsx`, BFF allow-list, help, i18n.
 
 ## 9. Security (Hassan)
 

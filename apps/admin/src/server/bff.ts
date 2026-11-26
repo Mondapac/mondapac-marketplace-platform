@@ -278,6 +278,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'settings/admin/ai-models/evaluations/estimate',
     // The AI playground's ready samples (settings; same view key; no query).
     'settings/admin/ai-models/playground/samples',
+    // The last 30 days of AI usage per model family and task type (settings; same view key; no
+    // query): the scorecard and the change preview's monthly estimate (G5e). Numbers only.
+    'settings/admin/ai-models/usage',
     // The Offer review policy (settings; keys settings.offer-review.view / .manage).
     'settings/admin/offer-review',
     // Whether the Offer review emergency stop is on (settings; any admin, the banner).
