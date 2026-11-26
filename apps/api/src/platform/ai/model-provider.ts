@@ -65,10 +65,12 @@ export interface ModelTurn {
 export interface ModelCredentials {
   readonly apiKey: string;
   readonly model: string;
-  /** The catalogue row's route kind (`anthropic-api`, `bedrock-mantle`). */
+  /** The catalogue row's route kind (`anthropic-api`, `bedrock-mantle`, `in-house-http`). */
   readonly route: string;
   /** The catalogue row's processing region; a regional route is called there only. */
   readonly region: string | null;
+  /** The catalogue row's in-house endpoint (`in-house-http` only), else null. */
+  readonly endpoint: string | null;
 }
 
 /**

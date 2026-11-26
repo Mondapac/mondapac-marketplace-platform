@@ -2,6 +2,7 @@ import { Temporal } from '@mondapac/shared-kernel';
 import { FixedClock } from '@mondapac/shared-kernel/testing';
 import {
   passesFor,
+  testInHouseRoute,
   testRoute,
   testRouteCatalogue,
   testRouter,
@@ -13,6 +14,7 @@ import { MarketRegistry } from '../market-config/market-registry';
 import type { MarketId } from '@mondapac/shared-kernel';
 import type { CapabilitySpec } from './capability';
 import { CapabilityRegistry } from './capability-registry';
+import { EvaluationResults } from './evaluations/evaluation-results';
 import { AiModelChoices } from './model-choices';
 import { ModelGateway } from './model-gateway';
 import type { ModelProvider } from './model-provider';
@@ -51,6 +53,7 @@ const configOf = (codes: readonly string[]) =>
     assistantModels: {
       apiKeys: Object.fromEntries(codes.map((code) => [code, 'sk-test-canary-key-0001'])),
       bedrockApiKeys: {},
+      inHouseApiKeys: {},
       removedVariables: [],
     },
   }) as unknown as AppConfig;
@@ -179,3 +182,71 @@ describe.each(['AU', 'ZZ'] as const)('AiModelChoices in market %s (G4b)', (code)
     expect(options.vision.every((option) => option.problem === 'task-unsupported')).toBe(true);
   });
 });
+
+describe.each(['AU', 'ZZ'] as const)(
+  'the in-house model is never an external choice, in market %s (G6a)',
+  (code) => {
+    const marketId = code as MarketId;
+    // A fully usable in-house row: checked, in Sydney, keyed in the Market and evaluated, so only
+    // its provider keeps it out of the External models tab.
+    const house = testInHouseRoute('model-house');
+    const catalogue = testRouteCatalogue([house]);
+    const registry = new CapabilityRegistry();
+    registry.register('alpha', SPECS);
+    registry.seal();
+    const models = new ModelGateway(
+      {
+        aiKillSwitch: false,
+        assistantModels: {
+          apiKeys: { [code]: 'sk-test-canary-key-0001' },
+          bedrockApiKeys: {},
+          inHouseApiKeys: { [code]: 'in-house-test-canary-key-0123456789abcdef' },
+          removedVariables: [],
+        },
+      } as unknown as AppConfig,
+      NO_PROVIDER,
+    );
+    const passes = new EvaluationResults(
+      SPECS.flatMap((spec) =>
+        (['model-fast', 'model-house'] as const).map((family) => ({
+          capability: spec.id,
+          provider: family === 'model-house' ? 'mondapac' : 'anthropic',
+          family,
+          promptVersion: spec.promptVersion,
+          passedOn: '2026-11-25',
+          reference: 'test fixture',
+        })),
+      ),
+    );
+    const router = testRouter(catalogue, passes, models, MARKETS, new FixedClock(NOW));
+    const choices = new AiModelChoices(router, registry);
+
+    it('is usable as a route, yet not listed, refused in a list and refused as the saver', () => {
+      expect(router.routeProblem(marketId, WRITER, house)).toBeNull();
+      expect(router.families()).not.toContain('model-house');
+      expect(router.inHouseFamilies()).toEqual(['model-house']);
+      expect(choices.options(marketId).write.map((option) => option.family)).not.toContain(
+        'model-house',
+      );
+      expect(choices.check(marketId, 'write', ['model-house'], null).list).toEqual([
+        'unknown-model',
+      ]);
+      expect(choices.check(marketId, 'write', ['model-fast'], 'model-house').saver).toBe(
+        'unknown-model',
+      );
+    });
+
+    it('is skipped by the plan when a stale external list or saver names it', () => {
+      const lists = {
+        lists: { write: ['model-house', 'model-fast'] },
+        savers: { write: 'model-house' },
+        saverAtPercent: 80,
+      };
+      const plan = router.plan(marketId, WRITER, true, lists);
+      expect(plan.map((route) => route.row.family)).toEqual(['model-fast']);
+      expect(
+        router.plan(marketId, WRITER, false, { ...lists, lists: { write: ['model-house'] } }),
+      ).toEqual([]);
+    });
+  },
+);

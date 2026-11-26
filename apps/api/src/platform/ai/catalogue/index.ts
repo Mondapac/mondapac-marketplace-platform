@@ -1,5 +1,6 @@
 import { ANTHROPIC_API_ROUTES } from './anthropic';
 import { BEDROCK_ROUTES } from './bedrock';
+import { IN_HOUSE_ROUTES } from './in-house';
 import { RouteCatalogue, type RouteRow } from './route-catalogue';
 
 /**
@@ -8,6 +9,12 @@ import { RouteCatalogue, type RouteRow } from './route-catalogue';
  * records it as evidence (Hassan, G3 review 1). Test catalogues may give any region.
  */
 export function checkedInRowProblem(row: RouteRow): string | null {
+  // Every caller, the evaluation job included, reaches a usable row; so no in-house row is checked
+  // in until the connect-time address check exists (FE-20261126-ai-gateway-in-house-connect-check,
+  // Hassan, G6a re-check). The PR that builds the check removes this guard.
+  if (row.route === 'in-house-http') {
+    return `${row.id}: no in-house row before the connect-time address check is built`;
+  }
   if (row.route === 'anthropic-api' && row.region !== null) {
     return `${row.id}: an anthropic-api row records no region until the adapter pins one`;
   }
@@ -16,7 +23,7 @@ export function checkedInRowProblem(row: RouteRow): string | null {
 
 /** The checked-in catalogue, one file per provider route (ADR-0052 decision 2). */
 export function checkedInCatalogue(
-  rows: readonly RouteRow[] = [...ANTHROPIC_API_ROUTES, ...BEDROCK_ROUTES],
+  rows: readonly RouteRow[] = [...ANTHROPIC_API_ROUTES, ...BEDROCK_ROUTES, ...IN_HOUSE_ROUTES],
 ): RouteCatalogue {
   for (const row of rows) {
     const problem = checkedInRowProblem(row);

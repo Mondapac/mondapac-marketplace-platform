@@ -72,12 +72,20 @@ export class AiRouter {
     saver = false,
     models: AiModelLists = NO_MODEL_LISTS,
   ): PlannedRoute[] {
-    const families: string[] = [...(models.lists[spec.task] ?? [])];
+    // An external list never routes to the in-house model, even from a stale or restored value:
+    // only the in-house stages do (G6, design section 8).
+    const families: string[] = (models.lists[spec.task] ?? []).filter(
+      (family) => !this.catalogue.isInHouse(family),
+    );
     if (families.length === 0) return [];
     const first = families[0]!;
     if (saver) {
       const saverModel = models.savers[spec.task];
-      if (saverModel !== undefined && saverModel !== first) {
+      if (
+        saverModel !== undefined &&
+        saverModel !== first &&
+        !this.catalogue.isInHouse(saverModel)
+      ) {
         const saverRoutes = this.#usableRoutes(marketId, spec, saverModel);
         const firstRoutes = this.#usableRoutes(marketId, spec, first);
         if (
@@ -112,7 +120,8 @@ export class AiRouter {
     family: string,
   ): RouteProblem | null {
     const rows = this.catalogue.routesOf(family);
-    if (rows.length === 0) return 'unknown-model';
+    // The in-house model is not an external choice (G6): it is reached through its stages only.
+    if (rows.length === 0 || this.catalogue.isInHouse(family)) return 'unknown-model';
     if (specs.length === 0) {
       const problems = rows.map((row) => this.#rowProblem(marketId, task, row));
       return problems.includes(null) ? null : problems[0]!;
@@ -124,9 +133,17 @@ export class AiRouter {
     return null;
   }
 
-  /** Every model family of the route catalogue, sorted. */
+  /**
+   * Every external model family of the route catalogue, sorted: the External models tab's choices,
+   * its scorecard and its cost preview. The in-house model's families are left out (G6).
+   */
   families(): string[] {
-    return this.catalogue.families();
+    return this.catalogue.externalFamilies();
+  }
+
+  /** The in-house model's families, sorted: reached only through its stages (G6b onwards). */
+  inHouseFamilies(): string[] {
+    return this.catalogue.families().filter((family) => this.catalogue.isInHouse(family));
   }
 
   /**

@@ -26,6 +26,8 @@ const API_KEY = '[A-Za-z0-9_-]{20,500}';
 const HMAC_KEY = /^[A-Za-z0-9_+/=.-]{32,200}$/;
 const HMAC_KEY_MESSAGE = 'must be 32 to 200 characters of A-Z a-z 0-9 _ + / = . -';
 const BEDROCK_KEY = '[A-Za-z0-9+/=_-]{20,2000}';
+/** The in-house route's key: at least 32 characters, so a short shared secret is refused. */
+const IN_HOUSE_KEY = '[A-Za-z0-9+/=_-]{32,500}';
 const MARKET_VALUE = (value: string): string => `[A-Z][A-Z0-9_]{1,7}=${value}`;
 /** A carrier key or webhook secret: long enough to be guessed by no one, in a URL-safe alphabet. */
 const CARRIER_SECRET = '[A-Za-z0-9_-]{24,200}';
@@ -327,6 +329,16 @@ const envSchema = z.object({
       'must be MARKET=key pairs separated by commas (a key is 20 to 2000 of A-Z a-z 0-9 + / = _ -)',
     )
     .optional(),
+  // Key of the in-house model's route (ADR-0052 decision 6, AI Gateway G6a), per Market: MARKET=key
+  // pairs. A server secret the partner team's endpoint checks, never echoed. Without it the
+  // in-house-http rows are not usable in the Market.
+  AI_IN_HOUSE_API_KEY: z
+    .string()
+    .regex(
+      new RegExp(`^${MARKET_VALUE(IN_HOUSE_KEY)}(,${MARKET_VALUE(IN_HOUSE_KEY)})*$`),
+      'must be MARKET=key pairs separated by commas (a key is 32 to 500 of A-Z a-z 0-9 + / = _ -)',
+    )
+    .optional(),
   // Social sign-in: the Google OAuth client of this stack (Google Cloud console, "Web
   // application"). Both or neither; unset: Google sign-in is off in every Market. The secret is a
   // server secret and is never echoed. Each Market that offers it also names its redirect URI
@@ -346,6 +358,8 @@ export interface AssistantModelConfig {
   readonly apiKeys: Readonly<Record<string, string>>;
   /** Keys of the `bedrock-mantle` route (`AI_BEDROCK_API_KEY`). */
   readonly bedrockApiKeys: Readonly<Record<string, string>>;
+  /** Keys of the in-house model's `in-house-http` route (`AI_IN_HOUSE_API_KEY`, G6a). */
+  readonly inHouseApiKeys: Readonly<Record<string, string>>;
   /**
    * Retired AI variables still set in the environment (names only, never values): ignored, and
    * logged once as `ai.config.removed` by `platform/ai` so an operator can delete them.
@@ -777,15 +791,17 @@ function assistantModelConfig(
     parseMarketValues(env[variable] as string | undefined, hosted, variable);
   const keys = read('ASSISTANT_MODEL_API_KEY');
   const bedrockKeys = read('AI_BEDROCK_API_KEY');
+  const inHouseKeys = read('AI_IN_HOUSE_API_KEY');
   return {
     config: Object.freeze({
       apiKeys: keys.values,
       bedrockApiKeys: bedrockKeys.values,
+      inHouseApiKeys: inHouseKeys.values,
       removedVariables: Object.freeze(
         REMOVED_AI_VARIABLES.filter((variable) => (raw[variable] ?? '') !== ''),
       ),
     }),
-    issues: [keys, bedrockKeys].flatMap((read) => read.issues),
+    issues: [keys, bedrockKeys, inHouseKeys].flatMap((read) => read.issues),
   };
 }
 

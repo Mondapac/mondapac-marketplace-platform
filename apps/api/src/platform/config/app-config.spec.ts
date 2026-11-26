@@ -44,6 +44,7 @@ describe('loadAppConfig', () => {
       assistantModels: {
         apiKeys: {},
         bedrockApiKeys: {},
+        inHouseApiKeys: {},
         removedVariables: [],
       },
       googleSignIn: null,
@@ -474,8 +475,17 @@ describe('loadAppConfig', () => {
       expect(config.assistantModels).toEqual({
         apiKeys: { AU: 'test-key-0123456789abcdef', NZ: 'test-key-nz-0123456789abc' },
         bedrockApiKeys: { AU: bedrockKey },
+        inHouseApiKeys: {},
         removedVariables: [],
       });
+    });
+
+    it('reads the in-house route key per hosted Market (G6a)', () => {
+      const key = 'in-house-test-key-0123456789abcdef';
+      expect(
+        loadAppConfig({ HOSTED_MARKETS: 'AU,ZZ', AI_IN_HOUSE_API_KEY: `ZZ=${key}` }).assistantModels
+          .inHouseApiKeys,
+      ).toEqual({ ZZ: key });
     });
 
     it('boots with the removed tier variables still set, naming them (never their values) and reading nothing from them', () => {
@@ -489,6 +499,7 @@ describe('loadAppConfig', () => {
       expect(config.assistantModels).toEqual({
         apiKeys: {},
         bedrockApiKeys: {},
+        inHouseApiKeys: {},
         removedVariables: ['ASSISTANT_MODEL_FAST', 'ASSISTANT_MODEL_BALANCED'],
       });
       expect(JSON.stringify(config.assistantModels)).not.toContain('provider-model-fast-1');
@@ -504,6 +515,9 @@ describe('loadAppConfig', () => {
       ['ASSISTANT_MODEL_API_KEY', 'AU=has a space in it 0123456789'],
       ['AI_BEDROCK_API_KEY', 'AU=short'],
       ['AI_BEDROCK_API_KEY', 'AU=has a space in it 0123456789'],
+      // G6a: the in-house route's key is at least 32 characters.
+      ['AI_IN_HOUSE_API_KEY', 'AU=in-house-key-only-31-characters'],
+      ['AI_IN_HOUSE_API_KEY', 'AU=has a space in it 0123456789abcdefghij'],
     ])('refuses %s=%j without echoing it', (name, value) => {
       expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', [name]: value })).toThrow(name);
       try {

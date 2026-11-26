@@ -454,6 +454,7 @@ function configFromEnvironment(): { config: AppConfig; family: string; markets: 
     assistantModels: {
       apiKeys: keys.values,
       bedrockApiKeys: bedrockKeys.values,
+      inHouseApiKeys: {},
       removedVariables: [],
     },
   } as unknown as AppConfig;

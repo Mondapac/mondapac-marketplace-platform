@@ -205,6 +205,7 @@ const configOf = (killed: boolean, codes: readonly string[]) =>
     assistantModels: {
       apiKeys: Object.fromEntries(codes.map((code) => [code, 'sk-test-canary-key-0001'])),
       bedrockApiKeys: {},
+      inHouseApiKeys: {},
       removedVariables: [],
     },
   }) as unknown as AppConfig;
