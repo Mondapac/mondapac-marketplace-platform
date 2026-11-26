@@ -13,6 +13,8 @@ export interface TextFieldProps extends Omit<
   readonly error?: string | undefined;
   /** Fixed text before the value, shown inside the control (a storefront address). Left-to-right. */
   readonly prefix?: string;
+  /** With a prefix: one soft, shadowed frame round prefix and input together (a price box); the focus ring goes round the whole frame. */
+  readonly framedPrefix?: boolean;
   /** A status line under the control (a `FieldStatus`); it is part of the field's description. */
   readonly status?: ReactNode;
   /** Marks the label "(optional)"; the text is the Market-neutral word from the caller. */
@@ -36,6 +38,7 @@ export function TextField({
   showLabel,
   hideLabel,
   prefix,
+  framedPrefix = false,
   status,
   optionalLabel,
   headAction,
@@ -79,8 +82,25 @@ export function TextField({
           ) : null}
         </label>
       )}
-      <div className="relative flex items-center">
-        {prefix ? (
+      <div
+        className={
+          prefix && framedPrefix
+            ? [
+                'relative flex items-center overflow-hidden rounded-md border bg-surface shadow-sm',
+                'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-focus',
+                error ? 'border-critical-solid' : 'border-line-input',
+              ].join(' ')
+            : 'relative flex items-center'
+        }
+      >
+        {prefix && framedPrefix ? (
+          <span
+            dir="ltr"
+            className="flex h-(--mp-size-control) items-center border-e border-line bg-subtle px-3 text-fg-muted"
+          >
+            {prefix}
+          </span>
+        ) : prefix ? (
           <span
             dir="ltr"
             className="flex h-(--mp-size-control) items-center rounded-s-md border border-e-0 border-line-input bg-subtle px-3 text-fg-muted"
@@ -94,9 +114,14 @@ export function TextField({
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy || undefined}
           className={[
-            'h-(--mp-size-control) w-full border bg-surface px-3 text-fg',
-            prefix ? 'rounded-e-md' : 'rounded-md',
-            error ? 'border-critical-solid' : 'border-line-input',
+            'h-(--mp-size-control) w-full min-w-0 bg-surface px-3 text-fg',
+            prefix && framedPrefix
+              ? 'border-0 focus-visible:outline-none'
+              : [
+                  'border',
+                  prefix ? 'rounded-e-md' : 'rounded-md',
+                  error ? 'border-critical-solid' : 'border-line-input',
+                ].join(' '),
             isPassword ? 'pe-20' : '',
             className ?? '',
           ]
