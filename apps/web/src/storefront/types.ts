@@ -237,6 +237,12 @@ export interface ProductOffer {
   readonly seller: SellerProfile;
   readonly price: Money;
   readonly wasPrice?: Money;
+  /**
+   * True when `price` is a seller's special in force now (the API gives `special.endsAt`), with or
+   * without a `wasPrice`: the page shows the "Special price" pill. A regular price shown struck
+   * through is the was-price rule's decision, never this flag's.
+   */
+  readonly onSpecial?: boolean;
   /** Badges built by certification from evaluateClaim for this offer. */
   readonly certifications: readonly CertificationBadge[];
   readonly lowStock?: number;
