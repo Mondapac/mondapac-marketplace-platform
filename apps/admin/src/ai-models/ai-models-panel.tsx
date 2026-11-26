@@ -56,6 +56,25 @@ const savedDraft = (rows: readonly GatewaySetting[]): Draft => ({
   percent: find(rows, SAVER_PERCENT_CODE).value || DEFAULT_SAVER_PERCENT,
 });
 
+/** "Chat, model 2: Retired" lines for the fields of a refused save (path `<code>` or `<code>.<index>`). */
+function fieldProblemsOf(
+  fields: readonly { readonly path: string; readonly code: string }[],
+  t: (key: string, values?: Record<string, string | number>) => string,
+): readonly string[] {
+  const lines: string[] = [];
+  for (const field of fields) {
+    const [code = '', index] = field.path.split('.');
+    const task = TASKS.find((item) => code === listCode(item) || code === saverCode(item));
+    if (task === undefined) continue;
+    const where =
+      code === saverCode(task)
+        ? t('field.saver', { task: t(`task.${task}.label`) })
+        : t('field.model', { task: t(`task.${task}.label`), n: Number(index ?? 0) + 1 });
+    lines.push(`${where}: ${t(`problem.${field.code}`)}`);
+  }
+  return lines;
+}
+
 interface Change {
   readonly code: string;
   readonly value: string;
@@ -101,7 +120,10 @@ export function AiModelsPanel({
   const [tab, setTab] = useState<'external' | 'own'>('external');
   const [previewing, setPreviewing] = useState(false);
   const [busy, setBusy] = useState(false);
+  // True when a save went through but the page could not refresh: nothing more is saved from stale values.
+  const [stale, setStale] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const [fieldProblems, setFieldProblems] = useState<readonly string[]>([]);
   const [note, setNote] = useState('');
   const [noteError, setNoteError] = useState<string | null>(null);
   const [percentError, setPercentError] = useState(false);
@@ -120,7 +142,10 @@ export function AiModelsPanel({
   // A saved model that can no longer be used (retired, key gone, not evaluated): the admin sees
   // it before the gateway skips it.
   const alerts = TASKS.flatMap((task) =>
-    familiesOf(find(rows, listCode(task)).value)
+    [
+      ...familiesOf(find(rows, listCode(task)).value),
+      ...familiesOf(find(rows, saverCode(task)).value),
+    ]
       .map((family) => ({ task, family, why: problemOf(task, family) }))
       .filter((item) => item.why !== null),
   );
@@ -142,12 +167,17 @@ export function AiModelsPanel({
     if (busy) return false;
     setBusy(true);
     setProblem(null);
+    setFieldProblems([]);
     setNoteError(null);
     const result = await guarded<unknown>(method, path, body, csrfToken);
     if (result.ok) {
       const fresh = await reload();
-      if (!fresh) setProblem('refresh');
+      if (!fresh) {
+        setProblem('refresh');
+        setStale(true);
+      }
       setNote('');
+      if (history !== null && path === MODELS_PATH) void loadHistory(historyCode);
       toast.success(t('saved'));
       sentForReview(result.body);
       setBusy(false);
@@ -163,7 +193,11 @@ export function AiModelsPanel({
       } else {
         const key = gatewayProblemOf(result.failure);
         setProblem(key);
-        if (key === 'conflict' && !(await reload())) setProblem('refresh');
+        if (key === 'conflict' && !(await reload())) {
+          setProblem('refresh');
+          setStale(true);
+        }
+        setFieldProblems(fieldProblemsOf(result.failure.details?.fields ?? [], t));
       }
     }
     setBusy(false);
@@ -236,9 +270,14 @@ export function AiModelsPanel({
       ...current,
       lists: { ...current.lists, [task]: list },
       // A saver needs a list: an emptied list drops it.
-      savers: { ...current.savers, [task]: list.length === 0 ? '' : current.savers[task] },
+      // A saver needs a list, and is never the first model of it.
+      savers: {
+        ...current.savers,
+        [task]: list.length === 0 || current.savers[task] === list[0] ? '' : current.savers[task],
+      },
     }));
-  const disabled = !canManage || busy;
+  const disabled = !canManage || busy || stale;
+  const dirty = changes.length > 0;
   const taskLabel = (task: Task) => t(`task.${task}.label`);
   const shown = (value: string | null) =>
     value === null ? t('history.default') : value === 'none' ? t('none') : value;
@@ -266,7 +305,14 @@ export function AiModelsPanel({
     ),
     problem === null ? null : (
       <Banner key="problem" tone={problem === 'conflict' ? 'attention' : 'critical'}>
-        {t(`error.${problem}`)}
+        <p>{t(`error.${problem}`)}</p>
+        {fieldProblems.length === 0 ? null : (
+          <ul className="list-disc ps-5">
+            {fieldProblems.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        )}
       </Banner>
     ),
   ].filter((node) => node !== null);
@@ -309,6 +355,21 @@ export function AiModelsPanel({
             const saverChoices = optionsOf(task).filter(
               (option) => option.problem === null && option.family !== list[0],
             );
+            const savedSaver = draft.savers[task];
+            // A chosen saver the server no longer lists as usable stays visible, with its problem.
+            const saverOptions =
+              savedSaver === '' || saverChoices.some((option) => option.family === savedSaver)
+                ? saverChoices.map((option) => ({ value: option.family, label: option.family }))
+                : [
+                    ...saverChoices.map((option) => ({
+                      value: option.family,
+                      label: option.family,
+                    })),
+                    {
+                      value: savedSaver,
+                      label: `${savedSaver} (${t(`problem.${problemOf(task, savedSaver) ?? 'unknown-model'}`)})`,
+                    },
+                  ];
             return (
               <SettingsSection
                 key={task}
@@ -383,6 +444,7 @@ export function AiModelsPanel({
                         label: option.family,
                       }))}
                       value=""
+                      error={free.length === 0 ? t('list.none-usable') : undefined}
                       disabled={disabled || free.length === 0}
                       onChange={(event) => {
                         if (event.target.value !== '') setList(task, [...list, event.target.value]);
@@ -393,10 +455,7 @@ export function AiModelsPanel({
                     label={t('saver.label', { task: taskLabel(task) })}
                     placeholder={t('saver.none')}
                     help={t('saver.help')}
-                    options={saverChoices.map((option) => ({
-                      value: option.family,
-                      label: option.family,
-                    }))}
+                    options={saverOptions}
                     value={draft.savers[task]}
                     disabled={disabled || list.length === 0}
                     onChange={(event) =>
@@ -510,7 +569,7 @@ export function AiModelsPanel({
                         <div className="flex flex-wrap gap-2">
                           <Button
                             variant="secondary"
-                            disabled={disabled}
+                            disabled={disabled || dirty}
                             aria-label={t('history.restore-value', {
                               version: entry.version,
                               value: shown(entry.value),
@@ -522,7 +581,7 @@ export function AiModelsPanel({
                           {entry.previousValue === null ? (
                             <Button
                               variant="secondary"
-                              disabled={disabled}
+                              disabled={disabled || dirty}
                               onClick={() => void restore(entry.code, 0)}
                             >
                               {t('history.restore-default')}

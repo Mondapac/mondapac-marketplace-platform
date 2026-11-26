@@ -14742,6 +14742,7 @@
       "empty": "No model chosen. AI of this kind stays off.",
       "add": "Add a model for {task}",
       "choose": "Choose a model",
+      "none-usable": "No model is usable for this task now.",
       "add-help": "Up to {max}. Only models usable in this Market are listed.",
       "up": "Move {family} up",
       "down": "Move {family} down",
@@ -14749,6 +14750,10 @@
       "up-short": "Up",
       "down-short": "Down",
       "remove-short": "Remove"
+    },
+    "field": {
+      "saver": "{task} saver model",
+      "model": "{task}, model {n}"
     },
     "saver": {
       "label": "Saver model for {task}",
@@ -14769,7 +14774,11 @@
       "region": "Not allowed in this region",
       "no-key": "No key set",
       "retired": "Retired",
-      "not-evaluated": "Not evaluated yet"
+      "not-evaluated": "Not evaluated yet",
+      "duplicate": "Chosen twice",
+      "too-many": "Too many models",
+      "saver-not-cheaper": "The saver model must be cheaper than model 1",
+      "saver-without-list": "A saver model needs a list"
     },
     "alerts": {
       "title": "Some chosen models can't be used now",

@@ -149,4 +149,52 @@ describe('Settings › AI Models', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Mondapac Intelligence' }));
     expect(screen.getByText(/Not available yet/)).toBeTruthy();
   });
+
+  it('shows the field problems of a refused save', async () => {
+    call.mockImplementation(() =>
+      Promise.resolve({
+        ok: false as const,
+        failure: {
+          status: 400,
+          code: 'validation.failed',
+          details: { fields: [{ path: 'ai-models-chat.1', code: 'retired' }] },
+        },
+      }),
+    );
+    view();
+    fireEvent.change(screen.getByLabelText('Add a model for Chat'), {
+      target: { value: 'claude-sonnet-5-5' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Review changes' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Save changes' }));
+    expect(await screen.findByText('Chat, model 2: Retired')).toBeTruthy();
+  });
+
+  it('keeps a saved saver that is no longer usable visible, and alerts on it', () => {
+    view({
+      initial: {
+        ...ANSWER,
+        settings: [
+          row('ai-models-write', 'claude-haiku-5-5', 1),
+          row('ai-saver-write', 'old-model', 1),
+        ],
+      },
+    });
+    expect(screen.getByRole('option', { name: 'old-model (Retired)' })).toBeTruthy();
+    expect(screen.getByText(/old-model \(Write\): Retired/)).toBeTruthy();
+  });
+
+  it('drops the saver when it becomes the first model, and disables restore while edits are unsaved', () => {
+    view({
+      initial: {
+        ...ANSWER,
+        settings: [
+          row('ai-models-chat', 'claude-haiku-5-5,claude-sonnet-5-5', 1),
+          row('ai-saver-chat', 'claude-sonnet-5-5', 1),
+        ],
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Move claude-sonnet-5-5 up' }));
+    expect(screen.getByLabelText<HTMLSelectElement>('Saver model for Chat').value).toBe('');
+  });
 });

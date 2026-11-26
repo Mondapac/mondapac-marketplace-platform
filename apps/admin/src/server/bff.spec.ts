@@ -740,6 +740,12 @@ describe('relay allowlist for seller decisions', () => {
     );
     expect((await relay(config, models, modelsPath.split('/'), fetchImpl)).status).toBe(200);
     expect(upstream()).toContain('code=ai-models-chat');
+    const bad = new Request(
+      `http://admin.localhost:3002/api/${modelsPath}?code=ai-models-chat&secret=1`,
+      { headers: sameOrigin },
+    );
+    expect((await relay(config, bad, modelsPath.split('/'), fetchImpl)).status).toBe(200);
+    expect(upstream()).not.toContain('secret');
   });
 
   it('relays the own display name (PUT) and password change (POST) on their exact paths only', async () => {
