@@ -175,16 +175,16 @@ describe('seller menu structure', () => {
   const ALL = [...sellerNav.items.flatMap((item) => item.anyOf ?? []), 'catalog.own-product.edit'];
   const WORK = [
     's_home',
-    's_performance',
-    's_categories',
-    's_suggestions',
-    's_tag_suggestions',
     's_orders',
     's_products',
     's_offers',
     's_import',
+    's_categories',
+    's_suggestions',
+    's_tag_suggestions',
     's_customers',
     's_reviews',
+    's_performance',
     's_earnings',
     's_payout',
   ];
@@ -212,15 +212,15 @@ describe('seller menu structure', () => {
     }
     expect(sellerNav.items.some((item) => item.href === '/account/security')).toBe(false);
     expect(sellerNav.groups?.map((group) => group.id)).toEqual([
-      'requests',
       'sales',
       'catalogue',
+      'requests',
       'customers',
       'accounting',
     ]);
   });
 
-  it('groups the items like the admin menu: Requests, Sales, Catalogue, Customers, Accounting', () => {
+  it('orders the menu: Dashboard, Orders, Catalogue, Requests, Customers, Performance, Accounting', () => {
     const everyKey = new Set(ALL);
     const sections = navSections(sellerNav.groups, visibleNavItems(sellerNav, everyKey));
     expect(
@@ -231,15 +231,25 @@ describe('seller menu structure', () => {
       ),
     ).toEqual([
       's_home',
-      's_performance',
-      ['requests', ['s_categories', 's_suggestions', 's_tag_suggestions']],
       's_orders',
       ['catalogue', ['s_products', 's_offers', 's_import']],
+      ['requests', ['s_categories', 's_suggestions', 's_tag_suggestions']],
       ['customers', ['s_customers', 's_reviews']],
+      's_performance',
       ['accounting', ['s_earnings', 's_payout']],
       's_settings',
       's_setup',
     ]);
+  });
+
+  it('keeps the order when permissions hide items', () => {
+    const ids = (keys: string[]) =>
+      navSections(sellerNav.groups, sellerNavItems('approved', keys))
+        .map((section) => (section.kind === 'group' ? section.group.id : section.item.id))
+        .filter((id) => id !== 's_settings');
+    expect(
+      ids(['reviews.seller.view', 'ordering.seller-order.view', 'catalog.own-category.propose']),
+    ).toEqual(['s_home', 's_orders', 's_categories', 's_reviews', 's_performance']);
   });
 
   it('pins one Settings item to the footer for any settings view key', () => {

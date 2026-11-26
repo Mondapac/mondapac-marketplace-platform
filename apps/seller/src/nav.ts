@@ -10,48 +10,18 @@ import { visibleNavItems, type NavConfig, type NavItem } from '@mondapac/ui';
 // sit under topic groups; a group with one visible item shows that item flat (navSections).
 export const sellerNav: NavConfig = {
   groups: [
-    // Same order as the admin menu (menu design v2, 15 Nov 2026). Requests holds what the seller
-    // sent and waits on (the seller side of the admin Inbox).
-    { id: 'requests', labelKey: 'nav.group.requests', icon: 'inbox' },
+    // Menu order (john, 26 Nov 2026): Dashboard, Orders, Catalogue, Requests, Customers,
+    // Performance, Accounting. The order of the items below sets the menu order; a group takes
+    // the place of its first visible item. Requests holds what the seller sent and waits on.
     { id: 'sales', labelKey: 'nav.group.sales', icon: 'clipboard' },
     { id: 'catalogue', labelKey: 'nav.group.catalogue', icon: 'store' },
+    { id: 'requests', labelKey: 'nav.group.requests', icon: 'inbox' },
     // Customers and Reviews (two items, so the group shows as a group).
     { id: 'customers', labelKey: 'nav.group.customers', icon: 'users' },
     { id: 'accounting', labelKey: 'nav.group.accounting', icon: 'wallet' },
   ],
   items: [
     { id: 's_home', icon: 'home', labelKey: 'nav.home', href: '/' },
-    // Own-resources route (no permission key): shown to every approved seller (health only informs).
-    {
-      id: 's_performance',
-      icon: 'shield-check',
-      labelKey: 'nav.performance',
-      href: '/performance',
-    },
-    {
-      id: 's_categories',
-      icon: 'layout',
-      labelKey: 'nav.categories',
-      href: '/category-proposals',
-      group: 'requests',
-      anyOf: ['catalog.own-category.propose'],
-    },
-    {
-      id: 's_suggestions',
-      icon: 'inbox',
-      labelKey: 'nav.suggestions',
-      href: '/value-suggestions',
-      group: 'requests',
-      anyOf: ['catalog.own-product.view'],
-    },
-    {
-      id: 's_tag_suggestions',
-      icon: 'tag',
-      labelKey: 'nav.tagSuggestions',
-      href: '/tag-suggestions',
-      group: 'requests',
-      anyOf: ['catalog.own-product.view'],
-    },
     {
       id: 's_orders',
       icon: 'clipboard',
@@ -86,6 +56,30 @@ export const sellerNav: NavConfig = {
       anyOf: ['catalog.own-import.run'],
     },
     {
+      id: 's_categories',
+      icon: 'layout',
+      labelKey: 'nav.categories',
+      href: '/category-proposals',
+      group: 'requests',
+      anyOf: ['catalog.own-category.propose'],
+    },
+    {
+      id: 's_suggestions',
+      icon: 'inbox',
+      labelKey: 'nav.suggestions',
+      href: '/value-suggestions',
+      group: 'requests',
+      anyOf: ['catalog.own-product.view'],
+    },
+    {
+      id: 's_tag_suggestions',
+      icon: 'tag',
+      labelKey: 'nav.tagSuggestions',
+      href: '/tag-suggestions',
+      group: 'requests',
+      anyOf: ['catalog.own-product.view'],
+    },
+    {
       id: 's_customers',
       icon: 'users',
       labelKey: 'nav.customers',
@@ -100,6 +94,13 @@ export const sellerNav: NavConfig = {
       href: '/reviews',
       group: 'customers',
       anyOf: ['reviews.seller.view'],
+    },
+    // Own-resources route (no permission key): shown to every approved seller (health only informs).
+    {
+      id: 's_performance',
+      icon: 'shield-check',
+      labelKey: 'nav.performance',
+      href: '/performance',
     },
     {
       id: 's_earnings',
