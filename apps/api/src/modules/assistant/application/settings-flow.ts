@@ -4,13 +4,11 @@ import { isPlatformAdminActor } from '../../../platform/authz';
 import {
   DEFAULT_ASSISTANT_SETTINGS,
   inRollout,
-  MODEL_TIERS,
   parseAssistantSettings,
   sameSettings,
   UNAVAILABLE_OPTIONS,
   type AssistantSettings,
   type FieldError,
-  type ModelTier,
   type ReplyLanguage,
 } from '../domain/assistant-settings';
 import { retentionDaysOf } from '../domain/conversation';
@@ -45,8 +43,6 @@ export interface AssistantSettingsView {
   readonly version: number;
   readonly settings: AssistantSettings;
   readonly apiKey: 'set' | 'not-set';
-  /** The provider model configured for each tier (server configuration; null when none). */
-  readonly models: readonly { readonly tier: ModelTier; readonly modelId: string | null }[];
   /** Options the screen shows disabled, with a reason, because they are not built yet. */
   readonly unavailableOptions: typeof UNAVAILABLE_OPTIONS;
   /**
@@ -139,7 +135,6 @@ async function viewOf(
     version,
     settings,
     apiKey: deps.runtime.apiKeyConfigured(marketId) ? 'set' : 'not-set',
-    models: MODEL_TIERS.map((tier) => ({ tier, modelId: deps.runtime.modelOf(marketId, tier) })),
     unavailableOptions: UNAVAILABLE_OPTIONS,
     spend: {
       todayMicroUsd: totals.todayMicroUsd,
@@ -254,7 +249,7 @@ export async function viewStorefrontAssistant(
   if (!read.ok) return read;
   const settings = read.value;
   // Outside the unit: the gateway reads its budget in a unit of its own (AI Gateway G2).
-  const configured = await deps.runtime.available(context, settings.modelTier);
+  const configured = await deps.runtime.available(context);
   if (!configured || !inRollout(settings, context.market.marketId, visitorKey, preview)) {
     return ok(STOREFRONT_OFF);
   }

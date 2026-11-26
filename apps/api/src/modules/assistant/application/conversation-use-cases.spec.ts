@@ -256,16 +256,16 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
       expect(runtime.requests).toHaveLength(2);
     });
 
-    it('is off with the built-in defaults, without a key, a model or a price', async () => {
+    it('is off with the built-in defaults, without a key, a chat model list (no route) or a price', async () => {
       settings.current = null;
       expect(await asCustomer('Hi')).toEqual({ ok: false, error: { code: 'assistant.off' } });
       settings.current = on();
       runtime.key = false;
       expect(await asCustomer('Hi')).toEqual({ ok: false, error: { code: 'assistant.off' } });
       runtime.key = true;
-      settings.current = on({ modelTier: 'balanced' });
+      runtime.routed = false;
       expect(await asCustomer('Hi')).toEqual({ ok: false, error: { code: 'assistant.off' } });
-      settings.current = on();
+      runtime.routed = true;
       runtime.priced = false;
       expect(await asCustomer('Hi')).toEqual({ ok: false, error: { code: 'assistant.off' } });
       expect(runtime.requests).toHaveLength(0);

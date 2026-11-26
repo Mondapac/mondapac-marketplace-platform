@@ -8,7 +8,6 @@ export const ASSISTANT_SETTINGS_PATH = 'assistant/admin/settings';
 
 export const AUDIENCES = ['internal', 'percent', 'all'] as const;
 export const SCOPES = ['read-only', 'cart-suggestions'] as const;
-export const MODEL_TIERS = ['fast', 'balanced'] as const;
 export const USER_GROUPS = ['guests-and-customers', 'customers-only'] as const;
 export const RETENTIONS = ['none', '30-days', '12-months'] as const;
 export const REPLY_LANGUAGES = ['buyer', 'english'] as const;
@@ -16,7 +15,6 @@ export const SUPPORT_HANDOFFS = ['email-link', 'in-panel-form'] as const;
 
 export type Audience = (typeof AUDIENCES)[number];
 export type Scope = (typeof SCOPES)[number];
-export type ModelTier = (typeof MODEL_TIERS)[number];
 export type UserGroup = (typeof USER_GROUPS)[number];
 export type Retention = (typeof RETENTIONS)[number];
 export type ReplyLanguage = (typeof REPLY_LANGUAGES)[number];
@@ -29,7 +27,6 @@ export interface AssistantSettings {
   /** 1 to 100 when `audience` is `percent`, else null. */
   readonly audiencePercent: number | null;
   readonly scope: Scope;
-  readonly modelTier: ModelTier;
   readonly users: UserGroup;
   readonly guestMessageLimit: number;
   readonly customerMessageLimit: number;
@@ -52,8 +49,6 @@ export interface AssistantSettingsAnswer {
   readonly settings: AssistantSettings;
   /** The key itself never leaves the server. */
   readonly apiKey: 'set' | 'not-set';
-  /** The model the server configures for each tier; null when none is. */
-  readonly models: readonly { readonly tier: ModelTier; readonly modelId: string | null }[];
   /** Read-only figures: spend in micro US dollars (1e-6 USD), the Market's own days. */
   readonly spend: {
     readonly todayMicroUsd: number;

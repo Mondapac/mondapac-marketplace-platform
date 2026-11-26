@@ -43,8 +43,8 @@ describe('loadAppConfig', () => {
       seedJobsOff: [],
       assistantModels: {
         apiKeys: {},
-        models: { fast: {}, balanced: {} },
         bedrockApiKeys: {},
+        removedVariables: [],
       },
       googleSignIn: null,
       mondapacDrive: { apiKeys: {}, webhookSecrets: {} },
@@ -461,30 +461,47 @@ describe('loadAppConfig', () => {
     });
   });
 
-  describe('the AI models (per Market: route keys and tiers; prices from the catalogue)', () => {
+  describe('the AI models (per Market: route keys; models from settings, prices from the catalogue)', () => {
     it('reads each value per hosted Market, and ignores the retired price variables', () => {
       const bedrockKey = 'ABSKbedrock+key/with=base64chars0123';
       const config = loadAppConfig({
         HOSTED_MARKETS: 'AU,NZ',
         ASSISTANT_MODEL_API_KEY: 'AU=test-key-0123456789abcdef,NZ=test-key-nz-0123456789abc',
-        ASSISTANT_MODEL_FAST: 'AU=provider-model-fast-1',
         AI_BEDROCK_API_KEY: `AU=${bedrockKey}`,
         // Prices moved to the route catalogue in G3 (ADR-0052 decision 2): never read.
         ASSISTANT_MODEL_PRICE_FAST: 'AU=0.0001/0.0001',
       });
       expect(config.assistantModels).toEqual({
         apiKeys: { AU: 'test-key-0123456789abcdef', NZ: 'test-key-nz-0123456789abc' },
-        models: { fast: { AU: 'provider-model-fast-1' }, balanced: {} },
         bedrockApiKeys: { AU: bedrockKey },
+        removedVariables: [],
       });
+    });
+
+    it('boots with the removed tier variables still set, naming them (never their values) and reading nothing from them', () => {
+      // G4d1: a task type's models are the Market's list in settings; the tier variables are
+      // ignored, even with a value the old pattern refused, and never fail boot (R8).
+      const config = loadAppConfig({
+        HOSTED_MARKETS: 'AU,ZZ',
+        ASSISTANT_MODEL_FAST: 'AU=provider-model-fast-1,ZZ=bad model id',
+        ASSISTANT_MODEL_BALANCED: 'not even pairs',
+      });
+      expect(config.assistantModels).toEqual({
+        apiKeys: {},
+        bedrockApiKeys: {},
+        removedVariables: ['ASSISTANT_MODEL_FAST', 'ASSISTANT_MODEL_BALANCED'],
+      });
+      expect(JSON.stringify(config.assistantModels)).not.toContain('provider-model-fast-1');
+      expect(
+        loadAppConfig({ HOSTED_MARKETS: 'AU', ASSISTANT_MODEL_FAST: '' }).assistantModels
+          .removedVariables,
+      ).toEqual([]);
     });
 
     it.each([
       ['ASSISTANT_MODEL_API_KEY', 'AU=short'],
       ['ASSISTANT_MODEL_API_KEY', 'test-key-0123456789abcdef'],
       ['ASSISTANT_MODEL_API_KEY', 'AU=has a space in it 0123456789'],
-      ['ASSISTANT_MODEL_FAST', 'AU=bad model id'],
-      ['ASSISTANT_MODEL_BALANCED', 'AU=-leading-dash'],
       ['AI_BEDROCK_API_KEY', 'AU=short'],
       ['AI_BEDROCK_API_KEY', 'AU=has a space in it 0123456789'],
     ])('refuses %s=%j without echoing it', (name, value) => {

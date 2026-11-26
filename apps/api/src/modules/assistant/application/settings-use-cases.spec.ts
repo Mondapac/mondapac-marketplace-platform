@@ -110,7 +110,6 @@ describe('parseAssistantSettings', () => {
       audience: 'internal',
       audiencePercent: null,
       scope: 'read-only',
-      modelTier: 'fast',
       users: 'guests-and-customers',
       guestMessageLimit: 20,
       customerMessageLimit: 40,
@@ -149,7 +148,6 @@ describe('parseAssistantSettings', () => {
     ['enabled', 'true', 'type'],
     ['audience', 'everyone', 'type'],
     ['audiencePercent', 10, 'type'],
-    ['modelTier', 'model-fast', 'type'],
     ['users', 'guests', 'type'],
     ['retention', '7-days', 'type'],
     ['replyLanguage', 'fa', 'type'],
@@ -327,17 +325,13 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
     new ViewStorefrontAssistant(gate, deps).execute(anonymous(), { visitor, lang, preview });
   const issue = (context = admin()) => new IssuePreviewToken(gate, deps).execute(context, {});
 
-  it('reads the defaults as version 0, with the key status and the model of each tier', async () => {
+  it('reads the defaults as version 0, with the key status and no model tier (G4d1)', async () => {
     const read = await view();
     expect(read).toEqual(
       ok({
         version: 0,
         settings: DEFAULT_ASSISTANT_SETTINGS,
         apiKey: 'set',
-        models: [
-          { tier: 'fast', modelId: 'model-fast' },
-          { tier: 'balanced', modelId: null },
-        ],
         unavailableOptions: { scope: [], supportHandoff: ['in-panel-form'] },
         spend: { todayMicroUsd: 0, monthMicroUsd: 0, conversationsToday: 0, lastAutoOff: null },
         lastChanged: null,
@@ -544,13 +538,16 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
       expect(prompts.asked).toEqual(['ja-JP', null]);
     });
 
-    it('stays off without the API key or a model for the chosen tier', async () => {
+    it('stays off without the API key, or while the Market has no list for the chat task type (no route, G4d1)', async () => {
       await set(on({ welcomeText: 'Hi' }));
       runtime.key = false;
       expect(await storefront()).toEqual(ok(OFF));
       runtime.key = true;
-      await set(on({ modelTier: 'balanced', welcomeText: 'Hi' }), 1);
+      runtime.routed = false;
       expect(await storefront()).toEqual(ok(OFF));
+      runtime.routed = true;
+      const read = await storefront();
+      expect(read.ok && read.value.enabled).toBe(true);
     });
 
     it('stays off while an AI budget cap is full (AI Gateway G2)', async () => {

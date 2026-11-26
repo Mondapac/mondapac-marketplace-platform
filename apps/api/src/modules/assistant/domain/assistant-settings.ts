@@ -4,13 +4,12 @@ import type { Result } from '@mondapac/shared-kernel';
 // The buyer assistant's per-Market settings (plan section 11): what a platform admin may tune.
 // The guardrails (numbers only from server cards, certification only from evaluateClaim, no
 // mutating tool, never payment, refunds, orders, addresses, accounts, discount codes or Cost) and
-// the model API key are deliberately not settings. Every default is the recommended option, and
+// the model API key are deliberately not settings. The chat's models are the Market's list for the
+// chat task type in the AI Gateway settings (the model tier setting went in AI Gateway G4d1). Every default is the recommended option, and
 // the assistant ships off.
 
 export const AUDIENCES = ['internal', 'percent', 'all'] as const;
 export const SCOPES = ['read-only', 'cart-suggestions'] as const;
-/** Model tiers; the provider model id of each tier is server configuration, never a setting. */
-export const MODEL_TIERS = ['fast', 'balanced'] as const;
 export const USER_GROUPS = ['guests-and-customers', 'customers-only'] as const;
 export const RETENTIONS = ['none', '30-days', '12-months'] as const;
 export const REPLY_LANGUAGES = ['buyer', 'english'] as const;
@@ -18,7 +17,6 @@ export const SUPPORT_HANDOFFS = ['email-link', 'in-panel-form'] as const;
 
 export type Audience = (typeof AUDIENCES)[number];
 export type Scope = (typeof SCOPES)[number];
-export type ModelTier = (typeof MODEL_TIERS)[number];
 export type UserGroup = (typeof USER_GROUPS)[number];
 export type Retention = (typeof RETENTIONS)[number];
 export type ReplyLanguage = (typeof REPLY_LANGUAGES)[number];
@@ -41,7 +39,6 @@ export interface AssistantSettings {
   /** 1 to 100 when `audience` is `percent`, else null. */
   readonly audiencePercent: number | null;
   readonly scope: Scope;
-  readonly modelTier: ModelTier;
   readonly users: UserGroup;
   /** Messages a guest may send in 10 minutes. */
   readonly guestMessageLimit: number;
@@ -68,7 +65,6 @@ export const SETTING_FIELDS = [
   'audience',
   'audiencePercent',
   'scope',
-  'modelTier',
   'users',
   'guestMessageLimit',
   'customerMessageLimit',
@@ -87,7 +83,6 @@ export const DEFAULT_ASSISTANT_SETTINGS: AssistantSettings = Object.freeze({
   audience: 'internal',
   audiencePercent: null,
   scope: 'read-only',
-  modelTier: 'fast',
   users: 'guests-and-customers',
   guestMessageLimit: 20,
   customerMessageLimit: 40,
@@ -186,7 +181,6 @@ export function parseAssistantSettings(
   const scope = oneOf(raw.scope, SCOPES, 'scope', errors);
   if (UNAVAILABLE_OPTIONS.scope.includes(scope))
     errors.push({ path: 'scope', code: 'unavailable' });
-  const modelTier = oneOf(raw.modelTier, MODEL_TIERS, 'modelTier', errors);
   const users = oneOf(raw.users, USER_GROUPS, 'users', errors);
   const guestMessageLimit = integerIn(
     raw.guestMessageLimit,
@@ -232,7 +226,6 @@ export function parseAssistantSettings(
     audience,
     audiencePercent,
     scope,
-    modelTier,
     users,
     guestMessageLimit,
     customerMessageLimit,

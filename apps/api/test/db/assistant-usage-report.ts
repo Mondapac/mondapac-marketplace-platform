@@ -76,10 +76,9 @@ export function settlingRuntime(
 ): AssistantRuntime {
   return {
     apiKeyConfigured: (marketId) => runtime.apiKeyConfigured(marketId),
-    modelOf: (marketId, tier) => runtime.modelOf(marketId, tier),
-    available: (context, tier) => runtime.available(context, tier),
-    complete: async (context, tier, request, timeoutMs, turnId) => {
-      const answer = await runtime.complete(context, tier, request, timeoutMs, turnId);
+    available: (context) => runtime.available(context),
+    complete: async (context, request, timeoutMs, turnId) => {
+      const answer = await runtime.complete(context, request, timeoutMs, turnId);
       if (answer.costMicroUsd > 0) {
         await settleBuyerChat(client, context.market, dayOf(context.market), answer.costMicroUsd);
       }

@@ -18,6 +18,22 @@ export const ZZ_TEST_AI_CAPS: AiCaps = Object.freeze({
   evaluationMonth: 0,
 });
 
+/**
+ * One model family as the Market's list of every task type (no saver model): what a test needs
+ * for a capability to have a route. A task type without a list has none (G4d1).
+ */
+export const listsOf = (family: string): AiModelLists =>
+  Object.freeze({
+    lists: Object.freeze({
+      chat: [family],
+      extract: [family],
+      write: [family],
+      vision: [family],
+    }),
+    savers: Object.freeze({}),
+    saverAtPercent: 80,
+  });
+
 /** The pre-G4 `aiBudget` shape, so a test names a cap the way the Market configuration did. */
 export interface TestBudget {
   readonly marketDayMicroUsd?: number;
@@ -41,7 +57,7 @@ export const capsOfBudget = (budget: TestBudget): AiCaps => ({
 /**
  * {@link AiGatewayControls} for unit tests: by default AU has no caps (counted only) and ZZ the
  * caps its fixture had; `stopped` Markets have the emergency stop on; `models` holds a Market's
- * model lists (none: the tier family); `failing` throws (the settings store is down).
+ * model lists (none: no route, the capability is off); `failing` throws (the settings store is down).
  */
 export class TestAiGatewayControls implements AiGatewayControls {
   readonly caps = new Map<string, AiCaps>([['ZZ', ZZ_TEST_AI_CAPS]]);
@@ -49,6 +65,14 @@ export class TestAiGatewayControls implements AiGatewayControls {
   readonly models = new Map<string, AiModelLists>();
   failing = false;
   reads = 0;
+
+  /** Gives each Market without lists of its own the one family on every task type. */
+  routed(family: string, markets: readonly string[]): this {
+    for (const market of markets) {
+      if (!this.models.has(market)) this.models.set(market, listsOf(family));
+    }
+    return this;
+  }
 
   /** Every Market gets the same caps (a budget given for the whole test). */
   static everywhere(budget: TestBudget): TestAiGatewayControls {

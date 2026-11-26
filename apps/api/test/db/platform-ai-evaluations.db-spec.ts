@@ -66,7 +66,6 @@ describe('platform AI evaluations (database integration, AI Gateway G4c)', () =>
           config: testAppConfig({
             DATABASE_URL: testDatabaseUrl(),
             ASSISTANT_MODEL_API_KEY: 'AU=sk-test-canary-key-0001,ZZ=sk-test-canary-key-0002',
-            ASSISTANT_MODEL_FAST: 'AU=model-fast,ZZ=model-fast',
           }),
           logDestination: pino.destination(devNull),
         }),

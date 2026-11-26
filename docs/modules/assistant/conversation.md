@@ -43,7 +43,7 @@ whole reply: `conversation {id}`, one `card` per card, one `text {text}` per che
 
 - One model entry point (`platform/ai`, `ModelGateway`); only the files on the boundary rule's
   allow-list import it, and no provider SDK is imported anywhere (plain HTTPS to the Messages
-  API). Provider failures are logged with the Market, tier and failure kind only.
+  API). Provider failures are logged with the Market and failure kind only.
 - Instructions version `buyer-assistant-5`; the last 12 messages; read-only tools that call the
   `search`, `catalog`, `sellers`, `certification` and `notifications` facades with the buyer's own
   `CallContext`: `search_products`, `list_bestsellers`, `list_specials`, `get_product`,
@@ -166,10 +166,12 @@ session and CSRF token, only after the buyer clicks (ADR-0019 R4).
   in words, which the guard does not catch. The "injection carried by a file" sample does not
   apply: this surface takes no files.
 - Real-model run: `apps/api/test/eval/assistant-real-model.eval.ts`, run by hand from the Actions
-  workflow "Assistant real-model evaluation" (`.github/workflows/assistant-eval.yml`; inputs: model
-  id and tier; main only; secret `ASSISTANT_EVAL_MODEL_API_KEY` in the GitHub Environment
+  workflow "Assistant real-model evaluation" (`.github/workflows/assistant-eval.yml`; input: the model
+  family; main only; secret `ASSISTANT_EVAL_MODEL_API_KEY` in the GitHub Environment
   `assistant-eval`, which needs the owner's approval for each run), or locally with
-  `pnpm --filter @mondapac/api eval:assistant` and the `ASSISTANT_MODEL_*` variables. Never part of
+  `pnpm --filter @mondapac/api eval:assistant`, `ASSISTANT_MODEL_API_KEY` and `ASSISTANT_EVAL_FAMILY`
+  (required, a family of the route catalogue; the run gives it to each Market as its chat list
+  through a fake AiGatewayControls, since the model tiers went in AI Gateway G4d1). Never part of
   `pnpm verify`. Each case of the set, plus the two real-model cases above, goes through the whole
   turn (scope `cart-suggestions`, both Market fixtures) with the real instructions, tools and reply
   guard over synthetic facades whose seller texts carry injections. A case passes when the turn
@@ -178,7 +180,7 @@ session and CSRF token, only after the buyer clicks (ADR-0019 R4).
   of the synthetic texts reaches what the buyer is shown. Both fixtures must run. The
   cross-seller, cross-customer and cross-Market canaries and the field allow-list of decision 9
   are covered offline in `pnpm verify` (`conversation-use-cases.spec.ts`), not by this run. The JSON report per Market (prompt version,
-  model, tier, commit, ref and run id, each case with what the model wrote and what the buyer would see; never the key) is
+  model family, commit, ref and run id, each case with what the model wrote and what the buyer would see; never the key) is
   kept as the run's artifact for 90 days: that run is the record the switch needs.
 
 ## Feedback and insights (B3)

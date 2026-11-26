@@ -4,7 +4,6 @@ import {
   Badge,
   Banner,
   SettingRow,
-  SettingSelect,
   SettingsPage,
   SettingsSection,
   Switch,
@@ -24,10 +23,7 @@ import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { aiProblemOf } from './errors.ts';
 import {
   AI_SETTINGS_PATH,
-  TIER_CODE,
-  TIER_VALUES,
   WRITER_CODE,
-  isTierValue,
   settingOf,
   settingsAnswerOf,
   type AiSetting,
@@ -36,8 +32,9 @@ import {
 } from './types.ts';
 
 /**
- * Settings › AI: the Market switch of "Write with AI (product descriptions)" and its model tier,
- * with a read-only view of what the server is configured with. Each control saves at once, with
+ * Settings › AI: the Market switch of "Write with AI (product descriptions)", with a read-only view
+ * of what the server is configured with. Its models are the Market's list for the write task type
+ * (AI Gateway settings); the model tier went in AI Gateway G4d1. Each control saves at once, with
  * the version the admin saw; the answer drives the screen (nothing is optimistic). Changing needs
  * the protected `settings.ai.manage`, so it may ask for a fresh two-step code. A stale version
  * loads what is saved now and says so. The key is never shown, only whether one is set.
@@ -67,7 +64,6 @@ export function AiSettingsPanel({
   const busy = useRef(false);
 
   const writer = settingOf(saved, WRITER_CODE);
-  const tier = settingOf(saved, TIER_CODE);
   const on = writer.value === 'on';
 
   const replace = (row: AiSetting) =>
@@ -158,10 +154,7 @@ export function AiSettingsPanel({
     ),
   ].filter((node) => node !== null);
 
-  const asksNote =
-    canManage && (writer.review?.reviewed === true || tier.review?.reviewed === true);
-
-  const modelLine = (id: string | null) => (id === null ? t('model-none') : id);
+  const asksNote = canManage && writer.review?.reviewed === true;
 
   return (
     <SettingsPage
@@ -203,22 +196,6 @@ export function AiSettingsPanel({
             <span aria-live="polite">{on ? t('switch.on') : t('switch.off')}</span>
           </div>
         </SettingRow>
-        <SettingRow
-          settingId="ai-description-writer-tier"
-          label={t('tier.label')}
-          help={`${t('tier.help')} ${when(tier)}`}
-          disabled={!canManage || pending !== null}
-        >
-          <SettingSelect
-            name="tier"
-            value={tier.value}
-            options={TIER_VALUES.map((value) => ({ value, label: t(`tier.option.${value}`) }))}
-            onChange={(event) => {
-              const value = event.target.value;
-              if (isTierValue(value)) void change(tier, value);
-            }}
-          />
-        </SettingRow>
         {canManage ? (
           <p className="px-5 py-3 text-sm text-fg-muted">{root('step-up.wait-note')}</p>
         ) : null}
@@ -229,19 +206,11 @@ export function AiSettingsPanel({
             <Banner tone="info">{t('setup-unavailable')}</Banner>
           </div>
         ) : (
-          <>
-            <SettingRow label={t('model.fast')} plain>
-              <p>{modelLine(setup.models.fast)}</p>
-            </SettingRow>
-            <SettingRow label={t('model.balanced')} plain>
-              <p>{modelLine(setup.models.balanced)}</p>
-            </SettingRow>
-            <SettingRow label={t('key.label')} help={t('key.help')} plain>
-              <Badge tone={setup.keyConfigured ? 'success' : 'attention'}>
-                {setup.keyConfigured ? t('key.set') : t('key.missing')}
-              </Badge>
-            </SettingRow>
-          </>
+          <SettingRow label={t('key.label')} help={t('key.help')} plain>
+            <Badge tone={setup.keyConfigured ? 'success' : 'attention'}>
+              {setup.keyConfigured ? t('key.set') : t('key.missing')}
+            </Badge>
+          </SettingRow>
         )}
       </SettingsSection>
     </SettingsPage>

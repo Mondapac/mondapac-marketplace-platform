@@ -1,8 +1,5 @@
 import type { CallContext, Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 
-/** The Market's model tiers (server configuration names the model of each). */
-export type WriterModelTier = 'fast' | 'balanced';
-
 export type WriterModelAnswer =
   | { readonly ok: true; readonly text: string }
   | {
@@ -23,25 +20,16 @@ export type WriterAudience =
  */
 export interface DescriptionWriterModel {
   /**
-   * The gateway would run the writer for this caller on the tier: the caller fits the audience
-   * and is not acting as a seller, the kill switch is not set, the seller's own switch (SEL-25) is
-   * on for a seller, and key, model and price are set for the tier in the Market.
+   * The gateway would run the writer for this caller: the caller fits the audience and is not
+   * acting as a seller, the kill switch is not set, the seller's own switch (SEL-25) is on for a
+   * seller, and the Market's list for the write task type has a usable route (no list: off).
    */
-  available(
-    context: CallContext,
-    audience: WriterAudience,
-    tier: WriterModelTier,
-  ): Promise<boolean>;
+  available(context: CallContext, audience: WriterAudience): Promise<boolean>;
   /** What the admin AI settings card shows; never the key. */
-  setup(market: MarketContext): {
-    readonly killSwitch: boolean;
-    readonly keyConfigured: boolean;
-    readonly models: { readonly fast: string | null; readonly balanced: string | null };
-  };
+  setup(market: MarketContext): { readonly killSwitch: boolean; readonly keyConfigured: boolean };
   write(
     context: CallContext,
     audience: WriterAudience,
-    tier: WriterModelTier,
     request: { readonly system: string; readonly input: string; readonly maxOutputTokens: number },
     timeoutMs: number,
   ): Promise<WriterModelAnswer>;
@@ -50,15 +38,13 @@ export interface DescriptionWriterModel {
 export const DESCRIPTION_WRITER_MODEL = Symbol('CATALOG_DESCRIPTION_WRITER_MODEL');
 
 /**
- * The Market's switch and tier of the writer (ADR-0019 decision 7, R8), from the settings store
- * through the settings facade; the gateway takes them over in G4 (platform-ai.md section 5). The
- * seller's switch is evaluated by the gateway. Only an explicit "on" is on: a refusal, an error or
- * a throw is off.
+ * The Market's switch of the writer (ADR-0019 decision 7, R8), from the settings store through the
+ * settings facade (platform-ai.md section 5). The seller's switch is evaluated by the gateway, and
+ * the models are the Market's list for the write task type. Only an explicit "on" is on: a
+ * refusal, an error or a throw is off.
  */
 export interface DescriptionWriterSwitches {
-  market(
-    context: CallContext,
-  ): Promise<{ readonly enabled: boolean; readonly tier: WriterModelTier }>;
+  market(context: CallContext): Promise<{ readonly enabled: boolean }>;
 }
 
 export const DESCRIPTION_WRITER_SWITCHES = Symbol('CATALOG_DESCRIPTION_WRITER_SWITCHES');

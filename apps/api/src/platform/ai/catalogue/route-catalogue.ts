@@ -29,8 +29,8 @@ export interface RouteRow {
   readonly provider: 'anthropic';
   readonly route: RouteKind;
   /**
-   * The model, the same on every route (`claude-haiku-5-5`): an evaluation pass, a priority list
-   * and a tier name it, and the router expands it to its routes (owner decision Q1).
+   * The model, the same on every route (`claude-haiku-5-5`): an evaluation pass and a priority list
+   * name it, and the router expands it to its routes (owner decision Q1).
    */
   readonly family: string;
   /** The exact model version id sent on this route. */
@@ -131,8 +131,8 @@ export class RouteCatalogue {
   }
 
   /**
-   * The family a configured model name means: a family, or the exact model id of one of its rows
-   * (the `ASSISTANT_MODEL_*` values written before G3). Null when the catalogue has neither.
+   * The family a model name means: a family, or the exact model id of one of its rows (the
+   * real-model evaluation's `ASSISTANT_EVAL_FAMILY`). Null when the catalogue has neither.
    */
   familyOf(name: string): string | null {
     if (this.hasFamily(name)) return name;

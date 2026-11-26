@@ -8,8 +8,8 @@ assistant ships **off**.
 
 | Route                                                                     | Who                                                                         | What                                                                                                                             |
 | ------------------------------------------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /assistant/admin/settings`                                           | admin, `assistant.settings.view` (viewer role, seed version 14)             | Settings in force, `version` (0 = defaults), `apiKey: set / not-set`, the model configured per tier, options not available yet   |
-| `PUT /assistant/admin/settings`                                           | admin, `assistant.settings.manage` (protected: Platform Administrator only) | `{ expectedVersion, settings }`, every field; stale version answers 409 `assistant.conflict`; same settings again change nothing |
+| `GET /assistant/admin/settings`                                           | admin, `assistant.settings.view` (viewer role, seed version 14)             | Settings in force, `version` (0 = defaults), `apiKey: set / not-set`, options not available yet                                  |
+| `PUT /assistant/admin/settings`                                           | admin, `assistant.settings.manage` (protected: Platform Administrator only) | `{ expectedVersion, settings }`, every field and no other (`modelTier` is refused since AI Gateway G4d1); stale version answers 409 `assistant.conflict`; same settings again change nothing |
 | `GET /assistant/storefront?visitor=&lang=` (header `x-assistant-preview`) | anyone, no session read                                                     | `{ enabled, guestsAllowed, replyLanguage, welcomeText, retentionDays, quickPrompts, preview }` only                              |
 | `POST /assistant/admin/preview-token`                                     | admin session, CSRF, `assistant.settings.manage`                            | `{ token, expiresAt }` (conversation.md)                                                                                         |
 
@@ -23,7 +23,6 @@ SELECT and INSERT only) and one `assistant.settings.changed` audit row (versions
 | `enabled`                     | true / false                                                                        | false                     |
 | `audience`, `audiencePercent` | `internal` / `percent` (1 to 100) / `all`                                           | `internal`                |
 | `scope`                       | `read-only` / `cart-suggestions` (cart cards, stage 1 S1-B1)                        | `read-only`               |
-| `modelTier`                   | `fast` / `balanced`                                                                 | `fast`                    |
 | `users`                       | `guests-and-customers` / `customers-only`                                           | `guests-and-customers`    |
 | `guestMessageLimit`           | 5 to 60 per 10 minutes                                                              | 20                        |
 | `customerMessageLimit`        | 5 to 120 per 10 minutes                                                             | 40                        |
@@ -46,12 +45,17 @@ The guardrails of plan section 5 (numbers only from server cards, certification 
 `evaluateClaim`, no mutating tool, never payment, refunds, orders, addresses, accounts, discount
 codes or Cost) and the model configuration. Since package 4 that configuration is per Market,
 as `MARKET=value` pairs: `ASSISTANT_MODEL_API_KEY` (a server secret; the admin read shows only
-`set` / `not-set`) and `ASSISTANT_MODEL_FAST` / `ASSISTANT_MODEL_BALANCED` (the model family of
-each tier, from the AI Gateway's route catalogue). Since AI Gateway G3 prices come from the route
-catalogue (the `ASSISTANT_MODEL_PRICE_*` variables are ignored), and a tier's model is used only
-through a usable route (ADR-0052: verified row, region of the Market, key, evaluation pass;
-docs/design/domain/platform-ai.md section 6). Without a usable route for the chosen tier, the
-storefront read answers `enabled: false` and no message reaches a model.
+`set` / `not-set`). Which models the chat uses is the Market's list for the `chat` task type in
+the AI Gateway settings (`ai-models-chat`, AI Gateway G4b). The model tier (`modelTier`, and the
+variables `ASSISTANT_MODEL_FAST` / `ASSISTANT_MODEL_BALANCED`) went in AI Gateway G4d1: a PUT that
+still sends `modelTier` answers 400 `unknown-field`, and a variable still set is ignored and named
+in one `ai.config.removed` warning at boot. The `model_tier` column stays until a migration drops
+it (FE-20261125-ai-gateway-drop-assistant-model-tier); a new row writes `fast` there and nothing
+reads it. Since AI Gateway G3 prices come from the route catalogue (the `ASSISTANT_MODEL_PRICE_*`
+variables are ignored), and a model is used only through a usable route (ADR-0052: verified row,
+region of the Market, key, evaluation pass; docs/design/domain/platform-ai.md section 6). Without
+a chat list, or without a usable route of it, the storefront read answers `enabled: false` and no
+message reaches a model.
 
 ## Rollout
 
@@ -65,9 +69,9 @@ read also answers `spend` (today, this month, conversations today, the last auto
 
 Settings > Smart assistant (`/settings/assistant`, package 3). A holder of the view key sees the
 status card and a read-only summary; the Platform Administrator gets the form. The page shows
-only whether the model key is set, and the model of each tier as the server reports it. Saving
-sends `expectedVersion`; on a 409 the page reads the settings again and asks the admin to make
-the change again. A tier whose model the server does not configure is offered disabled.
+only whether the model key is set (no model tier picker since AI Gateway G4d1). Saving sends
+`expectedVersion`; on a 409 the page reads the settings again and asks the admin to make the
+change again.
 Spend today and this month (against the caps), conversations today and the last automatic
 switch-off are now in the read's `spend` (package 4); wiring them into the status card is a
 follow-up of the admin tab. The cost estimate per conversation is not computed by the server.

@@ -207,7 +207,6 @@ async function runModel(
     }
     const answer = await deps.runtime.complete(
       context,
-      settings.modelTier,
       {
         system: instructionsFor(settings.replyLanguage, settings.scope),
         messages,
@@ -367,7 +366,7 @@ export async function sendMessage(
   );
   if (!loaded.ok) return loaded;
   const { settings, conversation, history } = loaded.value;
-  if (!(await deps.runtime.available(context, settings.modelTier))) {
+  if (!(await deps.runtime.available(context))) {
     return err({ code: 'assistant.off' });
   }
 

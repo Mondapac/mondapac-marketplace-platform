@@ -34,7 +34,7 @@ export const SETTINGS_CART_MODE_MANAGE = definePermission('settings', {
   protected: false,
 });
 
-/** See the Market's AI settings (the description writer's switch and model tier). */
+/** See the Market's AI settings (the description writer's switch). */
 export const SETTINGS_AI_VIEW = definePermission('settings', {
   key: 'settings.ai.view',
   scope: 'platform',

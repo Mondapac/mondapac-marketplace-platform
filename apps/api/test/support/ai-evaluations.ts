@@ -198,17 +198,14 @@ export class SerialUnitOfWork implements UnitOfWork {
 
 const REAL_MARKETS = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
 
-/** Keys for AU and ZZ on the API route; `fast` is `model-fast` in both. */
+/** Keys for AU and ZZ on the API route. */
 const configOf = (killed: boolean, codes: readonly string[]) =>
   ({
     aiKillSwitch: killed,
     assistantModels: {
       apiKeys: Object.fromEntries(codes.map((code) => [code, 'sk-test-canary-key-0001'])),
-      models: {
-        fast: Object.fromEntries(codes.map((code) => [code, 'model-fast'])),
-        balanced: {},
-      },
       bedrockApiKeys: {},
+      removedVariables: [],
     },
   }) as unknown as AppConfig;
 
@@ -247,7 +244,6 @@ export function evaluationHarness(options: HarnessOptions = {}) {
   const models = new ModelGateway(
     configOf(options.killed ?? false, options.keyed ?? ['AU', 'ZZ']),
     provider,
-    catalogue,
   );
   const router = testRouter(catalogue, new EvaluationResults([]), models, markets, clock);
   const controls = TestAiGatewayControls.everywhere(

@@ -22,7 +22,6 @@ const marketCode = z.string().transform((value, context) => {
 
 const WEBHOOK_SECRET = 'whsec_[A-Za-z0-9+/=_]{8,200}';
 const MARKET_SECRET = `[A-Z][A-Z0-9_]{1,7}=${WEBHOOK_SECRET}`;
-const MODEL_ID = '[A-Za-z0-9][A-Za-z0-9._:/@-]{0,99}';
 const API_KEY = '[A-Za-z0-9_-]{20,500}';
 const HMAC_KEY = /^[A-Za-z0-9_+/=.-]{32,200}$/;
 const HMAC_KEY_MESSAGE = 'must be 32 to 200 characters of A-Z a-z 0-9 _ + / = . -';
@@ -307,8 +306,9 @@ const envSchema = z.object({
   CLIENT_ADDRESS_KEYS: z.string().optional(),
   // AI models (ADR-0019 R7, ADR-0052): MARKET=value pairs separated by commas, each Market at most
   // once and only hosted ones. ASSISTANT_MODEL_API_KEY is the key of the anthropic-api route. A
-  // Market without the key of a route cannot use that route; a tier without a model is off. The
-  // key is a server secret, never echoed; the admin screen learns only whether it is set. Prices
+  // Market without the key of a route cannot use that route. Which models a task type uses is the
+  // Market's priority list in settings (AI Gateway G4b), never configuration. The key is a server
+  // secret, never echoed; the admin screen learns only whether it is set. Prices
   // are the route catalogue's (platform/ai/catalogue), never configuration. Checked in
   // parseMarketValues below.
   ASSISTANT_MODEL_API_KEY: z
@@ -316,23 +316,6 @@ const envSchema = z.object({
     .regex(
       new RegExp(`^${MARKET_VALUE(API_KEY)}(,${MARKET_VALUE(API_KEY)})*$`),
       'must be MARKET=key pairs separated by commas (a key is 20 to 500 of A-Z a-z 0-9 _ -)',
-    )
-    .optional(),
-  // The model family of each tier the admin may choose, per Market, until the priority lists move to
-  // settings (G4): a catalogue family (claude-haiku-5-5) or the exact model id of one of its rows.
-  // A name outside the catalogue is logged and that tier is off (ModelGateway; R8).
-  ASSISTANT_MODEL_FAST: z
-    .string()
-    .regex(
-      new RegExp(`^${MARKET_VALUE(MODEL_ID)}(,${MARKET_VALUE(MODEL_ID)})*$`),
-      'must be MARKET=model pairs separated by commas (a model id is letters, digits, . _ : / @ -)',
-    )
-    .optional(),
-  ASSISTANT_MODEL_BALANCED: z
-    .string()
-    .regex(
-      new RegExp(`^${MARKET_VALUE(MODEL_ID)}(,${MARKET_VALUE(MODEL_ID)})*$`),
-      'must be MARKET=model pairs separated by commas (a model id is letters, digits, . _ : / @ -)',
     )
     .optional(),
   // Bedrock API key of the fallback route (ADR-0052 decision 5), per Market: MARKET=key pairs. A
@@ -361,10 +344,21 @@ const envSchema = z.object({
 /** `ASSISTANT_MODEL_*` by Market; a Market missing from a record has no value for it. */
 export interface AssistantModelConfig {
   readonly apiKeys: Readonly<Record<string, string>>;
-  readonly models: Readonly<Record<'fast' | 'balanced', Readonly<Record<string, string>>>>;
   /** Keys of the `bedrock-mantle` route (`AI_BEDROCK_API_KEY`). */
   readonly bedrockApiKeys: Readonly<Record<string, string>>;
+  /**
+   * Retired AI variables still set in the environment (names only, never values): ignored, and
+   * logged once as `ai.config.removed` by `platform/ai` so an operator can delete them.
+   */
+  readonly removedVariables: readonly string[];
 }
+
+/**
+ * The AI variables removed in AI Gateway G4d1 (the model tiers): a task type's models are the
+ * Market's priority list in settings. Still set, they are ignored and named in a warning; they
+ * never fail boot (R8).
+ */
+export const REMOVED_AI_VARIABLES = ['ASSISTANT_MODEL_FAST', 'ASSISTANT_MODEL_BALANCED'] as const;
 
 /** The migration role's URL: read by the prisma CLI, the scripts and test setup only. */
 export const MIGRATION_DATABASE_URL = 'MIGRATION_DATABASE_URL';
@@ -771,7 +765,10 @@ export function parseMarketValues(
   return { values: Object.freeze(values), issues };
 }
 
-function assistantModelConfig(env: z.infer<typeof envSchema>): {
+function assistantModelConfig(
+  env: z.infer<typeof envSchema>,
+  raw: Record<string, string | undefined>,
+): {
   config: AssistantModelConfig;
   issues: string[];
 } {
@@ -779,16 +776,16 @@ function assistantModelConfig(env: z.infer<typeof envSchema>): {
   const read = (variable: keyof z.infer<typeof envSchema>) =>
     parseMarketValues(env[variable] as string | undefined, hosted, variable);
   const keys = read('ASSISTANT_MODEL_API_KEY');
-  const fast = read('ASSISTANT_MODEL_FAST');
-  const balanced = read('ASSISTANT_MODEL_BALANCED');
   const bedrockKeys = read('AI_BEDROCK_API_KEY');
   return {
     config: Object.freeze({
       apiKeys: keys.values,
-      models: Object.freeze({ fast: fast.values, balanced: balanced.values }),
       bedrockApiKeys: bedrockKeys.values,
+      removedVariables: Object.freeze(
+        REMOVED_AI_VARIABLES.filter((variable) => (raw[variable] ?? '') !== ''),
+      ),
     }),
-    issues: [keys, fast, balanced, bedrockKeys].flatMap((read) => read.issues),
+    issues: [keys, bedrockKeys].flatMap((read) => read.issues),
   };
 }
 
@@ -935,7 +932,7 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
   const auspostAccounts = auspostValues('AUSPOST_ACCOUNT_NUMBER');
   issues.push(...auspostKeys.issues, ...auspostPasswords.issues, ...auspostAccounts.issues);
   const assistant = parsed.success
-    ? assistantModelConfig(parsed.data)
+    ? assistantModelConfig(parsed.data, env)
     : { config: null, issues: [] };
   issues.push(...assistant.issues);
   const objectStore = parsed.success

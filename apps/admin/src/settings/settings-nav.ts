@@ -358,12 +358,6 @@ export const settingEntries: readonly PaletteSettingSpec[] = [
     keywordsKey: 'palette.setting.assistant-audience-words',
   },
   {
-    id: 'assistant-model',
-    pageId: 'assistant',
-    labelKey: 'palette.setting.assistant-model',
-    keywordsKey: 'palette.setting.assistant-model-words',
-  },
-  {
     id: 'assistant-welcome',
     pageId: 'assistant',
     labelKey: 'palette.setting.assistant-welcome',

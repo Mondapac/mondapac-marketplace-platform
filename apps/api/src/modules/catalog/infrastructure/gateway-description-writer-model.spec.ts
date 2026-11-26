@@ -40,8 +40,8 @@ const configOf = () =>
     aiKillSwitch: false,
     assistantModels: {
       apiKeys: { AU: 'sk-test-canary-key-0001', ZZ: 'sk-test-canary-key-0002' },
-      models: { fast: { AU: 'model-fast', ZZ: 'model-fast' }, balanced: {} },
       bedrockApiKeys: {},
+      removedVariables: [],
     },
   }) as unknown as AppConfig;
 
@@ -74,6 +74,7 @@ describe('GatewayDescriptionWriterModel on the real AiGateway (AIS-03; ADR-0019 
   let sellerOn: boolean;
 
   let store: InMemoryAiUsageStore;
+  let controls: TestAiGatewayControls;
   const modelOf = () => {
     const registry = new CapabilityRegistry();
     registry.register('catalog', CATALOG_AI_CAPABILITIES);
@@ -88,7 +89,9 @@ describe('GatewayDescriptionWriterModel on the real AiGateway (AIS-03; ADR-0019 
     const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
     const { usage, store: usageStore } = inMemoryAiUsage(markets, clock);
     store = usageStore;
-    const models = new ModelGateway(configOf(), provider, testRouteCatalogue());
+    const models = new ModelGateway(configOf(), provider);
+    // Both Markets choose `model-fast` for every task type (the AI Models page, G4b).
+    controls = new TestAiGatewayControls().routed('model-fast', ['AU', 'ZZ']);
     const gateway = new AiGateway(
       models,
       registry,
@@ -96,7 +99,7 @@ describe('GatewayDescriptionWriterModel on the real AiGateway (AIS-03; ADR-0019 
       usage,
       clock,
       testRouter(testRouteCatalogue(), passesFor(CATALOG_AI_CAPABILITIES), models, markets, clock),
-      new TestAiGatewayControls(),
+      controls,
     );
     return new GatewayDescriptionWriterModel(gateway);
   };
@@ -114,8 +117,8 @@ describe('GatewayDescriptionWriterModel on the real AiGateway (AIS-03; ADR-0019 
   ])('writes for a seller with the switch on, masked and capped (%s)', async (_name, market) => {
     const model = modelOf();
     const audience = { kind: 'seller', sellerId: SELLER } as const;
-    expect(await model.available(sellerContext(market), audience, 'fast')).toBe(true);
-    expect(await model.write(sellerContext(market), audience, 'fast', REQUEST, 60_000)).toEqual({
+    expect(await model.available(sellerContext(market), audience)).toBe(true);
+    expect(await model.write(sellerContext(market), audience, REQUEST, 60_000)).toEqual({
       ok: true,
       text: 'A sturdy pan.',
     });
@@ -131,8 +134,8 @@ describe('GatewayDescriptionWriterModel on the real AiGateway (AIS-03; ADR-0019 
     sellerOn = false;
     const model = modelOf();
     const audience = { kind: 'seller', sellerId: SELLER } as const;
-    expect(await model.available(sellerContext(), audience, 'fast')).toBe(false);
-    expect(await model.write(sellerContext(), audience, 'fast', REQUEST, 1000)).toEqual({
+    expect(await model.available(sellerContext(), audience)).toBe(false);
+    expect(await model.write(sellerContext(), audience, REQUEST, 1000)).toEqual({
       ok: false,
       failure: 'not-configured',
     });
@@ -147,8 +150,8 @@ describe('GatewayDescriptionWriterModel on the real AiGateway (AIS-03; ADR-0019 
       held: 50_000_000,
       spent: 50_000_000,
     });
-    expect(await model.available(sellerContext(ZZ), audience, 'fast')).toBe(false);
-    expect(await model.write(sellerContext(ZZ), audience, 'fast', REQUEST, 1000)).toEqual({
+    expect(await model.available(sellerContext(ZZ), audience)).toBe(false);
+    expect(await model.write(sellerContext(ZZ), audience, REQUEST, 1000)).toEqual({
       ok: false,
       failure: 'unavailable',
     });
@@ -158,17 +161,41 @@ describe('GatewayDescriptionWriterModel on the real AiGateway (AIS-03; ADR-0019 
       held: 50_000_000,
       spent: 50_000_000,
     });
-    expect(await model.available(sellerContext(AU), audience, 'fast')).toBe(true);
+    expect(await model.available(sellerContext(AU), audience)).toBe(true);
   });
 
   it('keeps the audiences apart: a seller cannot use the admin writer, nor an admin the seller one', async () => {
     const model = modelOf();
-    expect(await model.available(sellerContext(), { kind: 'admin' }, 'fast')).toBe(false);
-    expect(
-      await model.available(adminContext(), { kind: 'seller', sellerId: SELLER }, 'fast'),
-    ).toBe(false);
-    expect(await model.available(adminContext(), { kind: 'admin' }, 'fast')).toBe(true);
+    expect(await model.available(sellerContext(), { kind: 'admin' })).toBe(false);
+    expect(await model.available(adminContext(), { kind: 'seller', sellerId: SELLER })).toBe(false);
+    expect(await model.available(adminContext(), { kind: 'admin' })).toBe(true);
   });
+
+  it.each([
+    ['AU', AU],
+    ['ZZ', ZZ],
+  ])(
+    'is off and calls nothing when the Market has no list for the write task type (%s; G4d1, R8)',
+    async (code, market) => {
+      const model = modelOf();
+      // No list for `write` (only `chat` has one): no fallback model, so the writer is off and the
+      // product form completes without it (the panel hides "Write with AI").
+      controls.models.set(code, {
+        lists: { chat: ['model-fast'] },
+        savers: {},
+        saverAtPercent: 80,
+      });
+      const seller = { kind: 'seller', sellerId: SELLER } as const;
+      expect(await model.available(sellerContext(market), seller)).toBe(false);
+      expect(await model.available(adminContext(market), { kind: 'admin' })).toBe(false);
+      expect(await model.write(sellerContext(market), seller, REQUEST, 1000)).toEqual({
+        ok: false,
+        failure: 'not-configured',
+      });
+      expect(requests).toHaveLength(0);
+      expect(store.counters.size).toBe(0);
+    },
+  );
 
   it("drops a draft sentence that echoes the gateway's mask", () => {
     const draft = guardDraft(`A sturdy pan. Call ${MASKED} to ask.`, 'pan');

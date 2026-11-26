@@ -38,7 +38,6 @@ import {
 import {
   ASSISTANT_SETTINGS_PATH,
   AUDIENCES,
-  MODEL_TIERS,
   REPLY_LANGUAGES,
   RETENTIONS,
   SCOPES,
@@ -88,7 +87,6 @@ const CHANGE_LABEL: Record<keyof AssistantForm, string> = {
   audience: 'audience.label',
   audiencePercent: 'audience-percent.label',
   scope: 'scope.label',
-  modelTier: 'model.label',
   users: 'users.label',
   guestMessageLimit: 'guest-limit.label',
   customerMessageLimit: 'customer-limit.label',
@@ -104,7 +102,6 @@ const CHANGE_LABEL: Record<keyof AssistantForm, string> = {
 const CHOICE_GROUP: Partial<Record<keyof AssistantForm, string>> = {
   audience: 'audience',
   scope: 'scope',
-  modelTier: 'model',
   users: 'users',
   retention: 'retention',
   replyLanguage: 'language',
@@ -159,14 +156,12 @@ async function reload(): Promise<AssistantSettingsAnswer | null> {
   return fresh.ok ? fresh.body : null;
 }
 
-/** The model the server configures for a tier, or null. */
-function modelOf(answer: AssistantSettingsAnswer, tier: string): string | null {
-  return answer.models.find((model) => model.tier === tier)?.modelId ?? null;
-}
-
-/** On, with a key and a model for its tier: the only state in which buyers can be served. */
+/**
+ * Whether the server holds the model key. Buyers are served only with it and with a model list for
+ * the chat task type (AI Gateway settings); the model tier went in AI Gateway G4d1.
+ */
 function configured(answer: AssistantSettingsAnswer): boolean {
-  return answer.apiKey === 'set' && modelOf(answer, answer.settings.modelTier) !== null;
+  return answer.apiKey === 'set';
 }
 
 export function AssistantSettingsPanel({
@@ -354,15 +349,6 @@ export function AssistantSettingsPanel({
     );
   }
 
-  const tierHelp = MODEL_TIERS.map((tier) =>
-    t(`${P}.model.configured`, {
-      tier: t(`${P}.model.${tier}`),
-      model: modelOf(answer, tier) ?? t(`${P}.model.none`),
-    }),
-  )
-    .concat(t(`${P}.model.help`))
-    .join(' · ');
-
   return (
     <SettingsPage
       {...frame}
@@ -467,24 +453,6 @@ export function AssistantSettingsPanel({
             text={form.basketProposals ? t(`${P}.status.on`) : t(`${P}.status.off`)}
             checked={form.basketProposals}
             onChange={(event) => set('basketProposals', event.target.checked)}
-          />
-        </SettingRow>
-        <SettingRow
-          settingId="assistant-model"
-          label={t(`${P}.model.label`)}
-          help={tierHelp}
-          changed={changed('modelTier')}
-        >
-          <SettingSelect
-            name="modelTier"
-            options={options(
-              MODEL_TIERS,
-              'model',
-              MODEL_TIERS.filter((tier) => modelOf(answer, tier) === null),
-              'not-configured-option',
-            )}
-            value={form.modelTier}
-            onChange={(event) => set('modelTier', event.target.value as AssistantForm['modelTier'])}
           />
         </SettingRow>
         <SettingRow label={t(`${P}.language.label`)} changed={changed('replyLanguage')}>
@@ -637,7 +605,7 @@ export function AssistantSettingsPanel({
   );
 }
 
-/** What is in force, read-only: the switch, the server's key and model, and spend. */
+/** What is in force, read-only: the switch, the server's key, and spend. */
 function StatusCard({
   answer,
   zone,
@@ -652,7 +620,6 @@ function StatusCard({
   const { spend, settings } = answer;
   const usd = (amount: number) => t(`${P}.spend.amount`, { amount });
   const usdPrecise = (amount: number) => t(`${P}.spend.amount-precise`, { amount });
-  const model = modelOf(answer, answer.settings.modelTier);
   const muted = (text: string) => <span className="text-fg-muted">{text}</span>;
   const rows: DataListRow[] = [
     {
@@ -671,10 +638,6 @@ function StatusCard({
         ) : (
           <Badge tone="attention">{t(`${P}.status.key-not-set`)}</Badge>
         ),
-    },
-    {
-      label: t(`${P}.status.model`),
-      value: model === null ? muted(t(`${P}.model.none`)) : <span dir="ltr">{model}</span>,
     },
     {
       label: t(`${P}.status.spend-today`),
@@ -744,7 +707,6 @@ function summaryRows(
       label: t(`${P}.basket.label`),
       value: t(`${P}.status.${settings.basketProposals ? 'on' : 'off'}`),
     },
-    { label: t(`${P}.model.label`), value: t(`${P}.model.${settings.modelTier}`) },
     { label: t(`${P}.language.label`), value: t(`${P}.language.${settings.replyLanguage}`) },
     { label: t(`${P}.welcome.label`), value: settings.welcomeText },
     { label: t(`${P}.users.label`), value: t(`${P}.users.${settings.users}`) },

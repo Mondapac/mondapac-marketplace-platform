@@ -25,7 +25,6 @@ const DEFAULTS: AssistantSettings = {
   audience: 'internal',
   audiencePercent: null,
   scope: 'read-only',
-  modelTier: 'fast',
   users: 'guests-and-customers',
   guestMessageLimit: 20,
   customerMessageLimit: 40,
@@ -47,10 +46,6 @@ const answer = (
   version: 0,
   settings: { ...DEFAULTS, ...settings },
   apiKey: 'not-set',
-  models: [
-    { tier: 'fast', modelId: 'model-fast-test' },
-    { tier: 'balanced', modelId: null },
-  ],
   spend: { todayMicroUsd: 0, monthMicroUsd: 0, conversationsToday: 0, lastAutoOff: null },
   unavailableOptions: UNAVAILABLE,
   ...more,
@@ -80,7 +75,6 @@ describe('AssistantSettingsPanel', () => {
     expect(screen.getByLabelText<HTMLInputElement>('Assistant switched on').checked).toBe(false);
     expect(screen.getByLabelText<HTMLSelectElement>('Show to').value).toBe('internal');
     expect(screen.getByLabelText<HTMLSelectElement>('What it can do').value).toBe('read-only');
-    expect(screen.getByLabelText<HTMLSelectElement>('Model').value).toBe('fast');
     expect(screen.getByLabelText<HTMLInputElement>('Messages per guest').value).toBe('20');
     expect(screen.getByLabelText<HTMLInputElement>('Daily cap').value).toBe('10');
     expect(screen.getByLabelText<HTMLInputElement>('Monthly cap').value).toBe('200');
@@ -190,33 +184,35 @@ describe('AssistantSettingsPanel', () => {
     expect(compared('Basket proposals from a list')).toMatchObject({ saved: 'On', yours: 'Off' });
   });
 
-  it('offers a tier without a server model disabled', () => {
+  it('has no model tier picker or model row: the models are the AI Gateway lists (G4d1)', () => {
     mount(answer());
-    const balanced = screen.getByRole<HTMLOptionElement>('option', {
-      name: 'Balanced (not configured on the server)',
+    expect(screen.queryByLabelText('Model')).toBeNull();
+    expect(screen.queryByText('Configured model')).toBeNull();
+    expect(screen.queryByRole('option', { name: /Fast|Balanced/ })).toBeNull();
+  });
+
+  it('never sends a model tier with a save', async () => {
+    call.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: answer({ enabled: true }, { version: 1 }),
     });
-    expect(balanced.disabled).toBe(true);
+    mount(answer());
+    fireEvent.click(screen.getByLabelText('Assistant switched on'));
+    save();
+    await waitFor(() => expect(call).toHaveBeenCalled());
+    const body = call.mock.calls[0]?.[2] as { settings: Record<string, unknown> };
+    expect(Object.keys(body.settings)).not.toContain('modelTier');
   });
 
   it('renders server text inert', () => {
     const markup = '<img src=x onerror="alert(1)">';
-    const { container } = mount(
-      answer(
-        { welcomeText: markup },
-        {
-          models: [
-            { tier: 'fast', modelId: markup },
-            { tier: 'balanced', modelId: null },
-          ],
-        },
-      ),
-      false,
-    );
+    const { container } = mount(answer({ welcomeText: markup }), false);
     expect(container.querySelector('img')).toBeNull();
-    expect(screen.getAllByText(markup).length).toBe(2);
+    expect(screen.getAllByText(markup).length).toBe(1);
   });
 
-  it('warns when switched on without a key or model', () => {
+  it('warns when switched on without a key', () => {
     mount(answer({ enabled: true }));
     expect(screen.getByText(/buyers do not see it yet/)).toBeTruthy();
     cleanup();

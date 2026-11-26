@@ -1,6 +1,5 @@
 import type { CallContext, MarketId } from '@mondapac/shared-kernel';
 import type { ModelRequest, ModelTurn } from '../../../../platform/ai/model-provider';
-import type { ModelTier } from '../../domain/assistant-settings';
 
 /** The answer of one model call: the turn and what it cost, or why there is none. */
 export type ModelAnswer =
@@ -19,19 +18,16 @@ export type ModelAnswer =
  */
 export interface AssistantRuntime {
   apiKeyConfigured(marketId: MarketId): boolean;
-  /** The provider model id configured for a tier in the Market, or null. */
-  modelOf(marketId: MarketId, tier: ModelTier): string | null;
   /**
-   * The gateway would run the buyer chat for this caller on the tier: the caller is a buyer, the
-   * kill switch is not set, key, model and price are set for the tier in the Market, and no AI
-   * budget cap of the chat is full. Never called inside a UnitOfWork: the gateway reads its budget
+   * The gateway would run the buyer chat for this caller: the caller is a buyer, the kill switch
+   * is not set, the Market's list for the chat task type has a usable route (no list: false,
+   * AI Gateway G4d1), and no AI budget cap of the chat is full. Never called inside a UnitOfWork: the gateway reads its budget
    * in a unit of its own (an open unit makes it answer false).
    */
-  available(context: CallContext, tier: ModelTier): Promise<boolean>;
+  available(context: CallContext): Promise<boolean>;
   /** One model round of the buyer turn `turnId` (the gateway allows the chat's rounds per turn). */
   complete(
     context: CallContext,
-    tier: ModelTier,
     request: ModelRequest,
     timeoutMs: number,
     turnId: string,

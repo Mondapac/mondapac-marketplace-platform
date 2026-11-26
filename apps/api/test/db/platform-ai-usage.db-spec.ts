@@ -31,8 +31,15 @@ import { AI_ROUTE_CATALOGUE } from '../../src/platform/ai/catalogue/route-catalo
 import { AI_EVALUATION_RESULTS } from '../../src/platform/ai/evaluations/evaluation-results';
 import { CATALOG_AI_CAPABILITIES } from '../../src/modules/catalog/contracts/ai-capabilities';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
-import { capsOfBudget, type TestBudget } from '../support/ai-gateway-controls';
-import { NO_CAPS, type AiCaps } from '../../src/platform/ai/gateway-controls';
+import { capsOfBudget, listsOf, type TestBudget } from '../support/ai-gateway-controls';
+import {
+  AI_GATEWAY_CONTROLS,
+  NO_CAPS,
+  NO_MODEL_LISTS,
+  type AiCaps,
+  type AiGatewayControls,
+  type AiModelLists,
+} from '../../src/platform/ai/gateway-controls';
 
 // AI Gateway G2 (docs/design/domain/platform-ai.md sections 7 and 10): the usage and budget
 // tables in a real database. Concurrent reservations never pass a cap, a settle counts once, the
@@ -99,6 +106,13 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
   let gateway: AiGateway;
   let sql: Client;
   let owner: Client;
+  const warnings: unknown[] = [];
+  /**
+   * The Market's model lists the gateway sees. The caps and the stop are the real settings reader's
+   * answer; the lists are set here, so this spec writes no `ai-models-*` row that the parallel
+   * settings spec would wipe or read (the real list read is tested there, G4b).
+   */
+  let lists: AiModelLists = listsOf('model-fast');
   const provider: ModelProvider = {
     call: () =>
       Promise.resolve({
@@ -109,13 +123,17 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
   };
 
   beforeAll(async () => {
-    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation((message: unknown) => {
+      warnings.push(message);
+    });
     const moduleRef = await Test.createTestingModule({
       imports: [
         AppModule.register({
           config: testAppConfig({
             DATABASE_URL: testDatabaseUrl(),
             ASSISTANT_MODEL_API_KEY: 'AU=sk-test-canary-key-0001,ZZ=sk-test-canary-key-0002',
+            // Removed in G4d1 and still set here on purpose: the app boots, warns once and never
+            // uses it as a model (a task type's models are the Market's list in settings).
             ASSISTANT_MODEL_FAST: 'AU=model-fast,ZZ=model-fast',
             AI_BEDROCK_API_KEY: 'AU=bedrock-test-canary-key-0001,ZZ=bedrock-test-canary-key-0002',
           }),
@@ -136,6 +154,9 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
     app = await moduleRef.init();
     usage = app.get(AiUsage);
     gateway = app.get(AiGateway);
+    const controls = app.get<AiGatewayControls>(AI_GATEWAY_CONTROLS, { strict: false });
+    const read = controls.read.bind(controls);
+    controls.read = async (context) => ({ ...(await read(context)), models: lists });
     sql = new Client({ connectionString: testDatabaseUrl() });
     await sql.connect();
     owner = new Client({ connectionString: ownerTestDatabaseUrl() });
@@ -176,6 +197,13 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
       [market.marketId, PLATFORM_TENANT_ID, code, value, uuid()],
     );
   };
+
+  it('boots with the removed tier variable set, naming it in one ai.config.removed warning (G4d1)', () => {
+    expect(warnings).toContainEqual(
+      expect.objectContaining({ msg: 'ai.config.removed', variables: ['ASSISTANT_MODEL_FAST'] }),
+    );
+    expect(JSON.stringify(warnings)).not.toContain('AU=model-fast');
+  });
 
   describe.each(TEST_MARKETS)('Market %s', (code) => {
     const market = marketOf(code);
@@ -338,9 +366,7 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
 
     it('runs the gateway end to end: counts the call with no text, then refuses at a full cap without calling', async () => {
       const context = adminContext(market);
-      const run = await gateway.run('catalog.description-writer.admin', context, REQUEST, {
-        tier: 'fast',
-      });
+      const run = await gateway.run('catalog.description-writer.admin', context, REQUEST, {});
       expect(run).toMatchObject({ ok: true });
       const { rows } = await sql.query(
         `SELECT * FROM platform.ai_calls WHERE market_id = $1 AND capability = 'catalog.description-writer.admin'`,
@@ -353,15 +379,34 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
       await setSetting(market, 'ai-cap-market-day', '1');
       try {
         const spy = jest.spyOn(provider, 'call');
-        expect(
-          await gateway.status('catalog.description-writer.admin', context, { tier: 'fast' }),
-        ).toEqual({ on: false, reason: 'over-budget' });
-        expect(
-          await gateway.run('catalog.description-writer.admin', context, REQUEST, { tier: 'fast' }),
-        ).toEqual({ ok: false, reason: 'over-budget', costMicroUsd: 0 });
+        expect(await gateway.status('catalog.description-writer.admin', context, {})).toEqual({
+          on: false,
+          reason: 'over-budget',
+        });
+        expect(await gateway.run('catalog.description-writer.admin', context, REQUEST, {})).toEqual(
+          { ok: false, reason: 'over-budget', costMicroUsd: 0 },
+        );
         expect(spy).not.toHaveBeenCalled();
       } finally {
         await setSetting(market, 'ai-cap-market-day', 'none');
+      }
+    });
+
+    it('is off (no-route) without a list for the task type, even with the old tier variable set (G4d1, R8)', async () => {
+      const context = adminContext(market);
+      lists = NO_MODEL_LISTS;
+      try {
+        const spy = jest.spyOn(provider, 'call');
+        expect(await gateway.status('catalog.description-writer.admin', context, {})).toEqual({
+          on: false,
+          reason: 'no-route',
+        });
+        expect(await gateway.run('catalog.description-writer.admin', context, REQUEST, {})).toEqual(
+          { ok: false, reason: 'off', costMicroUsd: 0 },
+        );
+        expect(spy).not.toHaveBeenCalled();
+      } finally {
+        lists = listsOf('model-fast');
       }
     });
 
@@ -370,12 +415,13 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
       await setSetting(market, 'ai-gateway-emergency-stop', 'on');
       try {
         const spy = jest.spyOn(provider, 'call');
-        expect(
-          await gateway.status('catalog.description-writer.admin', context, { tier: 'fast' }),
-        ).toEqual({ on: false, reason: 'emergency-stop' });
-        expect(
-          await gateway.run('catalog.description-writer.admin', context, REQUEST, { tier: 'fast' }),
-        ).toEqual({ ok: false, reason: 'off', costMicroUsd: 0 });
+        expect(await gateway.status('catalog.description-writer.admin', context, {})).toEqual({
+          on: false,
+          reason: 'emergency-stop',
+        });
+        expect(await gateway.run('catalog.description-writer.admin', context, REQUEST, {})).toEqual(
+          { ok: false, reason: 'off', costMicroUsd: 0 },
+        );
         expect(spy).not.toHaveBeenCalled();
       } finally {
         await setSetting(market, 'ai-gateway-emergency-stop', 'off');
@@ -405,9 +451,7 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
               usage: { inputTokens: 100, outputTokens: 20 },
             }),
       );
-      const run = await gateway.run('catalog.description-writer.admin', context, REQUEST, {
-        tier: 'fast',
-      });
+      const run = await gateway.run('catalog.description-writer.admin', context, REQUEST, {});
       expect(run).toMatchObject({ ok: true, route: { route: 'bedrock-mantle', attempt: 2 } });
       expect(call).toHaveBeenCalledTimes(2);
       const { rows } = await sql.query<{ attempt: number; outcome: string; model: string }>(

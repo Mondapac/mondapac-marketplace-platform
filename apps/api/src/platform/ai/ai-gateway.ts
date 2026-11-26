@@ -10,7 +10,7 @@ import {
   type AiMarketControls,
 } from './gateway-controls';
 import { callThroughPlan, costMicroUsd, type GatewayRun } from './model-call';
-import { ModelGateway, type AiModelTier } from './model-gateway';
+import { ModelGateway } from './model-gateway';
 import { AiRouter, planPrice } from './routing/ai-router';
 import type { ModelRequest } from './model-provider';
 import { maskRequest } from './personal-data-masker';
@@ -40,11 +40,6 @@ export type GatewayStatus =
   { readonly on: true } | { readonly on: false; readonly reason: GatewayOffReason };
 
 export interface GatewayOptions {
-  /**
-   * The capability's configured model tier, passed by the owning module from its own setting
-   * (interim until priority lists exist, G4; design section 5).
-   */
-  readonly tier: AiModelTier;
   /** Required for a seller-scoped capability; from the seller actor or the loaded aggregate. */
   readonly sellerId?: Id<'Seller'>;
   /** May only shorten the capability's `timeoutMs`. */
@@ -60,11 +55,13 @@ export interface GatewayOptions {
   readonly turnId?: string;
 }
 
-/** What an admin settings card shows about the Market's model setup; never the key. */
+/**
+ * What an admin settings card shows about the Market's model setup; never the key. The models are
+ * the Market's priority lists (AI Models page), not part of this answer.
+ */
 export interface GatewaySetup {
   readonly killSwitch: boolean;
   readonly keyConfigured: boolean;
-  readonly models: { readonly fast: string | null; readonly balanced: string | null };
 }
 
 /** What an "off" evaluation carries: stopped, nothing allowed (never used to call). */
@@ -149,7 +146,8 @@ function scopeOf(spec: CapabilitySpec, context: CallContext, options: GatewayOpt
  * The Market's emergency stop and its caps are the `settings` module's AI Gateway settings (G4),
  * read through {@link AiGatewayControls} once per `status` and `run`; a read that fails is off.
  * Interim: the Market's on/off switch of each capability stays in its owning module, which checks
- * it before `status` and `run`, and the module passes its configured tier.
+ * it before `status` and `run`. The models are the Market's priority list for the capability's task
+ * type; a task type without one has no route (`no-route`, G4d1).
  */
 @Injectable()
 export class AiGateway {
@@ -184,7 +182,7 @@ export class AiGateway {
       // input (two characters a token at the cap, counted one token a character) and its whole
       // output allowance (Hassan, PR 1348 M1), so the host flow shows its non-AI path (R8).
       const price = planPrice(
-        this.router.plan(context.market.marketId, spec, options.tier, false, controls.models),
+        this.router.plan(context.market.marketId, spec, false, controls.models),
       );
       const largest =
         price === null
@@ -277,7 +275,7 @@ export class AiGateway {
         saver = false;
       }
     }
-    const plan = this.router.plan(marketId, spec, options.tier, saver, models);
+    const plan = this.router.plan(marketId, spec, saver, models);
     // The one model call path (shared with the evaluation gateway, G4c): reserve, call, settle.
     const { run } = await callThroughPlan(
       {
@@ -292,15 +290,11 @@ export class AiGateway {
     return run;
   }
 
-  /** What the admin AI settings cards show (kill switch, key set or not, model per tier). */
+  /** What the admin AI settings cards show (kill switch, key set or not). */
   setup(marketId: MarketId): GatewaySetup {
     return {
       killSwitch: this.models.killSwitchSet(),
       keyConfigured: this.models.keyConfigured(marketId),
-      models: {
-        fast: this.models.modelOf(marketId, 'fast'),
-        balanced: this.models.modelOf(marketId, 'balanced'),
-      },
     };
   }
 
@@ -332,10 +326,7 @@ export class AiGateway {
       if (actor.kind === 'authenticated' && actor.sellerId !== sellerId) return off('off');
       if ((await this.sellerSwitch.isOn(context, sellerId)) !== true) return off('off');
     }
-    if (
-      this.router.plan(context.market.marketId, spec, options.tier, false, controls.models)
-        .length === 0
-    ) {
+    if (this.router.plan(context.market.marketId, spec, false, controls.models).length === 0) {
       return off('no-route');
     }
     return { status: { on: true }, controls };

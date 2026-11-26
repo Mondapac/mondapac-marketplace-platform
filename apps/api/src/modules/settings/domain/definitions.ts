@@ -30,14 +30,10 @@ export const AI_DESCRIPTION_WRITER_CODE = 'ai-description-writer';
 export const AI_DESCRIPTION_WRITER_VALUES = ['off', 'on'] as const;
 export type AiDescriptionWriter = (typeof AI_DESCRIPTION_WRITER_VALUES)[number];
 
-export const AI_DESCRIPTION_WRITER_TIER_CODE = 'ai-description-writer-tier';
-
-/**
- * Which of the Market's model tiers the writer uses. The model id of each tier, the provider and
- * the key stay server configuration (ADR-0026 decision 9, R7); only the tier is a setting.
- */
-export const AI_MODEL_TIER_VALUES = ['fast', 'balanced'] as const;
-export type AiModelTierSetting = (typeof AI_MODEL_TIER_VALUES)[number];
+// `ai-description-writer-tier` (the writer's model tier) was a setting until AI Gateway G4d1: the
+// writer's models are now the Market's list for the write task type (`ai-models-write`). Its
+// stored rows stay (no setting is deleted, ADR-0026 decision 4); with no definition, every reader
+// skips them and a review of an old change reverts as `gone`.
 
 export const MONTHLY_REVENUE_TARGET_CODE = 'monthly-revenue-target';
 
@@ -193,7 +189,7 @@ export function loosensAi(code: string, was: string, next: string): boolean {
 export const AI_MODEL_TASKS = ['chat', 'extract', 'write', 'vision'] as const;
 export type AiModelTask = (typeof AI_MODEL_TASKS)[number];
 
-/** No model chosen: the list is empty (the gateway falls back to the module's tier for now). */
+/** No model chosen: the list is empty, so the task type has no route and its AI is off (G4d1). */
 export const AI_MODELS_NONE = 'none';
 /** A model family of the route catalogue as a setting holds it: at most 20 characters (`none` is
  * never a family). */
@@ -270,14 +266,6 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = Object.freeze([
     values: AI_DESCRIPTION_WRITER_VALUES,
     defaultValue: 'off',
     safeValue: 'off',
-  },
-  {
-    code: AI_DESCRIPTION_WRITER_TIER_CODE,
-    label: 'AI description writer tier',
-    values: AI_MODEL_TIER_VALUES,
-    defaultValue: 'fast',
-    // The cheaper tier.
-    safeValue: 'fast',
   },
   {
     code: OFFER_REVIEW_EMERGENCY_STOP_CODE,

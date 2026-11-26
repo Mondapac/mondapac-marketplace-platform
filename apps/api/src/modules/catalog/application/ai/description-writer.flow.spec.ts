@@ -13,7 +13,6 @@ import type {
   DescriptionWriterModel,
   MarketDayCalendar,
   WriterModelAnswer,
-  WriterModelTier,
 } from '../ports/description-writer';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
 import {
@@ -76,10 +75,10 @@ describe.each(['AU', 'ZZ'] as const)('description writer in market %s', (code) =
     return { ...base, actor: { ...base.actor, actingAs: { adminAccountId: ADMIN } } as never };
   };
 
-  let requests: { market: MarketContext; tier: WriterModelTier; system: string; input: string }[];
+  let requests: { market: MarketContext; system: string; input: string }[];
   let answer: WriterModelAnswer;
   let configured: boolean;
-  let marketSwitch: { enabled: boolean; tier: WriterModelTier } | 'throws';
+  let marketSwitch: { enabled: boolean } | 'throws';
   let sellerSwitch: Map<string, boolean>;
   let counts: Map<string, number>;
   let preset: Map<string, number>;
@@ -92,13 +91,9 @@ describe.each(['AU', 'ZZ'] as const)('description writer in market %s', (code) =
       Promise.resolve(
         configured && (audience.kind !== 'seller' || sellerSwitch.get(audience.sellerId) === true),
       ),
-    setup: () => ({
-      killSwitch: false,
-      keyConfigured: true,
-      models: { fast: 'm-fast', balanced: 'm-balanced' },
-    }),
-    write: (c, _audience, tier, request) => {
-      requests.push({ market: c.market, tier, system: request.system, input: request.input });
+    setup: () => ({ killSwitch: false, keyConfigured: true }),
+    write: (c, _audience, request) => {
+      requests.push({ market: c.market, system: request.system, input: request.input });
       return Promise.resolve(answer);
     },
   };
@@ -163,7 +158,7 @@ describe.each(['AU', 'ZZ'] as const)('description writer in market %s', (code) =
     requests = [];
     answer = { ok: true, text: 'Tilda Sella basmati cooks in 15 minutes.\n\nGood for biryani.' };
     configured = true;
-    marketSwitch = { enabled: true, tier: 'fast' };
+    marketSwitch = { enabled: true };
     sellerSwitch = new Map([
       [SELLER, true],
       [OTHER_SELLER, true],
@@ -188,16 +183,14 @@ describe.each(['AU', 'ZZ'] as const)('description writer in market %s', (code) =
     );
     expect(requests).toHaveLength(1);
     expect(requests[0]?.market).toBe(market);
-    expect(requests[0]?.tier).toBe('fast');
     expect(requests[0]?.system).toContain('about 50 words, in a warm and inviting tone');
   });
 
-  it('writes for an admin on the Market tier, without a seller switch', async () => {
-    marketSwitch = { enabled: true, tier: 'balanced' };
+  it('writes for an admin, without a seller switch', async () => {
     sellerSwitch.clear();
     const result = await write(adminContext(), BODY, 'admin');
     expect(result.ok).toBe(true);
-    expect(requests[0]?.tier).toBe('balanced');
+    expect(requests).toHaveLength(1);
   });
 
   it('sends only the allow-listed fields and no canary', async () => {
@@ -302,10 +295,13 @@ describe.each(['AU', 'ZZ'] as const)('description writer in market %s', (code) =
 
   describe('the non-AI paths end without a draft', () => {
     it.each([
-      ['the Market switch is off', () => (marketSwitch = { enabled: false, tier: 'fast' })],
+      ['the Market switch is off', () => (marketSwitch = { enabled: false })],
       ['the settings store fails', () => (marketSwitch = 'throws')],
       ['the seller switch is off', () => sellerSwitch.set(SELLER, false)],
-      ['no model or the kill switch', () => (configured = false)],
+      [
+        'no Market model list for the write task type (no route), or the kill switch',
+        () => (configured = false),
+      ],
     ])('%s: ai.writer-off, nothing counted or sent', async (_name, arrange) => {
       arrange();
       const result = await write(sellerContext());

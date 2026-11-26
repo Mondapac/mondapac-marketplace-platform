@@ -27,6 +27,8 @@ export const SETTING_TARGET_IDS = [
   'list-paging',
   'cart-mode',
   'ai-description-writer',
+  // Retired in AI Gateway G4d1 (no definition, never written again); kept so the audit rows
+  // written before stay described by the catalogue.
   'ai-description-writer-tier',
   'offer-review-mode',
   'offer-review-certificate-badges',

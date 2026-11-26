@@ -104,8 +104,8 @@ export class ChangeCartModeRequest {
 }
 
 export class ChangeAiSettingRequest {
-  @ApiProperty({ enum: ['ai-description-writer', 'ai-description-writer-tier'] }) code!: string;
-  @ApiProperty({ enum: ['off', 'on', 'fast', 'balanced'] }) value!: string;
+  @ApiProperty({ enum: ['ai-description-writer'] }) code!: string;
+  @ApiProperty({ enum: ['off', 'on'] }) value!: string;
   @ApiProperty({ description: 'The version the admin saw; a stale edit is refused (409).' })
   expectedVersion!: number;
   @ApiProperty({
