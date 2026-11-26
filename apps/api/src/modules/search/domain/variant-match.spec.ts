@@ -38,6 +38,7 @@ describe('matchVariants', () => {
     expect(matchVariants({ ...rice, groups: [], price: null })).toEqual({
       variantId: null,
       price: { from: { amount: 500n, currency: 'AUD' }, varies: true },
+      cartVariantId: null,
     });
   });
 
@@ -51,6 +52,7 @@ describe('matchVariants', () => {
     expect(matchVariants({ ...rice, groups: [['weight=10kg']], price: null })).toEqual({
       variantId: V3,
       price: { from: { amount: 3500n, currency: 'AUD' }, varies: false },
+      cartVariantId: V3,
     });
   });
 
@@ -58,6 +60,7 @@ describe('matchVariants', () => {
     expect(matchVariants({ ...rice, groups: [['weight=5kg']], price: null })).toEqual({
       variantId: null,
       price: null,
+      cartVariantId: null,
     });
   });
 
@@ -67,6 +70,7 @@ describe('matchVariants', () => {
     ).toEqual({
       variantId: V1,
       price: { from: { amount: 500n, currency: 'AUD' }, varies: true },
+      cartVariantId: null,
     });
   });
 
@@ -74,10 +78,18 @@ describe('matchVariants', () => {
     expect(matchVariants({ ...rice, groups: [], price: { min: 1000n, max: null } })).toEqual({
       variantId: V3,
       price: { from: { amount: 3500n, currency: 'AUD' }, varies: false },
+      cartVariantId: V3,
     });
     expect(
       matchVariants({ ...rice, groups: [['weight=1kg']], price: { min: 1000n, max: null } }),
-    ).toEqual({ variantId: null, price: null });
+    ).toEqual({ variantId: null, price: null, cartVariantId: null });
+  });
+
+  it('a product with one sellable unit carts that unit from the card', () => {
+    const one = { facetCodes: [], variants: [unit(V1, 0, ['weight=1kg'], 500n)] };
+    const match = matchVariants({ ...one, groups: [], price: null });
+    expect(match.variantId).toBe(null);
+    expect(match.cartVariantId).toBe(V1);
   });
 
   it('an unpriced variant never matches and gives no price', () => {
@@ -85,6 +97,7 @@ describe('matchVariants', () => {
     expect(matchVariants({ ...units, groups: [], price: null })).toEqual({
       variantId: null,
       price: null,
+      cartVariantId: null,
     });
   });
 

@@ -72,6 +72,11 @@ export type ShelfCard = Omit<ProductCard, 'price'> & {
   readonly priceFrom?: boolean;
   /** The variant the card opens (`/p/<id>?v=<variantId>`): the one a filter or a GTIN chose. */
   readonly variantId?: string;
+  /**
+   * The sell unit the card's add button carts (live): set only when the read names exactly one
+   * priced, in-stock Variant of the Offer. Without it a live card opens the product page to choose.
+   */
+  readonly unit?: { readonly offerId: string; readonly variantId: string };
 };
 
 export interface SellerSummary {

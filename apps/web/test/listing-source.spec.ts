@@ -154,6 +154,24 @@ describe('products of a listing', () => {
     expect(page?.items.some((card) => 'price' in card)).toBe(false);
   });
 
+  it('gives the card its sell unit only when the API names exactly one', async () => {
+    const V = '0b5e1c3a-0000-4000-8000-0000000000d1';
+    const priced = { price: { from: { amount: '2290', currency: 'AUD' }, varies: false } };
+    const { read } = reader({
+      kind: 'ok',
+      body: {
+        items: [
+          { ...item(P1, 'One unit'), ...priced, variantId: null, cartVariantId: V },
+          { ...item(P2, 'Several units'), ...priced, variantId: null, cartVariantId: null },
+        ],
+        hasMore: false,
+      },
+    });
+    const page = await liveProducts({ q: 'lamb', page: 1, pageSize: 12 }, read);
+    expect(page?.items[0]?.unit).toEqual({ offerId: OFFER, variantId: V });
+    expect(page?.items[1]?.unit).toBeUndefined();
+  });
+
   it('drops an item whose product id is not a UUID, since the card links to it', async () => {
     const body = {
       items: [

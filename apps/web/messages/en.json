@@ -72,6 +72,7 @@
     "regular-price": "Regular price",
     "only-left": "Only {count} left",
     "add": "Add {name} to cart",
+    "choose-options": "Choose options for {name}",
     "quantity": "Quantity of {name}",
     "decrease": "Decrease",
     "increase": "Increase",

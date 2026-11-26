@@ -65,6 +65,15 @@ export class SearchResultItemBody extends ProductSearchItemBody {
   })
   variantId!: string | null;
   @ApiProperty({
+    format: 'uuid',
+    nullable: true,
+    type: String,
+    description:
+      'The unit the card add button puts in the cart: the only matching in-stock priced variant; ' +
+      'null when several match (the buyer picks on the product page) or none is sellable.',
+  })
+  cartVariantId!: string | null;
+  @ApiProperty({
     type: SearchItemPriceBody,
     nullable: true,
     description:

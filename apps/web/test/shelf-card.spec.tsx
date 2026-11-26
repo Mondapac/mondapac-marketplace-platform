@@ -17,10 +17,10 @@ const CARD: ShelfCard = {
   certifications: [],
 };
 
-function show(card: ShelfCard) {
+function show(card: ShelfCard, live = false) {
   return render(
     <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
-      <StoreProvider>
+      <StoreProvider live={live}>
         <ProductCard product={card} />
       </StoreProvider>
     </NextIntlClientProvider>,
@@ -65,5 +65,34 @@ describe('shelf card from the API', () => {
     const { container } = show({ ...CARD, price: { amount: 2290, currency: 'AUD' } });
     expect(container.querySelector('.badge')).toBeNull();
     expect(container.querySelector('.pr b.sp')).toBeNull();
+  });
+
+  describe('live', () => {
+    const OFFER = '01990000-0000-7000-8000-000000000001';
+    const VARIANT = '01990000-0000-7000-8000-000000000002';
+    const priced = { ...CARD, price: { amount: 2290, currency: 'AUD' } };
+
+    it('shows the add button on a card that names one sell unit', () => {
+      show({ ...priced, unit: { offerId: OFFER, variantId: VARIANT } }, true);
+      expect(screen.getByRole('button', { name: 'Add Lamb shoulder, 1 kg to cart' })).toBeDefined();
+    });
+
+    it('links to the product page when the card names no single unit', () => {
+      show(priced, true);
+      const link = screen.getByRole('link', { name: 'Choose options for Lamb shoulder, 1 kg' });
+      expect(link).toHaveProperty('href', 'http://localhost:3000/p/p1');
+    });
+
+    it('links to the product page on a "From" price', () => {
+      show({ ...priced, priceFrom: true }, true);
+      expect(
+        screen.getByRole('link', { name: 'Choose options for Lamb shoulder, 1 kg' }),
+      ).toBeDefined();
+    });
+
+    it('shows no button on a card that is out of stock', () => {
+      show({ ...priced, lowStock: 0, unit: { offerId: OFFER, variantId: VARIANT } }, true);
+      expect(screen.queryByRole('button')).toBeNull();
+    });
   });
 });

@@ -126,6 +126,10 @@ export function categoriesOf(body: unknown): {
   return { top, slugs: new Map(rows.map((c) => [c.id, c.slug])) };
 }
 
+const UNIT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+const uuidOf = (value: unknown): string | undefined =>
+  typeof value === 'string' && UNIT_UUID.test(value) ? value.toLowerCase() : undefined;
+
 /**
  * A shelf item as a card, or null when it cannot be shown: no id or name, or a price that excludes
  * tax (the card says "including GST"). Without a price (best sellers and category shelves carry
@@ -178,10 +182,19 @@ export function cardOf(
       : (listed.length > 0 ? listed : ref === undefined ? [] : [ref])
           .map((r) => photo(item.productId as string, r.imageId, 'large'))
           .filter((u): u is string => u !== undefined);
+  // The sell unit the add button carts: shelf items name the Variant their price is on; a search
+  // item names it only when exactly one unit matches (`cartVariantId`).
+  const offerId = uuidOf(item.offerId);
+  const unitVariant = uuidOf(item.cartVariantId) ?? uuidOf(item.variantId);
+  const unit =
+    price !== undefined && offerId !== undefined && unitVariant !== undefined
+      ? { offerId, variantId: unitVariant }
+      : undefined;
   return {
     id: item.productId,
     name,
     sellerName: '',
+    ...(unit === undefined ? {} : { unit }),
     category: (typeof firstCategory === 'string' ? slugs.get(firstCategory) : undefined) ?? '',
     ...(price === undefined ? {} : { price }),
     ...(wasPrice === undefined ? {} : { wasPrice }),

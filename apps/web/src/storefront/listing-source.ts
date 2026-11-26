@@ -190,8 +190,20 @@ export function searchCardOf(
   const card = cardOf(rest, slugs, photo, allImages);
   if (card === null) return null;
   const price: Money | undefined = isObject(rawPrice) ? moneyOf(rawPrice.from) : undefined;
+  // The add button carts the unit only when exactly one matches (the API's `cartVariantId`).
+  const cartVariant = item.cartVariantId;
+  const offerId = item.offerId;
+  const unit =
+    price !== undefined &&
+    typeof cartVariant === 'string' &&
+    UUID.test(cartVariant) &&
+    typeof offerId === 'string' &&
+    UUID.test(offerId)
+      ? { offerId: offerId.toLowerCase(), variantId: cartVariant.toLowerCase() }
+      : undefined;
   return {
     ...card,
+    ...(unit === undefined ? {} : { unit }),
     ...(price === undefined
       ? {}
       : { price, ...(isObject(rawPrice) && rawPrice.varies === true ? { priceFrom: true } : {}) }),
