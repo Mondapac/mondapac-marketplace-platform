@@ -7123,6 +7123,12 @@ button.login {
   color: var(--sf-ink);
   font-weight: 800;
 }
+.rail h3.rah .rname {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .rau {
   position: relative;
   flex: none;
