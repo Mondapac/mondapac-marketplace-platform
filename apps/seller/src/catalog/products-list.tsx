@@ -457,7 +457,7 @@ export function ProductsList({
                   {t('import')}
                 </LinkButton>
               ) : null}
-              {canEdit ? <AddOfferButton csrfToken={csrfToken} /> : null}
+              {canEdit ? <AddOfferButton csrfToken={csrfToken} marketId={marketId} /> : null}
               {/* An empty store carries Add product in its empty state, so it is shown once. */}
               {canEdit && !noProducts ? (
                 <LinkButton href="/products/new">{t('add')}</LinkButton>

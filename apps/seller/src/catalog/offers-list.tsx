@@ -429,7 +429,7 @@ export function OffersList({
         actions: (
           <>
             {permissionKeys.includes(EDIT_PERMISSION) ? (
-              <AddOfferButton csrfToken={csrfToken} />
+              <AddOfferButton csrfToken={csrfToken} marketId={marketId} />
             ) : null}
             <OffersBulk
               selection={{

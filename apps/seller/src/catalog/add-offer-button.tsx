@@ -7,7 +7,13 @@ import { useState } from 'react';
 import { AddOfferDialog } from './add-offer-dialog.tsx';
 
 /** The "Add offer" button of the Products and Offers headers, and the search it opens. */
-export function AddOfferButton({ csrfToken }: { readonly csrfToken: string }) {
+export function AddOfferButton({
+  csrfToken,
+  marketId,
+}: {
+  readonly csrfToken: string;
+  readonly marketId: string;
+}) {
   const t = useTranslations('catalog.addOffer');
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -20,6 +26,7 @@ export function AddOfferButton({ csrfToken }: { readonly csrfToken: string }) {
         <AddOfferDialog
           open
           csrfToken={csrfToken}
+          marketId={marketId}
           onClose={() => setOpen(false)}
           navigate={(path) => {
             setOpen(false);

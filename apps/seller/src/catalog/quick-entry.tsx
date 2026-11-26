@@ -70,6 +70,7 @@ export function QuickEntryTable({
   canEditStock,
   canEstimate,
   csrfToken,
+  marketId,
 }: {
   readonly groups: readonly QuickGroup[];
   /** Drafts that could not be read; they wait in Drafts. */
@@ -85,6 +86,8 @@ export function QuickEntryTable({
   readonly canEditStock: boolean;
   readonly canEstimate: boolean;
   readonly csrfToken: string;
+  /** The panel's Market: the photos of the Add offer search come from its image route. */
+  readonly marketId: string;
 }) {
   const t = useTranslations();
   const locale = useLocale();
@@ -302,6 +305,7 @@ export function QuickEntryTable({
     <AddOfferDialog
       open
       csrfToken={csrfToken}
+      marketId={marketId}
       onClose={() => setSearchOpen(false)}
       navigate={(path) => {
         setSearchOpen(false);

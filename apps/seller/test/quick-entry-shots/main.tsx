@@ -131,6 +131,7 @@ createRoot(document.getElementById('root')!).render(
           canEditStock
           canEstimate
           csrfToken="csrf"
+          marketId="AU"
         />
       )}
     </div>

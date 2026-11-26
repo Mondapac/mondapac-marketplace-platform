@@ -55,6 +55,7 @@ export default async function QuickEntryPage({
         canEditStock={keys.includes(STOCK_EDIT_PERMISSION)}
         canEstimate={canEstimateReceive(keys)}
         csrfToken={session.csrfToken}
+        marketId={marketId}
       />
     </SellerShell>
   );

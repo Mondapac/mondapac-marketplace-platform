@@ -6,6 +6,7 @@ import {
   Button,
   CheckboxRow,
   Dialog,
+  ListThumb,
   SearchField,
   Spinner,
   TextAreaField,
@@ -15,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { createDraftOffer, loadOfferDefaults } from './draft-offers.ts';
 import type { OfferDefaults } from './offer-defaults.ts';
+import { productThumbSrc } from './product-thumb.ts';
 import { QUICK_MAX } from './quick-entry-logic.ts';
 
 export { defaultCondition } from './offer-defaults.ts';
@@ -114,12 +116,15 @@ export function createErrorKey(code: string): string {
 export function AddOfferDialog({
   open,
   csrfToken,
+  marketId,
   onClose,
   navigate,
   initialText = '',
 }: {
   readonly open: boolean;
   readonly csrfToken: string;
+  /** The panel's Market: the product photos are served by its public image route. */
+  readonly marketId: string;
   /** The search the dialog opens with ("See all" under the Products list passes its search). */
   readonly initialText?: string;
   readonly onClose: () => void;
@@ -399,23 +404,26 @@ export function AddOfferDialog({
           ) : (
             <ul className="flex flex-col divide-y divide-line" aria-busy={loading}>
               {answer.items.map((product) => (
-                <li key={product.productId} className="py-1">
-                  <CheckboxRow
-                    touch
-                    label={product.name ?? product.productCode}
-                    help={[
-                      product.brandName,
-                      product.categoryName,
-                      product.productCode,
-                      t('sizes', { count: product.variantCount }),
-                      product.alreadySelling ? t('already-selling') : null,
-                    ]
-                      .filter((part): part is string => part !== null)
-                      .join(' · ')}
-                    checked={picked.has(product.productId)}
-                    disabled={product.alreadySelling}
-                    onChange={(event) => toggle(product, event.target.checked)}
-                  />
+                <li key={product.productId} className="flex items-center gap-3 py-1">
+                  <ListThumb src={productThumbSrc(marketId, { ...product, scope: 'PLATFORM' })} />
+                  <div className="min-w-0 flex-1">
+                    <CheckboxRow
+                      touch
+                      label={product.name ?? product.productCode}
+                      help={[
+                        product.brandName,
+                        product.categoryName,
+                        product.productCode,
+                        t('sizes', { count: product.variantCount }),
+                        product.alreadySelling ? t('already-selling') : null,
+                      ]
+                        .filter((part): part is string => part !== null)
+                        .join(' · ')}
+                      checked={picked.has(product.productId)}
+                      disabled={product.alreadySelling}
+                      onChange={(event) => toggle(product, event.target.checked)}
+                    />
+                  </div>
                 </li>
               ))}
             </ul>
