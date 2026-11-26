@@ -97,6 +97,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // "Add offer": the published platform products the seller may sell, and a pasted barcode list
     // (query: q, barcodes, page, notSelling; the API validates every value and the seller's category scope).
     'catalog/seller/products/platform-search',
+    // "Add offer": the shop's create settings (conditions and the like); the dialog reads them
+    // before it lets the seller create a draft. The API checks `catalog.own-product.edit`.
+    'catalog/seller/products/options',
     // The Products list as a file (CSV or XLSX): the list's selector plus format, columns and the
     // selected product ids; the answer is an attachment.
     'catalog/seller/products/export',
