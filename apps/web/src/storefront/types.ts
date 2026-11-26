@@ -171,6 +171,12 @@ export type HomeSection =
   | { readonly kind: 'promos'; readonly banners: readonly PromoBanner[] }
   | { readonly kind: 'categories' }
   | { readonly kind: 'sellers'; readonly title: string; readonly href: string }
+  /**
+   * A section whose read failed (refused, too slow, unreachable): the page says so with Try
+   * again instead of leaving it out. `title` and `href` when the layout names them; a section
+   * with neither (the category strip, or the whole layout) shows the message on its own.
+   */
+  | { readonly kind: 'failed'; readonly title?: string; readonly href?: string }
   | {
       readonly kind: 'products';
       readonly title: string;

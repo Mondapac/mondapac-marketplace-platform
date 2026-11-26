@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { ApiRead } from '../src/storefront/api.ts';
-import { cardOf, loadHome, moneyOf, safeHref, storesOf } from '../src/storefront/home-source.ts';
+import {
+  cardOf,
+  homeFrom,
+  loadHome,
+  moneyOf,
+  safeHref,
+  storesOf,
+} from '../src/storefront/home-source.ts';
 import { SAMPLE_CONTENT } from '../src/storefront/sample-home.ts';
 import type { HomeSection } from '../src/storefront/types.ts';
 
@@ -117,6 +124,8 @@ const REAL: Answers = {
   'catalog/categories': TREE,
   'search/bestsellers': { items: [BESTSELLER] },
   'search/specials': { items: [SPECIAL, { ...SPECIAL, offerId: 'o3' }] },
+  // No store yet: an empty list leaves the sellers section out (a failed one would not).
+  'sellers/stores': { items: [] },
 };
 
 const shelf = (sections: readonly HomeSection[], title: string) =>
@@ -255,6 +264,7 @@ describe('home source: empty data', () => {
     'catalog/categories': { locale: 'en-AU', categories: [] },
     'search/bestsellers': { items: [] },
     'search/specials': { items: [] },
+    'sellers/stores': { items: [] },
   };
 
   it('leaves out every empty section, with no sample categories or shelves', async () => {
@@ -271,19 +281,51 @@ describe('home source: empty data', () => {
 });
 
 describe('home source: API error', () => {
-  it('answers an empty home, not the sample, when the layout read fails', async () => {
+  it('answers one "didn\'t load" section, not the sample, when the layout read fails', async () => {
     serve({ ...REAL, 'storefront/pages/home': 503 });
-    expect(await loadWith()).toEqual({ sections: [], categories: [], sellers: [] });
+    expect(await loadWith()).toEqual({
+      sections: [{ kind: 'failed' }],
+      categories: [],
+      sellers: [],
+    });
   });
 
-  it('keeps the page when one read fails', async () => {
-    serve({ ...REAL, 'catalog/categories': 503, 'search/specials': 500 });
+  it('answers an empty home when no layout is published (storefront.page-not-found)', () => {
+    const home = homeFrom({
+      page: { kind: 'failed', status: 404, code: 'storefront.page-not-found' },
+      tree: { kind: 'ok', body: TREE },
+      shelves: new Map(),
+    });
+    expect(home).toEqual({ sections: [], categories: [], sellers: [] });
+  });
+
+  it('keeps the page and marks each section whose read failed', async () => {
+    serve({ ...REAL, 'catalog/categories': 503, 'search/specials': 500, 'sellers/stores': 503 });
     const result = await loadWith();
-    // The categories and specials are gone; the best sellers still show.
-    expect(result.sections.map((s) => [s.kind, s.kind === 'products' ? s.title : ''])).toEqual([
+    // The categories, specials and stores show "didn't load" in place; the best sellers still show.
+    expect(
+      result.sections.map((s) => [
+        s.kind,
+        s.kind === 'products' || s.kind === 'failed' ? (s.title ?? '') : '',
+      ]),
+    ).toEqual([
       ['hero', ''],
+      ['failed', ''],
       ['products', 'Best sellers'],
+      ['failed', 'Special prices this week'],
+      ['failed', 'Sellers near you'],
     ]);
+    expect(result.sections.find((s) => s.kind === 'failed' && s.title !== undefined)).toEqual({
+      kind: 'failed',
+      title: 'Special prices this week',
+      href: '/offers',
+    });
+  });
+
+  it('leaves out a section whose read answered nothing, never marking it failed', async () => {
+    serve({ ...REAL, 'search/specials': { items: [] } });
+    const kinds = (await loadWith()).sections.map((s) => s.kind);
+    expect(kinds).not.toContain('failed');
   });
 
   it('treats an answer that is not a page as no layout', async () => {
@@ -558,7 +600,7 @@ describe('home source: the hero slider', () => {
   it('shows the live slides even when the layout read fails', async () => {
     serve({ ...REAL, 'storefront/pages/home': 503, 'storefront/slides': SLIDES });
     const home = await loadWith();
-    expect(home.sections.map((s) => s.kind)).toEqual(['hero']);
+    expect(home.sections.map((s) => s.kind)).toEqual(['hero', 'failed']);
     expect(home.sections.filter((s) => s.kind === 'hero')).toHaveLength(1);
   });
 

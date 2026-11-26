@@ -78,7 +78,11 @@
     "increase": "Increase",
     "max-reached": "No more in stock",
     "empty": "Nothing to show here yet. Check back soon.",
-    "no-sellers": "No sellers deliver to this area yet."
+    "no-sellers": "No sellers deliver to this area yet.",
+    "section-failed": "This section didn't load.",
+    "section-failed-label": "Section that didn't load",
+    "section-retry": "Try again",
+    "section-retrying": "Loading…"
   },
   "slider": {
     "slide-of": "{n} of {total}",

@@ -1500,6 +1500,17 @@ svg {
   text-align: center;
   color: var(--sf-slate);
 }
+.sec-failed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 16px;
+  padding: 16px;
+}
+.sec-failed p {
+  margin: 0;
+}
 
 /* Sellers */
 .sellers {

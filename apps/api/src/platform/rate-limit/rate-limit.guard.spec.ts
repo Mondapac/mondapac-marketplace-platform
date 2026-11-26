@@ -1,5 +1,5 @@
 import type { ExecutionContext } from '@nestjs/common';
-import { HttpException } from '@nestjs/common';
+import { HttpException, Logger } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Temporal } from '@mondapac/shared-kernel';
 import { FixedClock, testMarketContext } from '@mondapac/shared-kernel/testing';
@@ -105,6 +105,64 @@ describe('RateLimitGuard fails closed (identity design 5.2 and 6.8)', () => {
     attachMarketContext(request, testMarketContext('AU', 'default'));
 
     expect(await refusalOf(failing, request)).toEqual(unavailable);
+  });
+
+  describe('logs why it could not decide (rate-limit.unavailable)', () => {
+    let warn: jest.SpyInstance;
+    beforeEach(() => {
+      warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    });
+    afterEach(() => warn.mockRestore());
+
+    const unavailableLine = (): Record<string, unknown> => {
+      const lines = warn.mock.calls
+        .map(([line]) => line as Record<string, unknown>)
+        .filter((line) => line.msg === 'rate-limit.unavailable');
+      expect(lines).toHaveLength(1);
+      return lines[0]!;
+    };
+
+    it('names the counter step and hands the store error to the log serializer', async () => {
+      // A lock wait cancelled by the role's lock_timeout, as the driver adapter reports it.
+      const cancelled = Object.assign(new Error('canceling statement due to lock timeout'), {
+        name: 'PrismaClientKnownRequestError',
+        code: 'P2010',
+        meta: { driverAdapterError: { cause: { originalCode: '55P03' } } },
+      });
+      const failing = new RateLimitGuard(
+        new Reflector(),
+        markets,
+        { consume: () => Promise.reject(cancelled) },
+        testAppConfig(),
+      );
+      const request = resolvedRequest('203.0.113.12', 'test-correlation-0003');
+      attachMarketContext(request, testMarketContext('AU', 'default'));
+
+      expect(await refusalOf(failing, request)).toEqual(unavailable);
+      const line = unavailableLine();
+      expect(line).toMatchObject({
+        limitClass: 'default',
+        stage: 'counter',
+        correlationId: 'test-correlation-0003',
+      });
+      // The error itself goes under `err`, which only the redacting serializer writes out.
+      expect(line.err).toBe(cancelled);
+      expect(JSON.stringify(line)).not.toContain('203.0.113');
+    });
+
+    it('names the origin step for a request with no resolved address', async () => {
+      const request = { socket: { remoteAddress: '203.0.113.13' }, id: 'test-correlation-0004' };
+      attachMarketContext(request, testMarketContext('AU', 'default'));
+
+      expect(await refusalOf(guard, request)).toEqual(unavailable);
+      expect(unavailableLine()).toMatchObject({ stage: 'origin' });
+      expect(JSON.stringify(unavailableLine())).not.toContain('203.0.113');
+    });
+
+    it('names the market step for a request without a Market', async () => {
+      expect(await refusalOf(guard, resolvedRequest('203.0.113.14'))).toEqual(unavailable);
+      expect(unavailableLine()).toMatchObject({ stage: 'market', correlationId: null });
+    });
   });
 
   it('counts the keyed hash of the origin, never the address', async () => {

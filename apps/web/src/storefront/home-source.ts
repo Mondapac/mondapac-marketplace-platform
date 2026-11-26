@@ -21,8 +21,10 @@ import type {
 // category tree (`GET catalog/categories`) and the product shelves (`GET search/bestsellers`,
 // `GET search/specials`, `GET search/products`, PR #408). Every answer is checked here before it
 // becomes a card or a banner: text stays text, links are site paths or https only, prices need a
-// currency. Where the API answers nothing or fails, the section is left out: with the API on, no
-// sample data is ever shown (the sample home is only for API_BASE_URL empty).
+// currency. Where the API answers nothing, the section is left out; where its read failed
+// (refused, too slow, unreachable), the section becomes a `failed` one, which the page shows as
+// "This section didn't load" with Try again, so a fault is never mistaken for an empty store.
+// With the API on, no sample data is ever shown (the sample home is only for API_BASE_URL empty).
 //
 // Not in the API yet, so left off the cards: seller names, prices of best sellers and category
 // shelves (no add button either), certification seals, store delivery windows and logos.
@@ -47,6 +49,18 @@ const SAMPLE_HOME: HomeContent = {
 };
 
 const EMPTY_HOME: HomeContent = { sections: [], categories: [], sellers: [] };
+
+/** The home when its layout could not be read: one "didn't load" message with Try again. */
+const FAILED_HOME: HomeContent = { sections: [{ kind: 'failed' }], categories: [], sellers: [] };
+
+/**
+ * Whether the layout read failed for a reason other than "no page published": the API's own
+ * `storefront.page-not-found` is an empty home, anything else (a 5xx such as the limiter's 503
+ * `access.unavailable`, a 429, a time-out, a bad answer) is a fault.
+ */
+function layoutReadFailed(page: ApiRead<unknown>): boolean {
+  return page.kind === 'failed' && page.code !== 'storefront.page-not-found';
+}
 
 const DEFAULT_TITLE = {
   bestsellers: 'Best sellers',
@@ -402,7 +416,9 @@ export function homeFrom(
     reads.slides?.kind === 'ok' ? slideSetOf(reads.slides.body, 'home.hero', media) : null;
   const apiHero = api !== null && api.slides.length > 0 ? api : null;
   if (placed === null) {
-    return apiHero === null ? EMPTY_HOME : withHero(EMPTY_HOME, apiHero);
+    // No published layout is an empty home; a layout read that failed is a fault the page shows.
+    const base = layoutReadFailed(reads.page) ? FAILED_HOME : EMPTY_HOME;
+    return apiHero === null ? base : withHero(base, apiHero);
   }
   const categories = categoriesOf(reads.tree.kind === 'ok' ? reads.tree.body : null);
   const sections: HomeSection[] = [];
@@ -439,6 +455,7 @@ export function homeFrom(
             : ids.flatMap((id) => categories.top.filter((c) => c.id === id));
         shownCategories = chosen.length > 0 ? chosen : [];
         if (shownCategories.length > 0) sections.push({ kind: 'categories' });
+        else if (reads.tree.kind === 'failed') sections.push({ kind: 'failed' });
         break;
       }
       case 'product-shelf': {
@@ -448,6 +465,8 @@ export function homeFrom(
         const cards = read?.kind === 'ok' ? cardsOf(read.body, categories.departments, photo) : [];
         if (cards.length > 0) {
           sections.push({ kind: 'products', title: plan.title, href: plan.href, products: cards });
+        } else if (read?.kind === 'failed') {
+          sections.push({ kind: 'failed', title: plan.title, href: plan.href });
         }
         break;
       }
@@ -456,9 +475,12 @@ export function homeFrom(
         // do not exist, so an empty or failed list leaves the section out.
         const read = reads.shelves.get(storesPath(m.config));
         const stores = read?.kind === 'ok' ? storesOf(read.body) : [];
-        if (stores.length === 0) break;
-        sellers = stores;
         const title = textOf(m.config.title, 80) ?? DEFAULT_TITLE.sellers;
+        if (stores.length === 0) {
+          if (read?.kind === 'failed') sections.push({ kind: 'failed', title, href: '/sellers' });
+          break;
+        }
+        sellers = stores;
         sections.push({ kind: 'sellers', title, href: '/sellers' });
         break;
       }
