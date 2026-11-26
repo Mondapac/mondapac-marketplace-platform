@@ -69,6 +69,11 @@ type Call = { route: string; actor: string; market: string; input: unknown };
 
 describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) => {
   const currency = code === 'AU' ? 'AUD' : 'JPY';
+  const BESTSELLER = {
+    ...ITEM,
+    price: { from: { amount: 900n, currency }, varies: false },
+    cartVariantId: id<'Variant'>(4),
+  };
   let app: NestExpressApplication;
   let calls: Call[];
   const next: Record<string, unknown> = {};
@@ -90,7 +95,7 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
     calls = [];
     next.tree = ok({ locale: 'en-AU', defaultLocale: 'en-AU', categories: [MEAT] });
     next.resolve = ok({ kind: 'category', id: CATEGORY, slug: 'meat' });
-    next.bestsellers = ok({ items: [ITEM] });
+    next.bestsellers = ok({ items: [BESTSELLER] });
     next.specials = ok({
       items: [
         {
@@ -244,7 +249,16 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
 
     expect(response.status).toBe(200);
     expect(response.headers['cache-control']).toBe('no-store');
-    expect(response.body).toEqual({ items: [ITEM] });
+    expect(response.body).toEqual({
+      items: [
+        {
+          ...ITEM,
+          price: { amount: '900', currency },
+          priceFrom: false,
+          cartVariantId: id<'Variant'>(4),
+        },
+      ],
+    });
     expect(calls).toEqual([
       {
         route: 'bestsellers',
