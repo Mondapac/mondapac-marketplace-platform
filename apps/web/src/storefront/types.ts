@@ -18,6 +18,11 @@ export interface CertificationBadge {
   readonly type: string;
   /** Accessible label of the seal, e.g. "Halal certified". */
   readonly label: string;
+  /**
+   * The seal artwork key the type's registry entry names (`text`: the label as a plain badge).
+   * Absent on sample data: the seal is then drawn by `type`.
+   */
+  readonly artwork?: string;
   // The fields below come from the live badge of the product page's read; the samples have none.
   /** Whose certificate it is: the seller's own, or the product manufacturer's. */
   readonly basis?: 'SELLER' | 'MANUFACTURER';
@@ -34,7 +39,7 @@ export interface CertificationBadge {
 export interface ProductCard {
   readonly id: string;
   readonly name: string;
-  /** Empty when the read does not carry it (the shelf routes give only a seller id). */
+  /** The seller's public store name; empty when the read does not carry it. */
   readonly sellerName: string;
   /** Category code, used for the fallback illustration when there is no photo. */
   readonly category: string;

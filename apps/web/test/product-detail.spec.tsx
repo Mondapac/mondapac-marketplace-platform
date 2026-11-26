@@ -620,6 +620,15 @@ describe('certification badges from the API', () => {
     ]);
   });
 
+  it("keeps the seal artwork key of the type's registry entry, and drops one out of shape", () => {
+    expect(certificationsOf([{ ...GOOD, artworkKey: 'vegan' }])[0]?.artwork).toBe('vegan');
+    for (const artworkKey of ['Vegan Seal', '', 7, '<svg/>']) {
+      const [badge] = certificationsOf([{ ...GOOD, artworkKey }]);
+      expect(badge?.type).toBe('halal');
+      expect(badge?.artwork).toBeUndefined();
+    }
+  });
+
   it('has none when badges are absent, not a list, or empty', () => {
     expect(productDetailOf(TWO_SELLERS, 'en', labels)!.offers[0].certifications).toEqual([]);
     for (const badges of [undefined, null, 'halal', {}, 3, []]) {

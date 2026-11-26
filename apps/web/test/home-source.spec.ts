@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ApiRead } from '../src/storefront/api.ts';
 import {
   cardOf,
+  cardSealsOf,
   homeFrom,
   loadHome,
   moneyOf,
@@ -380,6 +381,59 @@ describe('home source: checks on each answer', () => {
     const many = cardOf({ ...priced, priceFrom: true, cartVariantId: null }, slugs);
     expect(many?.priceFrom).toBe(true);
     expect(many?.unit).toBeUndefined();
+  });
+
+  it('carries the seller name, the seals and "Only N left" the item sends', () => {
+    const slugs = new Map([[MEAT, 'meat']]);
+    const card = cardOf(
+      {
+        ...BESTSELLER,
+        sellerName: 'Kedron Farms',
+        onlyLeft: 3,
+        badges: [
+          { typeCode: 'halal', typeName: 'Halal', artworkKey: 'halal' },
+          { typeCode: 'vegan', typeName: 'Vegan', artworkKey: 'vegan' },
+        ],
+      },
+      slugs,
+    );
+    expect(card?.sellerName).toBe('Kedron Farms');
+    expect(card?.lowStock).toBe(3);
+    expect(card?.certifications).toEqual([
+      { type: 'halal', label: 'Halal', artwork: 'halal' },
+      { type: 'vegan', label: 'Vegan', artwork: 'vegan' },
+    ]);
+    const bare = cardOf(BESTSELLER, slugs);
+    expect(bare?.sellerName).toBe('');
+    expect(bare?.lowStock).toBeUndefined();
+    expect(bare?.certifications).toEqual([]);
+  });
+
+  it.each([0, -1, 2.5, 100, '3', null])('shows no "Only N left" for onlyLeft %p', (onlyLeft) => {
+    expect(cardOf({ ...BESTSELLER, onlyLeft }, new Map())?.lowStock).toBeUndefined();
+  });
+
+  it('drops a seal with any field missing or out of shape, keeps one per type and at most two', () => {
+    const ok = { typeCode: 'halal', typeName: 'Halal', artworkKey: 'halal' };
+    expect(
+      cardSealsOf([
+        { ...ok, typeCode: 'Halal Seal' },
+        { ...ok, typeName: '  ' },
+        { ...ok, typeName: 'x'.repeat(201) },
+        { ...ok, artworkKey: undefined },
+        { ...ok, artworkKey: '<svg>' },
+        'halal',
+        ok,
+        { ...ok, typeName: 'Halal again' },
+        { typeCode: 'kosher', typeName: 'Kosher', artworkKey: 'kosher' },
+        { typeCode: 'vegan', typeName: 'Vegan', artworkKey: 'vegan' },
+      ]),
+    ).toEqual([
+      { type: 'halal', label: 'Halal', artwork: 'halal' },
+      { type: 'kosher', label: 'Kosher', artwork: 'kosher' },
+    ]);
+    expect(cardSealsOf(null)).toEqual([]);
+    expect(cardSealsOf({ typeCode: 'halal' })).toEqual([]);
   });
 
   it('shows no card for a price without tax, and no regular price in another currency', () => {

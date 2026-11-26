@@ -26,6 +26,7 @@ import {
   SPECIALS_DEPTH,
   WAS_PRICE_CONCURRENCY,
 } from './use-cases/list-specials.use-case';
+import { StubCardFacts } from './testing/stub-card-facts';
 
 // The two shelf reads in memory on both Market fixtures (AU in AUD, ZZ in JPY): the order comes
 // from ordering's ranking or pricing's specials, the documents from the read model, a short
@@ -225,6 +226,7 @@ describe.each([
   let images: StubImages;
   let categories: StubCategories;
   let deps: ShelfDependencies;
+  let cards: StubCardFacts;
 
   beforeEach(() => {
     shelves = new MemoryShelves();
@@ -235,7 +237,9 @@ describe.each([
     sellUnits = new StubSellUnits();
     images = new StubImages();
     categories = new StubCategories();
+    cards = new StubCardFacts();
     deps = {
+      cards,
       unitOfWork: new FakeUnitOfWork(),
       reader,
       shelves,
@@ -262,6 +266,35 @@ describe.each([
     const run = (input: object, context = anonymous) =>
       new ListBestsellers(gate, deps).execute(context, input);
 
+    it('adds the seller name and the seals to each best seller (live badges, field by field)', async () => {
+      shelves.documents = [hit(1)];
+      sources.ranked = [offer(1)];
+      cards.sellerNames.set(SELLER, { storeName: 'Kedron Farms' });
+      cards.offerBadges.set(offer(1), [
+        {
+          typeCode: 'halal',
+          typeName: 'Halal',
+          artworkKey: 'halal',
+          basis: 'MANUFACTURER',
+          sellerClaim: false,
+          issuerName: 'Council',
+          validUntilLocalDate: '2027-01-31',
+          verifiedWithIssuer: true,
+        },
+      ]);
+
+      const result = await run({ limit: 4 });
+
+      expect(result.ok && result.value.items).toEqual([
+        expect.objectContaining({
+          offerId: offer(1),
+          sellerName: 'Kedron Farms',
+          badges: [{ typeCode: 'halal', typeName: 'Halal', artworkKey: 'halal' }],
+          onlyLeft: null,
+        }),
+      ]);
+    });
+
     it('shows ranked Offers in rank order, then fills from browse order without repeats', async () => {
       shelves.documents = [hit(1), hit(2), hit(3), hit(4)];
       sources.ranked = [offer(3), offer(9), offer(1)];
@@ -283,6 +316,9 @@ describe.each([
               price: null,
               cartVariantId: null,
               primaryImage: null,
+              sellerName: null,
+              badges: [],
+              onlyLeft: null,
             };
           }),
         },
@@ -519,6 +555,35 @@ describe.each([
     });
     const run = (input: object, context = anonymous) =>
       new ListSpecials(gate, { ...deps, wasPrice }).execute(context, input);
+
+    it('adds the card facts, the low band read on the Variant the special is on', async () => {
+      shelves.documents = [hit(1)];
+      sources.specials_ = [special(1, 7)];
+      cards.sellerNames.set(SELLER, { storeName: 'Kedron Farms' });
+      cards.setStock(offer(1), variant(7), { status: 'low', onlyLeft: 2 });
+      cards.offerBadges.set(offer(1), [
+        {
+          typeCode: 'vegan',
+          typeName: 'Vegan',
+          artworkKey: 'vegan',
+          basis: 'SELLER',
+          sellerClaim: false,
+          issuerName: null,
+          validUntilLocalDate: null,
+          verifiedWithIssuer: false,
+        },
+      ]);
+
+      const result = await run({});
+
+      expect(result.ok && result.value.items).toEqual([
+        expect.objectContaining({
+          sellerName: 'Kedron Farms',
+          badges: [{ typeCode: 'vegan', typeName: 'Vegan', artworkKey: 'vegan' }],
+          onlyLeft: 2,
+        }),
+      ]);
+    });
 
     it('shows each Offer once with its special and regular price in the Market currency', async () => {
       shelves.documents = [hit(1), hit(2)];

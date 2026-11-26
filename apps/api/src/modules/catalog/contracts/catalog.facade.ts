@@ -153,6 +153,12 @@ export const MAX_BADGE_OFFERS = 20;
 export interface OfferBadge {
   readonly typeCode: string;
   readonly typeName: string;
+  /**
+   * The badge artwork key the type's published revision names (`text`: the name as a plain
+   * badge). Display only: the storefront draws the seal by it, so a new type gets its seal from
+   * the admin registry, not from code.
+   */
+  readonly artworkKey: string;
   readonly basis: 'SELLER' | 'MANUFACTURER';
   /** True when the claim is the seller's own declaration (not a third party's certificate). */
   readonly sellerClaim: boolean;

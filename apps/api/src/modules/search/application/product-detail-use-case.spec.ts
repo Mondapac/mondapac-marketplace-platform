@@ -391,6 +391,7 @@ describe.each([
     const halal: DetailBadge = {
       typeCode: 'halal',
       typeName: 'Halal',
+      artworkKey: 'halal',
       basis: 'SELLER',
       sellerClaim: false,
       issuerName: 'Council',

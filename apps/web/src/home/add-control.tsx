@@ -28,14 +28,18 @@ export function AddControl({
   // A sample card is carted by its product id; a real one by its sell unit.
   const id = live && product.unit !== undefined ? unitKey(product.unit) : product.id;
   const quantity = cart[id]?.quantity ?? 0;
-  // The pressed button is replaced by the other form (add <-> stepper): keep the keyboard focus
-  // on the control that takes its place instead of letting it fall back to the page.
+  // The pressed button is replaced by the other form (add <-> stepper), or "+" is disabled at the
+  // cap: keep the keyboard focus on a control that can take it ("-" when "+" is disabled) instead
+  // of letting it fall back to the page.
   const addRef = useRef<HTMLButtonElement>(null);
   const plusRef = useRef<HTMLButtonElement>(null);
   const minusRef = useRef<HTMLButtonElement>(null);
   const refocus = useRef<'add' | 'step' | null>(null);
   useEffect(() => {
-    if (refocus.current === 'step') (plusRef.current ?? minusRef.current)?.focus();
+    if (refocus.current === 'step') {
+      const plus = plusRef.current;
+      (plus !== null && !plus.disabled ? plus : minusRef.current)?.focus();
+    }
     if (refocus.current === 'add') addRef.current?.focus();
     refocus.current = null;
   }, [quantity]);
@@ -93,7 +97,11 @@ export function AddControl({
         aria-label={full ? t('max-reached') : t('increase')}
         aria-disabled={off}
         disabled={full}
-        onClick={() => add(id, product.price, limit)}
+        onClick={() => {
+          // Reaching the cap disables "+": the focus then moves to "-".
+          refocus.current = 'step';
+          add(id, product.price, limit);
+        }}
       >
         <Icon name="plus" />
       </button>

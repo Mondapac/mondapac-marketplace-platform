@@ -153,6 +153,7 @@ export class FacadeProductDetailSources implements ProductDetailSources {
           list.map((badge) => ({
             typeCode: badge.typeCode,
             typeName: badge.typeName,
+            artworkKey: badge.artworkKey,
             basis: badge.basis,
             sellerClaim: badge.sellerClaim,
             issuerName: badge.issuerName,

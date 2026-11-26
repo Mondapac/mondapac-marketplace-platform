@@ -1,3 +1,4 @@
+import type { CardFactSource } from './card-facts';
 import type { OfferCultureSource } from './ports/offer-cultures';
 import type { Clock } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
@@ -55,4 +56,6 @@ export interface SearchDependencies {
   readonly cultures: OfferCultureSource;
   /** The server-side note of text searches that found nothing (dashboards v2, phase 2). */
   readonly zeroResults: ZeroResultLog;
+  /** The seller name, seals and low stock a result card shows (product page sources). */
+  readonly cards: CardFactSource;
 }

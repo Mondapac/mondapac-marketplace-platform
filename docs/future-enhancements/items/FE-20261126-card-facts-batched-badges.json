@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261126-card-facts-batched-badges",
+  "area": "storefront",
+  "title": "خواندن یک‌جای مهرهای گواهی برای فهرستهای بلند",
+  "desc": "هر صفحهٔ جستجو (تا ۴۸ کارت) مهرها را در دسته‌های ۲۰تایی و پشت سر هم از offerBadges میپرسد (هر دسته یک evaluateClaims)؛ اگر زمان پاسخ یا بار پایگاه داده بالا رفت، یک خواندن یک‌جا یا cache کوتاه در catalog لازم است.",
+  "src": "apps/api/src/modules/search/application/card-facts.ts; catalog offerBadges (MAX_BADGE_OFFERS=20)",
+  "date": "2026-11-26",
+  "trig": "زمان پاسخ جستجو بیش از هدف، یا هشدار بار پایگاه داده",
+  "prio": "پایین",
+  "status": "موکول"
+}

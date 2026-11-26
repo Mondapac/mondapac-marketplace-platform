@@ -5,6 +5,7 @@ import { parseShelfQuery, type ShelfRequest } from '../../domain/shelf-query';
 import type { ShelfSpecial } from '../ports/shelf-sources';
 import type { SpecialsDependencies } from '../specials-dependencies';
 import { withPrimaryImages } from '../product-images';
+import { withCardFacts, type CardFacts } from '../card-facts';
 import { inAnyOf, itemOf, type ShelfFailure } from './list-bestsellers.use-case';
 import type { ProductSearchItem } from './search-products.use-case';
 
@@ -22,7 +23,7 @@ export const WAS_PRICE_CONCURRENCY = 4;
  * A shelf item on special: the search item plus the priced Variant, the special and, only when the
  * Market's was-price rule allows it, the regular price to show struck through (otherwise null).
  */
-export interface SpecialItem extends ProductSearchItem {
+export interface SpecialItem extends ProductSearchItem, CardFacts {
   readonly variantId: Id<'Variant'>;
   readonly price: Money;
   readonly regularPrice: Money | null;
@@ -117,7 +118,15 @@ export class ListSpecials extends UseCase<ShelfRequest, SpecialsPage, ShelfFailu
         specialEndsAt: special.endsAt,
       };
     });
-    const items = await withPrimaryImages(this.deps.images, context, withSpecials);
+    // The card carts the Variant the special is on: its low band is the card's "Only N left".
+    const [pictured, described] = await Promise.all([
+      withPrimaryImages(this.deps.images, context, withSpecials),
+      withCardFacts(this.deps.cards, context, withSpecials, (item) => item.variantId),
+    ]);
+    const items = pictured.map((item, index) => {
+      const { sellerName, badges, onlyLeft } = described[index]!;
+      return { ...item, sellerName, badges, onlyLeft };
+    });
     return ok({ items });
   }
 

@@ -24,6 +24,7 @@ import { ListForYou } from './use-cases/list-for-you.use-case';
 import { ListRecentlyViewedGuest } from './use-cases/list-recently-viewed-guest.use-case';
 import { ListRecentlyViewed } from './use-cases/list-recently-viewed.use-case';
 import { itemOf, RANKED_DEPTH } from './use-cases/list-bestsellers.use-case';
+import { StubCardFacts } from './testing/stub-card-facts';
 
 // "For you" and "recently viewed" in memory on both Market fixtures (personalization 1d-1): the
 // views come from engagement's facade (empty under Global Privacy Control, with the switch off or
@@ -174,6 +175,7 @@ describe.each([['AU'], ['ZZ']] as const)('personal shelves in market %s', (code)
     signals = new StubSignals();
     images = new StubImages();
     deps = {
+      cards: new StubCardFacts(),
       unitOfWork: new FakeUnitOfWork(),
       reader: { search: () => Promise.resolve([]) },
       shelves,

@@ -1678,7 +1678,7 @@ svg {
 }
 /* A special-price badge and a seal on one tile: the badge moves to the bottom, beside the add
    button, so neither covers the other. */
-.tile:has(.seal) .badge {
+.tile:has(.seal, .seals) > .badge {
   top: auto;
   bottom: 8px;
   max-width: calc(100% - 48px);
@@ -1704,6 +1704,41 @@ svg {
     height: 52px;
     inset-inline-end: 6px;
     top: 6px;
+  }
+}
+/* The seals of a product card: one per certificate type, stacked in the top corner. Two seals
+   shrink so they clear the add button on a phone tile. */
+.seals {
+  position: absolute;
+  inset-inline-end: 8px;
+  top: 8px;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.seals .seal {
+  position: static;
+}
+.tile .seals .badge {
+  position: static;
+  max-width: 96px;
+  background: var(--sf-certified);
+  color: var(--sf-white);
+}
+.seals:has(> :nth-child(2)) .seal {
+  width: 48px;
+  height: 54px;
+}
+@media (max-width: 520px) {
+  .seals {
+    inset-inline-end: 6px;
+    top: 6px;
+  }
+  .seals:has(> :nth-child(2)) .seal {
+    width: 36px;
+    height: 41px;
   }
 }
 .addb {
@@ -2549,7 +2584,7 @@ svg {
 .prefs .tsz > span {
   display: none;
 }
-.tile:has(.seal):has(.addb.step) .badge {
+.tile:has(.seal, .seals):has(.addb.step) > .badge {
   display: none;
 }
 

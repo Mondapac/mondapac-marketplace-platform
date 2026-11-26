@@ -28,9 +28,14 @@ export function ProductCard({ product }: { readonly product: ShelfCard }) {
           <CategoryArt code={product.category} />
         )}
         {special ? <span className="badge">{t('special-price')}</span> : null}
-        {product.certifications.map((badge) => (
-          <CertificationSeal key={badge.type} badge={badge} />
-        ))}
+        {product.certifications.length === 0 ? null : (
+          // One seal per certificate type the Offer holds (halal, vegan, ...), stacked in a corner.
+          <span className="seals">
+            {product.certifications.map((badge) => (
+              <CertificationSeal key={badge.type} badge={badge} />
+            ))}
+          </span>
+        )}
         {price === undefined ? null : <AddControl product={{ ...product, price }} href={href} />}
       </div>
       {price === undefined ? null : (

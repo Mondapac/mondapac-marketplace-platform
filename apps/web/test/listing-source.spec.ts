@@ -172,6 +172,34 @@ describe('products of a listing', () => {
     expect(page?.items[1]?.unit).toBeUndefined();
   });
 
+  it('gives a result card the seller name, the seals and "Only N left" of its cart unit', async () => {
+    const V = '0b5e1c3a-0000-4000-8000-0000000000d1';
+    const { read } = reader({
+      kind: 'ok',
+      body: {
+        items: [
+          {
+            ...item(P1, 'Lamb shoulder'),
+            price: { from: { amount: '2290', currency: 'AUD' }, varies: false },
+            variantId: null,
+            cartVariantId: V,
+            sellerName: 'Kedron Farms',
+            badges: [{ typeCode: 'halal', typeName: 'Halal', artworkKey: 'halal' }],
+            onlyLeft: 2,
+          },
+        ],
+        hasMore: false,
+      },
+    });
+    const page = await liveProducts({ q: 'lamb', page: 1, pageSize: 12 }, read);
+    expect(page?.items[0]).toMatchObject({
+      sellerName: 'Kedron Farms',
+      certifications: [{ type: 'halal', label: 'Halal', artwork: 'halal' }],
+      lowStock: 2,
+      unit: { offerId: OFFER, variantId: V },
+    });
+  });
+
   it('drops an item whose product id is not a UUID, since the card links to it', async () => {
     const body = {
       items: [

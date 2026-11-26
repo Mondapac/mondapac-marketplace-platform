@@ -268,7 +268,7 @@ function CertificatesOf({ offer }: { readonly offer: ProductOffer }) {
           <div key={badge.type} className="certbox">
             {badge.sellerClaim === true ? null : (
               <span className="cl" aria-hidden="true">
-                {sealArt(badge.type)}
+                {sealArt(badge.artwork ?? badge.type)}
               </span>
             )}
             <div>

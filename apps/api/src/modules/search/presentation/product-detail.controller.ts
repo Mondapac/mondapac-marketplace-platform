@@ -122,6 +122,7 @@ export class ProductDetailController {
         badges: offer.badges.map((badge) => ({
           typeCode: badge.typeCode,
           typeName: badge.typeName,
+          artworkKey: badge.artworkKey,
           basis: badge.basis,
           sellerClaim: badge.sellerClaim,
           issuerName: badge.issuerName,

@@ -67,6 +67,7 @@ describe.each(['AU', 'ZZ'] as const)('CertificationClaimEvaluator.typeNames, mar
     code: 'halal',
     status: 'active',
     publishedRevisionId: REVISION,
+    badgeIconKey: 'halal',
     locales: { 'en-AU': { name: 'Halal', customerDescription: 'x' } },
     ...over,
   });
@@ -83,9 +84,22 @@ describe.each(['AU', 'ZZ'] as const)('CertificationClaimEvaluator.typeNames, mar
       }),
     );
     expect(await evaluator.typeNames(context, 'en-AU')).toEqual(
-      ok(new Map([['halal', { typeRevisionId: REVISION, name: 'Halal' }]])),
+      ok(new Map([['halal', { typeRevisionId: REVISION, name: 'Halal', artworkKey: 'halal' }]])),
     );
     expect(filter).toEqual({ status: 'active' });
+  });
+
+  it.each([
+    ['no artwork key', { badgeIconKey: undefined }],
+    ['a key out of shape', { badgeIconKey: 'Halal Seal' }],
+    ['a non-text key', { badgeIconKey: 7 }],
+  ])('names the plain text artwork for %s (display only, the badge stays)', async (_l, over) => {
+    const evaluator = new CertificationClaimEvaluator(
+      facade(() => Promise.resolve(ok([type(over)]))),
+    );
+    expect(await evaluator.typeNames(context, 'en-AU')).toEqual(
+      ok(new Map([['halal', { typeRevisionId: REVISION, name: 'Halal', artworkKey: 'text' }]])),
+    );
   });
 
   it.each([

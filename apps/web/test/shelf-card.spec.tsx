@@ -77,6 +77,48 @@ describe('shelf card from the API', () => {
     );
   });
 
+  it('moves the keyboard focus to "Decrease" when "+" reaches the cap and is disabled', () => {
+    show({ ...CARD, price: { amount: 2290, currency: 'AUD' }, lowStock: 2 });
+    fireEvent.click(screen.getByRole('button', { name: 'Add Lamb shoulder, 1 kg to cart' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Increase' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Decrease' }));
+  });
+
+  it('puts the focus on "Decrease" after the first add of a unit with only one left', () => {
+    show({ ...CARD, price: { amount: 2290, currency: 'AUD' }, lowStock: 1 });
+    fireEvent.click(screen.getByRole('button', { name: 'Add Lamb shoulder, 1 kg to cart' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Decrease' }));
+  });
+
+  it('shows the seller name, "Only N left" and one seal per certificate type', () => {
+    const { container } = show({
+      ...CARD,
+      sellerName: 'Kedron Farms',
+      lowStock: 3,
+      certifications: [
+        { type: 'halal', label: 'Halal certified', artwork: 'halal' },
+        { type: 'vegan', label: 'Vegan', artwork: 'vegan' },
+      ],
+    });
+    expect(container.querySelector('.by')?.textContent).toBe('Kedron Farms');
+    expect(container.querySelector('.low')?.textContent).toBe('Only 3 left');
+    expect(screen.getByRole('img', { name: 'Halal certified' })).toBeDefined();
+    expect(screen.getByRole('img', { name: 'Vegan' })).toBeDefined();
+    expect(container.querySelectorAll('.seals .seal')).toHaveLength(2);
+  });
+
+  it('draws the seal by the artwork key, and a key without artwork as a plain badge', () => {
+    const { container } = show({
+      ...CARD,
+      certifications: [
+        { type: 'kashrut', label: 'Kosher', artwork: 'kosher' },
+        { type: 'fair-trade', label: 'Fair trade', artwork: 'text' },
+      ],
+    });
+    expect(screen.getByRole('img', { name: 'Kosher' })).toBeDefined();
+    expect(container.querySelector('.seals .badge')?.textContent).toBe('Fair trade');
+  });
+
   describe('live', () => {
     const OFFER = '01990000-0000-7000-8000-000000000001';
     const VARIANT = '01990000-0000-7000-8000-000000000002';

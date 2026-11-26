@@ -77,6 +77,8 @@ export interface DetailSeller {
 export interface DetailBadge {
   readonly typeCode: string;
   readonly typeName: string;
+  /** The seal artwork key the type's registry entry names (`text`: a plain badge). Display only. */
+  readonly artworkKey: string;
   readonly basis: 'SELLER' | 'MANUFACTURER';
   readonly sellerClaim: boolean;
   readonly issuerName: string | null;

@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-// Bodies of the storefront search route. Ids, text and categories only: a certification badge
-// is never part of a search result (it comes from `evaluateClaim`, never from indexed text).
+// Bodies of the storefront search route. A certification seal is never indexed text: a card's
+// `badges` are catalog's live `offerBadges` (built from `evaluateClaims`), asked per request.
 
 export class ProductImageRefBody {
   @ApiProperty({
@@ -54,7 +54,46 @@ export class ProductSearchItemBody {
   primaryImage!: ProductImageRefBody | null;
 }
 
-export class SearchResultItemBody extends ProductSearchItemBody {
+export class CardBadgeBody {
+  @ApiProperty({ description: 'The certification type code, as configured (never a fixed list).' })
+  typeCode!: string;
+  @ApiProperty({ description: 'The type name in the Market default locale: the seal label.' })
+  typeName!: string;
+  @ApiProperty({
+    description:
+      "The seal artwork key the type's registry entry names (`text`: show the name as a plain " +
+      'badge). Display only.',
+  })
+  artworkKey!: string;
+}
+
+/** The facts a product card shows beyond text and price (seller, seals, low stock). */
+export class CardItemBody extends ProductSearchItemBody {
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: "The seller's public store name; null when it cannot be read.",
+  })
+  sellerName!: string | null;
+  @ApiProperty({
+    type: [CardBadgeBody],
+    description:
+      'The certification seals of the Offer, decided live by certification for this request ' +
+      "(certificates only: a seller's own declaration is not a seal); at most 2, one per type. " +
+      'Empty when there is none or they cannot be had. Never an id, number, document or link.',
+  })
+  badges!: CardBadgeBody[];
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description:
+      'Units left of the unit the card carts, only when its stock is low ("Only N left"); null ' +
+      'otherwise. Never an exact count outside the low band.',
+  })
+  onlyLeft!: number | null;
+}
+
+export class SearchResultItemBody extends CardItemBody {
   @ApiProperty({
     format: 'uuid',
     nullable: true,
@@ -252,7 +291,7 @@ export class ShelfPageBody {
   items!: ProductSearchItemBody[];
 }
 
-export class BestsellerItemBody extends ProductSearchItemBody {
+export class BestsellerItemBody extends CardItemBody {
   @ApiProperty({
     type: () => MoneyBody,
     nullable: true,
@@ -282,7 +321,7 @@ export class MoneyBody {
   @ApiProperty({ description: 'ISO 4217 code.' }) currency!: string;
 }
 
-export class SpecialItemBody extends ProductSearchItemBody {
+export class SpecialItemBody extends CardItemBody {
   @ApiProperty({ format: 'uuid', description: 'The Variant the special is on.' })
   variantId!: string;
   @ApiProperty({ type: MoneyBody, description: 'The price a buyer pays now (the special).' })
@@ -359,6 +398,11 @@ export class ProductDetailBadgeBody {
   typeCode!: string;
   @ApiProperty({ description: 'The type name in the Market default locale.' })
   typeName!: string;
+  @ApiProperty({
+    description:
+      "The seal artwork key the type's registry entry names (`text`: a plain badge). Display only.",
+  })
+  artworkKey!: string;
   @ApiProperty({ enum: ['SELLER', 'MANUFACTURER'] }) basis!: 'SELLER' | 'MANUFACTURER';
   @ApiProperty({
     description: "True when this is the seller's own declaration, not a certificate.",
