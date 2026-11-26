@@ -14795,7 +14795,7 @@
       "status": {
         "queued": "Queued",
         "running": "Running",
-        "completed": "Completed",
+        "completed": "Finished",
         "cancelled": "Cancelled",
         "closed-budget": "Closed: budget used",
         "closed-saver": "Closed: saver threshold",
@@ -14830,6 +14830,7 @@
         "loading": "Loading the run...",
         "failed": "Couldn't load this run.",
         "spent": "Spent so far: US${amount}",
+        "overall": "Overall: {verdict}",
         "verdicts": "Result per capability",
         "samples": "Samples",
         "no-samples": "No sample has run yet.",

@@ -284,4 +284,72 @@ describe('Settings › AI Models › Evaluation', () => {
       ),
     );
   });
+
+  it('shows the opened run inside its own row, takes the focus, and says a failed run failed', async () => {
+    const done = { ...RUN, status: 'completed' };
+    routes({
+      'GET settings/admin/ai-models/evaluations': () => ok({ runs: [done], next: null }),
+      [`GET settings/admin/ai-models/evaluations/${ID}`]: () =>
+        ok({
+          ...DETAIL,
+          run: done,
+          capabilities: [{ ...DETAIL.capabilities[0], verdict: 'failed' }],
+        }),
+    });
+    view();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Details of the claude-sonnet-5-5 run' }),
+    );
+    const block = await screen.findByLabelText('Run details');
+    expect(block.closest('li')).not.toBeNull();
+    expect(document.activeElement).toBe(block);
+    expect(screen.getAllByText('Finished').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Completed')).toBeNull();
+    expect(screen.getByText('Overall: Failed')).toBeTruthy();
+  });
+
+  it('keeps the opened run in view while it is read again after a cancel', async () => {
+    let detailReads = 0;
+    routes({
+      [`GET settings/admin/ai-models/evaluations/${ID}`]: () =>
+        detailReads++ === 0 ? ok(DETAIL) : new Promise(() => undefined),
+      [`POST settings/admin/ai-models/evaluations/${ID}/cancel`]: () => ok({ runId: ID }),
+    });
+    view();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Details of the claude-sonnet-5-5 run' }),
+    );
+    await screen.findByText('sample-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel the claude-sonnet-5-5 run' }));
+    await waitFor(() => expect(detailReads).toBe(2));
+    expect(screen.getByText('sample-1')).toBeTruthy();
+    expect(screen.queryByText('Loading the run...')).toBeNull();
+  });
+
+  it('shows no reload banner when the filter changes while a cancel is read back', async () => {
+    let reads = 0;
+    let release: (value: unknown) => void = () => undefined;
+    routes({
+      'GET settings/admin/ai-models/evaluations': () => {
+        reads += 1;
+        if (reads === 2) return new Promise((resolve) => (release = resolve));
+        return ok({ runs: [RUN], next: null });
+      },
+      [`POST settings/admin/ai-models/evaluations/${ID}/cancel`]: () => ok({ runId: ID }),
+    });
+    view();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Cancel the claude-sonnet-5-5 run' }),
+    );
+    await waitFor(() => expect(reads).toBe(2));
+    fireEvent.change(screen.getByLabelText('Show runs of'), {
+      target: { value: 'claude-opus-5-5' },
+    });
+    await waitFor(() => expect(reads).toBe(3));
+    release(await ok({ runs: [RUN], next: null }));
+    await waitFor(() => expect(screen.getByText('Running')).toBeTruthy());
+    expect(screen.queryByText(/couldn't refresh/)).toBeNull();
+    // The read back used the filter the admin has now.
+    expect(call.mock.calls.at(-1)?.[1]).toContain('family=claude-opus-5-5');
+  });
 });
