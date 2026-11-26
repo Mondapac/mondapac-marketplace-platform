@@ -1045,6 +1045,12 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', 'sellers/admin/nope/blog-access')).status).toBe(404);
     expect((await call('POST', `sellers/admin/${ID}/blog-access`)).status).toBe(404);
     expect((await read(`sellers/admin/${ID}/blog-access`)).status).toBe(404);
+    const activities = `sellers/admin/${ID}/business-activities`;
+    expect((await call('PUT', activities)).status).toBe(200);
+    expect((await call('PUT', 'sellers/admin/nope/business-activities')).status).toBe(404);
+    expect((await call('POST', activities)).status).toBe(404);
+    expect((await call('DELETE', activities)).status).toBe(404);
+    expect((await read(activities)).status).toBe(404);
   });
 
   it('relays the ship-to retention on GET and PUT only, with no query', async () => {
