@@ -405,7 +405,9 @@ export function AddOfferDialog({
             <ul className="flex flex-col divide-y divide-line" aria-busy={loading}>
               {answer.items.map((product) => (
                 <li key={product.productId} className="flex items-center gap-3 py-1">
-                  <ListThumb src={productThumbSrc(marketId, { ...product, scope: 'PLATFORM' })} />
+                  <span className={product.alreadySelling ? 'opacity-60' : undefined}>
+                    <ListThumb src={productThumbSrc(marketId, { ...product, scope: 'PLATFORM' })} />
+                  </span>
                   <div className="min-w-0 flex-1">
                     <CheckboxRow
                       touch
