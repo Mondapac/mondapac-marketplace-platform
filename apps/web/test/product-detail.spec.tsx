@@ -87,6 +87,13 @@ describe('product detail mapping', () => {
     expect(detail.similar).toEqual([]);
   });
 
+  it('carries the department of its first category, or none the tree does not know', () => {
+    const departments = new Map([['01990000-0000-7000-8000-0000000000ca', 'meat']]);
+    expect(productDetailOf(TWO_SELLERS, 'en', labels, null, departments)!.category).toBe('meat');
+    // Never the raw category id: the illustration falls back to the general one.
+    expect(productDetailOf(TWO_SELLERS, 'en', labels)!.category).toBe('');
+  });
+
   it('makes an out-of-stock offer unbuyable and leaves out an unknown minimum', () => {
     const detail = productDetailOf(
       body([

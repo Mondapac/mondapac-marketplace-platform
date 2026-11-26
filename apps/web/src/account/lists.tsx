@@ -166,7 +166,7 @@ function ListRow({
   if (!item)
     return (
       <div className="ac-li">
-        <LineThumb category="grid" />
+        <LineThumb category="" />
         <div>
           <b>{t('unavailable')}</b>
         </div>

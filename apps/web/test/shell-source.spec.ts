@@ -4,11 +4,11 @@ import {
   categoryOf,
   depthOf,
   findInTree,
-  slugsOf,
   topCategories,
   trailOf,
   treeOf,
 } from '../src/storefront/category-tree.ts';
+import { departmentsOf } from '../src/storefront/departments.ts';
 import { MAX_SLOT_ENTRIES, navigationOf } from '../src/storefront/navigation.ts';
 import type { ApiRead } from '../src/storefront/api.ts';
 import { SAMPLE_CONTENT } from '../src/storefront/sample-home.ts';
@@ -69,7 +69,7 @@ describe('category tree', () => {
     expect(treeOf({ categories: [] })).toEqual([]);
   });
 
-  it('builds the top level with direct children and the slug of each id', () => {
+  it('builds the top level with direct children and the department of each id', () => {
     expect(topCategories(rows)).toEqual([
       {
         code: 'meat',
@@ -79,7 +79,7 @@ describe('category tree', () => {
       },
       { code: 'bakery', name: 'Bakery', shortName: 'Bakery', children: [] },
     ]);
-    expect(slugsOf(rows).get(LAMB)).toBe('lamb');
+    expect(departmentsOf(rows).get(LAMB)).toBe('meat');
     expect(categoryOf(rows, rows[0]!, 'Fresh meat').name).toBe('Fresh meat');
   });
 

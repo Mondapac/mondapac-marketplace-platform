@@ -140,13 +140,13 @@ describe('products of a listing', () => {
     const page = await liveProducts({ q: 'lamb', page: 2, pageSize: 12 }, read);
     expect(page?.hasMore).toBe(true);
     // The repeat of P1, the blank name and the non-objects are dropped; a bad category list
-    // only loses the illustration.
+    // only loses the illustration. A card carries its department (lamb is under meat).
     expect(page?.items).toEqual([
       {
         id: P1,
         name: 'Lamb shoulder, 1 kg',
         sellerName: '',
-        category: 'lamb',
+        category: 'meat',
         certifications: [],
       },
       { id: P2, name: 'Lamb cutlets', sellerName: '', category: '', certifications: [] },

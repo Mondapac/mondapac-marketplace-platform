@@ -15,6 +15,8 @@ import {
 import { validChatUrl, validSupportEmail, type AssistantBase } from '../assistant/assistant.ts';
 import { liveCartOf, type LiveCart } from '../cart/live-cart.ts';
 import { categoriesOf, loadHome, type HomeContent } from './home-source.ts';
+import { readOnce, treeOf } from './category-tree.ts';
+import { departmentsOf } from './departments.ts';
 import { photoUrls } from './photo-source.ts';
 import { OFFERS_PATH, offersOf, type OffersPage } from './offers.ts';
 import { sampleOffers } from './sample-offers.ts';
@@ -137,11 +139,13 @@ export async function loadProduct(id: string): Promise<ProductDetail | undefined
     if (read.status === 404) return undefined;
     throw new Error('product detail unavailable');
   }
-  const [locale, t, tp, photo] = await Promise.all([
+  const [locale, t, tp, photo, tree] = await Promise.all([
     getLocale(),
     getTranslations('seller'),
     getTranslations('product'),
     photoUrls(),
+    // The same read the shell makes for the menu (one per request): the product's department.
+    readOnce('catalog/categories'),
   ]);
   return productDetailOf(
     read.body,
@@ -154,6 +158,7 @@ export async function loadProduct(id: string): Promise<ProductDetail | undefined
       group: (code) => (tp.has(`spec-group-${code}`) ? tp(`spec-group-${code}`) : undefined),
     },
     photo,
+    departmentsOf((tree.kind === 'ok' ? treeOf(tree.body) : null) ?? []),
   );
 }
 
@@ -435,7 +440,7 @@ async function loadBrandProducts(
     photoUrls(),
   ]);
   if (answer.kind !== 'ok') return { kind: 'failed', page };
-  const slugs = categoriesOf(tree.kind === 'ok' ? tree.body : null).slugs;
+  const slugs = categoriesOf(tree.kind === 'ok' ? tree.body : null).departments;
   return brandProductsOf(answer.body, page, slugs, photo);
 }
 
@@ -448,7 +453,7 @@ async function loadStoreProducts(slug: string, page: number): Promise<StoreProdu
     photoUrls(),
   ]);
   if (answer.kind !== 'ok') return { kind: 'failed', page };
-  const slugs = categoriesOf(tree.kind === 'ok' ? tree.body : null).slugs;
+  const slugs = categoriesOf(tree.kind === 'ok' ? tree.body : null).departments;
   return storeProductsOf(answer.body, page, slugs, photo);
 }
 

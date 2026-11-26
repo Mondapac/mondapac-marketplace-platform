@@ -4,12 +4,12 @@ import {
   findInTree,
   categoryOf,
   readOnce,
-  slugsOf,
   trailOf,
   countsOf,
   treeOf,
   type TreeRow,
 } from './category-tree.ts';
+import { departmentsOf } from './departments.ts';
 import { liveParams, type LiveFilters } from '../catalog/live-filters.ts';
 import { cardOf, isObject, moneyOf } from './home-source.ts';
 import type { ApiRead } from './api.ts';
@@ -234,7 +234,7 @@ export async function liveProducts(
   const items = (body.items as unknown[]).filter(
     (item) => isObject(item) && typeof item.productId === 'string' && UUID.test(item.productId),
   );
-  const slugs = slugsOf(rows);
+  const slugs = departmentsOf(rows);
   const seen = new Set<string>();
   const cards: ShelfCard[] = [];
   for (const item of items) {

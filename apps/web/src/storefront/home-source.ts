@@ -4,6 +4,7 @@ import { apiGet, type ApiRead } from './api.ts';
 import { storefrontApiConfig } from './config.ts';
 import { photoUrls } from './photo-source.ts';
 import { imageRefOf, imageRefsOf, photoSetOf, type PhotoUrl } from './photos.ts';
+import { departmentsOf } from './departments.ts';
 import { SAMPLE_CONTENT } from './sample-home.ts';
 import { emptySet, legacySlideOf, PLACEHOLDER_KEYS, slideSetOf } from './slides.ts';
 import type {
@@ -100,6 +101,8 @@ interface LiveCategory {
 export function categoriesOf(body: unknown): {
   readonly top: readonly (Category & { readonly id: string })[];
   readonly slugs: ReadonlyMap<string, string>;
+  /** The department slug of each category id: a card's `category` (see ./departments.ts). */
+  readonly departments: ReadonlyMap<string, string>;
 } {
   const rows: LiveCategory[] = [];
   if (isObject(body) && Array.isArray(body.categories)) {
@@ -123,7 +126,7 @@ export function categoriesOf(body: unknown): {
         .filter((k) => k.parentId === c.id)
         .map((k) => ({ code: k.slug, name: k.name })),
     }));
-  return { top, slugs: new Map(rows.map((c) => [c.id, c.slug])) };
+  return { top, slugs: new Map(rows.map((c) => [c.id, c.slug])), departments: departmentsOf(rows) };
 }
 
 /**
@@ -136,6 +139,7 @@ export function categoriesOf(body: unknown): {
  */
 export function cardOf(
   item: unknown,
+  /** The department slug of each category id ({@link departmentsOf}): the card's `category`. */
   slugs: ReadonlyMap<string, string>,
   photo: PhotoUrl | null = null,
   allImages = false,
@@ -427,7 +431,7 @@ export function homeFrom(
         const plan = shelfPlan(m.config, categories);
         if (plan === null) break;
         const read = reads.shelves.get(plan.path);
-        const cards = read?.kind === 'ok' ? cardsOf(read.body, categories.slugs, photo) : [];
+        const cards = read?.kind === 'ok' ? cardsOf(read.body, categories.departments, photo) : [];
         if (cards.length > 0) {
           sections.push({ kind: 'products', title: plan.title, href: plan.href, products: cards });
         }
