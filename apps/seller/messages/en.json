@@ -3222,7 +3222,7 @@
       "title": "Your first offers are being reviewed",
       "restarted": "A shorter review applies to your next offers",
       "progress": "{count} of {target} offers reviewed",
-      "help": "Until you finish, new offers may wait for our review before they go on sale."
+      "help": "Until these are reviewed, new offers may wait for our review before they go on sale."
     }
   },
   "stock": {
