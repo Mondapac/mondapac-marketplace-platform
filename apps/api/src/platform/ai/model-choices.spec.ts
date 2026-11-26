@@ -15,7 +15,7 @@ import type { MarketId } from '@mondapac/shared-kernel';
 import type { CapabilitySpec } from './capability';
 import { CapabilityRegistry } from './capability-registry';
 import { EvaluationResults } from './evaluations/evaluation-results';
-import { AiModelChoices } from './model-choices';
+import { AiModelChoices, type InHouseTaskPage } from './model-choices';
 import { ModelGateway } from './model-gateway';
 import type { ModelProvider } from './model-provider';
 
@@ -228,11 +228,79 @@ describe.each(['AU', 'ZZ'] as const)(
       expect(choices.options(marketId).write.map((option) => option.family)).not.toContain(
         'model-house',
       );
+      // A distinct problem code (G6b; Mohammad, G6a review 9), not `unknown-model`.
       expect(choices.check(marketId, 'write', ['model-house'], null).list).toEqual([
-        'unknown-model',
+        'in-house-model',
       ]);
       expect(choices.check(marketId, 'write', ['model-fast'], 'model-house').saver).toBe(
+        'in-house-model',
+      );
+      expect(choices.check(marketId, 'write', ['model-gone'], null).list).toEqual([
         'unknown-model',
+      ]);
+    });
+
+    // G6b: the Mondapac Intelligence tab's checks of the in-house model, on the real router.
+    it('lists the in-house families per task type with why each cannot be the model now', () => {
+      const options = choices.inHouseOptions(marketId);
+      expect(options.write).toEqual([{ family: 'model-house', problem: null }]);
+      expect(options.vision).toEqual([{ family: 'model-house', problem: 'no-capability' }]);
+      // A task type with no capability yet takes no in-house model (no-capability), unlike an
+      // external list.
+      expect(options.extract).toEqual([{ family: 'model-house', problem: 'no-capability' }]);
+    });
+
+    const page = (overrides: Partial<InHouseTaskPage> = {}): InHouseTaskPage => ({
+      stage: 'off',
+      family: null,
+      shadowPercent: 0,
+      rolloutPercent: 0,
+      ...overrides,
+    });
+
+    it('takes a usable in-house model while off, and refuses an external or unknown one', () => {
+      expect(choices.checkInHouse(marketId, 'write', page({ family: 'model-house' }))).toEqual({
+        stage: null,
+        family: null,
+        shadowPercent: null,
+        rolloutPercent: null,
+      });
+      expect(choices.checkInHouse(marketId, 'write', page({ family: 'model-fast' })).family).toBe(
+        'external-model',
+      );
+      expect(choices.checkInHouse(marketId, 'write', page({ family: 'model-gone' })).family).toBe(
+        'unknown-model',
+      );
+    });
+
+    it('refuses every stage but off today: none is served yet, and shadow has no approval', () => {
+      for (const stage of ['percent', 'default'] as const) {
+        expect(
+          choices.checkInHouse(marketId, 'write', page({ stage, family: 'model-house' })).stage,
+        ).toBe('stage-not-served');
+      }
+      expect(
+        choices.checkInHouse(
+          marketId,
+          'write',
+          page({ stage: 'shadow', family: 'model-house', shadowPercent: 5 }),
+        ).stage,
+      ).toBe('stage-not-served');
+    });
+
+    it('checks the route of a live stage for every capability of the task type', () => {
+      // A second writer without an in-house pass: the version is not evaluated for the task type.
+      const second: CapabilitySpec = { ...WRITER, id: 'alpha.other-writer' };
+      const twoWriters = new CapabilityRegistry();
+      twoWriters.register('alpha', [WRITER, second]);
+      twoWriters.seal();
+      const strict = new AiModelChoices(router, twoWriters);
+      expect(strict.inHouseOptions(marketId).write).toEqual([
+        { family: 'model-house', problem: 'not-evaluated' },
+      ]);
+      // While off, the missing pass is not a problem yet: the model reaches no caller.
+      expect(strict.checkInHouse(marketId, 'write', page({ family: 'model-house' })).family).toBe(
+        null,
       );
     });
 

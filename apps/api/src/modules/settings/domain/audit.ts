@@ -20,6 +20,10 @@ const VALUES = [
   'risk-based',
   'review',
   'automatic',
+  // The in-house model's stages (G6b).
+  'shadow',
+  'percent',
+  'default',
 ] as const;
 
 /** Every setting code, the audit row's target id. */
@@ -38,6 +42,11 @@ export const SETTING_TARGET_IDS = [
   'ai-capability-assistant-buyer-chat',
   'ai-capability-catalog-description-writer-seller',
   'ai-capability-catalog-description-writer-admin',
+  // The in-house model's stage per task type (G6b).
+  'ai-in-house-stage-chat',
+  'ai-in-house-stage-extract',
+  'ai-in-house-stage-write',
+  'ai-in-house-stage-vision',
 ] as const;
 
 /** Every AI cap code (AI Gateway, G4), the target id of its audit row. */
@@ -64,6 +73,14 @@ export const AI_MODEL_TARGET_IDS = [
   'ai-saver-vision',
 ] as const;
 
+/** The in-house model of each task type (G6b), the target id of its audit row. */
+export const AI_IN_HOUSE_MODEL_TARGET_IDS = [
+  'ai-in-house-model-chat',
+  'ai-in-house-model-extract',
+  'ai-in-house-model-write',
+  'ai-in-house-model-vision',
+] as const;
+
 /** Every whole number setting code, the target id of its audit row. */
 export const NUMBER_SETTING_TARGET_IDS = [
   'ai-saver-percent',
@@ -73,6 +90,18 @@ export const NUMBER_SETTING_TARGET_IDS = [
   'offer-review-sampling',
   'offer-review-backlog-count',
   'offer-review-backlog-hours',
+  // The in-house model's shares and auto-rollback limits (G6b).
+  'ai-in-house-shadow-chat',
+  'ai-in-house-shadow-extract',
+  'ai-in-house-shadow-write',
+  'ai-in-house-shadow-vision',
+  'ai-in-house-rollout-chat',
+  'ai-in-house-rollout-extract',
+  'ai-in-house-rollout-write',
+  'ai-in-house-rollout-vision',
+  'ai-in-house-rollback-errors',
+  'ai-in-house-rollback-guard',
+  'ai-in-house-rollback-sample',
 ] as const;
 
 /** An admin changed a Market setting. */
@@ -135,6 +164,25 @@ export const AiModelsChanged = defineAuditAction({
   after: { models: auditField.integer(), version: auditField.integer() },
 });
 
+/**
+ * An admin changed a task type's in-house model (Mondapac Intelligence, G6b): whether a model was
+ * set before and after (0 or 1), whether the version changed from one model to another (a
+ * rollback to the previous version, or a new one: Mohammad, G6b review 4), and the new version.
+ * The families are on the setting's history row; the audit row holds no free text (ADR-0009).
+ */
+export const AiInHouseModelChanged = defineAuditAction({
+  action: 'settings.ai-in-house-model.changed',
+  targetType: SETTINGS_TARGET,
+  targetId: auditField.enumOf(AI_IN_HOUSE_MODEL_TARGET_IDS),
+  actors: ['authenticated'],
+  before: { models: auditField.integer() },
+  after: {
+    models: auditField.integer(),
+    versionChanged: auditField.boolean(),
+    version: auditField.integer(),
+  },
+});
+
 /** The audit target type of an AI evaluation run (AI Gateway G4c); the target id is the run's. */
 export const AI_EVALUATION_RUN_TARGET = 'settings.ai-evaluation-run';
 
@@ -191,6 +239,7 @@ export const SETTINGS_AUDIT_ACTIONS = [
   AiCapChanged,
   AiEvaluationCancelled,
   AiEvaluationRequested,
+  AiInHouseModelChanged,
   AiModelsChanged,
   AiPlaygroundRun,
   MarketSettingChanged,

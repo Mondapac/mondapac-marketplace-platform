@@ -2,7 +2,27 @@ import { Injectable } from '@nestjs/common';
 import type { MarketId } from '@mondapac/shared-kernel';
 import { CAPABILITY_TASKS, type CapabilitySpec, type CapabilityTask } from './capability';
 import { CapabilityRegistry } from './capability-registry';
+import {
+  checkInHouseTask,
+  type InHouseProblem,
+  type InHouseTaskCheck,
+  type InHouseTaskPage,
+} from './own-model/in-house-stage';
 import { AiRouter, MAX_ATTEMPTS, type RouteProblem } from './routing/ai-router';
+
+export {
+  IN_HOUSE_STAGES,
+  ROLLBACK_LIMIT_CEILING_PERMILLE,
+  ROLLBACK_LIMIT_FLOOR_PERMILLE,
+  ROLLBACK_MIN_SAMPLE_FLOOR,
+  ROLLOUT_SHARE_MAX,
+  SHADOW_SHARE_MAX,
+  ROLLBACK_MIN_SAMPLE_TOP,
+  type InHouseProblem,
+  type InHouseStage,
+  type InHouseTaskCheck,
+  type InHouseTaskPage,
+} from './own-model/in-house-stage';
 
 /**
  * Why a model cannot take its place in a task type's list: a route problem (unknown family, not
@@ -12,6 +32,12 @@ import { AiRouter, MAX_ATTEMPTS, type RouteProblem } from './routing/ai-router';
  */
 export type ModelChoiceProblem =
   RouteProblem | 'duplicate' | 'too-many' | 'saver-not-cheaper' | 'saver-without-list';
+
+/** An in-house family and why it cannot be a task type's in-house model now (null: it can). */
+export interface InHouseOption {
+  readonly family: string;
+  readonly problem: InHouseProblem | null;
+}
 
 /** A model family and why it cannot be chosen for the task type now (null: it can). */
 export interface ModelOption {
@@ -78,6 +104,36 @@ export class AiModelChoices {
       return this.router.familyProblem(marketId, task, specs, family);
     });
     return { list: listProblems, saver: this.#saverProblem(marketId, task, specs, list, saver) };
+  }
+
+  /**
+   * Every in-house family of the route catalogue per task type, with why it cannot be the task
+   * type's in-house model in a stage other than off now (the Mondapac Intelligence tab, G6b). Empty
+   * while the catalogue has no in-house row (`catalogue/in-house.ts`).
+   */
+  inHouseOptions(marketId: MarketId): Readonly<Record<CapabilityTask, readonly InHouseOption[]>> {
+    const families = this.router.inHouseFamilies();
+    const options = {} as Record<CapabilityTask, readonly InHouseOption[]>;
+    for (const task of CAPABILITY_TASKS) {
+      const specs = this.#specsOf(task);
+      options[task] = families.map((family) => ({
+        family,
+        problem: this.router.inHouseFamilyProblem(marketId, task, specs, family),
+      }));
+    }
+    return options;
+  }
+
+  /**
+   * The server checks of a task type's in-house settings (stage, model, shadow and percent shares)
+   * on the page as it would stand in the Market (G6b; design section 8, "Conditions" and "In-house
+   * route readiness"). Reads code and configuration only, like {@link check}.
+   */
+  checkInHouse(marketId: MarketId, task: CapabilityTask, page: InHouseTaskPage): InHouseTaskCheck {
+    const specs = this.#specsOf(task);
+    return checkInHouseTask(marketId, page, (family) =>
+      this.router.inHouseFamilyProblem(marketId, task, specs, family),
+    );
   }
 
   #saverProblem(

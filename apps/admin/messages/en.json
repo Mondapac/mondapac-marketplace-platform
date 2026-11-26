@@ -14982,6 +14982,7 @@
     },
     "problem": {
       "unknown-model": "Unknown model",
+      "in-house-model": "Mondapac Intelligence model, not an external choice",
       "task-unsupported": "Not for this task",
       "not-checked": "Not checked yet",
       "region": "Not allowed in this region",

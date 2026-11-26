@@ -4,7 +4,9 @@ import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel'
 import type { AuditEntry } from '@mondapac/shared-kernel';
 import {
   AiCapChanged,
+  AiInHouseModelChanged,
   AiModelsChanged,
+  type AI_IN_HOUSE_MODEL_TARGET_IDS,
   type AI_CAP_TARGET_IDS,
   type AI_MODEL_TARGET_IDS,
   MarketNumberSettingChanged,
@@ -17,7 +19,15 @@ import {
   acceptedValue,
   AI_CAP_CODES,
   AI_GATEWAY_CODES,
+  AI_IN_HOUSE_CODES,
+  AI_IN_HOUSE_MODEL_CODES,
   AI_MODEL_CODES,
+  AI_MODEL_TASKS,
+  AI_MODELS_NONE,
+  aiInHouseModelCode,
+  aiInHouseRolloutCode,
+  aiInHouseShadowCode,
+  aiInHouseStageCode,
   AI_MODEL_LIST_CODES,
   AI_SAVER_CODES,
   capOf,
@@ -54,6 +64,7 @@ const HIGH_RISK_CODES: ReadonlySet<string> = new Set([
   ...AI_CODES,
   ...AI_GATEWAY_CODES,
   ...AI_MODEL_CODES,
+  ...AI_IN_HOUSE_CODES,
   ...OFFER_REVIEW_CODES,
   OFFER_REVIEW_EMERGENCY_STOP_CODE,
 ]);
@@ -93,6 +104,21 @@ function changeEntry(
       after: { microUsd: capOf(next), version },
     });
   }
+  if (AI_IN_HOUSE_MODEL_CODES.includes(definition.code)) {
+    const before = familiesOf(acceptedValue(definition, was) ?? definition.safeValue);
+    const after = familiesOf(next);
+    return AiInHouseModelChanged.entry(
+      definition.code as (typeof AI_IN_HOUSE_MODEL_TARGET_IDS)[number],
+      {
+        before: { models: before.length },
+        after: {
+          models: after.length,
+          versionChanged: before.length === 1 && after.length === 1 && before[0] !== after[0],
+          version,
+        },
+      },
+    );
+  }
   if (AI_MODEL_LIST_CODES.includes(definition.code) || AI_SAVER_CODES.includes(definition.code)) {
     // The families are on the history row; the audit row counts them (no free text, ADR-0009).
     return AiModelsChanged.entry(definition.code as (typeof AI_MODEL_TARGET_IDS)[number], {
@@ -107,10 +133,15 @@ function changeEntry(
     if (before === null) {
       logger.error({ msg: 'settings.stored-value-invalid', code: definition.code });
     }
+    // An in-house share or rollback limit is enforced as its safe value (the tightest) when the
+    // stored one is not allowed, as loosensInHouse reads it: audit that (Mohammad, G6b review 2).
+    const fallback = AI_IN_HOUSE_CODES.includes(definition.code)
+      ? definition.safeValue
+      : definition.defaultValue;
     return MarketNumberSettingChanged.entry(
       definition.code as (typeof NUMBER_SETTING_TARGET_IDS)[number],
       {
-        before: { value: Number(before ?? definition.defaultValue) },
+        before: { value: Number(before ?? fallback) },
         after: { value: Number(next), version },
       },
     );
@@ -569,6 +600,11 @@ export async function revertSetting(
   // A revert never allows more AI (a cap raised or lifted, the stop switched off): that needs the
   // AI Gateway key and a fresh two-step code (design section 8); tightening goes ahead.
   if (loosensAi(definition.code, current, restore)) return 'not-permitted';
+  // Nor does it take the model away from, or set the share to 0 for, a live in-house stage: a
+  // stage is changed only with its checks (Hassan, G6b review 1). Switching the stage off is free.
+  if (await strandsLiveInHouseStage(deps, context, definition.code, restore)) {
+    return 'not-permitted';
+  }
   // A reviewer without the stop's own key never switches the emergency stop off (Hassan, PR 2b);
   // restoring it on after a rejected "off" is the safe side and goes ahead.
   if (definition.code === OFFER_REVIEW_EMERGENCY_STOP_CODE && restore === 'off') {
@@ -588,4 +624,33 @@ export async function revertSetting(
   if (!applied) return 'changed-since';
   await deps.audit.record(context, changeEntry(definition, current, restore, version));
   return 'reverted';
+}
+
+/**
+ * Whether restoring `restore` to an in-house model or share would leave that task type's stored
+ * stage live without a model (`none`) or without its own share (0), which its change refuses.
+ */
+async function strandsLiveInHouseStage(
+  deps: SettingsDependencies,
+  context: CallContext,
+  code: string,
+  restore: string,
+): Promise<boolean> {
+  const task = AI_MODEL_TASKS.find(
+    (candidate) =>
+      code === aiInHouseModelCode(candidate) ||
+      code === aiInHouseShadowCode(candidate) ||
+      code === aiInHouseRolloutCode(candidate),
+  );
+  if (task === undefined) return false;
+  const stageCode = aiInHouseStageCode(task);
+  const stageDefinition = findDefinition(stageCode)!;
+  const row = await deps.settings.find(context.market, stageCode);
+  const stage =
+    row === null
+      ? stageDefinition.defaultValue
+      : (acceptedValue(stageDefinition, row.value) ?? stageDefinition.safeValue);
+  if (code === aiInHouseModelCode(task)) return stage !== 'off' && restore === AI_MODELS_NONE;
+  if (code === aiInHouseShadowCode(task)) return stage === 'shadow' && Number(restore) === 0;
+  return stage === 'percent' && Number(restore) === 0;
 }

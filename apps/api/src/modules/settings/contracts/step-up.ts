@@ -15,6 +15,13 @@ export const SETTINGS_AI_GATEWAY_RESUME_STEP_UP = 'settings.ai-gateway-emergency
 /** Any change of the Market's AI model lists, saver models or saver threshold (`PUT settings/admin/ai-models`). */
 export const SETTINGS_AI_MODELS_STEP_UP = 'settings.ai-models.change';
 /**
+ * A change of the Mondapac Intelligence tab that sends more to the in-house model or slows its
+ * rollback (`PUT settings/admin/ai-models/in-house`, G6b): a stage other than off, another model,
+ * a share raised, a rollback limit or the minimum sample raised. Switching off, lowering a share
+ * or tightening a limit needs none.
+ */
+export const SETTINGS_AI_IN_HOUSE_STEP_UP = 'settings.ai-in-house.raise';
+/**
  * Starting an evaluation run of a model, after its estimate (`POST settings/admin/ai-models/
  * evaluations`, AI Gateway G4c): it spends the evaluation budget on a real model.
  */
@@ -55,6 +62,8 @@ export const SETTINGS_STEP_UP_ACTIONS: readonly StepUpActionDeclaration[] = [
   },
   // The External models tab (G4b): every change, since any model change can move data or cost.
   { key: SETTINGS_AI_MODELS_STEP_UP, defaultRequired: true, locked: true, audience: 'admin' },
+  // The Mondapac Intelligence tab (G6b): only a change that sends more to the in-house model.
+  { key: SETTINGS_AI_IN_HOUSE_STEP_UP, defaultRequired: true, locked: true, audience: 'admin' },
   // An evaluation run (G4c): the estimated cost is confirmed with TOTP (design section 8).
   { key: SETTINGS_AI_EVALUATION_STEP_UP, defaultRequired: true, locked: true, audience: 'admin' },
   // A capability switched on, and every panel revert of an AI setting (G4d3).

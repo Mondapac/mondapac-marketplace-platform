@@ -51,6 +51,9 @@ import { SettingsAiGatewayControls } from './ai-gateway-controls-reader';
 import { NO_CAPS, NO_MODEL_LISTS } from '../../../platform/ai/gateway-controls';
 import type { AiModelChoices, ModelChoiceProblem } from '../../../platform/ai/model-choices';
 import { ChangeAiModels } from './use-cases/change-ai-models.use-case';
+import { ChangeAiInHouse } from './use-cases/change-ai-in-house.use-case';
+import { ViewAiInHouse } from './use-cases/view-ai-in-house.use-case';
+import type { InHouseTaskPage } from '../../../platform/ai/model-choices';
 import { ChangeAiCapabilities } from './use-cases/change-ai-capabilities.use-case';
 import { RevertAiGatewaySetting } from './use-cases/revert-ai-gateway-setting.use-case';
 import { RevertAiModelsSetting } from './use-cases/revert-ai-models-setting.use-case';
@@ -1943,6 +1946,12 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         list: list.map((family) => (family === 'fam-a' ? null : ('retired' as const))),
         saver: saver === null ? null : ('saver-not-cheaper' as const),
       }),
+      checkInHouse: () => ({
+        stage: null,
+        family: null,
+        shadowPercent: null,
+        rolloutPercent: null,
+      }),
     };
     const revertModels = (input: Record<string, unknown>, context = adminCtx()) =>
       new RevertAiModelsSetting(gate, deps, choices).execute(context, input);
@@ -2289,6 +2298,375 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       const toNone = await revertModels({ code: 'ai-models-chat', version: 0, expectedVersion: 2 });
       expect(toNone.ok && toNone.value.value).toBe('none');
       expect(spentProofs).toEqual(['settings.ai-settings.revert']);
+    });
+  });
+  describe('the in-house model stages (G6b, docs/design/domain/platform-ai.md section 8, Tab 2)', () => {
+    /**
+     * The Mondapac Intelligence tab's server checks, faked so every stage can be walked: `house-1`
+     * and `house-2` are usable, `house-old` is not evaluated, `fam-a` is an external model; a stage
+     * other than off needs a model and its own share. The real stage rules (stages not served yet,
+     * no shadow without the owner's approval) are tested on platform/ai's own file.
+     */
+    class FakeInHouse implements Pick<AiModelChoices, 'checkInHouse' | 'inHouseOptions' | 'check'> {
+      readonly checked: [string, string, InHouseTaskPage][] = [];
+      checkInHouse(marketId: string, task: string, page: InHouseTaskPage) {
+        this.checked.push([marketId, task, page]);
+        const live = page.stage !== 'off';
+        const familyProblem =
+          page.family === null || ['house-1', 'house-2'].includes(page.family)
+            ? null
+            : page.family === 'fam-a'
+              ? ('external-model' as const)
+              : ('not-evaluated' as const);
+        return {
+          stage: live && page.family === null ? ('no-model' as const) : null,
+          family: live || familyProblem === 'external-model' ? familyProblem : null,
+          shadowPercent:
+            page.stage === 'shadow' && page.shadowPercent === 0 ? ('no-share' as const) : null,
+          rolloutPercent:
+            page.stage === 'percent' && page.rolloutPercent === 0 ? ('no-share' as const) : null,
+        };
+      }
+      inHouseOptions() {
+        return {
+          chat: [{ family: 'house-1', problem: null }],
+          extract: [],
+          write: [{ family: 'house-old', problem: 'not-evaluated' as const }],
+          vision: [{ family: 'house-1', problem: 'task-unsupported' as const }],
+        };
+      }
+      check() {
+        return { list: [], saver: null };
+      }
+    }
+    let choices: FakeInHouse;
+    beforeEach(() => {
+      choices = new FakeInHouse();
+    });
+    const change = (input: Record<string, unknown>, context = adminCtx()) =>
+      new ChangeAiInHouse(gate, deps, choices).execute(context, input);
+    const set = (codeOf: string, value: unknown, expectedVersion = 0) => ({
+      code: codeOf,
+      value,
+      expectedVersion,
+    });
+    const STEP_UP = 'settings.ai-in-house.raise';
+    const fields = (result: Awaited<ReturnType<typeof change>>) =>
+      !result.ok && result.error.code === 'validation.failed' ? result.error.fields : null;
+    /** The stored rows of the Market as a code-to-value map. */
+    const stored = () =>
+      new Map(
+        [...store.rows.entries()]
+          .filter(([key]) => key.startsWith(`${market.marketId}/`))
+          .map(([, row]) => [row.code, row.value]),
+      );
+
+    it('shows every stage off, no model, no share and the default rollback limits', async () => {
+      const view = await new ViewAiInHouse(gate, deps, choices).execute(adminCtx(), {});
+      expect(
+        view.ok && view.value.settings.map(({ code, value, version }) => [code, value, version]),
+      ).toEqual([
+        ['ai-in-house-stage-chat', 'off', 0],
+        ['ai-in-house-stage-extract', 'off', 0],
+        ['ai-in-house-stage-write', 'off', 0],
+        ['ai-in-house-stage-vision', 'off', 0],
+        ['ai-in-house-model-chat', 'none', 0],
+        ['ai-in-house-model-extract', 'none', 0],
+        ['ai-in-house-model-write', 'none', 0],
+        ['ai-in-house-model-vision', 'none', 0],
+        ['ai-in-house-shadow-chat', '0', 0],
+        ['ai-in-house-shadow-extract', '0', 0],
+        ['ai-in-house-shadow-write', '0', 0],
+        ['ai-in-house-shadow-vision', '0', 0],
+        ['ai-in-house-rollout-chat', '0', 0],
+        ['ai-in-house-rollout-extract', '0', 0],
+        ['ai-in-house-rollout-write', '0', 0],
+        ['ai-in-house-rollout-vision', '0', 0],
+        ['ai-in-house-rollback-errors', '20', 0],
+        ['ai-in-house-rollback-guard', '10', 0],
+        ['ai-in-house-rollback-sample', '200', 0],
+      ]);
+      expect(view.ok && view.value.options.write).toEqual([
+        { family: 'house-old', problem: 'not-evaluated' },
+      ]);
+    });
+
+    it('needs the two-step code to start a stage, choose a model or raise a share, and saves nothing without it', async () => {
+      for (const changes of [
+        [set('ai-in-house-model-chat', 'house-1')],
+        [
+          set('ai-in-house-model-chat', 'house-1'),
+          set('ai-in-house-stage-chat', 'shadow'),
+          set('ai-in-house-shadow-chat', '5'),
+        ],
+        [set('ai-in-house-shadow-write', '1')],
+        [set('ai-in-house-rollout-write', '10')],
+        [set('ai-in-house-rollback-errors', '21')],
+        [set('ai-in-house-rollback-guard', '11')],
+        [set('ai-in-house-rollback-sample', '201')],
+      ]) {
+        proofLeft = false;
+        expect(await change({ changes })).toEqual({
+          ok: false,
+          error: { code: 'second-factor.required', actionKey: STEP_UP },
+        });
+      }
+      expect(store.written).toHaveLength(0);
+      proofLeft = true;
+      const saved = await change({
+        changes: [
+          set('ai-in-house-model-chat', 'house-1'),
+          set('ai-in-house-stage-chat', 'shadow'),
+          set('ai-in-house-shadow-chat', '5'),
+        ],
+      });
+      expect(
+        saved.ok && saved.value.map(({ code, value, version }) => [code, value, version]),
+      ).toEqual([
+        ['ai-in-house-model-chat', 'house-1', 1],
+        ['ai-in-house-stage-chat', 'shadow', 1],
+        ['ai-in-house-shadow-chat', '5', 1],
+      ]);
+      // One proof for the whole page, spent after the checks.
+      expect(spentProofs).toEqual([STEP_UP]);
+    });
+
+    it('switches a stage off, lowers a share and tightens a rollback limit without a code', async () => {
+      await change({
+        changes: [
+          set('ai-in-house-model-write', 'house-1'),
+          set('ai-in-house-stage-write', 'percent'),
+          set('ai-in-house-rollout-write', '20'),
+        ],
+      });
+      spentProofs = [];
+      proofLeft = false;
+      const lowered = await change({ changes: [set('ai-in-house-rollout-write', '5', 1)] });
+      expect(lowered.ok).toBe(true);
+      const off = await change({ changes: [set('ai-in-house-stage-write', 'off', 1)] });
+      expect(off.ok).toBe(true);
+      const tighter = await change({
+        changes: [
+          set('ai-in-house-rollback-errors', '5'),
+          set('ai-in-house-rollback-guard', '1'),
+          set('ai-in-house-rollback-sample', '100'),
+        ],
+      });
+      expect(tighter.ok).toBe(true);
+      // The model may be cleared once the stage is off, also without a code.
+      const cleared = await change({ changes: [set('ai-in-house-model-write', 'none', 1)] });
+      expect(cleared.ok).toBe(true);
+      expect(spentProofs).toEqual([]);
+      expect(stored().get('ai-in-house-stage-write')).toBe('off');
+      expect(stored().get('ai-in-house-model-write')).toBe('none');
+    });
+
+    it('asks the code when moving between two live stages (percent to default)', async () => {
+      await change({
+        changes: [
+          set('ai-in-house-model-chat', 'house-1'),
+          set('ai-in-house-stage-chat', 'percent'),
+          set('ai-in-house-rollout-chat', '10'),
+        ],
+      });
+      proofLeft = false;
+      expect(await change({ changes: [set('ai-in-house-stage-chat', 'default', 1)] })).toEqual({
+        ok: false,
+        error: { code: 'second-factor.required', actionKey: STEP_UP },
+      });
+      // Another version of the model is a change too: "roll back to the previous version".
+      expect(await change({ changes: [set('ai-in-house-model-chat', 'house-2', 1)] })).toEqual({
+        ok: false,
+        error: { code: 'second-factor.required', actionKey: STEP_UP },
+      });
+    });
+
+    it('runs the server checks on the page as it would stand, before any code is spent', async () => {
+      proofLeft = false;
+      expect(fields(await change({ changes: [set('ai-in-house-stage-chat', 'shadow')] }))).toEqual([
+        { path: 'ai-in-house-stage-chat', code: 'no-model' },
+        { path: 'ai-in-house-shadow-chat', code: 'no-share' },
+      ]);
+      expect(
+        fields(
+          await change({
+            changes: [
+              set('ai-in-house-model-write', 'house-old'),
+              set('ai-in-house-stage-write', 'default'),
+            ],
+          }),
+        ),
+      ).toEqual([{ path: 'ai-in-house-model-write', code: 'not-evaluated' }]);
+      // An external family is never the in-house model, even while the stage is off.
+      expect(
+        fields(await change({ changes: [set('ai-in-house-model-extract', 'fam-a')] })),
+      ).toEqual([{ path: 'ai-in-house-model-extract', code: 'external-model' }]);
+      expect(store.written).toHaveLength(0);
+      expect(spentProofs).toEqual([]);
+      // The check sees the stored values of the fields not changed.
+      proofLeft = true;
+      await change({ changes: [set('ai-in-house-model-chat', 'house-1')] });
+      await change({
+        changes: [set('ai-in-house-stage-chat', 'percent'), set('ai-in-house-rollout-chat', '10')],
+      });
+      expect(choices.checked.at(-1)).toEqual([
+        market.marketId,
+        'chat',
+        { stage: 'percent', family: 'house-1', shadowPercent: 0, rolloutPercent: 10 },
+      ]);
+      // A rollback limit alone checks no task type.
+      const before = choices.checked.length;
+      await change({ changes: [set('ai-in-house-rollback-sample', '300')] });
+      expect(choices.checked).toHaveLength(before);
+    });
+
+    it('keeps the rollback limits within the server ceiling and the sample floor', async () => {
+      for (const [codeOf, value] of [
+        ['ai-in-house-rollback-errors', '51'],
+        ['ai-in-house-rollback-errors', '0'],
+        ['ai-in-house-rollback-guard', '51'],
+        ['ai-in-house-rollback-sample', '99'],
+        ['ai-in-house-rollback-sample', '10001'],
+        ['ai-in-house-rollout-chat', '100'],
+        ['ai-in-house-shadow-chat', '101'],
+        ['ai-in-house-stage-chat', 'on'],
+        ['ai-in-house-model-chat', 'a,b'],
+      ] as const) {
+        expect(fields(await change({ changes: [set(codeOf, value)] }))).toEqual([
+          { path: 'changes.0.value', code: 'value' },
+        ]);
+      }
+      expect(store.written).toHaveLength(0);
+    });
+
+    it('audits each change without free text, at high risk where reviewed', async () => {
+      await change({
+        changes: [
+          set('ai-in-house-model-chat', 'house-1'),
+          set('ai-in-house-stage-chat', 'shadow'),
+          set('ai-in-house-shadow-chat', '5'),
+          set('ai-in-house-rollback-errors', '30'),
+        ],
+      });
+      expect(
+        audit.entries.map(({ action, targetId, before, after }) => ({
+          action,
+          targetId,
+          before,
+          after,
+        })),
+      ).toEqual([
+        {
+          action: 'settings.ai-in-house-model.changed',
+          targetId: 'ai-in-house-model-chat',
+          before: { models: 0 },
+          after: { models: 1, versionChanged: false, version: 1 },
+        },
+        {
+          action: 'settings.market-setting.changed',
+          targetId: 'ai-in-house-stage-chat',
+          before: { value: 'off' },
+          after: { value: 'shadow', version: 1 },
+        },
+        {
+          action: 'settings.market-setting.number-changed',
+          targetId: 'ai-in-house-shadow-chat',
+          before: { value: 0 },
+          after: { value: 5, version: 1 },
+        },
+        {
+          action: 'settings.market-setting.number-changed',
+          targetId: 'ai-in-house-rollback-errors',
+          before: { value: 20 },
+          after: { value: 30, version: 1 },
+        },
+      ]);
+    });
+
+    it('audits a change of version of the in-house model as such (a rollback is visible)', async () => {
+      await change({ changes: [set('ai-in-house-model-chat', 'house-2')] });
+      await change({ changes: [set('ai-in-house-model-chat', 'house-1', 1)] });
+      expect(audit.entries.at(-1)).toMatchObject({
+        action: 'settings.ai-in-house-model.changed',
+        before: { models: 1 },
+        after: { models: 1, versionChanged: true, version: 2 },
+      });
+    });
+
+    it('reads a stored value its definition does not allow as the tightest, in checks and audit', async () => {
+      // Rows changed by hand: a stage that is not one, a limit above the ceiling.
+      for (const [codeOf, value] of [
+        ['ai-in-house-stage-chat', 'live'],
+        ['ai-in-house-rollback-errors', '500'],
+      ] as const) {
+        store.rows.set(`${market.marketId}/${codeOf}`, {
+          code: codeOf,
+          value,
+          version: 1,
+          updatedAt: T0,
+          updatedBy: ADMIN,
+        });
+      }
+      const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      try {
+        // The stage reads as off, so a share alone saves (Mohammad, G6b review 3).
+        proofLeft = true;
+        const share = await change({ changes: [set('ai-in-house-shadow-chat', '3')] });
+        expect(share.ok).toBe(true);
+        expect(choices.checked.at(-1)?.[2]).toMatchObject({ stage: 'off', shadowPercent: 3 });
+        // The limit is audited from its safe value (1), as the step-up rule reads it.
+        spentProofs = [];
+        const limit = await change({ changes: [set('ai-in-house-rollback-errors', '2', 1)] });
+        expect(limit.ok).toBe(true);
+        expect(spentProofs).toEqual([STEP_UP]);
+        expect(audit.entries.at(-1)).toMatchObject({
+          targetId: 'ai-in-house-rollback-errors',
+          before: { value: 1 },
+          after: { value: 2 },
+        });
+      } finally {
+        error.mockRestore();
+      }
+    });
+
+    it('is refused in an acting-as session', async () => {
+      expect(
+        await change({ changes: [set('ai-in-house-stage-chat', 'off')] }, actingAs(adminCtx())),
+      ).toEqual({ ok: false, error: { code: 'access.denied' } });
+    });
+
+    it('never lets a rejected review start a stage again or raise a share (the review revert)', async () => {
+      const reviewRevert = (subjectRef: string, before: string, after: string) =>
+        new SettingsReverter(deps).revert(adminCtx(), {
+          requestId: id<'SystemRequest'>(0x5e6),
+          subjectRef,
+          before: { value: before },
+          after: { value: after },
+        });
+      await change({
+        changes: [
+          set('ai-in-house-model-chat', 'house-1'),
+          set('ai-in-house-stage-chat', 'percent'),
+          set('ai-in-house-rollout-chat', '10'),
+        ],
+      });
+      await change({
+        changes: [set('ai-in-house-stage-chat', 'off', 1), set('ai-in-house-rollout-chat', '5', 1)],
+      });
+      expect(await reviewRevert('ai-in-house-stage-chat', 'percent', 'off')).toBe('not-permitted');
+      expect(await reviewRevert('ai-in-house-rollout-chat', '10', '5')).toBe('not-permitted');
+      // Nor does it take the model away from a live stage, or set its share to 0 (Hassan, G6b
+      // review 1); once the stage is off, it goes ahead.
+      await change({ changes: [set('ai-in-house-stage-chat', 'percent', 2)] });
+      expect(await reviewRevert('ai-in-house-model-chat', 'none', 'house-1')).toBe('not-permitted');
+      await change({ changes: [set('ai-in-house-rollout-chat', '7', 2)] });
+      expect(await reviewRevert('ai-in-house-rollout-chat', '0', '7')).toBe('not-permitted');
+      await change({ changes: [set('ai-in-house-stage-chat', 'off', 3)] });
+      expect(await reviewRevert('ai-in-house-model-chat', 'none', 'house-1')).toBe('reverted');
+      // Tightening back goes ahead: a rejected raise of the sample is undone.
+      await change({ changes: [set('ai-in-house-rollback-sample', '400')] });
+      expect(await reviewRevert('ai-in-house-rollback-sample', '200', '400')).toBe('reverted');
+      expect(stored().get('ai-in-house-rollback-sample')).toBe('200');
     });
   });
 });

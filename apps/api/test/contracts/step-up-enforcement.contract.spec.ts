@@ -30,6 +30,7 @@ const ENFORCED_INSIDE_THE_FLOW = [
   'settings.ai-gateway-limits.raise', // ChangeAiGatewayLimits: raising or lifting a cap
   'settings.ai-gateway-emergency-stop.resume', // ChangeAiGatewayEmergencyStop: the stop switched off
   'settings.ai-models.change', // ChangeAiModels: every change that saves something
+  'settings.ai-in-house.raise', // ChangeAiInHouse: a change that sends more to the in-house model (G6b)
   'settings.ai-capability.resume', // ChangeAiCapabilities and ChangeAiSetting: a capability switched on (G4d3)
   'settings.ai-settings.revert', // RevertAiGatewaySetting and RevertAiModelsSetting: every panel revert (G4d3)
   'assistant.settings.resume', // setAssistantSettings: the assistant switched on (G4d3)

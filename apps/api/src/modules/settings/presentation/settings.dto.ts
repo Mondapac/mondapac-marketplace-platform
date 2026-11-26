@@ -1,4 +1,5 @@
 import type { SettingHistoryView } from '../application/use-cases/view-ai-gateway-history.use-case';
+import type { AiInHouseView } from '../application/use-cases/view-ai-in-house.use-case';
 import type { AiModelsView } from '../application/use-cases/view-ai-models.use-case';
 import type { EvaluationEstimate } from '../application/use-cases/estimate-ai-evaluation.use-case';
 import type { PlaygroundAnswer } from '../application/use-cases/run-ai-playground.use-case';
@@ -9,7 +10,7 @@ import type { ModelUsageView } from '../application/use-cases/view-ai-model-usag
 
 type EvaluationRunRecord = EvaluationRunList['runs'][number];
 import type { OfferReviewEmergencyStopView } from '../application/use-cases/view-offer-review-emergency-stop.use-case';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiExtraModels, ApiProperty } from '@nestjs/swagger';
 import type { ListPaging } from '../domain/definitions';
 import {
   CART_MODE_VALUES,
@@ -62,9 +63,42 @@ export class AiModelOptionBody {
     nullable: true,
     description:
       'Why it cannot be chosen for the task type in the Market now (unknown-model, ' +
-      'task-unsupported, not-checked, region, no-key, retired, not-evaluated), or null.',
+      'in-house-model, task-unsupported, not-checked, region, no-key, retired, not-evaluated), ' +
+      'or null.',
   })
   problem!: string | null;
+}
+
+export class AiInHouseOptionBody {
+  @ApiProperty({
+    description: 'An in-house (Mondapac Intelligence) family of the route catalogue.',
+  })
+  family!: string;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      "Why it cannot be the task type's in-house model in a stage other than off now " +
+      '(unknown-model, external-model, no-capability, task-unsupported, not-checked, region, ' +
+      'no-key, retired, not-evaluated), or null.',
+  })
+  problem!: string | null;
+}
+
+@ApiExtraModels(AiInHouseOptionBody)
+export class AiInHouseBody {
+  @ApiProperty({ type: [SettingBody] }) settings!: SettingBody[];
+  @ApiProperty({
+    description:
+      'Per task type (chat, extract, write, vision), every in-house family with why it cannot ' +
+      'be its model now. Empty lists while the catalogue has no in-house row.',
+    type: 'object',
+    additionalProperties: {
+      type: 'array',
+      items: { $ref: '#/components/schemas/AiInHouseOptionBody' },
+    },
+  })
+  options!: Record<string, AiInHouseOptionBody[]>;
 }
 
 export class AiModelsBody {
@@ -264,6 +298,16 @@ export const settingsListBody = (views: readonly SettingView[]): SettingsListBod
 });
 
 export const aiModelsBody = (view: AiModelsView): AiModelsBody => ({
+  settings: view.settings.map(settingBody),
+  options: Object.fromEntries(
+    Object.entries(view.options).map(([task, options]) => [
+      task,
+      options.map(({ family, problem }) => ({ family, problem })),
+    ]),
+  ),
+});
+
+export const aiInHouseBody = (view: AiInHouseView): AiInHouseBody => ({
   settings: view.settings.map(settingBody),
   options: Object.fromEntries(
     Object.entries(view.options).map(([task, options]) => [
