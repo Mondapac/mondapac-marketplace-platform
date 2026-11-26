@@ -555,6 +555,15 @@ settings/admin/ai-gateway/emergency-stop` (protected key `settings.ai-gateway.ma
   an alert. The Mondapac Intelligence tab is a placeholder until G6. Ordering uses Up and Down
   buttons (keyboard and phone friendly); drag and drop, the evaluation scorecard and the playground
   come in later PRs (G5c, G5d).
+- **Built in G5d (Playground tab of Settings > AI Models).** The admin picks a capability that has
+  an evaluation suite, one of its synthetic samples and two different models, and runs the sample on
+  both side by side. The browser sends ids only (`POST settings/admin/ai-models/playground`, no
+  two-step code; 20 runs per admin per Market day, 429 `ai.playground-limit-reached`); each answer is
+  the capability's guarded plain text, shown as text (never HTML), with its check codes, cost in US
+  dollars, time and route kind. Samples come from `GET .../playground/samples`. A viewer sees the
+  samples but cannot run. A slow answer for a choice the admin has moved away from is dropped.
+  The model choices are the families the server lists as usable for any task (the API does not yet
+  say a capability's task type); see FE-20261125-ai-gateway-playground-capability-models.
 
 - **Built in G5c (Settings > AI Models, tab Evaluation).** Per model family: the estimated cost of
   an evaluation run (per capability, with the evaluation budget left and anything that blocks the
