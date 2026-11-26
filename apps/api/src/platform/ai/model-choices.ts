@@ -13,7 +13,10 @@ import { AiRouter, MAX_ATTEMPTS, type RouteProblem } from './routing/ai-router';
 export {
   IN_HOUSE_STAGES,
   ROLLBACK_LIMIT_CEILING_PERMILLE,
+  ROLLBACK_LIMIT_FLOOR_PERMILLE,
   ROLLBACK_MIN_SAMPLE_FLOOR,
+  ROLLOUT_SHARE_MAX,
+  SHADOW_SHARE_MAX,
   ROLLBACK_MIN_SAMPLE_TOP,
   type InHouseProblem,
   type InHouseStage,
@@ -128,7 +131,7 @@ export class AiModelChoices {
    */
   checkInHouse(marketId: MarketId, task: CapabilityTask, page: InHouseTaskPage): InHouseTaskCheck {
     const specs = this.#specsOf(task);
-    return checkInHouseTask(page, (family) =>
+    return checkInHouseTask(marketId, page, (family) =>
       this.router.inHouseFamilyProblem(marketId, task, specs, family),
     );
   }

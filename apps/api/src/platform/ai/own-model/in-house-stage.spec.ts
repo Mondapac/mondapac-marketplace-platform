@@ -2,7 +2,9 @@ import {
   checkInHouseTask,
   IN_HOUSE_STAGES,
   SERVED_IN_HOUSE_STAGES,
-  SHADOW_CUSTOMER_DATA_APPROVAL,
+  SHADOW_CUSTOMER_DATA_APPROVALS,
+  inHouseStageInForce,
+  rollbackLimitsInForce,
   type InHouseProblem,
   type InHouseTaskPage,
 } from './in-house-stage';
@@ -24,7 +26,7 @@ describe('in-house stage checks (G6b)', () => {
   it('serves only off today, and has no owner approval for customer data in shadow', () => {
     // G6c adds shadow and G6d percent and default, each by PR with its routing.
     expect(SERVED_IN_HOUSE_STAGES).toEqual(['off']);
-    expect(SHADOW_CUSTOMER_DATA_APPROVAL).toBeNull();
+    expect(SHADOW_CUSTOMER_DATA_APPROVALS).toEqual({});
     expect(IN_HOUSE_STAGES).toEqual(['off', 'shadow', 'percent', 'default']);
   });
 
@@ -34,7 +36,7 @@ describe('in-house stage checks (G6b)', () => {
       asked.push(family);
       return 'not-evaluated';
     };
-    expect(checkInHouseTask(page(), notEvaluated)).toEqual({
+    expect(checkInHouseTask('AU', page(), notEvaluated)).toEqual({
       stage: null,
       family: null,
       shadowPercent: null,
@@ -42,16 +44,16 @@ describe('in-house stage checks (G6b)', () => {
     });
     // A share may be prepared while off.
     expect(
-      checkInHouseTask(page({ family: 'house-1', shadowPercent: 40 }), notEvaluated).family,
+      checkInHouseTask('AU', page({ family: 'house-1', shadowPercent: 40 }), notEvaluated).family,
     ).toBeNull();
     expect(asked).toEqual(['house-1']);
   });
 
   it('refuses an unknown or external family even while off', () => {
-    expect(checkInHouseTask(page({ family: 'x' }), () => 'unknown-model').family).toBe(
+    expect(checkInHouseTask('AU', page({ family: 'x' }), () => 'unknown-model').family).toBe(
       'unknown-model',
     );
-    expect(checkInHouseTask(page({ family: 'x' }), () => 'external-model').family).toBe(
+    expect(checkInHouseTask('AU', page({ family: 'x' }), () => 'external-model').family).toBe(
       'external-model',
     );
   });
@@ -60,6 +62,7 @@ describe('in-house stage checks (G6b)', () => {
     'refuses %s while the gateway does not serve it',
     (stage) => {
       const check = checkInHouseTask(
+        'AU',
         page({ stage, family: 'house-1', shadowPercent: 5, rolloutPercent: 5 }),
         usable,
       );
@@ -70,19 +73,42 @@ describe('in-house stage checks (G6b)', () => {
   it('reports the route problem of a live stage, a missing model and a zero share', () => {
     // A live stage reaches the route check whatever the served list says.
     expect(
-      checkInHouseTask(page({ stage: 'default', family: 'house-1' }), () => 'retired').family,
+      checkInHouseTask('AU', page({ stage: 'default', family: 'house-1' }), () => 'retired').family,
     ).toBe('retired');
-    expect(checkInHouseTask(page({ stage: 'percent' }), usable)).toMatchObject({
+    expect(checkInHouseTask('AU', page({ stage: 'percent' }), usable)).toMatchObject({
       family: null,
       rolloutPercent: 'no-share',
       shadowPercent: null,
     });
     expect(
-      checkInHouseTask(page({ stage: 'shadow', family: 'house-1' }), usable).shadowPercent,
+      checkInHouseTask('AU', page({ stage: 'shadow', family: 'house-1' }), usable).shadowPercent,
     ).toBe('no-share');
     // The other stage's share plays no part.
     expect(
-      checkInHouseTask(page({ stage: 'default', family: 'house-1' }), usable).rolloutPercent,
+      checkInHouseTask('AU', page({ stage: 'default', family: 'house-1' }), usable).rolloutPercent,
     ).toBeNull();
+  });
+
+  it('serves a stored stage only as the rules allow it, else off (the read G6c and G6d use)', () => {
+    for (const stage of ['shadow', 'percent', 'default'] as const) {
+      expect(
+        inHouseStageInForce(
+          'AU',
+          page({ stage, family: 'house-1', shadowPercent: 5, rolloutPercent: 5 }),
+        ),
+      ).toBe('off');
+    }
+    expect(inHouseStageInForce('AU', page({ family: 'house-1' }))).toBe('off');
+  });
+
+  it('clamps stored rollback limits into the server bounds, a broken value at the tightest', () => {
+    expect(rollbackLimitsInForce({ errorsPermille: 500, guardPermille: 0, minSample: 1 })).toEqual({
+      errorsPermille: 50,
+      guardPermille: 1,
+      minSample: 100,
+    });
+    expect(
+      rollbackLimitsInForce({ errorsPermille: Number.NaN, guardPermille: 10, minSample: 99_999 }),
+    ).toEqual({ errorsPermille: 1, guardPermille: 10, minSample: 10_000 });
   });
 });

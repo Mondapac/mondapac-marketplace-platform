@@ -2557,10 +2557,10 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         })),
       ).toEqual([
         {
-          action: 'settings.ai-models.changed',
+          action: 'settings.ai-in-house-model.changed',
           targetId: 'ai-in-house-model-chat',
           before: { models: 0 },
-          after: { models: 1, version: 1 },
+          after: { models: 1, versionChanged: false, version: 1 },
         },
         {
           action: 'settings.market-setting.changed',
@@ -2581,6 +2581,52 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
           after: { value: 30, version: 1 },
         },
       ]);
+    });
+
+    it('audits a change of version of the in-house model as such (a rollback is visible)', async () => {
+      await change({ changes: [set('ai-in-house-model-chat', 'house-2')] });
+      await change({ changes: [set('ai-in-house-model-chat', 'house-1', 1)] });
+      expect(audit.entries.at(-1)).toMatchObject({
+        action: 'settings.ai-in-house-model.changed',
+        before: { models: 1 },
+        after: { models: 1, versionChanged: true, version: 2 },
+      });
+    });
+
+    it('reads a stored value its definition does not allow as the tightest, in checks and audit', async () => {
+      // Rows changed by hand: a stage that is not one, a limit above the ceiling.
+      for (const [codeOf, value] of [
+        ['ai-in-house-stage-chat', 'live'],
+        ['ai-in-house-rollback-errors', '500'],
+      ] as const) {
+        store.rows.set(`${market.marketId}/${codeOf}`, {
+          code: codeOf,
+          value,
+          version: 1,
+          updatedAt: T0,
+          updatedBy: ADMIN,
+        });
+      }
+      const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      try {
+        // The stage reads as off, so a share alone saves (Mohammad, G6b review 3).
+        proofLeft = true;
+        const share = await change({ changes: [set('ai-in-house-shadow-chat', '3')] });
+        expect(share.ok).toBe(true);
+        expect(choices.checked.at(-1)?.[2]).toMatchObject({ stage: 'off', shadowPercent: 3 });
+        // The limit is audited from its safe value (1), as the step-up rule reads it.
+        spentProofs = [];
+        const limit = await change({ changes: [set('ai-in-house-rollback-errors', '2', 1)] });
+        expect(limit.ok).toBe(true);
+        expect(spentProofs).toEqual([STEP_UP]);
+        expect(audit.entries.at(-1)).toMatchObject({
+          targetId: 'ai-in-house-rollback-errors',
+          before: { value: 1 },
+          after: { value: 2 },
+        });
+      } finally {
+        error.mockRestore();
+      }
     });
 
     it('is refused in an acting-as session', async () => {
@@ -2609,6 +2655,14 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       });
       expect(await reviewRevert('ai-in-house-stage-chat', 'percent', 'off')).toBe('not-permitted');
       expect(await reviewRevert('ai-in-house-rollout-chat', '10', '5')).toBe('not-permitted');
+      // Nor does it take the model away from a live stage, or set its share to 0 (Hassan, G6b
+      // review 1); once the stage is off, it goes ahead.
+      await change({ changes: [set('ai-in-house-stage-chat', 'percent', 2)] });
+      expect(await reviewRevert('ai-in-house-model-chat', 'none', 'house-1')).toBe('not-permitted');
+      await change({ changes: [set('ai-in-house-rollout-chat', '7', 2)] });
+      expect(await reviewRevert('ai-in-house-rollout-chat', '0', '7')).toBe('not-permitted');
+      await change({ changes: [set('ai-in-house-stage-chat', 'off', 3)] });
+      expect(await reviewRevert('ai-in-house-model-chat', 'none', 'house-1')).toBe('reverted');
       // Tightening back goes ahead: a rejected raise of the sample is undone.
       await change({ changes: [set('ai-in-house-rollback-sample', '400')] });
       expect(await reviewRevert('ai-in-house-rollback-sample', '200', '400')).toBe('reverted');

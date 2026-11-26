@@ -788,7 +788,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = Object.freeze([
   },
   {
     code: AI_IN_HOUSE_ROLLBACK_ERRORS_CODE,
-    label: 'Mondapac Intelligence: rollback error rate (0.1 %)',
+    label: 'Mondapac Intelligence: rollback error rate (tenths of a %)',
     values: [],
     integer: AI_IN_HOUSE_ROLLBACK_LIMIT,
     defaultValue: '20',
@@ -797,7 +797,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = Object.freeze([
   },
   {
     code: AI_IN_HOUSE_ROLLBACK_GUARD_CODE,
-    label: 'Mondapac Intelligence: rollback guard-rejection rate (0.1 %)',
+    label: 'Mondapac Intelligence: rollback guard-rejection rate (tenths of a %)',
     values: [],
     integer: AI_IN_HOUSE_ROLLBACK_LIMIT,
     defaultValue: '10',

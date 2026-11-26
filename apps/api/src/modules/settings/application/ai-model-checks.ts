@@ -63,6 +63,8 @@ export function aiInHouseIssues(
       rolloutPercent: aiInHouseRolloutCode(task),
     } as const;
     if (!Object.values(codes).some((code) => changed.has(code))) continue;
+    // `values` holds the value in force of every code (a stored value its definition does not
+    // allow is already its safe value: stage off, no model, share 0), so the casts are safe.
     const check = choices.checkInHouse(marketId, task, {
       stage: values.get(codes.stage) as AiInHouseStage,
       family: familiesOf(values.get(codes.family)!)[0] ?? null,

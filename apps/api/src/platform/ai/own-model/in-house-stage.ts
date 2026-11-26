@@ -19,15 +19,16 @@ export type InHouseStage = (typeof IN_HOUSE_STAGES)[number];
 export const SERVED_IN_HOUSE_STAGES: readonly InHouseStage[] = Object.freeze(['off']);
 
 /**
- * The owner's written approval for customer data in shadow runs (ADR-0052, verification log;
- * design section 8 "Conditions" and readiness condition 6). Every shadow call carries a real
- * caller's request, so there is no shadow without it: while null, `shadow` is refused
- * (`shadow-not-approved`). Set by the PR that records the approval in ADR-0052, never in the panel.
+ * The owner's written approval for customer data in shadow runs, per Market (ADR-0052,
+ * verification log; design section 8 "Conditions" and readiness condition 6). Approval is per
+ * Market, since residency and the data categories the owner approved are (R7). Every shadow call
+ * carries a real caller's request, so there is no shadow without it: a Market without an entry
+ * refuses `shadow` (`shadow-not-approved`). Set by the PR that records the approval in ADR-0052,
+ * with the security review, never in the panel. Empty today.
  */
-export const SHADOW_CUSTOMER_DATA_APPROVAL: {
-  readonly recordedIn: 'ADR-0052';
-  readonly approvedOn: string;
-} | null = null;
+export const SHADOW_CUSTOMER_DATA_APPROVALS: Readonly<
+  Partial<Record<string, { readonly recordedIn: 'ADR-0052'; readonly approvedOn: string }>>
+> = Object.freeze({});
 
 /**
  * The server bounds of the auto-rollback limits (design section 8, "Auto rollback"). The limits are
@@ -37,9 +38,13 @@ export const SHADOW_CUSTOMER_DATA_APPROVAL: {
  * below the floor, so a handful of calls cannot roll back on noise, nor above the top, so a quiet
  * Market is still judged. Raising a limit or the minimum sample loosens the rollback.
  */
+export const ROLLBACK_LIMIT_FLOOR_PERMILLE = 1;
 export const ROLLBACK_LIMIT_CEILING_PERMILLE = 50;
 export const ROLLBACK_MIN_SAMPLE_FLOOR = 100;
 export const ROLLBACK_MIN_SAMPLE_TOP = 10_000;
+/** The share bounds in whole percents: shadow 0 to 100; percent 0 to 99 (100 % is `default`). */
+export const SHADOW_SHARE_MAX = 100;
+export const ROLLOUT_SHARE_MAX = 99;
 
 /**
  * A task type's in-house settings as they would stand after a change: the stage, the in-house
@@ -55,7 +60,7 @@ export interface InHouseTaskPage {
 /**
  * Why a task type's in-house settings cannot stand (G6b server checks). On the stage:
  * `stage-not-served` (see {@link SERVED_IN_HOUSE_STAGES}), `shadow-not-approved` (see
- * {@link SHADOW_CUSTOMER_DATA_APPROVAL}), `no-model` (a stage other than off needs a model). On the
+ * {@link SHADOW_CUSTOMER_DATA_APPROVALS}), `no-model` (a stage other than off needs a model). On the
  * model: a route problem of the in-house family (readiness conditions 1 to 5: in the catalogue,
  * Hassan's check, region, key, not retired, a recorded evaluation pass for every capability of the
  * task type), `external-model` (an external family named as the in-house model) or
@@ -89,13 +94,14 @@ export interface InHouseTaskCheck {
  * checks as any change. The gateway checks every route again on each call (G6c, G6d).
  */
 export function checkInHouseTask(
+  marketId: string,
   page: InHouseTaskPage,
   familyProblem: (family: string) => InHouseProblem | null,
 ): InHouseTaskCheck {
   const live = page.stage !== 'off';
   let stage: InHouseProblem | null = null;
   if (!SERVED_IN_HOUSE_STAGES.includes(page.stage)) stage = 'stage-not-served';
-  else if (page.stage === 'shadow' && SHADOW_CUSTOMER_DATA_APPROVAL === null) {
+  else if (page.stage === 'shadow' && SHADOW_CUSTOMER_DATA_APPROVALS[marketId] === undefined) {
     stage = 'shadow-not-approved';
   } else if (live && page.family === null) stage = 'no-model';
 
@@ -110,5 +116,59 @@ export function checkInHouseTask(
     family,
     shadowPercent: page.stage === 'shadow' && page.shadowPercent === 0 ? 'no-share' : null,
     rolloutPercent: page.stage === 'percent' && page.rolloutPercent === 0 ? 'no-share' : null,
+  };
+}
+
+/** The Market's auto-rollback limits as stored (tenths of a percent, and calls). */
+export interface RollbackLimits {
+  readonly errorsPermille: number;
+  readonly guardPermille: number;
+  readonly minSample: number;
+}
+
+/**
+ * The one read G6c and G6d route by (Mohammad, G6b review 1; Hassan, G6b review 1): a task type's
+ * stage as it may be served now, whatever the store holds (a row changed by hand, a restored
+ * backup, a review revert that took the model away). A stage the gateway does not serve, shadow
+ * without the Market's approval, or a live stage without a model or without its own share is
+ * `off`; the router still checks the model's route on each call. Never more than the store allows.
+ */
+export function inHouseStageInForce(marketId: string, page: InHouseTaskPage): InHouseStage {
+  const { stage } = page;
+  if (stage === 'off' || !SERVED_IN_HOUSE_STAGES.includes(stage)) return 'off';
+  if (stage === 'shadow' && SHADOW_CUSTOMER_DATA_APPROVALS[marketId] === undefined) return 'off';
+  if (page.family === null) return 'off';
+  if (stage === 'shadow' && !(page.shadowPercent > 0 && page.shadowPercent <= SHADOW_SHARE_MAX)) {
+    return 'off';
+  }
+  if (
+    stage === 'percent' &&
+    !(page.rolloutPercent > 0 && page.rolloutPercent <= ROLLOUT_SHARE_MAX)
+  ) {
+    return 'off';
+  }
+  return stage;
+}
+
+/**
+ * The rollback limits in force: each clamped into the server bounds, a value that is not a whole
+ * number the tightest (limit at the floor, sample at the floor), so a limit is never above 5 % and
+ * the rollback is never switched off by a stored value.
+ */
+export function rollbackLimitsInForce(stored: RollbackLimits): RollbackLimits {
+  const clamp = (value: number, min: number, max: number): number =>
+    Number.isSafeInteger(value) ? Math.min(max, Math.max(min, value)) : min;
+  return {
+    errorsPermille: clamp(
+      stored.errorsPermille,
+      ROLLBACK_LIMIT_FLOOR_PERMILLE,
+      ROLLBACK_LIMIT_CEILING_PERMILLE,
+    ),
+    guardPermille: clamp(
+      stored.guardPermille,
+      ROLLBACK_LIMIT_FLOOR_PERMILLE,
+      ROLLBACK_LIMIT_CEILING_PERMILLE,
+    ),
+    minSample: clamp(stored.minSample, ROLLBACK_MIN_SAMPLE_FLOOR, ROLLBACK_MIN_SAMPLE_TOP),
   };
 }

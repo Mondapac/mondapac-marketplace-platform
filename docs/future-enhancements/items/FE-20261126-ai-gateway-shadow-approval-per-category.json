@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261126-ai-gateway-shadow-approval-per-category",
+  "area": "assistant",
+  "title": "درگاه AI: تأیید مالک برای دادهٔ مشتری در shadow به تفکیک دستهٔ داده",
+  "desc": "در G6b تأیید مالک برای shadow به تفکیک بازار است (SHADOW_CUSTOMER_DATA_APPROVALS). طبق R7 تأیید برای دسته‌های داده هم هست؛ در G6c کلید تأیید باید بازار و دسته‌های دادهٔ قابلیت را با هم بسنجد و تغییرش با بازبینی امنیت باشد (حسن، بازبینی G6b، یافتهٔ ۳).",
+  "src": "docs/design/domain/platform-ai.md (Built in G6b)",
+  "date": "2026-11-26",
+  "trig": "در G6c، پیش از ثبت اولین تأیید مالک در ADR-0052",
+  "prio": "متوسط",
+  "status": "موکول"
+}

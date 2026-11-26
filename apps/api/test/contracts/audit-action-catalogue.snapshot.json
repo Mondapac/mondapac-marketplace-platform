@@ -3747,9 +3747,23 @@
     }
   },
   {
+    "action": "settings.ai-in-house-model.changed",
+    "targetType": "settings.market-setting",
+    "targetId": "enumOf(ai-in-house-model-chat|ai-in-house-model-extract|ai-in-house-model-write|ai-in-house-model-vision)",
+    "actors": ["authenticated"],
+    "before": {
+      "models": "integer"
+    },
+    "after": {
+      "models": "integer",
+      "version": "integer",
+      "versionChanged": "boolean"
+    }
+  },
+  {
     "action": "settings.ai-models.changed",
     "targetType": "settings.market-setting",
-    "targetId": "enumOf(ai-models-chat|ai-models-extract|ai-models-write|ai-models-vision|ai-saver-chat|ai-saver-extract|ai-saver-write|ai-saver-vision|ai-in-house-model-chat|ai-in-house-model-extract|ai-in-house-model-write|ai-in-house-model-vision)",
+    "targetId": "enumOf(ai-models-chat|ai-models-extract|ai-models-write|ai-models-vision|ai-saver-chat|ai-saver-extract|ai-saver-write|ai-saver-vision)",
     "actors": ["authenticated"],
     "before": {
       "models": "integer"

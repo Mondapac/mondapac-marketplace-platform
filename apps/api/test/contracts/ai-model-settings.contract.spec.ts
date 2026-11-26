@@ -9,15 +9,21 @@ import {
   AI_IN_HOUSE_ROLLBACK_SAMPLE,
   AI_IN_HOUSE_STAGE_VALUES,
   AI_MODEL_TASKS,
+  aiInHouseRolloutCode,
+  aiInHouseShadowCode,
   familiesOf,
+  findDefinition,
 } from '../../src/modules/settings/domain/definitions';
 import { CAPABILITY_TASKS } from '../../src/platform/ai/capability';
 import { checkedInCatalogue } from '../../src/platform/ai/catalogue';
 import {
   IN_HOUSE_STAGES,
   ROLLBACK_LIMIT_CEILING_PERMILLE,
+  ROLLBACK_LIMIT_FLOOR_PERMILLE,
   ROLLBACK_MIN_SAMPLE_FLOOR,
   ROLLBACK_MIN_SAMPLE_TOP,
+  ROLLOUT_SHARE_MAX,
+  SHADOW_SHARE_MAX,
 } from '../../src/platform/ai/own-model/in-house-stage';
 
 // settings keeps one priority list and one saver model per task type of platform/ai, and a list
@@ -81,7 +87,20 @@ describe('AI model settings and the platform/ai catalogue (G4b)', () => {
   // AI code in its domain): they must be platform/ai's, so a stage or a ceiling never drifts (G6b).
   it("holds platform/ai's in-house stages and rollback bounds (G6b)", () => {
     expect([...AI_IN_HOUSE_STAGE_VALUES]).toEqual([...IN_HOUSE_STAGES]);
-    expect(AI_IN_HOUSE_ROLLBACK_LIMIT.max).toBe(ROLLBACK_LIMIT_CEILING_PERMILLE);
+    expect(AI_IN_HOUSE_ROLLBACK_LIMIT).toEqual({
+      min: ROLLBACK_LIMIT_FLOOR_PERMILLE,
+      max: ROLLBACK_LIMIT_CEILING_PERMILLE,
+    });
+    for (const task of AI_MODEL_TASKS) {
+      expect(findDefinition(aiInHouseShadowCode(task))?.integer).toEqual({
+        min: 0,
+        max: SHADOW_SHARE_MAX,
+      });
+      expect(findDefinition(aiInHouseRolloutCode(task))?.integer).toEqual({
+        min: 0,
+        max: ROLLOUT_SHARE_MAX,
+      });
+    }
     expect(AI_IN_HOUSE_ROLLBACK_SAMPLE).toEqual({
       min: ROLLBACK_MIN_SAMPLE_FLOOR,
       max: ROLLBACK_MIN_SAMPLE_TOP,
