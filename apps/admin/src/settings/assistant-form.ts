@@ -2,7 +2,6 @@ import type { ApiFailure } from '../api/client.ts';
 import type {
   AssistantSettings,
   Audience,
-  ModelTier,
   ReplyLanguage,
   Retention,
   Scope,
@@ -32,7 +31,6 @@ export interface AssistantForm {
   readonly audience: Audience;
   readonly audiencePercent: string;
   readonly scope: Scope;
-  readonly modelTier: ModelTier;
   readonly users: UserGroup;
   readonly guestMessageLimit: string;
   readonly customerMessageLimit: string;
@@ -89,7 +87,6 @@ export function formOf(settings: AssistantSettings): AssistantForm {
     audience: settings.audience,
     audiencePercent: settings.audiencePercent === null ? '' : String(settings.audiencePercent),
     scope: settings.scope,
-    modelTier: settings.modelTier,
     users: settings.users,
     guestMessageLimit: String(settings.guestMessageLimit),
     customerMessageLimit: String(settings.customerMessageLimit),
@@ -159,7 +156,6 @@ export function settingsOf(
       audience: form.audience,
       audiencePercent,
       scope: form.scope,
-      modelTier: form.modelTier,
       users: form.users,
       guestMessageLimit: guestMessageLimit!,
       customerMessageLimit: customerMessageLimit!,

@@ -7,7 +7,6 @@ import type {
 } from '../application/ports/assistant-settings.repository';
 import {
   AUDIENCES,
-  MODEL_TIERS,
   REPLY_LANGUAGES,
   RETENTIONS,
   SCOPES,
@@ -24,6 +23,13 @@ function stored<T extends string>(options: readonly T[], value: string): T {
   return value as T;
 }
 
+/**
+ * The value written to the retired `model_tier` column (NOT NULL, CHECK fast or balanced) until a
+ * migration drops it (FE-20261125-ai-gateway-drop-assistant-model-tier). Never read: the chat's
+ * models are the Market's list for the chat task type (AI Gateway G4d1).
+ */
+const RETIRED_MODEL_TIER = 'fast';
+
 /** {@link AssistantSettingsRepository} on `assistant.settings`, scoped by `marketId`. */
 export class PrismaAssistantSettingsRepository implements AssistantSettingsRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -39,7 +45,6 @@ export class PrismaAssistantSettingsRepository implements AssistantSettingsRepos
       audience: stored(AUDIENCES, row.audience),
       audiencePercent: row.audiencePercent,
       scope: stored(SCOPES, row.scope),
-      modelTier: stored(MODEL_TIERS, row.modelTier),
       users: stored(USER_GROUPS, row.users),
       guestMessageLimit: row.guestMessageLimit,
       customerMessageLimit: row.customerMessageLimit,
@@ -69,6 +74,7 @@ export class PrismaAssistantSettingsRepository implements AssistantSettingsRepos
           tenantId: market.tenantId,
           version: record.version,
           ...record.settings,
+          modelTier: RETIRED_MODEL_TIER,
           changedAt: new Date(record.changedAt.epochMilliseconds),
           changedBy: record.changedBy,
         },

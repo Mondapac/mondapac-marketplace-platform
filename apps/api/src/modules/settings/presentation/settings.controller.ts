@@ -796,9 +796,9 @@ export class AdminSettingsController {
   @ApiOperation({
     summary: 'The AI settings of the Market (admin)',
     description:
-      'Needs settings.ai.view. ai-description-writer (off by default) and ' +
-      'ai-description-writer-tier (fast by default), each with its version (0 while the default ' +
-      'is in force). The provider, model ids and key are server configuration, not settings.',
+      'Needs settings.ai.view. ai-description-writer (off by default) with its version (0 while ' +
+      "the default is in force). The writer's models are the Market's list for the write task " +
+      'type (settings/admin/ai-models); the provider routes and keys are server configuration.',
   })
   @ApiOkResponse({ type: SettingsListBody })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })

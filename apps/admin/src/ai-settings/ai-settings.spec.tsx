@@ -28,13 +28,9 @@ const row = (code: string, value: string, version: number, updatedAt: string | n
   updatedAt,
 });
 const DEFAULTS: AiSettingsAnswer = {
-  settings: [row('ai-description-writer', 'off', 0), row('ai-description-writer-tier', 'fast', 0)],
+  settings: [row('ai-description-writer', 'off', 0)],
 };
-const SETUP = {
-  killSwitch: false,
-  keyConfigured: true,
-  models: { fast: 'm-fast', balanced: 'm-bal' },
-};
+const SETUP = { killSwitch: false, keyConfigured: true };
 
 const view = (over: Partial<Parameters<typeof AiSettingsPanel>[0]> = {}) =>
   render(
@@ -47,28 +43,35 @@ beforeEach(() => call.mockReset());
 afterEach(cleanup);
 
 describe('Settings › AI', () => {
-  it('shows the switch off, the tier, the model ids and Key set, never a key', () => {
+  it('shows the switch off and Key set, never a key, and no model tier picker (G4d1)', () => {
     view();
     expect(
       screen
         .getByRole('switch', { name: 'Write with AI (product descriptions)' })
         .getAttribute('aria-checked'),
     ).toBe('false');
-    expect(screen.getByRole<HTMLSelectElement>('combobox', { name: /Model tier/ }).value).toBe(
-      'fast',
-    );
-    expect(screen.getByText('m-fast')).toBeTruthy();
-    expect(screen.getByText('m-bal')).toBeTruthy();
+    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(screen.queryByText(/Model tier|Fast model|Balanced model/)).toBeNull();
     expect(screen.getByText('Key set')).toBeTruthy();
     expect(screen.queryByText('No key')).toBeNull();
   });
 
-  it('says No key and Not configured when the server has none', () => {
-    view({
-      setup: { killSwitch: false, keyConfigured: false, models: { fast: null, balanced: null } },
-    });
+  it('says No key when the server has none', () => {
+    view({ setup: { killSwitch: false, keyConfigured: false } });
     expect(screen.getByText('No key')).toBeTruthy();
-    expect(screen.getAllByText('Not configured')).toHaveLength(2);
+  });
+
+  it('ignores a stored tier row the API may still send', () => {
+    view({
+      initial: {
+        settings: [
+          row('ai-description-writer', 'on', 2),
+          row('ai-description-writer-tier', 'fast', 3),
+        ],
+      },
+    });
+    expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('true');
+    expect(screen.queryByRole('combobox')).toBeNull();
   });
 
   it('shows a notice when the kill switch is set', () => {
@@ -105,10 +108,7 @@ describe('Settings › AI', () => {
   describe('where a change is reviewed', () => {
     const review = { reviewed: true, risk: 'medium' };
     const REVIEWED: AiSettingsAnswer = {
-      settings: [
-        { ...row('ai-description-writer', 'off', 0), review },
-        { ...row('ai-description-writer-tier', 'fast', 0), review },
-      ],
+      settings: [{ ...row('ai-description-writer', 'off', 0), review }],
     };
 
     it('asks for no note when the view does not say reviewed', () => {
@@ -168,36 +168,6 @@ describe('Settings › AI', () => {
     });
   });
 
-  it('changes the tier on its own version', async () => {
-    call.mockResolvedValue({
-      ok: true,
-      status: 200,
-      body: row('ai-description-writer-tier', 'balanced', 4),
-    });
-    view({
-      initial: {
-        settings: [
-          row('ai-description-writer', 'on', 2),
-          row('ai-description-writer-tier', 'fast', 3),
-        ],
-      },
-    });
-    fireEvent.change(screen.getByRole('combobox', { name: /Model tier/ }), {
-      target: { value: 'balanced' },
-    });
-    await waitFor(() => expect(call).toHaveBeenCalled());
-    expect(call.mock.calls[0]?.[2]).toEqual({
-      code: 'ai-description-writer-tier',
-      value: 'balanced',
-      expectedVersion: 3,
-    });
-    await waitFor(() =>
-      expect(screen.getByRole<HTMLSelectElement>('combobox', { name: /Model tier/ }).value).toBe(
-        'balanced',
-      ),
-    );
-  });
-
   it('on a version conflict says so and shows what is saved now', async () => {
     call.mockImplementation((method) =>
       Promise.resolve(
@@ -207,10 +177,7 @@ describe('Settings › AI', () => {
               ok: true,
               status: 200,
               body: {
-                settings: [
-                  row('ai-description-writer', 'on', 5),
-                  row('ai-description-writer-tier', 'fast', 0),
-                ],
+                settings: [row('ai-description-writer', 'on', 5)],
               },
             },
       ),
@@ -254,9 +221,6 @@ describe('Settings › AI', () => {
   it('is read-only without the manage key', () => {
     view({ canManage: false });
     expect(screen.getByRole<HTMLButtonElement>('switch').disabled).toBe(true);
-    expect(screen.getByRole<HTMLSelectElement>('combobox', { name: /Model tier/ }).disabled).toBe(
-      true,
-    );
     expect(screen.getByText('You can view these settings but not change them.')).toBeTruthy();
   });
 
@@ -271,9 +235,8 @@ describe('Settings › AI', () => {
 });
 
 describe('answers and refusals', () => {
-  it('falls back to off and fast when the API names no row', () => {
+  it('falls back to off when the API names no row', () => {
     expect(settingOf({ settings: [] }, 'ai-description-writer').value).toBe('off');
-    expect(settingOf({ settings: [] }, 'ai-description-writer-tier').value).toBe('fast');
   });
 
   it('checks the answers', () => {
@@ -281,6 +244,8 @@ describe('answers and refusals', () => {
     expect(settingsAnswerOf({ settings: [{ code: 'a' }] })).toBeNull();
     expect(settingsAnswerOf(null)).toBeNull();
     expect(modelSetupOf(SETUP)).toEqual(SETUP);
+    // An older server's models are dropped, never shown.
+    expect(modelSetupOf({ ...SETUP, models: { fast: 'm-fast', balanced: null } })).toEqual(SETUP);
     expect(modelSetupOf({ killSwitch: 'no' })).toBeNull();
   });
 

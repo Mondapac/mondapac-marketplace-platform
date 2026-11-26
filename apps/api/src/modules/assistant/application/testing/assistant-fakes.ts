@@ -1,17 +1,10 @@
 import { createHash } from 'node:crypto';
 import { encodePayload, Temporal } from '@mondapac/shared-kernel';
-import type {
-  CallContext,
-  Id,
-  MarketContext,
-  MarketId,
-  PendingEvent,
-} from '@mondapac/shared-kernel';
+import type { CallContext, Id, MarketContext, PendingEvent } from '@mondapac/shared-kernel';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { NO_PERMISSION_KEYS } from '../../../../platform/events/outbox-writer';
 import { ASSISTANT_EVENTS } from '../../domain/events';
 import type { ModelRequest, ModelTurn } from '../../../../platform/ai/model-provider';
-import type { ModelTier } from '../../domain/assistant-settings';
 import type { AssistantCard } from '../../domain/cards';
 import type { ToolRequest } from '../../domain/tools';
 import type { AssistantRuntime, ModelAnswer } from '../ports/assistant-runtime';
@@ -42,16 +35,14 @@ import type { SpendRepository, SpendTotals } from '../ports/spend.repository';
 /** A model that answers from a script; an exhausted script answers a plain text. */
 export class FakeRuntime implements AssistantRuntime {
   key = true;
-  models: Record<ModelTier, string | null> = { fast: 'model-fast', balanced: null };
+  /** The Market has a list for the chat task type with a usable route (false: no route). */
+  routed = true;
   priced = true;
   readonly requests: ModelRequest[] = [];
   readonly script: (ModelAnswer | ((request: ModelRequest) => ModelAnswer))[] = [];
 
   apiKeyConfigured() {
     return this.key;
-  }
-  modelOf(_marketId: MarketId, tier: ModelTier) {
-    return this.models[tier];
   }
   /**
    * A full AI budget cap, as the gateway answers it through `GatewayAssistantRuntime`: `available`
@@ -61,20 +52,14 @@ export class FakeRuntime implements AssistantRuntime {
   /** When set, `available` fails inside an open unit, as the real gateway answers off there. */
   unitOfWork?: { readonly open: number };
   readonly turnIds: string[] = [];
-  available(context: CallContext, tier: ModelTier) {
+  available() {
     if ((this.unitOfWork?.open ?? 0) > 0) {
       return Promise.reject(new Error('available() called inside a unit of work'));
     }
-    return Promise.resolve(
-      !this.overBudget &&
-        this.key &&
-        this.priced &&
-        this.modelOf(context.market.marketId, tier) !== null,
-    );
+    return Promise.resolve(!this.overBudget && this.key && this.priced && this.routed);
   }
   complete(
     _context: CallContext,
-    _tier: ModelTier,
     request: ModelRequest,
     _timeoutMs?: number,
     turnId?: string,

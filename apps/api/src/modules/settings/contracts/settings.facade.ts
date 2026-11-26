@@ -1,6 +1,6 @@
 import type { CallContext, Money, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
-import type { AiModelTierSetting, CartMode } from '../domain/definitions';
+import type { CartMode } from '../domain/definitions';
 import type { OfferReviewPolicySettings } from '../application/use-cases/read-offer-review-policy.use-case';
 
 export type { OfferReviewPolicySettings };
@@ -19,12 +19,11 @@ export interface OfferQueueBacklogLimits {
  */
 export interface SettingsFacade {
   /**
-   * Whether the AI description writer is on in the Market, and its model tier (AIS-03). Never an
-   * error: a store that cannot be read answers off (ADR-0019 R8).
+   * Whether the AI description writer is on in the Market (AIS-03). Never an error: a store that
+   * cannot be read answers off (ADR-0019 R8). Its models are the Market's list for the write task
+   * type, read by the gateway.
    */
-  aiDescriptionWriter(
-    context: CallContext,
-  ): Promise<{ readonly enabled: boolean; readonly tier: AiModelTierSetting }>;
+  aiDescriptionWriter(context: CallContext): Promise<{ readonly enabled: boolean }>;
 
   /**
    * The Market's Cart mode (`multi-store` or `single-store`), for any caller (guest, customer,

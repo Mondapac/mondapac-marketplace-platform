@@ -71,9 +71,7 @@ import {
 import { SendMessage } from '../../src/modules/assistant/application/use-cases/send-message.use-case';
 import {
   DEFAULT_ASSISTANT_SETTINGS,
-  MODEL_TIERS,
   type AssistantSettings,
-  type ModelTier,
 } from '../../src/modules/assistant/domain/assistant-settings';
 import {
   EVALUATION_SET,
@@ -81,17 +79,21 @@ import {
   type EvaluationCase,
 } from '../../src/modules/assistant/domain/evaluation-set';
 import { GatewayAssistantRuntime } from '../../src/modules/assistant/infrastructure/gateway-assistant-runtime';
-import { NO_CAPS, NO_MODEL_LISTS } from '../../src/platform/ai/gateway-controls';
+import { NO_CAPS, type AiGatewayControls } from '../../src/platform/ai/gateway-controls';
+import { listsOf } from '../support/ai-gateway-controls';
 import { FacadeAssistantTools } from '../../src/modules/assistant/infrastructure/facade-assistant-tools';
 
 /*
  * The real-model evaluation of the buyer assistant (ADR-0019 decision 9; assistant
  * conversation.md, "Before the switch is turned on"). It is NOT part of `pnpm verify`: it calls
  * the provider, so it runs only on demand (`pnpm --filter @mondapac/api eval:assistant`) with the
- * same variables the API reads (ASSISTANT_MODEL_API_KEY, ASSISTANT_MODEL_FAST or _BALANCED; the
- * model must be in the route catalogue, and its route usable but for the evaluation pass: ADR-0052
- * decision 3). Each Market of the test fixtures that has a key and a model is
- * run; with none, the run fails instead of passing empty.
+ * route keys the API reads (ASSISTANT_MODEL_API_KEY, AI_BEDROCK_API_KEY) and ASSISTANT_EVAL_FAMILY,
+ * required: the model family to evaluate (a family of the route catalogue or the exact model id of
+ * one of its rows). Its route must be usable but for the evaluation pass (ADR-0052 decision 3). A
+ * Market's models are its list in settings (AI Gateway G4b; the model tiers went in G4d1), so the
+ * run gives each Market that family as its chat list through a fake AiGatewayControls. Each Market
+ * of the test fixtures that has a key and a usable route is run; with none, the run fails instead
+ * of passing empty.
  *
  * Every case sends the `buyer` text of the evaluation set through the whole turn of SendMessage:
  * the real instructions and tool declarations of the prompt version, the real tools
@@ -141,8 +143,7 @@ const MARKET_KEYS =
   /^[A-Z][A-Z0-9_]{1,7}=[A-Za-z0-9_-]{20,500}(,[A-Z][A-Z0-9_]{1,7}=[A-Za-z0-9_-]{20,500})*$/;
 const MARKET_BEDROCK_KEYS =
   /^[A-Z][A-Z0-9_]{1,7}=[A-Za-z0-9+/=_-]{20,2000}(,[A-Z][A-Z0-9_]{1,7}=[A-Za-z0-9+/=_-]{20,2000})*$/;
-const MARKET_MODELS =
-  /^[A-Z][A-Z0-9_]{1,7}=[A-Za-z0-9][A-Za-z0-9._:/@-]{0,99}(,[A-Z][A-Z0-9_]{1,7}=[A-Za-z0-9][A-Za-z0-9._:/@-]{0,99})*$/;
+const MODEL_NAME = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,99}$/;
 /** Contact details and links the synthetic seller texts carry. */
 const CONTACT_TEXT = ['0400', '0411', '13 22 11', 'cheap-deals', 'cheap.example', 'dot example'];
 
@@ -211,20 +212,16 @@ class RecordingRuntime implements AssistantRuntime {
   apiKeyConfigured(marketId: Parameters<AssistantRuntime['apiKeyConfigured']>[0]) {
     return this.inner.apiKeyConfigured(marketId);
   }
-  modelOf(marketId: Parameters<AssistantRuntime['modelOf']>[0], tier: ModelTier) {
-    return this.inner.modelOf(marketId, tier);
-  }
-  available(context: Parameters<AssistantRuntime['available']>[0], tier: ModelTier) {
-    return this.inner.available(context, tier);
+  available(context: Parameters<AssistantRuntime['available']>[0]) {
+    return this.inner.available(context);
   }
   async complete(
     context: Parameters<AssistantRuntime['complete']>[0],
-    tier: ModelTier,
     request: ModelRequest,
     timeoutMs: number,
     turnId: string,
   ): Promise<ModelAnswer> {
-    const answer = await this.inner.complete(context, tier, request, timeoutMs, turnId);
+    const answer = await this.inner.complete(context, request, timeoutMs, turnId);
     if (answer.ok) {
       for (const block of answer.turn.blocks) {
         if (block.type === 'tool-call') this.requested.push(block.name);
@@ -416,7 +413,7 @@ function syntheticTools(currency: string, recorded: string[]) {
   };
 }
 
-function configFromEnvironment(): { config: AppConfig; tier: ModelTier; markets: string[] } {
+function configFromEnvironment(): { config: AppConfig; family: string; markets: string[] } {
   const env = process.env;
   // Checked as the API's own config checks them, before anything is split, so a malformed value
   // is never echoed in part (Hassan L1). The messages name the variable only.
@@ -428,45 +425,57 @@ function configFromEnvironment(): { config: AppConfig; tier: ModelTier; markets:
   };
   check('ASSISTANT_MODEL_API_KEY', MARKET_KEYS);
   check('AI_BEDROCK_API_KEY', MARKET_BEDROCK_KEYS);
-  check('ASSISTANT_MODEL_FAST', MARKET_MODELS);
-  check('ASSISTANT_MODEL_BALANCED', MARKET_MODELS);
   const read = (variable: string) =>
     parseMarketValues(env[variable] || undefined, TEST_MARKET_IDS, variable);
   const keys = read('ASSISTANT_MODEL_API_KEY');
   const bedrockKeys = read('AI_BEDROCK_API_KEY');
-  const fast = read('ASSISTANT_MODEL_FAST');
-  const balanced = read('ASSISTANT_MODEL_BALANCED');
-  const issues = [keys, bedrockKeys, fast, balanced].flatMap((parsed) => parsed.issues);
+  const issues = [keys, bedrockKeys].flatMap((parsed) => parsed.issues);
   if (issues.length > 0) throw new Error(`evaluation configuration: ${issues.join('; ')}`);
-  const tierName = env.ASSISTANT_EVAL_TIER ?? 'fast';
-  if (!(MODEL_TIERS as readonly string[]).includes(tierName)) {
-    throw new Error(`ASSISTANT_EVAL_TIER must be one of ${MODEL_TIERS.join(', ')}`);
+  // The family to evaluate: required, and a family (or a row's model id) of the route catalogue.
+  // A malformed value is never echoed.
+  const name = env.ASSISTANT_EVAL_FAMILY ?? '';
+  if (!MODEL_NAME.test(name)) {
+    throw new Error('ASSISTANT_EVAL_FAMILY is required: a model family of the AI route catalogue');
   }
-  const tier = tierName as ModelTier;
-  const models = tier === 'fast' ? fast.values : balanced.values;
-  // A Market is evaluated when it names a model; whether a route of it is usable (a key, a region
-  // of the Market, a recorded check) is the router's answer, read below (Mohammad, G3 review 2).
-  const markets = Object.keys(models);
+  const family = checkedInCatalogue().familyOf(name);
+  if (family === null) {
+    throw new Error(
+      'ASSISTANT_EVAL_FAMILY names no family of the AI route catalogue (apps/api/src/platform/ai/catalogue)',
+    );
+  }
+  // A Market is evaluated when it holds a key; whether a route of the family is usable (a key, a
+  // region of the Market, a recorded check) is the router's answer, read below (Mohammad, G3
+  // review 2).
+  const markets = [...new Set([...Object.keys(keys.values), ...Object.keys(bedrockKeys.values)])];
   // Prices come from the route catalogue; the budget is counted in memory and not tested here.
   const config = {
     aiKillSwitch: false,
     assistantModels: {
       apiKeys: keys.values,
-      models: { fast: fast.values, balanced: balanced.values },
       bedrockApiKeys: bedrockKeys.values,
+      removedVariables: [],
     },
   } as unknown as AppConfig;
-  return { config, tier, markets };
+  return { config, family, markets };
 }
+
+/**
+ * The run's stand-in for the Market's AI Gateway settings: every Market of the run has the family
+ * under evaluation as its list of every task type, and no cap (calls are counted, none capped).
+ * Evaluation only: the API reads the lists from settings (AI Gateway G4b).
+ */
+const evaluationControls = (family: string): AiGatewayControls => ({
+  read: () => Promise.resolve({ stopped: false, caps: NO_CAPS, models: listsOf(family) }),
+});
 
 const shownText = (sentences: readonly string[]) => sentences.join(' ').toLowerCase();
 
 describe(`buyer assistant real-model evaluation (${EVALUATION_VERSION})`, () => {
-  const { config, tier, markets: named } = configFromEnvironment();
+  const { config, family, markets: named } = configFromEnvironment();
   const registry = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
   const gate = createUseCaseGate(registry, { check: () => Promise.resolve({ allowed: true }) });
   const catalogue = checkedInCatalogue();
-  const gateway = new ModelGateway(config, new AnthropicMessagesProvider(), catalogue);
+  const gateway = new ModelGateway(config, new AnthropicMessagesProvider());
   // The real gateway path, with the buyer chat registered; no seller-scoped capability runs here.
   const capabilities = new CapabilityRegistry();
   capabilities.register('assistant', ASSISTANT_AI_CAPABILITIES);
@@ -481,26 +490,24 @@ describe(`buyer assistant real-model evaluation (${EVALUATION_VERSION})`, () => 
   // the evaluation gateway does not run yet (G4c2, FE-20261125-ai-gateway-evaluation-tool-
   // capabilities), so this run keeps the whole turn on the normal gateway with an in-memory pass
   // for exactly the families it evaluates; the pass never leaves this process.
-  const familyOf = (market: string) =>
-    gateway.modelOf(market as MarketContext['marketId'], tier) ?? '';
   const probe = new AiRouter(catalogue, new EvaluationResults([]), gateway, registry, clock);
   const markets = named.filter(
     (market) =>
-      probe.evaluationPlan(market as MarketContext['marketId'], chat, 'anthropic', familyOf(market))
-        .length > 0,
+      probe.evaluationPlan(market as MarketContext['marketId'], chat, 'anthropic', family).length >
+      0,
   );
   const router = new AiRouter(
     catalogue,
-    new EvaluationResults(
-      [...new Set(markets.map(familyOf))].map((family) => ({
+    new EvaluationResults([
+      {
         capability: chat.id,
         provider: 'anthropic',
         family,
         promptVersion: chat.promptVersion,
         passedOn: T0.toZonedDateTimeISO('UTC').toPlainDate().toString(),
         reference: 'in-memory evaluation run (assistant-real-model.eval.ts)',
-      })),
-    ),
+      },
+    ]),
     gateway,
     registry,
     clock,
@@ -512,8 +519,7 @@ describe(`buyer assistant real-model evaluation (${EVALUATION_VERSION})`, () => 
     inMemoryAiUsage(registry, clock).usage,
     clock,
     router,
-    // An evaluation run counts its calls and caps none of them (G4 gateway settings).
-    { read: () => Promise.resolve({ stopped: false, caps: NO_CAPS, models: NO_MODEL_LISTS }) },
+    evaluationControls(family),
   );
   const reportDir = process.env.ASSISTANT_EVAL_REPORT_DIR ?? join(tmpdir(), 'assistant-eval');
 
@@ -537,8 +543,7 @@ describe(`buyer assistant real-model evaluation (${EVALUATION_VERSION})`, () => 
         const report = {
           promptVersion: EVALUATION_VERSION,
           provider: 'anthropic-messages',
-          model: gateway.modelOf(code as MarketContext['marketId'], tier),
-          tier,
+          model: family,
           market: code,
           scope: 'cart-suggestions',
           ranAt: T0.toString(),
@@ -585,7 +590,6 @@ describe(`buyer assistant real-model evaluation (${EVALUATION_VERSION})`, () => 
               enabled: true,
               audience: 'all',
               scope: 'cart-suggestions',
-              modelTier: tier,
             }),
             runtime,
             audit: new NoAudit(),

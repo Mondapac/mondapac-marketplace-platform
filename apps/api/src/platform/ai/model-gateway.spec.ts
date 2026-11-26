@@ -1,9 +1,8 @@
 import { Logger } from '@nestjs/common';
 import type { MarketId } from '@mondapac/shared-kernel';
-import { testRoute, testRouteCatalogue } from '../../../test/support/ai-routes';
+import { testRoute } from '../../../test/support/ai-routes';
 import type { AppConfig } from '../config/app-config';
 import { AnthropicMessagesProvider, type Fetch } from './anthropic-messages.provider';
-import { checkedInCatalogue } from './catalogue';
 import { ModelGateway } from './model-gateway';
 import {
   ModelProviderError,
@@ -35,11 +34,10 @@ const configOf = (models: AppConfig['assistantModels']) =>
   ({ assistantModels: models }) as unknown as AppConfig;
 const AU_ONLY = configOf({
   apiKeys: { AU: KEY },
-  models: { fast: { AU: 'model-fast' }, balanced: { AU: 'model-balanced' } },
   bedrockApiKeys: { AU: BEDROCK_KEY },
+  removedVariables: [],
 });
-const gatewayOf = (provider: ModelProvider, config = AU_ONLY) =>
-  new ModelGateway(config, provider, testRouteCatalogue());
+const gatewayOf = (provider: ModelProvider, config = AU_ONLY) => new ModelGateway(config, provider);
 
 class ScriptedProvider implements ModelProvider {
   readonly calls: ModelCredentials[] = [];
@@ -73,50 +71,32 @@ describe('ModelGateway (ADR-0019 R7, R8; ADR-0052)', () => {
     expect(warnings).toContainEqual(expect.objectContaining({ msg: 'ai.kill-switch.set' }));
   });
 
-  it('knows each route key and tier model per Market', () => {
+  it('knows each route key per Market', () => {
     const gateway = gatewayOf(new ScriptedProvider(() => Promise.resolve(TURN)));
     expect(gateway.keyConfigured(AU)).toBe(true);
     expect(gateway.keyConfigured(ZZ)).toBe(false);
     expect(gateway.routeKeyConfigured(AU, 'bedrock-mantle')).toBe(true);
     expect(gateway.routeKeyConfigured(ZZ, 'bedrock-mantle')).toBe(false);
-    expect(gateway.modelOf(AU, 'fast')).toBe('model-fast');
-    expect(gateway.modelOf(ZZ, 'fast')).toBeNull();
+    expect(warnings).toEqual([]);
   });
 
-  it('reads a tier given as an exact model id as its family', () => {
-    const gateway = new ModelGateway(
-      configOf({
-        apiKeys: {},
-        models: { fast: { AU: 'anthropic.model-fast' }, balanced: {} },
-        bedrockApiKeys: {},
-      }),
+  it('boots with a removed tier variable still set: one ai.config.removed warning, names only (G4d1, R8)', () => {
+    const gateway = gatewayOf(
       new ScriptedProvider(() => Promise.resolve(TURN)),
-      testRouteCatalogue(),
-    );
-    expect(gateway.modelOf(AU, 'fast')).toBe('model-fast');
-  });
-
-  it('logs a tier naming a model outside the catalogue and keeps that tier off, booting (R7, R8)', () => {
-    const errors: unknown[] = [];
-    jest.spyOn(Logger.prototype, 'error').mockImplementation((message: unknown) => {
-      errors.push(message);
-    });
-    const gateway = new ModelGateway(
       configOf({
-        apiKeys: {},
-        models: { fast: { AU: 'some-preview-model' }, balanced: {} },
+        apiKeys: { AU: KEY },
         bedrockApiKeys: {},
+        removedVariables: ['ASSISTANT_MODEL_FAST', 'ASSISTANT_MODEL_BALANCED'],
       }),
-      new ScriptedProvider(() => Promise.resolve(TURN)),
-      checkedInCatalogue(),
     );
-    expect(gateway.modelOf(AU, 'fast')).toBeNull();
-    expect(errors).toHaveLength(1);
-    expect(errors[0]).toMatchObject({ msg: 'ai.model.unknown' });
-    expect(JSON.stringify(errors[0])).toMatch(
-      /ASSISTANT_MODEL_FAST: AU names a model that is not in the/,
-    );
-    expect(JSON.stringify(errors)).not.toContain('some-preview-model');
+    expect(gateway.keyConfigured(AU)).toBe(true);
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        msg: 'ai.config.removed',
+        variables: ['ASSISTANT_MODEL_FAST', 'ASSISTANT_MODEL_BALANCED'],
+      }),
+    ]);
+    expect(JSON.stringify(warnings)).not.toContain(KEY);
   });
 
   it('calls nothing for a Market without the route key (fail closed)', async () => {

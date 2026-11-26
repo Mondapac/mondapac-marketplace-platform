@@ -28,7 +28,6 @@ import {
   SETTING_DEFINITIONS,
   targetOf,
   AI_DESCRIPTION_WRITER_CODE,
-  AI_DESCRIPTION_WRITER_TIER_CODE,
   OFFER_REVIEW_CODES,
   OFFER_REVIEW_EMERGENCY_STOP_CODE,
   type SettingDefinition,
@@ -46,10 +45,7 @@ export const SETTINGS_REVIEW_AREA = 'marketplace';
  * revert never switches the AI writer back on: an operator's "off" stands until someone with the
  * AI setting's own key switches it on (ADR-0019 R8; Hassan, PR #912).
  */
-const AI_CODES: ReadonlySet<string> = new Set([
-  AI_DESCRIPTION_WRITER_CODE,
-  AI_DESCRIPTION_WRITER_TIER_CODE,
-]);
+const AI_CODES: ReadonlySet<string> = new Set([AI_DESCRIPTION_WRITER_CODE]);
 /**
  * Reviewed at high risk too: one change can take every Offer past the admin, badges included
  * (Hassan, PR #1329).

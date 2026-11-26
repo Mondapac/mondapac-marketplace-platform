@@ -4,7 +4,6 @@ import { FEEDBACK_REASONS, RATINGS } from '../domain/feedback';
 import {
   AUDIENCES,
   BOUNDS,
-  MODEL_TIERS,
   REPLY_LANGUAGES,
   RETENTIONS,
   SCOPES,
@@ -33,11 +32,6 @@ export class AssistantSettingsFields {
       'Default read-only. cart-suggestions adds the cart card and cart-action cards (the buyer confirms each change).',
   })
   scope!: string;
-  @ApiProperty({
-    enum: MODEL_TIERS,
-    description: 'Default fast. The model of each tier is server configuration.',
-  })
-  modelTier!: string;
   @ApiProperty({ enum: USER_GROUPS, description: 'Default guests-and-customers.' })
   users!: string;
   @ApiProperty({ ...BOUNDS.guestMessageLimit, description: 'Per 10 minutes. Default 20.' })
@@ -84,13 +78,6 @@ export class AssistantSettingsFields {
   welcomeText!: string | null;
 }
 
-export class AssistantModelBody {
-  @ApiProperty({ enum: MODEL_TIERS })
-  tier!: string;
-  @ApiProperty({ nullable: true, type: String, description: 'null: not configured.' })
-  modelId!: string | null;
-}
-
 export class UnavailableOptionsBody {
   @ApiProperty({ enum: SCOPES, isArray: true })
   scope!: string[];
@@ -125,8 +112,6 @@ export class AssistantSettingsBody {
   settings!: AssistantSettingsFields;
   @ApiProperty({ enum: ['set', 'not-set'], description: 'The key itself is never returned.' })
   apiKey!: string;
-  @ApiProperty({ type: AssistantModelBody, isArray: true })
-  models!: AssistantModelBody[];
   @ApiProperty({ type: AssistantSpendBody })
   spend!: AssistantSpendBody;
   @ApiProperty({ type: UnavailableOptionsBody })

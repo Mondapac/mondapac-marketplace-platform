@@ -427,7 +427,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         new ReadMonthlyRevenueTarget(gate, deps),
       );
 
-    it('is off on the fast tier before any change, for the admin view and the facade', async () => {
+    it('is off before any change, for the admin view and the facade', async () => {
       const view = await new ViewAiSettings(gate, deps).execute(adminCtx(), {});
       expect(view.ok && view.value).toEqual([
         {
@@ -437,49 +437,66 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
           updatedAt: null,
           review: { reviewed: false, risk: 'low' },
         },
-        {
-          code: 'ai-description-writer-tier',
-          value: 'fast',
-          version: 0,
-          updatedAt: null,
-          review: { reviewed: false, risk: 'low' },
-        },
       ]);
-      expect(await facade().aiDescriptionWriter(sellerCtx())).toEqual({
-        enabled: false,
-        tier: 'fast',
-      });
+      expect(await facade().aiDescriptionWriter(sellerCtx())).toEqual({ enabled: false });
     });
 
-    it('switches on and changes the tier, each with history and one audit row', async () => {
+    it('switches on with history and one audit row', async () => {
       const on = await changeAi({ code: 'ai-description-writer', value: 'on', expectedVersion: 0 });
       expect(on.ok && on.value).toMatchObject({ value: 'on', version: 1 });
-      const tier = await changeAi({
-        code: 'ai-description-writer-tier',
-        value: 'balanced',
-        expectedVersion: 0,
-      });
-      expect(tier.ok && tier.value).toMatchObject({ value: 'balanced', version: 1 });
-      expect(audit.entries.map((entry) => entry.targetId)).toEqual([
-        'ai-description-writer',
-        'ai-description-writer-tier',
-      ]);
+      expect(audit.entries.map((entry) => entry.targetId)).toEqual(['ai-description-writer']);
       expect(audit.entries[0]).toMatchObject({
         action: 'settings.market-setting.changed',
         before: { value: 'off' },
         after: { value: 'on', version: 1 },
       });
-      expect(await facade().aiDescriptionWriter(sellerCtx())).toEqual({
-        enabled: true,
-        tier: 'balanced',
+      expect(await facade().aiDescriptionWriter(sellerCtx())).toEqual({ enabled: true });
+    });
+
+    it('treats a stored row of the removed tier setting as gone: never shown, changed, read or restored (G4d1)', async () => {
+      // A row saved before G4d1 stays in the store (no setting is deleted, ADR-0026 decision 4).
+      store.rows.set(`${market.marketId}/ai-description-writer-tier`, {
+        code: 'ai-description-writer-tier',
+        value: 'balanced',
+        version: 1,
+        updatedAt: T0,
+        updatedBy: ADMIN,
       });
+      const view = await new ViewAiSettings(gate, deps).execute(adminCtx(), {});
+      expect(view.ok && view.value.map((setting) => setting.code)).toEqual([
+        'ai-description-writer',
+      ]);
+      expect(await facade().aiDescriptionWriter(sellerCtx())).toEqual({ enabled: false });
+      const change = await changeAi({
+        code: 'ai-description-writer-tier',
+        value: 'fast',
+        expectedVersion: 1,
+      });
+      expect(change).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'code', code: 'value' }] },
+      });
+      const reverter = new SettingsReverter(deps);
+      expect(
+        await reverter.revert(adminCtx(), {
+          requestId: id<'SystemRequest'>(0x5e4),
+          subjectRef: 'ai-description-writer-tier',
+          before: { value: 'fast' },
+          after: { value: 'balanced' },
+        }),
+      ).toBe('gone');
+      expect(await reverter.describe(adminCtx(), ['ai-description-writer-tier'])).toEqual(
+        new Map(),
+      );
+      expect(store.history).toHaveLength(0);
+      expect(audit.entries).toHaveLength(0);
     });
 
     it('refuses a code that is not an AI setting, and a value outside the definition', async () => {
       for (const input of [
         { code: 'cart-mode', value: 'single-store', expectedVersion: 0 },
         { code: 'ai-description-writer', value: 'yes', expectedVersion: 0 },
-        { code: 'ai-description-writer-tier', value: 'smartest', expectedVersion: 0 },
+        { code: 'ai-description-writer-tier', value: 'balanced', expectedVersion: 0 },
       ]) {
         const result = await changeAi(input);
         expect(!result.ok && result.error.code).toBe('validation.failed');
@@ -506,10 +523,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       store.failReads = true;
       const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
       try {
-        expect(await facade().aiDescriptionWriter(sellerCtx())).toEqual({
-          enabled: false,
-          tier: 'fast',
-        });
+        expect(await facade().aiDescriptionWriter(sellerCtx())).toEqual({ enabled: false });
       } finally {
         warn.mockRestore();
       }
@@ -518,10 +532,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         { execute: () => Promise.reject(new Error('boom')) } as unknown as ReadCartMode,
         { execute: () => Promise.reject(new Error('boom')) } as unknown as ReadMonthlyRevenueTarget,
       );
-      expect(await throwing.aiDescriptionWriter(sellerCtx())).toEqual({
-        enabled: false,
-        tier: 'fast',
-      });
+      expect(await throwing.aiDescriptionWriter(sellerCtx())).toEqual({ enabled: false });
     });
   });
 
@@ -626,8 +637,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         new ChangeAiSetting(gate, deps).execute(adminCtx(), { ...input, note: 'AI review' });
       await changeAi({ code: 'ai-description-writer', value: 'on', expectedVersion: 0 });
       await changeAi({ code: 'ai-description-writer', value: 'off', expectedVersion: 1 });
-      await changeAi({ code: 'ai-description-writer-tier', value: 'balanced', expectedVersion: 0 });
-      expect(review.opened.map((opened) => opened.risk)).toEqual(['high', 'high', 'high']);
+      expect(review.opened.map((opened) => opened.risk)).toEqual(['high', 'high']);
       const reverter = new SettingsReverter(deps);
       const revertAi = (subjectRef: string, before: string, after: string) =>
         reverter.revert(adminCtx(), {
@@ -639,7 +649,6 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       // Rejecting the "off" would switch AI on: refused, the writer stays off.
       expect(await revertAi('ai-description-writer', 'on', 'off')).toBe('not-permitted');
       expect(await store.find(market, 'ai-description-writer')).toMatchObject({ value: 'off' });
-      expect(await revertAi('ai-description-writer-tier', 'fast', 'balanced')).toBe('reverted');
       // Switching AI off again through a revert is allowed (the fail-closed direction).
       await changeAi({ code: 'ai-description-writer', value: 'on', expectedVersion: 2 });
       expect(await revertAi('ai-description-writer', 'off', 'on')).toBe('reverted');

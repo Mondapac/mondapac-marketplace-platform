@@ -2,13 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { MarketId } from '@mondapac/shared-kernel';
 import type { AppConfig } from '../config/app-config';
 import { APP_CONFIG } from '../config/config.module';
-import {
-  AI_ROUTE_CATALOGUE,
-  type ModelTokenPrice,
-  type RouteCatalogue,
-  type RouteKind,
-  type RouteRow,
-} from './catalogue/route-catalogue';
+import type { ModelTokenPrice, RouteKind, RouteRow } from './catalogue/route-catalogue';
 import {
   MODEL_PROVIDER,
   ModelProviderError,
@@ -16,10 +10,6 @@ import {
   type ModelRequest,
   type ModelTurn,
 } from './model-provider';
-
-/** The model tiers a Market configures; an admin setting chooses one. */
-export const AI_MODEL_TIERS = ['fast', 'balanced'] as const;
-export type AiModelTier = (typeof AI_MODEL_TIERS)[number];
 
 export type { ModelTokenPrice };
 
@@ -43,9 +33,10 @@ export type ModelCall =
  * learn only whether a Market has one. Which row to call is the router's choice (`routing/`).
  *
  * `ASSISTANT_MODEL_API_KEY` is the key of the `anthropic-api` route and `AI_BEDROCK_API_KEY` that
- * of the `bedrock-mantle` route, per Market. `ASSISTANT_MODEL_FAST` and `_BALANCED` name the model
- * family each tier uses in a Market until the priority lists move to settings (G4); a name outside
- * the catalogue fails boot. Prices come from the catalogue only.
+ * of the `bedrock-mantle` route, per Market. Which models a task type uses is the Market's priority
+ * list in settings (G4b), never configuration: the model tiers and their variables
+ * (`ASSISTANT_MODEL_FAST`, `_BALANCED`) are gone since G4d1; one still set is logged once as
+ * `ai.config.removed` (its name, never its value) and ignored. Prices come from the catalogue only.
  *
  * `AI_KILL_SWITCH` (ADR-0026 decision 8) makes every Market not configured: nothing is called.
  *
@@ -61,27 +52,21 @@ export class ModelGateway {
   constructor(
     @Inject(APP_CONFIG) config: AppConfig,
     @Inject(MODEL_PROVIDER) private readonly provider: ModelProvider,
-    @Inject(AI_ROUTE_CATALOGUE) private readonly catalogue: RouteCatalogue,
   ) {
     this.#config = config.assistantModels;
     this.#killed = config.aiKillSwitch;
     if (this.#killed) {
       this.#logger.warn({ msg: 'ai.kill-switch.set', detail: 'every AI capability is off' });
     }
-    // A tier naming a model outside the catalogue is a configuration error. It is logged and the
-    // tier is off (`modelOf` answers null): an AI setting never stops the host from booting (R8;
-    // Mohammad, G3 review 7).
-    for (const tier of AI_MODEL_TIERS) {
-      for (const [market, name] of Object.entries(this.#config.models[tier])) {
-        if (this.catalogue.familyOf(name) === null) {
-          this.#logger.error({
-            msg: 'ai.model.unknown',
-            detail:
-              `ASSISTANT_MODEL_${tier.toUpperCase()}: ${market} names a model that is not in the ` +
-              'AI route catalogue (apps/api/src/platform/ai/catalogue); the tier is off',
-          });
-        }
-      }
+    // A retired variable still set is ignored, not a boot failure: an AI setting never stops the
+    // host from booting (R8). Only its name is logged.
+    if (this.#config.removedVariables.length > 0) {
+      this.#logger.warn({
+        msg: 'ai.config.removed',
+        variables: this.#config.removedVariables,
+        detail:
+          'removed in AI Gateway G4d1 and ignored: a task type uses the Market list in settings',
+      });
     }
   }
 
@@ -103,14 +88,6 @@ export class ModelGateway {
   /** Whether the Market has the server key of a route. */
   routeKeyConfigured(marketId: MarketId, route: RouteKind): boolean {
     return this.#keyOf(marketId, route) !== null;
-  }
-
-  /** The model family configured for a tier in the Market, or null. */
-  modelOf(marketId: MarketId, tier: AiModelTier): string | null {
-    const name = Object.hasOwn(this.#config.models[tier], marketId)
-      ? this.#config.models[tier][marketId]!
-      : null;
-    return name === null ? null : this.catalogue.familyOf(name);
   }
 
   async complete(

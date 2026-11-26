@@ -2,10 +2,7 @@ import { err } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { SETTINGS_AI_MANAGE } from '../../contracts/permissions';
-import {
-  AI_DESCRIPTION_WRITER_CODE,
-  AI_DESCRIPTION_WRITER_TIER_CODE,
-} from '../../domain/definitions';
+import { AI_DESCRIPTION_WRITER_CODE } from '../../domain/definitions';
 import type { SettingsDependencies } from '../settings-dependencies';
 import { changeSetting, type SettingsFailure, type SettingChangeView } from '../settings-flow';
 
@@ -17,11 +14,12 @@ interface Input {
   readonly note?: unknown;
 }
 
-const AI_CODES: readonly string[] = [AI_DESCRIPTION_WRITER_CODE, AI_DESCRIPTION_WRITER_TIER_CODE];
+/** The writer's model tier went in AI Gateway G4d1: its code is refused like any other. */
+const AI_CODES: readonly string[] = [AI_DESCRIPTION_WRITER_CODE];
 
 /**
  * `settings.change-ai-setting`: an admin changes one AI setting of the Market (the description
- * writer's switch or its model tier) from the version they saw. Protected key; refused in
+ * writer's switch) from the version they saw. Protected key; refused in
  * acting-as, audited, idempotent, and a stale version is a conflict.
  */
 export class ChangeAiSetting extends UseCase<Input, SettingChangeView, SettingsFailure> {

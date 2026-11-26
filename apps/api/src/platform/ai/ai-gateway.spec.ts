@@ -17,7 +17,7 @@ import {
   ZZ_TEST_AI_CAPS,
   type TestBudget,
 } from '../../../test/support/ai-gateway-controls';
-import { NO_CAPS } from './gateway-controls';
+import { NO_CAPS, NO_MODEL_LISTS } from './gateway-controls';
 import {
   passesFor,
   testRoute,
@@ -94,17 +94,15 @@ const registryOf = () => new MarketRegistry(new Map(REAL_MARKETS));
 const capsOf = (budget?: TestBudget) =>
   budget === undefined ? new TestAiGatewayControls() : TestAiGatewayControls.everywhere(budget);
 
-// Only AU is configured, on the fast tier: ZZ is a second Market with no model (both fixtures).
+// Only AU is configured (a key, and `model-fast` as its list of every task type): ZZ is a second
+// Market with no key and no list (both fixtures).
 const configOf = (killed = false, codes: readonly string[] = ['AU']) =>
   ({
     aiKillSwitch: killed,
     assistantModels: {
       apiKeys: Object.fromEntries(codes.map((code) => [code, 'sk-test-canary-key-0001'])),
-      models: {
-        fast: Object.fromEntries(codes.map((code) => [code, 'model-fast'])),
-        balanced: {},
-      },
       bedrockApiKeys: {},
+      removedVariables: [],
     },
   }) as unknown as AppConfig;
 
@@ -157,7 +155,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
     gatewayControls = capsOf(),
     codes: readonly string[] = ['AU'],
   ) => {
-    controls = gatewayControls;
+    controls = gatewayControls.routed('model-fast', codes);
     const markets = registryOf();
     const registry = new CapabilityRegistry();
     registry.register('alpha', SPECS);
@@ -170,7 +168,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
     };
     const clock = new FixedClock(NOW);
     ({ store, usage, unitOfWork } = inMemoryAiUsage(markets, clock));
-    const models = new ModelGateway(configOf(killed, codes), provider, testRouteCatalogue());
+    const models = new ModelGateway(configOf(killed, codes), provider);
     router = testRouter(testRouteCatalogue(), passesFor(SPECS), models, markets, clock);
     return new AiGateway(models, registry, sellerSwitch, usage, clock, router, controls);
   };
@@ -185,7 +183,6 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
 
   it('runs a seller capability for the seller, masked, with its caps', async () => {
     const run = await gatewayOf().run('alpha.seller-writer', sellerContext(), REQUEST, {
-      tier: 'fast',
       sellerId: SELLER,
       timeoutMs: 60_000,
     });
@@ -222,7 +219,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
     ['a seller calling the buyer chat', 'alpha.buyer-chat', () => sellerContext(), {}],
   ])('is off for %s and calls nothing', async (_name, capability, context, extra) => {
     const gateway = gatewayOf();
-    const options = { tier: 'fast' as const, ...extra };
+    const options = { ...extra };
     expect(await gateway.status(capability, context(), options)).toEqual({
       on: false,
       reason: 'off',
@@ -240,13 +237,11 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
     const actingAs = { ...own, actor: { ...own.actor, actingAs: { adminAccountId: 'x' } } };
     expect(
       await gatewayOf().status('alpha.seller-writer', actingAs as never, {
-        tier: 'fast',
         sellerId: SELLER,
       }),
     ).toEqual({ on: false, reason: 'off' });
     expect(
       await gatewayOf().run('alpha.seller-writer', actingAs as never, REQUEST, {
-        tier: 'fast',
         sellerId: SELLER,
       }),
     ).toEqual({ ok: false, reason: 'off', costMicroUsd: 0 });
@@ -255,15 +250,17 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
 
   it('turns an unexpected error after the evaluation into unavailable (never throws)', async () => {
     jest.spyOn(ModelGateway.prototype, 'complete').mockRejectedValue(new Error('bug'));
-    expect(
-      await gatewayOf().run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
-    ).toEqual({ ok: false, reason: 'unavailable', costMicroUsd: 0 });
+    expect(await gatewayOf().run('alpha.admin-writer', adminContext(), REQUEST, {})).toEqual({
+      ok: false,
+      reason: 'unavailable',
+      costMicroUsd: 0,
+    });
   });
 
   it("is off when the seller's switch is off or cannot answer (an error is off)", async () => {
     const gateway = gatewayOf();
     switchedOn.clear();
-    const options = { tier: 'fast' as const, sellerId: SELLER };
+    const options = { sellerId: SELLER };
     expect(await gateway.status('alpha.seller-writer', sellerContext(), options)).toEqual({
       on: false,
       reason: 'off',
@@ -278,34 +275,68 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
     expect(provider.requests).toHaveLength(0);
   });
 
-  it('reports the kill switch, and a Market or tier without a model as no route', async () => {
-    expect(
-      await gatewayOf(true).status('alpha.admin-writer', adminContext(), { tier: 'fast' }),
-    ).toEqual({ on: false, reason: 'kill-switch' });
+  it('reports the kill switch, and a Market without a model list as no route', async () => {
+    expect(await gatewayOf(true).status('alpha.admin-writer', adminContext(), {})).toEqual({
+      on: false,
+      reason: 'kill-switch',
+    });
     const gateway = gatewayOf();
-    expect(
-      await gateway.status('alpha.admin-writer', adminContext(), { tier: 'balanced' }),
-    ).toEqual({ on: false, reason: 'no-route' });
-    expect(await gateway.status('alpha.admin-writer', adminContext(ZZ), { tier: 'fast' })).toEqual({
+    expect(await gateway.status('alpha.admin-writer', adminContext(ZZ), {})).toEqual({
       on: false,
       reason: 'no-route',
     });
-    expect(await gateway.status('alpha.admin-writer', adminContext(), { tier: 'fast' })).toEqual({
+    expect(await gateway.status('alpha.admin-writer', adminContext(), {})).toEqual({
       on: true,
     });
   });
+
+  it.each([
+    ['AU', AU],
+    ['ZZ', ZZ],
+  ])(
+    'is off (no-route) in %s when its task type has no list, with keys and passes in place; nothing is called (G4d1, R8)',
+    async (code, market) => {
+      // Both Markets hold a key; neither has a list for the task type: there is no fallback
+      // family (the model tiers are gone), so the capability is off and the host flow goes on.
+      const gateway = gatewayOf(false, new TestAiGatewayControls(), ['AU', 'ZZ']);
+      controls.models.set(code, NO_MODEL_LISTS);
+      expect(await gateway.status('alpha.admin-writer', adminContext(market), {})).toEqual({
+        on: false,
+        reason: 'no-route',
+      });
+      expect(await gateway.run('alpha.admin-writer', adminContext(market), REQUEST, {})).toEqual({
+        ok: false,
+        reason: 'off',
+        costMicroUsd: 0,
+      });
+      // A list for another task type does not give this one a route.
+      controls.models.set(code, { ...NO_MODEL_LISTS, lists: { chat: ['model-fast'] } });
+      expect(await gateway.status('alpha.admin-writer', adminContext(market), {})).toEqual({
+        on: false,
+        reason: 'no-route',
+      });
+      expect(
+        await gateway.status('alpha.buyer-chat', testCallContext(market, 'anonymous'), {}),
+      ).toEqual({
+        on: true,
+      });
+      expect(provider.requests).toHaveLength(0);
+    },
+  );
 
   describe("the Market's gateway settings (G4, design section 8)", () => {
     it('answers emergency-stop while the Market stops AI, and calls nothing', async () => {
       const gateway = gatewayOf();
       controls.stopped.add('AU');
-      expect(await gateway.status('alpha.admin-writer', adminContext(), { tier: 'fast' })).toEqual({
+      expect(await gateway.status('alpha.admin-writer', adminContext(), {})).toEqual({
         on: false,
         reason: 'emergency-stop',
       });
-      expect(
-        await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
-      ).toEqual({ ok: false, reason: 'off', costMicroUsd: 0 });
+      expect(await gateway.run('alpha.admin-writer', adminContext(), REQUEST, {})).toEqual({
+        ok: false,
+        reason: 'off',
+        costMicroUsd: 0,
+      });
       expect(provider.requests).toHaveLength(0);
       expect(store.reservations.size).toBe(0);
     });
@@ -313,56 +344,59 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
     it("stops one Market only: another Market's stop changes nothing here", async () => {
       const gateway = gatewayOf(false, capsOf(), ['AU', 'ZZ']);
       controls.stopped.add('ZZ');
-      expect(await gateway.status('alpha.admin-writer', adminContext(), { tier: 'fast' })).toEqual({
+      expect(await gateway.status('alpha.admin-writer', adminContext(), {})).toEqual({
         on: true,
       });
-      expect(
-        await gateway.status('alpha.admin-writer', adminContext(ZZ), { tier: 'fast' }),
-      ).toEqual({ on: false, reason: 'emergency-stop' });
+      expect(await gateway.status('alpha.admin-writer', adminContext(ZZ), {})).toEqual({
+        on: false,
+        reason: 'emergency-stop',
+      });
     });
 
     it('is off when the settings cannot be read (R8), and reads them once per status and run', async () => {
       const gateway = gatewayOf();
-      expect(await gateway.status('alpha.admin-writer', adminContext(), { tier: 'fast' })).toEqual({
+      expect(await gateway.status('alpha.admin-writer', adminContext(), {})).toEqual({
         on: true,
       });
-      await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' });
+      await gateway.run('alpha.admin-writer', adminContext(), REQUEST, {});
       expect(controls.reads).toBe(2);
       controls.failing = true;
-      expect(await gateway.status('alpha.admin-writer', adminContext(), { tier: 'fast' })).toEqual({
+      expect(await gateway.status('alpha.admin-writer', adminContext(), {})).toEqual({
         on: false,
         reason: 'off',
       });
-      expect(
-        await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
-      ).toEqual({ ok: false, reason: 'off', costMicroUsd: 0 });
+      expect(await gateway.run('alpha.admin-writer', adminContext(), REQUEST, {})).toEqual({
+        ok: false,
+        reason: 'off',
+        costMicroUsd: 0,
+      });
       expect(provider.requests).toHaveLength(1);
     });
 
     it('enforces the caps it read: a cap set to 0 refuses before any call', async () => {
       const gateway = gatewayOf(false, capsOf({ capabilityDayMicroUsd: 0 }));
-      expect(await gateway.status('alpha.admin-writer', adminContext(), { tier: 'fast' })).toEqual({
+      expect(await gateway.status('alpha.admin-writer', adminContext(), {})).toEqual({
         on: false,
         reason: 'over-budget',
       });
-      expect(
-        await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
-      ).toEqual({ ok: false, reason: 'over-budget', costMicroUsd: 0 });
+      expect(await gateway.run('alpha.admin-writer', adminContext(), REQUEST, {})).toEqual({
+        ok: false,
+        reason: 'over-budget',
+        costMicroUsd: 0,
+      });
       expect(provider.requests).toHaveLength(0);
     });
 
     it('never reads the settings for a caller it refuses first (acting-as, kill switch)', async () => {
       const gateway = gatewayOf(true);
-      await gateway.status('alpha.admin-writer', adminContext(), { tier: 'fast' });
+      await gateway.status('alpha.admin-writer', adminContext(), {});
       expect(controls.reads).toBe(0);
     });
   });
 
   it('lets a guest reach the buyer chat', async () => {
     expect(
-      await gatewayOf().status('alpha.buyer-chat', testCallContext(AU, 'anonymous'), {
-        tier: 'fast',
-      }),
+      await gatewayOf().status('alpha.buyer-chat', testCallContext(AU, 'anonymous'), {}),
     ).toEqual({ on: true });
   });
 
@@ -373,7 +407,6 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
         signal.addEventListener('abort', () => reject(new Error())),
       );
     const run = await gatewayOf().run('alpha.admin-writer', adminContext(), REQUEST, {
-      tier: 'fast',
       timeoutMs: 5,
     });
     expect(run).toMatchObject({ ok: false, reason: 'timeout' });
@@ -394,9 +427,11 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
 
   it('turns a provider failure into unavailable at no cost', async () => {
     provider.answer = () => Promise.reject(new Error('provider text with secrets'));
-    expect(
-      await gatewayOf().run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
-    ).toEqual({ ok: false, reason: 'unavailable', costMicroUsd: 0 });
+    expect(await gatewayOf().run('alpha.admin-writer', adminContext(), REQUEST, {})).toEqual({
+      ok: false,
+      reason: 'unavailable',
+      costMicroUsd: 0,
+    });
   });
 
   describe('budget and usage (design sections 5, 7 and 10; G2)', () => {
@@ -415,9 +450,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
       async (c) => {
         const market = marketOf(c);
         const gateway = gatewayOf(false, capsOf(), both);
-        const run = await gateway.run('alpha.admin-writer', adminContext(market), REQUEST, {
-          tier: 'fast',
-        });
+        const run = await gateway.run('alpha.admin-writer', adminContext(market), REQUEST, {});
         expect(run).toMatchObject({ ok: true, costMicroUsd: 200 });
         expect(store.reservations.size).toBe(0);
         for (const line of [dayLine('market'), dayLine('capability', 'alpha.admin-writer')]) {
@@ -456,7 +489,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
           held: 20_000,
           spent: 20_000,
         });
-        const options = { tier: 'fast' as const };
+        const options = {};
         expect(await gateway.status('alpha.admin-writer', adminContext(market), options)).toEqual({
           on: false,
           reason: 'over-budget',
@@ -480,9 +513,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
     it('refuses a call whose largest cost does not fit the room left, and holds nothing', async () => {
       // The estimate is about 0.4 cents here: a cap with 300 micro-dollars left refuses it.
       const gateway = gatewayOf(false, capsOf({ marketDayMicroUsd: 300 }));
-      const run = await gateway.run('alpha.admin-writer', adminContext(), REQUEST, {
-        tier: 'fast',
-      });
+      const run = await gateway.run('alpha.admin-writer', adminContext(), REQUEST, {});
       expect(run).toEqual({ ok: false, reason: 'over-budget', costMicroUsd: 0 });
       expect(provider.requests).toHaveLength(0);
       for (const [, counter] of store.counters) expect(counter.held).toBe(0);
@@ -490,11 +521,8 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
 
     it('counts a guest on the guest pool and a seller on the seller counter', async () => {
       const gateway = gatewayOf();
-      await gateway.run('alpha.buyer-chat', testCallContext(AU, 'anonymous'), REQUEST, {
-        tier: 'fast',
-      });
+      await gateway.run('alpha.buyer-chat', testCallContext(AU, 'anonymous'), REQUEST, {});
       await gateway.run('alpha.seller-writer', sellerContext(), REQUEST, {
-        tier: 'fast',
         sellerId: SELLER,
       });
       expect(store.counterOf(AU, dayLine('guest'))).toEqual({ held: 200, spent: 200 });
@@ -511,7 +539,6 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
           signal.addEventListener('abort', () => reject(new Error())),
         );
       const run = await gatewayOf().run('alpha.admin-writer', adminContext(), REQUEST, {
-        tier: 'fast',
         timeoutMs: 5,
       });
       expect(store.counterOf(AU, dayLine('market'))).toEqual({
@@ -526,9 +553,11 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
         ...REQUEST,
         messages: [{ role: 'user', blocks: [{ type: 'text', text: 'x'.repeat(9000) }] }],
       };
-      expect(
-        await gatewayOf().run('alpha.admin-writer', adminContext(), big, { tier: 'fast' }),
-      ).toEqual({ ok: false, reason: 'over-budget', costMicroUsd: 0 });
+      expect(await gatewayOf().run('alpha.admin-writer', adminContext(), big, {})).toEqual({
+        ok: false,
+        reason: 'over-budget',
+        costMicroUsd: 0,
+      });
       expect(provider.requests).toHaveLength(0);
     });
 
@@ -539,7 +568,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
         ...REQUEST,
         tools: [{ name: 'search', description: 'Search.', inputSchema: { type: 'object' } }],
       };
-      const options = { tier: 'fast' as const, turnId: 'turn-1' };
+      const options = { turnId: 'turn-1' };
       expect(await gateway.run('alpha.tool-chat', guest, withTools, options)).toMatchObject({
         ok: true,
       });
@@ -554,25 +583,29 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
       expect(
         await gateway.run('alpha.tool-chat', guest, withTools, { ...options, turnId: 'turn-2' }),
       ).toMatchObject({ ok: true });
-      expect(
-        await gateway.run('alpha.tool-chat', guest, withTools, { tier: 'fast' }),
-      ).toMatchObject({ ok: false, reason: 'off' });
-      expect(
-        await gateway.run('alpha.buyer-chat', guest, withTools, { tier: 'fast' }),
-      ).toMatchObject({ ok: false, reason: 'off' });
+      expect(await gateway.run('alpha.tool-chat', guest, withTools, {})).toMatchObject({
+        ok: false,
+        reason: 'off',
+      });
+      expect(await gateway.run('alpha.buyer-chat', guest, withTools, {})).toMatchObject({
+        ok: false,
+        reason: 'off',
+      });
       expect(provider.requests).toHaveLength(3);
     });
 
     it('is off and calls nothing when the budget cannot be read or written (an error is off)', async () => {
       const gateway = gatewayOf(false, capsOf({ marketDayMicroUsd: 1_000_000 }));
       store.failing = true;
-      expect(await gateway.status('alpha.admin-writer', adminContext(), { tier: 'fast' })).toEqual({
+      expect(await gateway.status('alpha.admin-writer', adminContext(), {})).toEqual({
         on: false,
         reason: 'off',
       });
-      expect(
-        await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
-      ).toEqual({ ok: false, reason: 'off', costMicroUsd: 0 });
+      expect(await gateway.run('alpha.admin-writer', adminContext(), REQUEST, {})).toEqual({
+        ok: false,
+        reason: 'off',
+        costMicroUsd: 0,
+      });
       expect(provider.requests).toHaveLength(0);
     });
 
@@ -591,13 +624,13 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
           both,
         );
         const inside = await unitOfWork.run(market, async () =>
-          ok(await gateway.status('alpha.admin-writer', adminContext(market), { tier: 'fast' })),
+          ok(await gateway.status('alpha.admin-writer', adminContext(market), {})),
         );
         expect(inside).toEqual({ ok: true, value: { on: false, reason: 'off' } });
         // Outside a unit the same call is on.
-        expect(
-          await gateway.status('alpha.admin-writer', adminContext(market), { tier: 'fast' }),
-        ).toEqual({ on: true });
+        expect(await gateway.status('alpha.admin-writer', adminContext(market), {})).toEqual({
+          on: true,
+        });
       },
     );
 
@@ -609,7 +642,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
         // The largest call: 8000 input tokens at 1 and 500 output tokens at 5 micro-dollars a
         // thousand, 10,500 micro-dollars. This request's estimate is about 2,600.
         const gateway = gatewayOf(false, capsOf({ capabilityDayMicroUsd: 20_000 }), both);
-        const options = { tier: 'fast' as const };
+        const options = {};
         store.counters.set(key, { held: 9_500, spent: 9_500 });
         expect(await gateway.status('alpha.admin-writer', adminContext(market), options)).toEqual({
           on: true,
@@ -759,7 +792,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
       registry.register('alpha', ROUTED);
       registry.seal();
       const markets = setup.markets ?? registryOf();
-      controls = new TestAiGatewayControls();
+      controls = new TestAiGatewayControls().routed('model-fast', ['AU', 'ZZ']);
       clock = new FixedClock(NOW);
       ({ store, usage, unitOfWork } = inMemoryAiUsage(markets, clock));
       const config = configOf(false, ['AU', 'ZZ']) as unknown as {
@@ -776,7 +809,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
         },
       } as unknown as AppConfig;
       const catalogue = setup.catalogue ?? testRouteCatalogue();
-      const models = new ModelGateway(withBedrock, routed, catalogue);
+      const models = new ModelGateway(withBedrock, routed);
       router = testRouter(catalogue, setup.passes ?? passesFor(ROUTED), models, markets, clock);
       return new AiGateway(
         models,
@@ -803,9 +836,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
             : Promise.resolve(TURN);
         const gateway = routedGateway();
         const reserve = jest.spyOn(usage, 'reserve');
-        const run = await gateway.run('alpha.admin-writer', adminContext(market), REQUEST, {
-          tier: 'fast',
-        });
+        const run = await gateway.run('alpha.admin-writer', adminContext(market), REQUEST, {});
         expect(run).toEqual({
           ok: true,
           turn: TURN,
@@ -835,7 +866,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
           ? Promise.reject(new ModelProviderError('rate-limited'))
           : Promise.resolve(TURN);
       expect(
-        await routedGateway().run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
+        await routedGateway().run('alpha.admin-writer', adminContext(), REQUEST, {}),
       ).toMatchObject({ ok: true, route: { attempt: 2 } });
 
       routed = new RouteProvider();
@@ -845,9 +876,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
               signal.addEventListener('abort', () => reject(new Error())),
             )
           : Promise.resolve(TURN);
-      const slow = await routedGateway().run('alpha.slow-writer', adminContext(), REQUEST, {
-        tier: 'fast',
-      });
+      const slow = await routedGateway().run('alpha.slow-writer', adminContext(), REQUEST, {});
       expect(slow).toMatchObject({ ok: true, route: { attempt: 2 } });
       // The timed-out attempt is counted at the most it could cost.
       expect(slow.costMicroUsd).toBeGreaterThan(200 + 500 * 5);
@@ -855,9 +884,11 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
 
       routed = new RouteProvider();
       routed.answer = () => Promise.reject(new ModelProviderError('client'));
-      expect(
-        await routedGateway().run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
-      ).toEqual({ ok: false, reason: 'unavailable', costMicroUsd: 0 });
+      expect(await routedGateway().run('alpha.admin-writer', adminContext(), REQUEST, {})).toEqual({
+        ok: false,
+        reason: 'unavailable',
+        costMicroUsd: 0,
+      });
       expect(routed.routes).toEqual(['anthropic-api']);
       expect(store.calls.map((call) => call.outcome)).toEqual(['rejected']);
     });
@@ -867,9 +898,11 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
         Promise.reject(
           new ModelProviderError(route === 'anthropic-api' ? 'server' : 'rate-limited'),
         );
-      expect(
-        await routedGateway().run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
-      ).toEqual({ ok: false, reason: 'rate-limited', costMicroUsd: 0 });
+      expect(await routedGateway().run('alpha.admin-writer', adminContext(), REQUEST, {})).toEqual({
+        ok: false,
+        reason: 'rate-limited',
+        costMicroUsd: 0,
+      });
       expect(routed.routes).toEqual(['anthropic-api', 'bedrock-mantle']);
     });
 
@@ -880,7 +913,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
           'alpha.admin-writer',
           adminContext(),
           REQUEST,
-          { tier: 'fast' },
+          {},
         ),
       ).toEqual({ ok: false, reason: 'unavailable', costMicroUsd: 0 });
       expect(routed.routes).toEqual(['anthropic-api']);
@@ -921,19 +954,21 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
       ],
     ])('has no route with %s, and calls nothing', async (_name, setup) => {
       const gateway = routedGateway(setup);
-      expect(await gateway.status('alpha.admin-writer', adminContext(), { tier: 'fast' })).toEqual({
+      expect(await gateway.status('alpha.admin-writer', adminContext(), {})).toEqual({
         on: false,
         reason: 'no-route',
       });
-      expect(
-        await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
-      ).toEqual({ ok: false, reason: 'off', costMicroUsd: 0 });
+      expect(await gateway.run('alpha.admin-writer', adminContext(), REQUEST, {})).toEqual({
+        ok: false,
+        reason: 'off',
+        costMicroUsd: 0,
+      });
       expect(routed.routes).toEqual([]);
     });
 
     it('is usable on its retirement day', async () => {
       const gateway = routedGateway({ catalogue: unusable({ retiresOn: '2026-11-25' }) });
-      expect(await gateway.status('alpha.admin-writer', adminContext(), { tier: 'fast' })).toEqual({
+      expect(await gateway.status('alpha.admin-writer', adminContext(), {})).toEqual({
         on: true,
       });
     });
@@ -945,14 +980,15 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
           : Promise.resolve(TURN);
       const gateway = routedGateway();
       for (let index = 0; index < BREAKER_FAILURES; index += 1) {
-        await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' });
+        await gateway.run('alpha.admin-writer', adminContext(), REQUEST, {});
       }
       expect(router.breaker.open('AU', PRIMARY)).toBe(true);
       expect(router.breaker.open('ZZ', PRIMARY)).toBe(false);
       routed.routes.length = 0;
-      expect(
-        await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
-      ).toMatchObject({ ok: true, route: { route: 'bedrock-mantle', attempt: 1 } });
+      expect(await gateway.run('alpha.admin-writer', adminContext(), REQUEST, {})).toMatchObject({
+        ok: true,
+        route: { route: 'bedrock-mantle', attempt: 1 },
+      });
       expect(routed.routes).toEqual(['bedrock-mantle']);
       // The route the call used is not the plan's first: it is counted as a fallback.
       expect(store.usage.at(-1)?.fallbacks).toBe(1);
@@ -961,9 +997,10 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
       clock.advance(BREAKER_OPEN_FOR);
       routed.answer = () => Promise.resolve(TURN);
       routed.routes.length = 0;
-      expect(
-        await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
-      ).toMatchObject({ ok: true, route: { route: 'anthropic-api' } });
+      expect(await gateway.run('alpha.admin-writer', adminContext(), REQUEST, {})).toMatchObject({
+        ok: true,
+        route: { route: 'anthropic-api' },
+      });
       expect(router.breaker.open('AU', PRIMARY)).toBe(false);
       expect(router.breaker.open('AU', FALLBACK)).toBe(false);
     });
@@ -974,11 +1011,12 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
           ? Promise.reject(new ModelProviderError('route'))
           : Promise.resolve(TURN);
       const gateway = routedGateway();
-      expect(
-        await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
-      ).toMatchObject({ ok: true, route: { route: 'bedrock-mantle', attempt: 2 } });
+      expect(await gateway.run('alpha.admin-writer', adminContext(), REQUEST, {})).toMatchObject({
+        ok: true,
+        route: { route: 'bedrock-mantle', attempt: 2 },
+      });
       for (let index = 1; index < BREAKER_FAILURES; index += 1) {
-        await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' });
+        await gateway.run('alpha.admin-writer', adminContext(), REQUEST, {});
       }
       expect(router.breaker.open('AU', PRIMARY)).toBe(true);
     });
@@ -992,9 +1030,10 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
           : Promise.resolve(TURN);
       const gateway = routedGateway();
       const failed = jest.spyOn(router.breaker, 'failed');
-      expect(
-        await gateway.run('alpha.slow-writer', adminContext(), REQUEST, { tier: 'fast' }),
-      ).toMatchObject({ ok: true, route: { attempt: 2 } });
+      expect(await gateway.run('alpha.slow-writer', adminContext(), REQUEST, {})).toMatchObject({
+        ok: true,
+        route: { attempt: 2 },
+      });
       expect(failed).not.toHaveBeenCalled();
     });
 
@@ -1008,7 +1047,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
         router.breaker.failed('AU', FALLBACK);
       }
       const complete = jest.spyOn(ModelGateway.prototype, 'complete');
-      await gateway.run('alpha.slow-writer', adminContext(), REQUEST, { tier: 'fast' });
+      await gateway.run('alpha.slow-writer', adminContext(), REQUEST, {});
       expect(complete).toHaveBeenCalledTimes(1);
       // No usable fallback behind it: no share is kept back (Mohammad, G3 review 6).
       expect(complete.mock.calls[0]![3]).toBeGreaterThan(SLOW.timeoutMs * 0.9);
@@ -1018,12 +1057,14 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
       routed.answer = () => Promise.reject(new ModelProviderError('server'));
       const gateway = routedGateway();
       for (let index = 0; index < BREAKER_FAILURES; index += 1) {
-        await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' });
+        await gateway.run('alpha.admin-writer', adminContext(), REQUEST, {});
       }
       routed.routes.length = 0;
-      expect(
-        await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
-      ).toEqual({ ok: false, reason: 'unavailable', costMicroUsd: 0 });
+      expect(await gateway.run('alpha.admin-writer', adminContext(), REQUEST, {})).toEqual({
+        ok: false,
+        reason: 'unavailable',
+        costMicroUsd: 0,
+      });
       expect(routed.routes).toEqual([]);
     });
 
@@ -1034,7 +1075,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
       ]);
       const gateway = routedGateway({ catalogue });
       const reserve = jest.spyOn(usage, 'reserve');
-      await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' });
+      await gateway.run('alpha.admin-writer', adminContext(), REQUEST, {});
       const usageOf = timeoutUsageOf(maskRequest({ ...REQUEST, maxOutputTokens: 500 }));
       expect(reserve.mock.calls[0]![3]).toBe(
         costMicroUsd(usageOf, { inputPicoUsd: 2_000_000, outputPicoUsd: 10_000_000 }),
@@ -1051,24 +1092,20 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
       const passes = passesFor(ROUTED, ['model-fast', 'model-other']);
 
       it.each(['AU', 'ZZ'] as const)(
-        'tries the list of the task type in its order, not the tier family (%s)',
+        'tries the list of the task type in its order (%s)',
         async (code) => {
           const market = code === 'AU' ? AU : ZZ;
           const gateway = routedGateway({ catalogue: other(), passes });
           controls.models.set(code, listOf('write', ['model-other', 'model-fast']));
           expect(
-            await gateway.run('alpha.admin-writer', adminContext(market), REQUEST, {
-              tier: 'fast',
-            }),
+            await gateway.run('alpha.admin-writer', adminContext(market), REQUEST, {}),
           ).toMatchObject({ ok: true, route: { model: 'model-other', attempt: 1 } });
           routed.answer = (route) =>
             route === 'anthropic-api'
               ? Promise.reject(new ModelProviderError('server'))
               : Promise.resolve(TURN);
           expect(
-            await gateway.run('alpha.admin-writer', adminContext(market), REQUEST, {
-              tier: 'fast',
-            }),
+            await gateway.run('alpha.admin-writer', adminContext(market), REQUEST, {}),
           ).toMatchObject({ ok: true, route: { model: 'anthropic.model-fast', attempt: 3 } });
         },
       );
@@ -1076,28 +1113,40 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
       it('skips a family the router cannot use and keeps the next one', async () => {
         const gateway = routedGateway({ catalogue: other(), passes: passesFor(ROUTED) });
         controls.models.set('AU', listOf('write', ['model-unknown', 'model-other', 'model-fast']));
-        expect(
-          await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
-        ).toMatchObject({ ok: true, route: { model: 'model-fast', attempt: 1 } });
+        expect(await gateway.run('alpha.admin-writer', adminContext(), REQUEST, {})).toMatchObject({
+          ok: true,
+          route: { model: 'model-fast', attempt: 1 },
+        });
       });
 
-      it('leaves a capability on its tier family while only another task type has a list', async () => {
-        const gateway = routedGateway({ catalogue: other(), passes });
-        controls.models.set('AU', listOf('chat', ['model-other']));
-        expect(
-          await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
-        ).toMatchObject({ ok: true, route: { model: 'model-fast' } });
-      });
+      it.each(['AU', 'ZZ'] as const)(
+        'answers no-route, calling nothing, while only another task type has a list: no tier family (%s)',
+        async (code) => {
+          const market = code === 'AU' ? AU : ZZ;
+          const gateway = routedGateway({ catalogue: other(), passes });
+          controls.models.set(code, listOf('chat', ['model-other']));
+          expect(await gateway.status('alpha.admin-writer', adminContext(market), {})).toEqual({
+            on: false,
+            reason: 'no-route',
+          });
+          expect(
+            await gateway.run('alpha.admin-writer', adminContext(market), REQUEST, {}),
+          ).toEqual({ ok: false, reason: 'off', costMicroUsd: 0 });
+          expect(routed.routes).toEqual([]);
+        },
+      );
 
       it('is off, calling nothing, when no family of the list is usable', async () => {
         const gateway = routedGateway({ catalogue: other(), passes });
         controls.models.set('AU', listOf('write', ['model-unknown']));
-        expect(
-          await gateway.status('alpha.admin-writer', adminContext(), { tier: 'fast' }),
-        ).toMatchObject({ on: false });
-        expect(
-          await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
-        ).toEqual({ ok: false, reason: 'off', costMicroUsd: 0 });
+        expect(await gateway.status('alpha.admin-writer', adminContext(), {})).toMatchObject({
+          on: false,
+        });
+        expect(await gateway.run('alpha.admin-writer', adminContext(), REQUEST, {})).toEqual({
+          ok: false,
+          reason: 'off',
+          costMicroUsd: 0,
+        });
         expect(routed.routes).toEqual([]);
       });
     });
@@ -1105,7 +1154,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
     describe('saver mode', () => {
       /** The Market's saver model for the writer's task type (G4b settings), at `percent`. */
       const saverOf = (percent = 80) => ({
-        lists: {},
+        lists: { write: ['model-fast'] },
         savers: { write: 'model-saver' },
         saverAtPercent: percent,
       });
@@ -1130,43 +1179,48 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
       ])('at a month share of %s tries %s first', async (share, first) => {
         const gateway = saverGateway(0.1);
         jest.spyOn(usage, 'monthShare').mockResolvedValue(share);
-        expect(
-          await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
-        ).toMatchObject({ ok: true, route: { model: first, attempt: 1 } });
+        expect(await gateway.run('alpha.admin-writer', adminContext(), REQUEST, {})).toMatchObject({
+          ok: true,
+          route: { model: first, attempt: 1 },
+        });
       });
 
       it('takes the threshold from the Market settings (90 %: not yet at 85 %)', async () => {
         const gateway = saverGateway(0.1, 90);
         jest.spyOn(usage, 'monthShare').mockResolvedValue(0.85);
-        expect(
-          await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
-        ).toMatchObject({ ok: true, route: { model: 'model-fast' } });
+        expect(await gateway.run('alpha.admin-writer', adminContext(), REQUEST, {})).toMatchObject({
+          ok: true,
+          route: { model: 'model-fast' },
+        });
       });
 
       it("uses the saver model of the capability's own task type only", async () => {
         const gateway = routedGateway({ catalogue: withSaver(0.1), passes: saverPasses });
         controls.models.set('AU', { ...saverOf(), savers: { chat: 'model-saver' } });
         const share = jest.spyOn(usage, 'monthShare').mockResolvedValue(0.95);
-        expect(
-          await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
-        ).toMatchObject({ ok: true, route: { model: 'model-fast' } });
+        expect(await gateway.run('alpha.admin-writer', adminContext(), REQUEST, {})).toMatchObject({
+          ok: true,
+          route: { model: 'model-fast' },
+        });
         expect(share).not.toHaveBeenCalled();
       });
 
       it('never puts a saver model first that is not cheaper', async () => {
         const gateway = saverGateway(50);
         jest.spyOn(usage, 'monthShare').mockResolvedValue(0.95);
-        expect(
-          await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
-        ).toMatchObject({ ok: true, route: { model: 'model-fast' } });
+        expect(await gateway.run('alpha.admin-writer', adminContext(), REQUEST, {})).toMatchObject({
+          ok: true,
+          route: { model: 'model-fast' },
+        });
       });
 
       it('keeps the normal order when the share cannot be read', async () => {
         const gateway = saverGateway(0.1);
         jest.spyOn(usage, 'monthShare').mockRejectedValue(new Error('down'));
-        expect(
-          await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
-        ).toMatchObject({ ok: true, route: { model: 'model-fast' } });
+        expect(await gateway.run('alpha.admin-writer', adminContext(), REQUEST, {})).toMatchObject({
+          ok: true,
+          route: { model: 'model-fast' },
+        });
       });
 
       it('reads the month share from the Market month counter (ZZ caps)', async () => {
@@ -1177,12 +1231,9 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
     });
   });
 
-  it('shows the setup without the key', () => {
-    expect(gatewayOf().setup(AU.marketId)).toEqual({
-      killSwitch: false,
-      keyConfigured: true,
-      models: { fast: 'model-fast', balanced: null },
-    });
+  it('shows the setup without the key, and without models (they are the Market lists)', () => {
+    expect(gatewayOf().setup(AU.marketId)).toEqual({ killSwitch: false, keyConfigured: true });
+    expect(gatewayOf().setup(ZZ.marketId)).toEqual({ killSwitch: false, keyConfigured: false });
     expect(JSON.stringify(gatewayOf().setup(AU.marketId))).not.toContain('sk-test');
   });
 });

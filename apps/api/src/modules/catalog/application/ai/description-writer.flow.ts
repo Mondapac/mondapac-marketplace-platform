@@ -33,7 +33,6 @@ import type {
   DescriptionWriterModel,
   DescriptionWriterSwitches,
   MarketDayCalendar,
-  WriterModelTier,
 } from '../ports/description-writer';
 import type { RateCounterKeys } from '../ports/rate-counter-keys';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
@@ -111,21 +110,22 @@ export function writerCallerOf(
 }
 
 /**
- * Both switches and the model (ADR-0019 decision 7, R8): the Market's switch and tier, the seller's
- * switch for a seller, and a configured model for that tier. Any error is off.
+ * Both switches and the model (ADR-0019 decision 7, R8): the Market's switch, the seller's switch
+ * for a seller, and a usable route from the Market's list for the write task type (no list: off,
+ * G4d1). Any error is off.
  */
-async function tierIfOn(
+async function writerOn(
   deps: DescriptionWriterDependencies,
   context: CallContext,
   caller: WriterCaller,
-): Promise<WriterModelTier | null> {
+): Promise<boolean> {
   try {
     const market = await deps.switches.market(context);
-    if (!market.enabled) return null;
+    if (!market.enabled) return false;
     // The gateway evaluates the rest: audience, acting-as, kill switch, the seller's switch, route.
-    return (await deps.model.available(context, caller, market.tier)) ? market.tier : null;
+    return await deps.model.available(context, caller);
   } catch {
-    return null;
+    return false;
   }
 }
 
@@ -140,7 +140,7 @@ export async function writerAvailability(
   const resetZone = deps.calendar.zoneOf(context.market);
   // No AI in an acting-as session (R3): the button is simply not offered there.
   if (isActingAsSession(context.actor)) return ok({ available: false, resetZone });
-  return ok({ available: (await tierIfOn(deps, context, caller)) !== null, resetZone });
+  return ok({ available: await writerOn(deps, context, caller), resetZone });
 }
 
 /**
@@ -244,15 +244,13 @@ async function draft(
   const request = parseWriterRequest(body);
   if (!request.ok) return err({ code: 'validation.failed', fields: request.error });
 
-  const tier = await tierIfOn(deps, context, caller);
-  if (tier === null) return err({ code: 'ai.writer-off' });
+  if (!(await writerOn(deps, context, caller))) return err({ code: 'ai.writer-off' });
   const refused = await reserveDraft(deps, context, caller);
   if (refused !== null) return err(refused);
 
   const answer = await deps.model.write(
     context,
     caller,
-    tier,
     {
       system: writerInstructions(request.value.tone, request.value.length),
       input: writerInput(request.value),

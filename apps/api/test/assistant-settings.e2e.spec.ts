@@ -50,10 +50,6 @@ const VIEW = {
   version: 2,
   settings: DEFAULT_ASSISTANT_SETTINGS,
   apiKey: 'not-set',
-  models: [
-    { tier: 'fast', modelId: null },
-    { tier: 'balanced', modelId: null },
-  ],
   unavailableOptions: { scope: [], supportHandoff: ['in-panel-form'] },
 };
 const LAST_CHANGED = {
@@ -229,7 +225,6 @@ describe.each(TEST_MARKETS)('assistant settings over HTTP in market %s', (code) 
     expect(Object.keys(read.body as object).sort()).toEqual([
       'apiKey',
       'lastChanged',
-      'models',
       'settings',
       'unavailableOptions',
       'version',
@@ -420,6 +415,15 @@ describe.each(TEST_MARKETS)('assistant settings over HTTP in market %s', (code) 
     expect(nested.status).toBe(400);
     expect(nested.body).toMatchObject({
       details: { fields: [{ path: 'settings.apiKey', code: 'unknown-field' }] },
+    });
+    // The model tier went in AI Gateway G4d1: a body that still sends it is refused, not ignored.
+    const tier = await call('put', 'admin', session, {
+      expectedVersion: 0,
+      settings: { ...settings, modelTier: 'fast' },
+    });
+    expect(tier.status).toBe(400);
+    expect(tier.body).toMatchObject({
+      details: { fields: [{ path: 'settings.modelTier', code: 'unknown-field' }] },
     });
     const notObject = await call('put', 'admin', session, { expectedVersion: 0, settings: [] });
     expect(notObject.status).toBe(400);

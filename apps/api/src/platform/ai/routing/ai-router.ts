@@ -10,7 +10,7 @@ import {
   type RouteRow,
 } from '../catalogue/route-catalogue';
 import type { EvaluationResults } from '../evaluations/evaluation-results';
-import type { AiModelTier, ModelGateway } from '../model-gateway';
+import type { ModelGateway } from '../model-gateway';
 import { CircuitBreaker } from './circuit-breaker';
 
 /** Why a model cannot be chosen or called (design section 8, server checks). */
@@ -35,8 +35,9 @@ export interface PlannedRoute {
 /**
  * The AI Gateway's router (docs/design/domain/platform-ai.md section 6; ADR-0052 decisions 2 to 5).
  * For a capability in a Market it builds the ordered list of routes a call may try: the task's
- * priority list of model families (the Market's list for the task type, G4b; without one, the
- * family the module's tier names), saver mode putting the task's saver model first, and each family expanded to its catalogue rows, the
+ * priority list of model families (the Market's list for the task type, G4b; a task type without
+ * a list has no route, so its capabilities are off, R8), saver mode putting the task's saver model
+ * first, and each family expanded to its catalogue rows, the
  * provider's own API first and the fallback route next. A row is kept only when it is usable now
  * (ADR-0052 decision 3): Hassan's no-retention and no-training check is recorded, its processing
  * region is one the Market's residency allows, the Market holds the route's key, it is not past its
@@ -61,23 +62,17 @@ export class AiRouter {
 
   /**
    * The routes of a capability in the Market, in the order to try, at most {@link MAX_ATTEMPTS}:
-   * the Market's priority list for the capability's task type (G4b settings), or, while the Market
-   * has none, the one family its tier names. `saver` puts the task's saver model first when it is
-   * usable and cheaper than the first model.
+   * the Market's priority list for the capability's task type (G4b settings). A task type without
+   * a list answers no route: there is no fallback family (G4d1). `saver` puts the task's saver
+   * model first when it is usable and cheaper than the first model.
    */
   plan(
     marketId: MarketId,
     spec: CapabilitySpec,
-    tier: AiModelTier,
     saver = false,
     models: AiModelLists = NO_MODEL_LISTS,
   ): PlannedRoute[] {
-    const chosen = models.lists[spec.task] ?? [];
-    const families: string[] = [...chosen];
-    if (families.length === 0) {
-      const tierFamily = this.models.modelOf(marketId, tier);
-      if (tierFamily !== null) families.push(tierFamily);
-    }
+    const families: string[] = [...(models.lists[spec.task] ?? [])];
     if (families.length === 0) return [];
     const first = families[0]!;
     if (saver) {

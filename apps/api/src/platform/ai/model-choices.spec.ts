@@ -50,8 +50,8 @@ const configOf = (codes: readonly string[]) =>
     aiKillSwitch: false,
     assistantModels: {
       apiKeys: Object.fromEntries(codes.map((code) => [code, 'sk-test-canary-key-0001'])),
-      models: { fast: {}, balanced: {} },
       bedrockApiKeys: {},
+      removedVariables: [],
     },
   }) as unknown as AppConfig;
 
@@ -74,7 +74,7 @@ function choicesOf(
   const registry = new CapabilityRegistry();
   if (specs.length > 0) registry.register('alpha', specs);
   registry.seal();
-  const models = new ModelGateway(configOf(options.keys ?? ['AU', 'ZZ']), NO_PROVIDER, CATALOGUE);
+  const models = new ModelGateway(configOf(options.keys ?? ['AU', 'ZZ']), NO_PROVIDER);
   const passes =
     options.passes ??
     passesFor(specs, [

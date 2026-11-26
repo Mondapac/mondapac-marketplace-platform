@@ -96,8 +96,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
 /**
  * Settings (admin-editable Market settings, ADR-0026 and ADR-0042): one shared store with a
  * version, an insert-only history and an audit row per change, in the `settings` schema. List
- * paging is its first setting, Cart mode its second, the AI description writer's switch and tier
- * the next two, the Offer review policy (risk-based Offer approval) the next six, the monthly revenue target (an amount) the one after, and the AI Gateway's emergency stop, caps and model lists (G4, read by `platform/ai` through its `AI_GATEWAY_CONTROLS` port). The settings other modules already keep are not moved here. A change opens a
+ * paging is its first setting, Cart mode its second, the AI description writer's switch the
+ * next (its tier setting went in AI Gateway G4d1), the Offer review policy (risk-based Offer approval) the next six, the monthly revenue target (an amount) the one after, and the AI Gateway's emergency stop, caps and model lists (G4, read by `platform/ai` through its `AI_GATEWAY_CONTROLS` port). The settings other modules already keep are not moved here. A change opens a
  * review in Admin Inbox › System requests (area marketplace) when the Market reviews that area,
  * and a rejected or withdrawn one is restored by the registered reverter.
  */

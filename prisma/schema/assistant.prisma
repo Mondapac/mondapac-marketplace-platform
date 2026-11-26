@@ -17,7 +17,7 @@ model AssistantSettings {
   audiencePercent         Int?     @map("audience_percent") @db.SmallInt
   /// read-only | cart-suggestions
   scope                   String   @db.VarChar(32)
-  /// fast | balanced; the provider model of each tier is server configuration.
+  /// Retired in AI Gateway G4d1: written as 'fast', never read (FE-20261125-ai-gateway-drop-assistant-model-tier).
   modelTier               String   @map("model_tier") @db.VarChar(16)
   /// guests-and-customers | customers-only
   users                   String   @db.VarChar(32)

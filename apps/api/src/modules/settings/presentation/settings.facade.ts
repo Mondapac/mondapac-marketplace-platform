@@ -41,7 +41,7 @@ export class SettingsFacadeImplementation implements SettingsFacade {
     } catch {
       // Fail closed below.
     }
-    return { enabled: false, tier: 'fast' as const };
+    return { enabled: false };
   }
 
   async cartMode(context: CallContext) {

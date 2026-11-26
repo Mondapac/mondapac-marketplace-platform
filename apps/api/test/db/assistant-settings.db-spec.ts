@@ -155,7 +155,6 @@ describe.each(TEST_MARKETS)('assistant settings store in market %s (database)', 
       enabled: true,
       audience: 'percent' as const,
       audiencePercent: 25,
-      modelTier: 'balanced' as const,
       users: 'customers-only' as const,
       guestMessageLimit: 60,
       customerMessageLimit: 120,
@@ -177,7 +176,14 @@ describe.each(TEST_MARKETS)('assistant settings store in market %s (database)', 
 
     const read = await new ViewAssistantSettings(gate, deps()).execute(admin(market), {});
     expect(read.ok && read.value).toMatchObject({ version: from + 1, settings: next });
+    expect(read.ok && Object.keys(read.value.settings)).not.toContain('modelTier');
     expect(await versionOf(other)).toBe(otherBefore);
+    // The retired model_tier column (G4d1) still holds a value the CHECK allows; nothing reads it.
+    const tier = await sql.query<{ model_tier: string }>(
+      'SELECT model_tier FROM assistant.settings WHERE market_id = $1 AND version = $2',
+      [market.marketId, from + 1],
+    );
+    expect(tier.rows).toEqual([{ model_tier: 'fast' }]);
 
     actors.labels.set(ADMIN, { kind: 'member', displayName: 'Sara K.' });
     const stale = await new SetAssistantSettings(gate, deps()).execute(admin(market), {

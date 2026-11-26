@@ -101,16 +101,10 @@ export class DescriptionWriterStatusBody {
   resetZone!: string;
 }
 
-class AiModelsBody {
-  @ApiProperty({ type: String, nullable: true }) fast!: string | null;
-  @ApiProperty({ type: String, nullable: true }) balanced!: string | null;
-}
-
 export class AiModelSetupBody {
   @ApiProperty() killSwitch!: boolean;
   @ApiProperty({ description: 'Whether a key is set; the key never leaves the server.' })
   keyConfigured!: boolean;
-  @ApiProperty({ type: AiModelsBody }) models!: AiModelsBody;
 }
 
 const UNAUTHORIZED = 'session.invalid (the cookie is cleared) or access.unauthenticated';
@@ -273,8 +267,9 @@ export class AdminDescriptionWriterController {
   @ApiOperation({
     summary: "The Market's AI model setup (admin, read only)",
     description:
-      'Needs settings.ai.view. Whether AI_KILL_SWITCH is set, whether a key is set, and the ' +
-      'model id of each tier. Server configuration: the panel cannot change these.',
+      'Needs settings.ai.view. Whether AI_KILL_SWITCH is set and whether a key is set. Server ' +
+      "configuration: the panel cannot change these. The writer's models are the Market's " +
+      'priority list for the write task type (settings/admin/ai-models); without one it is off.',
   })
   @ApiOkResponse({ type: AiModelSetupBody })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })

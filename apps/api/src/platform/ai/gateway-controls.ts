@@ -37,8 +37,8 @@ export const NO_CAPS: AiCaps = Object.freeze({
 /**
  * The Market's model choice (the External models tab, design sections 6 and 8): per task type an
  * ordered list of up to 3 model families and a saver model, and the share of the month cap at
- * which the saver model goes first. A task without a list uses the family its tier names (interim
- * until the `tier` option goes).
+ * which the saver model goes first. A task type without a list has no route: its capabilities are
+ * off (R8; there is no fallback family since G4d1).
  */
 export interface AiModelLists {
   readonly lists: Readonly<Partial<Record<CapabilityTask, readonly string[]>>>;

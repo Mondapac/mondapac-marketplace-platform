@@ -8,12 +8,9 @@ export const AI_SETTINGS_PATH = 'settings/admin/ai';
 export const MODEL_SETUP_PATH = 'catalog/admin/description-writer/model-setup';
 
 export const WRITER_CODE = 'ai-description-writer';
-export const TIER_CODE = 'ai-description-writer-tier';
 
 export const SWITCH_VALUES = ['off', 'on'] as const;
-export const TIER_VALUES = ['fast', 'balanced'] as const;
 export type SwitchValue = (typeof SWITCH_VALUES)[number];
-export type TierValue = (typeof TIER_VALUES)[number];
 
 export interface AiSetting {
   readonly code: string;
@@ -29,19 +26,20 @@ export interface AiSettingsAnswer {
   readonly settings: readonly AiSetting[];
 }
 
-/** What the server is configured with: never the key itself, only whether one is set. */
+/**
+ * What the server is configured with: never the key itself, only whether one is set. The models
+ * are the Market's lists in the AI Gateway settings, not part of this answer.
+ */
 export interface ModelSetup {
   readonly killSwitch: boolean;
   readonly keyConfigured: boolean;
-  readonly models: { readonly fast: string | null; readonly balanced: string | null };
 }
 
 const DEFAULTS: Readonly<Record<string, AiSetting>> = {
   [WRITER_CODE]: { code: WRITER_CODE, value: 'off', version: 0, updatedAt: null },
-  [TIER_CODE]: { code: TIER_CODE, value: 'fast', version: 0, updatedAt: null },
 };
 
-/** One row of an answer, or its default (off, fast) when the API did not name it. */
+/** One row of an answer, or its default (off) when the API did not name it. */
 export function settingOf(answer: AiSettingsAnswer, code: string): AiSetting {
   return (
     answer.settings.find((row) => row.code === code) ??
@@ -51,23 +49,16 @@ export function settingOf(answer: AiSettingsAnswer, code: string): AiSetting {
 
 export const isSwitchValue = (value: string): value is SwitchValue =>
   (SWITCH_VALUES as readonly string[]).includes(value);
-export const isTierValue = (value: string): value is TierValue =>
-  (TIER_VALUES as readonly string[]).includes(value);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
 /** A model setup answer checked, or null when it is not what the panel expects. */
 export function modelSetupOf(value: unknown): ModelSetup | null {
-  if (!isRecord(value) || !isRecord(value['models'])) return null;
-  const { killSwitch, keyConfigured, models } = value;
-  const name = (v: unknown) => (typeof v === 'string' && v !== '' ? v : null);
+  if (!isRecord(value)) return null;
+  const { killSwitch, keyConfigured } = value;
   if (typeof killSwitch !== 'boolean' || typeof keyConfigured !== 'boolean') return null;
-  return {
-    killSwitch,
-    keyConfigured,
-    models: { fast: name(models['fast']), balanced: name(models['balanced']) },
-  };
+  return { killSwitch, keyConfigured };
 }
 
 /** The row's `review` flag when it is well formed; nothing otherwise (no note is then asked). */

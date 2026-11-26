@@ -19,7 +19,7 @@ export async function generateMetadata() {
   return { title: t('ai-settings.title') };
 }
 
-/** Settings › AI: the Market switch and model tier of "Write with AI", and the server's setup. */
+/** Settings › AI: the Market switch of "Write with AI", and the server's setup. */
 export default async function AiSettingsPage() {
   const gate = await requireSession();
   const t = await getTranslations();

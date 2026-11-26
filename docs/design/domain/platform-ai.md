@@ -84,18 +84,18 @@ platform/ai
 
 ## 5. API contract
 
-**Internal contract.** Modules no longer send a model name, and (after the interim below) no
-model tier; they name the capability. One `run` is one model round: the buyer assistant, which loops over tools, calls `run`
+**Internal contract.** Modules send no model name and no model tier (the tier went in G4d1); they
+name the capability. One `run` is one model round: the buyer assistant, which loops over tools, calls `run`
 once per round. Cost comes back on success and failure, because a provider may bill a call that
 ran out of time.
 
 ```ts
 gateway.status(capability, context: CallContext,
-               opts: { tier /* G1 to G4 only */, sellerId?, timeoutMs? })
+               opts: { sellerId?, timeoutMs? })
   → { on: true } | { on: false, reason: 'kill-switch' | 'emergency-stop' | 'off' | 'no-route' | 'over-budget' }
 
 gateway.run(capability, context: CallContext, request: ModelRequest,
-            opts: { tier /* G1 to G4 only */, sellerId?, timeoutMs? })
+            opts: { sellerId?, timeoutMs?, turnId? })
   → { ok: true,  turn, route: { provider, model, attempt }, cost }
   | { ok: false, reason: 'off' | 'over-budget' | 'rate-limited' | 'unavailable'
                        | 'timeout' | 'rejected-output', cost }
@@ -105,19 +105,20 @@ CapabilitySpec = { id, audience: 'buyer' | 'seller' | 'admin' | 'system',
                    maxInputTokens, maxOutputTokens, maxToolRounds, timeoutMs, promptVersion }
 ```
 
-**Interim (G1 to G4).** Until priority lists exist (G4), the owning module passes its capability's
-configured model tier (`ai-description-writer-tier`, the assistant's tier setting) as `opts.tier`;
-the usage row records the resolved model id. Likewise the Market's on/off switch of a capability
+**Interim (G1 to G4).** Until priority lists existed (G4b), the owning module passed its
+capability's configured model tier (`ai-description-writer-tier`, the assistant's tier setting) as
+`opts.tier`; G4d1 removed it, and a task type's models are only the Market's list (section 8). The
+usage row records the resolved model id. Likewise the Market's on/off switch of a capability
 stays where it is today (the assistant's settings, the description writer's setting) and the module
 checks it before `status`/`run`; the gateway evaluates the kill switch, the acting-as state, the
-audience, the seller switch through the `sellers` port and the configured tier (the catalogue's
-route conditions apply from G3). `status` takes the caller's `CallContext`, because the audience
+audience, the seller switch through the `sellers` port and the route (the catalogue's route
+conditions apply from G3). `status` takes the caller's `CallContext`, because the audience
 and acting-as checks need the actor. `maxInputTokens` and `maxToolRounds` are declared and
 validated from G1 and enforced by the gateway from G2; until then each module keeps its own caps.
 From G2 `status` reads the budget in a read-only unit of its own and `run` writes it in short
 units of its own, so neither is ever called inside a UnitOfWork (an open unit makes `status` answer
 off); the assistant asks `status` after its settings unit. G4 moves both into the
-`settings` definitions the gateway reads, and the `tier` option goes. `opts.timeoutMs` may only
+`settings` definitions the gateway reads; the `tier` option went in G4d1. `opts.timeoutMs` may only
 shorten the capability's `timeoutMs`.
 
 **Caps enforced from G2.** `maxInputTokens` is checked before any call against an estimate of two
@@ -187,10 +188,9 @@ number so the partner team can work in parallel (G6).
   or Australia's profile (`au.anthropic.…`), never a cross-region profile (`global.`, `apac.` …).
   A checked-in Anthropic API row records no region until the adapter sends a region control. The
   adapter never follows a redirect.
-- A task type without a Market list (G4b settings) uses, until G4d, the one family the module's tier names (`ASSISTANT_MODEL_FAST`
-  or `_BALANCED`, now a catalogue family; a name outside the catalogue is logged as an error and
-  that tier is off, the API still boots, R8). The router
-  expands it to its usable rows, provider route first, at most 3 attempts. Market residency and the
+- A task type without a Market list (G4b settings) used, until G4d1, the one family the module's
+  tier named (`ASSISTANT_MODEL_FAST` or `_BALANCED`). Since G4d1 it has no route: its capabilities
+  are off (R8). The router expands each family of the list to its usable rows, provider route first, at most 3 attempts. Market residency and the
   saver model were Market configuration `aiRouting` until G4b (the saver model is now a setting;
   the residency stays configuration until INTL-53).
 - An attempt moves to the next route on a timeout, a server error, no answer, a rate limit, or a
@@ -228,7 +228,7 @@ number so the partner team can work in parallel (G6).
   counts its whole estimate as spent: the call may have been billed, so a failure over-counts and
   never under-counts (Hassan, PR 1348 M2). A late settle then writes the call's row only.
 - **Status.** `status` answers over-budget once a cap of the scope cannot take the most one call of
-  the capability can cost (its largest input and its whole output allowance at the tier's price),
+  the capability can cost (its largest input and its whole output allowance at the plan's price),
   so the host flow shows its non-AI path instead of an answer that fails (Hassan, PR 1348 M1).
 - **Cost guards.** Each capability has an input token cap, an output token cap and a max tool-round
   count. Guest-id creation is limited per IP.
@@ -373,8 +373,8 @@ settings/admin/ai-gateway/emergency-stop` (protected key `settings.ai-gateway.ma
   (`settings.ai-models.changed`, no free text, ADR-0009); the families are on the history row.
   Reviewed at high risk; a rejected change is restored (the router checks every route again on
   each call, so a restored list that went stale only skips that model). The gateway reads the
-  lists with the caps; a task type with a list uses it, and only a task type without one still
-  uses the family the module's tier names (the `tier` option goes in G4d). Saver mode uses the
+  lists with the caps; a task type with a list uses it, and a task type without one has no route
+  (G4d1; until then it used the family the module's tier named). Saver mode uses the
   task type's saver model at the Market's threshold. Market configuration `aiRouting` keeps only
   the residency. The page's list and saver rules are advisory for a pair: two admins saving the list
   and the saver model at once, or a review that restores only one of them, can leave a pair the
@@ -434,6 +434,26 @@ settings/admin/ai-gateway/emergency-stop` (protected key `settings.ai-gateway.ma
   its month cap plus its evaluation cap in a month. The evaluation cap is 0 until a senior admin
   raises it. **G4c2 (deferred):** capabilities
   with tool rounds, the buyer chat (FE-20261125-ai-gateway-evaluation-tool-capabilities).
+- **Built in G4d1 (the `tier` option goes).** The model tier is gone everywhere: `GatewayOptions`
+  has no `tier`, `AiRouter.plan` takes no tier and `ModelGateway` holds no tier models
+  (`modelOf` and `AI_MODEL_TIERS` removed). The only source of a task type's models is the
+  Market's list in settings (`ai-models-<task>`, G4b); a task type without one answers `status`
+  `no-route` and `run` `off`, so the capability is off and the host flow completes without AI
+  (R8; both fixtures in `ai-gateway.spec.ts`, `gateway-description-writer-model.spec.ts` and the
+  usage DB spec). There is no fallback family. `ASSISTANT_MODEL_FAST` and `_BALANCED` left the
+  config schema: still set, they never fail boot and are named (never their value) in one
+  `ai.config.removed` warning (`AppConfig.assistantModels.removedVariables`). The setup answer
+  (`GET catalog/admin/description-writer/model-setup`) keeps the kill switch and whether a key is
+  set, without `models`; the assistant's settings read lost `models` and its PUT refuses
+  `settings.modelTier` (400 `unknown-field`, closed body). The `ai-description-writer-tier`
+  setting definition is gone: its stored rows stay (ADR-0026 decision 4), no view, change or
+  facade read sees them, a review of an old change reverts as `gone`, and its audit target id
+  stays in the catalogue for the rows written before. The assistant's `model_tier` column stays
+  (no migration in G4d1): new rows write `fast`, nothing reads it
+  (FE-20261125-ai-gateway-drop-assistant-model-tier). The real-model evaluation takes the family
+  from `ASSISTANT_EVAL_FAMILY` (required, checked against the catalogue; workflow input `model`)
+  and gives it to each Market as its list through a fake `AiGatewayControls`. The admin panel's
+  tier pickers and model rows are removed.
 
 ## 9. Security (Hassan)
 
@@ -555,7 +575,7 @@ the guarded `prisma.tx(market)` client. Each table has an explicit GRANT and `do
 | G4a | Caps and the Market's emergency stop in `settings`, read by the gateway through a port; API, protected key, conditional TOTP, audit                                                                                                                                                                                       | G3                                                                                      | Hassan, Mohammad            |
 | G4b | Priority lists per task type, saver model and threshold in `settings`, server checks, router reads them                                                                                                                                                                                                                   | G4a                                                                                     | Hassan, Mohammad            |
 | G4c | Background evaluation run with its separate budget, and the playground by sample id                                                                                                                                                                                                                                       | G4b                                                                                     | Hassan, Mojtaba             |
-| G4d | Capability switches into these settings, the assistant's cap values into the gateway caps (FE-20261125-ai-gateway-assistant-cap-to-gateway), the panel's "revert to a previous version" as a forward change with TOTP, and the `tier` option goes (moved from G4b: it touches the assistant's and catalog's own settings) | G4b                                                                                     | Hassan, Mojtaba             |
+| G4d | Capability switches into these settings, the assistant's cap values into the gateway caps (FE-20261125-ai-gateway-assistant-cap-to-gateway), the panel's "revert to a previous version" as a forward change with TOTP, and the `tier` option goes (moved from G4b; done in G4d1) | G4b                                                                                     | Hassan, Mojtaba             |
 | G5  | Admin pages AI Models (external tab, scorecard, playground, change preview) and AI Gateway                                                                                                                                                                                                                                | G4                                                                                      | Reza (UI/UX)                |
 | G6  | In-house model tab: shadow, percent rollout, auto rollback, HTTP contract                                                                                                                                                                                                                                                 | G4, G5 and Hassan's approval                                                            | Mohammad, Hassan            |
 | G7  | Move `spend_days` in four steps                                                                                                                                                                                                                                                                                           | G2                                                                                      | Mojtaba                     |

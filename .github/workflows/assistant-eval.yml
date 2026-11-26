@@ -19,15 +19,9 @@ on:
   workflow_dispatch:
     inputs:
       model:
-        description: Provider model id to evaluate (the id the Market will configure)
+        description: Model family to evaluate (a family of the AI route catalogue, or a row's model id)
         required: true
         type: string
-      tier:
-        description: Assistant model tier the model is configured for
-        required: true
-        default: fast
-        type: choice
-        options: [fast, balanced]
 
 concurrency:
   group: assistant-eval
@@ -38,7 +32,7 @@ permissions:
 
 jobs:
   evaluate:
-    name: Real-model evaluation (${{ inputs.model }}, ${{ inputs.tier }})
+    name: Real-model evaluation (${{ inputs.model }})
     # Only the evaluation on main can count as the record.
     if: github.ref == 'refs/heads/main'
     environment: assistant-eval
@@ -81,26 +75,23 @@ jobs:
       - name: Generate the Prisma client
         run: pnpm db:generate
 
-      # Both Market fixtures (AU and the synthetic ZZ), one key and one model for both.
+      # Both Market fixtures (AU and the synthetic ZZ), one key and one model family for both.
+      # The family is the run's own input (ASSISTANT_EVAL_FAMILY): the model tiers went in AI
+      # Gateway G4d1, and a Market's models are its list in settings.
       - name: Run the evaluation
         env:
           KEY: ${{ secrets.ASSISTANT_EVAL_MODEL_API_KEY }}
           BEDROCK_KEY: ${{ secrets.ASSISTANT_EVAL_BEDROCK_API_KEY }}
-          MODEL: ${{ inputs.model }}
-          ASSISTANT_EVAL_TIER: ${{ inputs.tier }}
+          ASSISTANT_EVAL_FAMILY: ${{ inputs.model }}
           ASSISTANT_EVAL_REPORT_DIR: ${{ github.workspace }}/assistant-eval-report
         run: |
           if [ -n "$KEY" ]; then
             export ASSISTANT_MODEL_API_KEY="AU=$KEY,ZZ=$KEY"
+            echo "::add-mask::$ASSISTANT_MODEL_API_KEY"
           fi
           if [ -n "$BEDROCK_KEY" ]; then
             export AI_BEDROCK_API_KEY="AU=$BEDROCK_KEY,ZZ=$BEDROCK_KEY"
             echo "::add-mask::$AI_BEDROCK_API_KEY"
-          fi
-          if [ "$ASSISTANT_EVAL_TIER" = fast ]; then
-            export ASSISTANT_MODEL_FAST="AU=$MODEL,ZZ=$MODEL"
-          else
-            export ASSISTANT_MODEL_BALANCED="AU=$MODEL,ZZ=$MODEL"
           fi
           unset KEY BEDROCK_KEY
           pnpm --filter @mondapac/api eval:assistant

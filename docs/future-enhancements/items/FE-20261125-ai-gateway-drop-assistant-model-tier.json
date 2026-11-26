@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-ai-gateway-drop-assistant-model-tier",
+  "area": "assistant",
+  "title": "درگاه AI: حذف ستون بازنشستهٔ model_tier از assistant.settings",
+  "desc": "در G4d1 ردهٔ مدل (tier) حذف شد و مدل‌های گفتگوی خریدار فقط فهرست Market برای نوع کار chat در تنظیمات درگاه است. ستون model_tier (NOT NULL با CHECK برای fast یا balanced) بدون migration ماند؛ ردیف تازه مقدار ثابت fast را می‌نویسد و هیچ کدی آن را نمی‌خواند. حذف در دو انتشار (مجتبی، بازبینی G4d1؛ ترتیب برعکس در استقرار تدریجی خواندنِ پادهای قدیمی را می‌شکند): (الف) migration با ALTER COLUMN model_tier SET DEFAULT 'fast' (فقط کاتالوگ، lock_timeout حدود ۲ ثانیه)، فیلد Prisma با @default(\"fast\") یا اختیاری، repository دیگر آن را ننویسد و با select یا omit نخواند؛ (ب) انتشار بعد: حذف CHECK و ستون؛ down.sql ستون را با DEFAULT 'fast' برگرداند، پر کند، سپس NOT NULL و CHECK را برگرداند.",
+  "src": "docs/design/domain/platform-ai.md (Built in G4d1)",
+  "date": "2026-11-25",
+  "trig": "تغییر بعدی schema دستیار، یا پیش از انتقال تنظیمات دستیار به تنظیمات درگاه",
+  "prio": "پایین",
+  "status": "موکول"
+}

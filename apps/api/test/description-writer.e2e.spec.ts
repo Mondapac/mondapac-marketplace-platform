@@ -227,14 +227,11 @@ describe.each(TEST_MARKETS)('description writer over HTTP in market %s', (code) 
     expect(own.status).toBe(200);
     expect(own.headers['cache-control']).toBe('no-store');
     expect(own.body).toEqual({ available: true, resetZone: 'Etc/UTC' });
-    next = ok({ killSwitch: false, keyConfigured: true, models: { fast: 'm', balanced: null } });
+    next = ok({ killSwitch: false, keyConfigured: true });
     const setup = await call('get', `${ADMIN_ROUTE}/model-setup`, 'admin', sessionOf('admin', 4));
     expect(setup.status).toBe(200);
-    expect(setup.body).toEqual({
-      killSwitch: false,
-      keyConfigured: true,
-      models: { fast: 'm', balanced: null },
-    });
+    // No model tiers since AI Gateway G4d1: the models are the Market's lists in settings.
+    expect(setup.body).toEqual({ killSwitch: false, keyConfigured: true });
   });
 
   it('keeps each population on its own route: the other one never reaches a use case', async () => {

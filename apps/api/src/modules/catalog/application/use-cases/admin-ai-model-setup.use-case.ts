@@ -9,13 +9,12 @@ export interface AiModelSetup {
   readonly killSwitch: boolean;
   /** Whether the Market has a provider key; the key itself never leaves the server. */
   readonly keyConfigured: boolean;
-  /** The model id configured for each tier in the Market, or null. Server configuration. */
-  readonly models: { readonly fast: string | null; readonly balanced: string | null };
 }
 
 /**
- * `catalog.admin-ai-model-setup`: what the admin AI settings card shows beside the switch and the
- * tier (owner decision 2026-11-13: the model id and the key are shown, read only). Rule: the
+ * `catalog.admin-ai-model-setup`: what the admin AI settings card shows beside the switch (owner
+ * decision 2026-11-13: the kill switch and whether a key is set, read only; the models are the
+ * Market's priority lists on the AI Models page since G4d1). Rule: the
  * settings module's `settings.ai.view`.
  */
 export class AdminAiModelSetup extends UseCase<
