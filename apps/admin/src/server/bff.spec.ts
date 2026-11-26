@@ -1061,6 +1061,9 @@ describe('relay allowlist for seller decisions', () => {
     const models = 'settings/admin/ai-models';
     expect((await read(models)).status).toBe(200);
     expect((await read(`${models}/history`)).status).toBe(200);
+    expect((await read(`${models}/playground/samples`)).status).toBe(200);
+    expect((await call('POST', `${models}/playground`)).status).toBe(200);
+    expect((await call('PUT', `${models}/playground`)).status).toBe(404);
     expect((await call('PUT', models)).status).toBe(200);
     expect((await call('POST', models)).status).toBe(404);
     expect((await call('POST', `${models}/revert`)).status).toBe(200);

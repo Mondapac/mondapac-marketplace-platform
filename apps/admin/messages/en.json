@@ -14728,6 +14728,7 @@
       "label": "AI model groups",
       "external": "External models",
       "evaluation": "Evaluation",
+      "playground": "Playground",
       "own": "Mondapac Intelligence"
     },
     "evaluation": {
@@ -14857,6 +14858,57 @@
         "same": "Something went wrong. Try again.",
         "version": "Something went wrong. Try again.",
         "chat-pair": "Something went wrong. Try again."
+      }
+    },
+    "playground": {
+      "section": "Playground",
+      "about": "Run one ready sample on two models side by side. The samples are made up, so no customer data is sent.",
+      "loading": "Loading the samples.",
+      "load-failed": "Couldn't load the playground samples.",
+      "no-samples": "No samples are ready yet.",
+      "read-only": "You can look at the samples but not run them.",
+      "capability": "AI feature",
+      "sample": "Sample",
+      "model-a": "First model",
+      "model-b": "Second model",
+      "choose": "Choose a model",
+      "few-models": "At least two usable models are needed to compare.",
+      "cost-note": "Each run counts toward the evaluation budget and each admin can run 20 a day.",
+      "run": "Run on both models",
+      "running": "Running",
+      "no-text": "Nothing would be shown for this answer.",
+      "checks-clean": "All checks passed",
+      "cost": "Cost",
+      "latency": "Time",
+      "route": "Route",
+      "outcome": {
+        "ok": "Answered",
+        "ok-failed": "Answered, failed checks",
+        "timeout": "Timed out",
+        "unavailable": "Not available",
+        "rate-limited": "Rate limited",
+        "rejected": "Provider refused",
+        "refused": "Sample too large",
+        "closed-budget": "Evaluation budget used up",
+        "closed-saver": "Closed by the saver threshold",
+        "closed-off": "Evaluations are off"
+      },
+      "check": {
+        "leak": "Shows text it must not",
+        "empty": "Empty",
+        "incomplete": "Did not finish with text",
+        "too-long": "Cut at the length limit",
+        "missing-fact": "Dropped a required fact"
+      },
+      "error": {
+        "limit": "You have used today's 20 playground runs. Try again tomorrow.",
+        "throttled": "Too many attempts. Wait a moment and try again.",
+        "invalid": "That choice isn't allowed. Pick the sample and two different models again.",
+        "denied": "You don't have permission to run the playground.",
+        "acting-as": "The playground can't be used while you are acting as a seller.",
+        "csrf": "Your session expired. Reload the page.",
+        "unavailable": "The service isn't available right now. Try again.",
+        "unknown": "Something went wrong. Try again."
       }
     },
     "own": {
@@ -18270,7 +18322,8 @@
           "You only pick from models the server lists as usable here. A model that is retired or not yet evaluated cannot be chosen.",
           "Saving shows what will change first, then asks for your two-step code.",
           "Restoring an earlier choice also asks for your code.",
-          "The Evaluation tab shows what a run of a model would cost before you start it. Starting one asks for your code. A result is only a pass candidate until a pull request records it."
+          "The Evaluation tab shows what a run of a model would cost before you start it. Starting one asks for your code. A result is only a pass candidate until a pull request records it.",
+          "The Playground tab runs a made-up sample on two models side by side. It needs no code, costs a little from the evaluation budget, and is limited to 20 runs a day for each admin."
         ],
         "related": [
           {

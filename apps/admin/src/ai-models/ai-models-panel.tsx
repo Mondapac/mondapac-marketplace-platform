@@ -23,6 +23,7 @@ import { REVIEW_NOTE_MAX, isNoteFailure, useSentForReview } from '../shared/revi
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { EvaluationPanel } from './evaluation-panel.tsx';
 import { familiesOfOptions } from './evaluation-types.ts';
+import { AiPlayground } from './playground.tsx';
 import {
   DEFAULT_SAVER_PERCENT,
   MAX_FAMILIES,
@@ -40,6 +41,7 @@ import {
   valueOfFamilies,
   type ModelsAnswer,
   type Task,
+  usableFamilies,
 } from './types.ts';
 
 interface Draft {
@@ -119,7 +121,7 @@ export function AiModelsPanel({
   const sentForReview = useSentForReview();
   const [answer, setAnswer] = useState(initial);
   const [draft, setDraft] = useState(() => savedDraft(initial.settings));
-  const [tab, setTab] = useState<'external' | 'evaluation' | 'own'>('external');
+  const [tab, setTab] = useState<'external' | 'evaluation' | 'playground' | 'own'>('external');
   const [previewing, setPreviewing] = useState(false);
   const [busy, setBusy] = useState(false);
   // True when a save went through but the page could not refresh: nothing more is saved from stale values.
@@ -331,11 +333,12 @@ export function AiModelsPanel({
         panelId="ai-models-panel"
         activeId={tab}
         onSelect={(id) =>
-          setTab(id === 'own' ? 'own' : id === 'evaluation' ? 'evaluation' : 'external')
+          setTab(id === 'own' || id === 'evaluation' || id === 'playground' ? id : 'external')
         }
         items={[
           { id: 'external', label: t('tabs.external') },
           { id: 'evaluation', label: t('tabs.evaluation') },
+          { id: 'playground', label: t('tabs.playground') },
           { id: 'own', label: t('tabs.own') },
         ]}
       />
@@ -345,6 +348,14 @@ export function AiModelsPanel({
           canManage={canManage}
           csrfToken={csrfToken}
         />
+      ) : tab === 'playground' ? (
+        <div id="ai-models-panel" role="tabpanel" aria-labelledby="ai-models-panel-tab-playground">
+          <AiPlayground
+            families={usableFamilies(answer)}
+            canRun={canManage}
+            csrfToken={csrfToken}
+          />
+        </div>
       ) : tab === 'own' ? (
         <div id="ai-models-panel" role="tabpanel" aria-labelledby="ai-models-panel-tab-own">
           <SettingsSection title={t('own.section')} description={t('own.body')}>

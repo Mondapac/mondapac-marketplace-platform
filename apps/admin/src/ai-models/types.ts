@@ -78,3 +78,94 @@ export function moved<T>(list: readonly T[], index: number, delta: -1 | 1): read
   next.splice(target, 0, item as T);
   return next;
 }
+
+// The playground (G5d): one synthetic sample on two models side by side. Ids only go to the
+// API; what comes back is plain text, rendered as text and never as HTML.
+
+export const PLAYGROUND_SAMPLES_PATH = `${MODELS_PATH}/playground/samples`;
+export const PLAYGROUND_PATH = `${MODELS_PATH}/playground`;
+
+export interface PlaygroundSample {
+  readonly id: string;
+  readonly label: string;
+}
+
+export interface PlaygroundSuite {
+  readonly capability: string;
+  readonly setVersion: string;
+  readonly samples: readonly PlaygroundSample[];
+}
+
+export interface PlaygroundAnswer {
+  readonly family: string;
+  /** `ok`, a failure of the call, or `closed-*` when evaluations are closed. */
+  readonly outcome: string;
+  readonly text: string | null;
+  readonly checks: readonly string[];
+  readonly costMicroUsd: number;
+  readonly latencyMs: number | null;
+  readonly route: string | null;
+}
+
+export function playgroundSuitesOf(value: unknown): readonly PlaygroundSuite[] | null {
+  if (!isRecord(value) || !Array.isArray(value['suites'])) return null;
+  const suites: PlaygroundSuite[] = [];
+  for (const item of value['suites'] as unknown[]) {
+    if (
+      !isRecord(item) ||
+      typeof item['capability'] !== 'string' ||
+      typeof item['setVersion'] !== 'string' ||
+      !Array.isArray(item['samples'])
+    ) {
+      return null;
+    }
+    const samples: PlaygroundSample[] = [];
+    for (const sample of item['samples'] as unknown[]) {
+      if (!isRecord(sample) || typeof sample['id'] !== 'string') return null;
+      samples.push({
+        id: sample['id'],
+        label: typeof sample['label'] === 'string' ? sample['label'] : sample['id'],
+      });
+    }
+    suites.push({ capability: item['capability'], setVersion: item['setVersion'], samples });
+  }
+  return suites;
+}
+
+export function playgroundAnswersOf(value: unknown): readonly PlaygroundAnswer[] | null {
+  if (!isRecord(value) || !Array.isArray(value['answers'])) return null;
+  const answers: PlaygroundAnswer[] = [];
+  for (const item of value['answers'] as unknown[]) {
+    if (
+      !isRecord(item) ||
+      typeof item['family'] !== 'string' ||
+      typeof item['outcome'] !== 'string' ||
+      typeof item['costMicroUsd'] !== 'number'
+    ) {
+      return null;
+    }
+    answers.push({
+      family: item['family'],
+      outcome: item['outcome'],
+      text: typeof item['text'] === 'string' ? item['text'] : null,
+      checks: Array.isArray(item['checks'])
+        ? (item['checks'] as unknown[]).filter(
+            (check): check is string => typeof check === 'string',
+          )
+        : [],
+      costMicroUsd: item['costMicroUsd'],
+      latencyMs: typeof item['latencyMs'] === 'number' ? item['latencyMs'] : null,
+      route: typeof item['route'] === 'string' ? item['route'] : null,
+    });
+  }
+  return answers;
+}
+
+/** The families the server lists as usable for any task, each once, in the order listed. */
+export function usableFamilies(answer: ModelsAnswer): readonly string[] {
+  const seen = new Set<string>();
+  for (const list of Object.values(answer.options)) {
+    for (const option of list) if (option.problem === null) seen.add(option.family);
+  }
+  return [...seen];
+}

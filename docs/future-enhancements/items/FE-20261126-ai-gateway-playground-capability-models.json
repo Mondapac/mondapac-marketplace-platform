@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261126-ai-gateway-playground-capability-models",
+  "area": "admin",
+  "title": "AI playground: models and names per capability",
+  "desc": "The playground lists every model usable for any task and shows capability ids; list only the models usable for the chosen capability's task type and use readable capability names (needs the API to say each capability's task type).",
+  "src": "docs/design/domain/platform-ai.md (Built in G5d)",
+  "date": "2026-11-26",
+  "trig": "When a second capability with its own evaluation suite is added",
+  "prio": "پایین",
+  "status": "موکول"
+}

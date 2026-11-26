@@ -276,6 +276,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // would cost (query `provider`, `family`); one run is read by its UUID (see ALLOWED_WITH_ID).
     'settings/admin/ai-models/evaluations',
     'settings/admin/ai-models/evaluations/estimate',
+    // The AI playground's ready samples (settings; same view key; no query).
+    'settings/admin/ai-models/playground/samples',
     // The Offer review policy (settings; keys settings.offer-review.view / .manage).
     'settings/admin/offer-review',
     // Whether the Offer review emergency stop is on (settings; any admin, the banner).
@@ -359,6 +361,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // Start an AI evaluation run of a model (settings; protected key settings.ai-models.manage;
     // every start asks a fresh two-step code). Cancel is by run id (ALLOWED_WITH_ID).
     'settings/admin/ai-models/evaluations',
+    // One playground run: ids only, no two-step code (settings; protected key
+    // settings.ai-models.manage; 20 runs per admin per Market day).
+    'settings/admin/ai-models/playground',
     // Approve several low-risk system requests: by ids, or every one a list filter matches.
     'system-requests/admin/requests/bulk-approve',
     'system-requests/admin/requests/bulk-approve-matching',
