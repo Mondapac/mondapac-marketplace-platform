@@ -3,21 +3,22 @@
 import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useId, useRef, useState } from 'react';
 import { formatMoney } from '../format/money.ts';
-import { Icon, categoryIcon } from '../icons/icon.tsx';
+import { CategoryArt } from '../icons/category-icon.tsx';
+import { Icon } from '../icons/icon.tsx';
 import { useStore } from '../shell/store-context.tsx';
 import type { CartItem } from '../storefront/types.ts';
 import type { CartGroupLine, CartView } from './cart.ts';
 
 // Pieces the cart drawer, the cart page and checkout share.
 
-/** A line's photo, or its category icon when there is none. */
+/** A line's photo, or its department's illustration when there is none. */
 export function ItemThumb({ item }: { readonly item: CartItem }) {
   return (
     <span className="cim" aria-hidden="true">
       {item.imageUrl ? (
         <img src={item.imageUrl} alt="" width={64} height={64} loading="lazy" decoding="async" />
       ) : (
-        <Icon name={categoryIcon(item.category)} />
+        <CategoryArt code={item.category} />
       )}
     </span>
   );

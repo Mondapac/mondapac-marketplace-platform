@@ -389,6 +389,8 @@ export function productDetailOf(
   locale: string,
   labels: ProductDetailLabels,
   photo: PhotoUrl | null = null,
+  /** The department slug of each category id (./departments.ts); empty without the tree. */
+  departments: ReadonlyMap<string, string> = new Map(),
 ): ProductDetail | undefined {
   const refs = photo === null ? [] : imageRefsOf(body.images);
   // Both sizes or neither: an id the builder refuses drops that photo from all lists.
@@ -418,7 +420,9 @@ export function productDetailOf(
   return {
     id: body.productId,
     name: body.name,
-    category: body.categoryIds[0] ?? '',
+    // The department of the product's first category: its illustration without photos, its
+    // breadcrumb and "show all similar" link. An id the tree does not know gives none.
+    category: departments.get(body.categoryIds[0] ?? '') ?? '',
     description: body.description ?? body.shortDescription ?? '',
     specifications: specificationsOf(body.specifications, locale, labels),
     ...(brandRefOf(body.brand) === undefined ? {} : { brand: brandRefOf(body.brand)! }),

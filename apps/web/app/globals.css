@@ -4421,6 +4421,11 @@ svg {
   width: 30px;
   height: 30px;
 }
+/* A line without a photo: its department's illustration fills most of the square at any size. */
+.cim .vec {
+  width: 72%;
+  height: 72%;
+}
 .cim img {
   display: block;
   width: 100%;

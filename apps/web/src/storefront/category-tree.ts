@@ -136,10 +136,6 @@ export function countsOf(
   };
 }
 
-/** The slug of each category id, for the card's illustration. */
-export const slugsOf = (rows: readonly TreeRow[]): ReadonlyMap<string, string> =>
-  new Map(rows.map((r) => [r.id, r.slug]));
-
 /**
  * A node as the site's category: its direct children in the menu are the subcategories (a child
  * that is empty or switched out of the menu is not offered as a link).

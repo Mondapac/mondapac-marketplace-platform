@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useMemo, type ReactNode } from 'react';
 import { formatDate } from '../format/date.ts';
-import { Icon, categoryIcon } from '../icons/icon.tsx';
+import { CategoryArt } from '../icons/category-icon.tsx';
+import { Icon } from '../icons/icon.tsx';
 import { useStore } from '../shell/store-context.tsx';
 import type { AccountSource, OrderPartStatus, OrderStatus } from '../storefront/types.ts';
 import { AccountProvider } from './account-state.tsx';
@@ -118,7 +119,7 @@ export function PartBadge({ status }: { readonly status: OrderPartStatus }) {
   return <span className={`ac-badge ${PART_TONE[status]}`}>{t(status)}</span>;
 }
 
-/** A product picture of a list or order line, or its category icon. Decorative. */
+/** A product picture of a list or order line, or its department's illustration. Decorative. */
 export function LineThumb({
   imageUrl,
   category,
@@ -131,7 +132,7 @@ export function LineThumb({
       {imageUrl ? (
         <img src={imageUrl} alt="" width={64} height={64} loading="lazy" decoding="async" />
       ) : (
-        <Icon name={categoryIcon(category)} />
+        <CategoryArt code={category} />
       )}
     </span>
   );
