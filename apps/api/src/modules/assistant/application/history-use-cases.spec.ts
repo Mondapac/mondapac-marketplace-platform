@@ -43,6 +43,7 @@ import { ListConversations } from './use-cases/list-conversations.use-case';
 import { SendGuestMessage } from './use-cases/send-guest-message.use-case';
 import { SendMessage } from './use-cases/send-message.use-case';
 import { ViewConversation } from './use-cases/view-conversation.use-case';
+import { FakeStepUp } from '../../../../test/support/step-up-fakes';
 
 // A signed-in buyer's own conversation history (stage 0, B2), in memory on both Market fixtures:
 // the list within the retention in force, newest first and paged; titles masked and cut; one
@@ -163,6 +164,7 @@ describe.each(TEST_MARKET_IDS)('assistant conversation history in market %s', (c
       previewTokens: new FakePreviewTokens(),
       outbox: new RecordingOutbox(),
       trail: unusedChangeTrail,
+      stepUp: new FakeStepUp(),
     };
   });
 

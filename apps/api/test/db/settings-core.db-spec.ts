@@ -52,6 +52,9 @@ import { ChangeAiGatewayLimits } from '../../src/modules/settings/application/us
 import { SettingsAiGatewayControls } from '../../src/modules/settings/application/ai-gateway-controls-reader';
 import { NO_CAPS, NO_MODEL_LISTS } from '../../src/platform/ai/gateway-controls';
 import { ChangeAiModels } from '../../src/modules/settings/application/use-cases/change-ai-models.use-case';
+import { ChangeAiCapabilities } from '../../src/modules/settings/application/use-cases/change-ai-capabilities.use-case';
+import { RevertAiGatewaySetting } from '../../src/modules/settings/application/use-cases/revert-ai-gateway-setting.use-case';
+import { ViewAiGatewayHistory } from '../../src/modules/settings/application/use-cases/view-ai-gateway-history.use-case';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
 // The settings store as the application role in both Market fixtures: the tables' own guards (the
@@ -321,6 +324,12 @@ describe.each(TEST_MARKETS)('settings in market %s (database)', (code) => {
           capabilities: { 'assistant.buyer-chat': { day: 10_000_000, month: 200_000_000 } },
         },
         models: NO_MODEL_LISTS,
+        // No row: every capability switch is on (G4d3).
+        capabilities: {
+          'assistant.buyer-chat': true,
+          'catalog.description-writer.seller': true,
+          'catalog.description-writer.admin': true,
+        },
       });
       expect(
         await code_(
@@ -369,6 +378,115 @@ describe.each(TEST_MARKETS)('settings in market %s (database)', (code) => {
         { code: 'ai-saver-chat', previous_value: null, value: 'fam-cheap' },
         { code: 'ai-saver-percent', previous_value: null, value: '70' },
       ]);
+    });
+
+    it('switches a capability, lists its history newest first and reverts it on the real store, one Market only (G4d3)', async () => {
+      const ctx = admin('settings-db-admin-switches');
+      const spent: string[] = [];
+      const counted: SettingsDependencies['stepUp'] = {
+        consume: (context, action) => {
+          spent.push(action);
+          return SPENT.consume(context, action);
+        },
+      };
+      const withProof = { ...deps, stepUp: counted };
+      const SWITCH = 'ai-capability-assistant-buyer-chat';
+      const switches = new ChangeAiCapabilities(gate, withProof);
+      expect(
+        (
+          await switches.execute(ctx, {
+            changes: [{ code: SWITCH, value: 'off', expectedVersion: 0 }],
+          })
+        ).ok,
+      ).toBe(true);
+      expect(
+        (
+          await switches.execute(ctx, {
+            changes: [{ code: SWITCH, value: 'on', expectedVersion: 1 }],
+          })
+        ).ok,
+      ).toBe(true);
+      expect(
+        (
+          await switches.execute(ctx, {
+            changes: [{ code: SWITCH, value: 'off', expectedVersion: 2 }],
+          })
+        ).ok,
+      ).toBe(true);
+      // Only switching on spent a proof.
+      expect(spent).toEqual(['settings.ai-capability.resume']);
+      expect((await new SettingsAiGatewayControls(deps).read(seller)).capabilities).toEqual({
+        'assistant.buyer-chat': false,
+        'catalog.description-writer.seller': true,
+        'catalog.description-writer.admin': true,
+      });
+      const names = { namesOf: () => Promise.resolve(new Map<string, string>()) };
+      const history = new ViewAiGatewayHistory(gate, { settings: deps, names });
+      const read = await history.execute(ctx, { code: SWITCH, limit: 2 });
+      expect(
+        read.ok &&
+          read.value.map((row) => [row.version, row.previousValue, row.value, row.current]),
+      ).toEqual([
+        [3, 'on', 'off', true],
+        [2, 'off', 'on', false],
+      ]);
+      // Version 2 (on) comes back as version 4, with its own history row and the revert's proof.
+      const reverted = await new RevertAiGatewaySetting(gate, withProof).execute(ctx, {
+        code: SWITCH,
+        version: 2,
+        expectedVersion: 3,
+      });
+      expect(reverted.ok && [reverted.value.value, reverted.value.version]).toEqual(['on', 4]);
+      expect(spent).toEqual(['settings.ai-capability.resume', 'settings.ai-settings.revert']);
+      const stale = await new RevertAiGatewaySetting(gate, withProof).execute(ctx, {
+        code: SWITCH,
+        version: 1,
+        expectedVersion: 3,
+      });
+      expect(!stale.ok && stale.error.code).toBe('settings.conflict');
+      const rows = await owner.query(
+        `SELECT version, previous_value, value FROM settings.market_setting_history
+          WHERE market_id = $1 AND code = $2 ORDER BY version`,
+        [market.marketId, SWITCH],
+      );
+      expect(rows.rows.map((row: { value: string }) => row.value)).toEqual([
+        'off',
+        'on',
+        'off',
+        'on',
+      ]);
+      // An admin of the other Market reads none of this history and cannot revert to it.
+      const otherMarket = marketOf(code === 'AU' ? 'ZZ' : 'AU');
+      const otherAdmin = testCallContext(
+        otherMarket,
+        testAuthenticatedActor(otherMarket, {
+          population: 'admin',
+          accountId: ids.next<'Account'>(),
+          sessionId: ids.next<'Session'>(),
+          sellerId: null,
+        }),
+        'settings-db-other-admin',
+      );
+      // Exactly the other Market's own rows (none, or those its own run wrote), never these.
+      const own = await owner.query(
+        `SELECT version FROM settings.market_setting_history
+          WHERE market_id = $1 AND code = $2 ORDER BY version DESC`,
+        [otherMarket.marketId, SWITCH],
+      );
+      const foreign = await history.execute(otherAdmin, { code: SWITCH });
+      expect(foreign.ok && foreign.value.map((row) => row.version)).toEqual(
+        own.rows.map((row: { version: number }) => row.version),
+      );
+      const foreignRevert = await new RevertAiGatewaySetting(gate, withProof).execute(otherAdmin, {
+        code: SWITCH,
+        // A version this Market has and the other one does not (it never reaches across).
+        version: own.rows.length + 1,
+        expectedVersion: own.rows.length,
+      });
+      expect(foreignRevert).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'version', code: 'value' }] },
+      });
     });
 
     it('lets only one of two admins who saved from the same version win', async () => {

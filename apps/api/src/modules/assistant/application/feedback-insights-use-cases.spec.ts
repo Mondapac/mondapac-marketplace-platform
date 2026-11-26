@@ -38,6 +38,7 @@ import { SubmitGuestFeedback } from './use-cases/submit-guest-feedback.use-case'
 import { ViewAssistantInsights } from './use-cases/view-assistant-insights.use-case';
 import { SendGuestMessage } from './use-cases/send-guest-message.use-case';
 import { SendMessage } from './use-cases/send-message.use-case';
+import { FakeStepUp } from '../../../../test/support/step-up-fakes';
 
 // B3: thumbs and insights on both Market fixtures, against the in-memory ports. A conversation is
 // built by sending real messages through the use cases, so the stored flags are the real ones.
@@ -148,6 +149,7 @@ describe.each(TEST_MARKET_IDS)('assistant feedback and insights in market %s', (
       previewTokens: new FakePreviewTokens(),
       outbox: new RecordingOutbox(),
       trail: unusedChangeTrail,
+      stepUp: new FakeStepUp(),
     };
   });
 

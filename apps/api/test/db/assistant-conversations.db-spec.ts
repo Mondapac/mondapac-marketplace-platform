@@ -48,6 +48,7 @@ import { PrismaOutboxWriterFactory } from '../../src/platform/persistence/outbox
 import { testDatabaseUrl } from './test-database';
 import { assistantUsageReport, settleBuyerChat, settlingRuntime } from './assistant-usage-report';
 import { BUYER_CHAT } from '../../src/modules/assistant/contracts/ai-capabilities';
+import { FakeStepUp } from '../support/step-up-fakes';
 
 // The buyer assistant's conversations and spend as the application role, in both Market
 // fixtures: message text is stored only as ciphertext under the conversation's own key and read
@@ -659,6 +660,7 @@ describe.each(TEST_MARKETS)('assistant conversations store in market %s (databas
         previewTokens: new FakePreviewTokens(),
         quickPrompts: new FixedQuickPrompts(),
         trail: unusedChangeTrail,
+        stepUp: new FakeStepUp(),
       },
     );
     const context = testCallContext(market, 'anonymous', 'assistant-db-cap-01');
@@ -720,6 +722,7 @@ describe.each(TEST_MARKETS)('assistant conversations store in market %s (databas
         quickPrompts: new FixedQuickPrompts(),
         previewTokens: new FakePreviewTokens(),
         trail: unusedChangeTrail,
+        stepUp: new FakeStepUp(),
       },
     );
     const conversationId: string = ids.next<'Conversation'>();

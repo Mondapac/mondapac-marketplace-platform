@@ -201,10 +201,32 @@ export function capPairIssues(
   return [];
 }
 
+/**
+ * The per-capability switches of the AI Gateway page (G4d3, design section 5): one Market setting
+ * per registered capability, read by the gateway right after the emergency stop and before the
+ * seller switch. `on` by default (nothing live changes: a new capability is still closed by its
+ * module switch and the evaluation gate), `off` when a stored value is not allowed; a capability
+ * without a switch, or a store that cannot be read, is off. Switching one off needs no two-step
+ * code; switching one on does, and a revert of a review never switches one on. The capability ids
+ * are strings here, so settings imports no module; a contract test checks them against the
+ * registry. Codes use dashes: a setting code cannot hold a dot.
+ */
+export const AI_CAPABILITY_SWITCH_VALUES = ['off', 'on'] as const;
+export const AI_CAPABILITY_SWITCHES: Readonly<Record<string, string>> = Object.freeze({
+  'ai-capability-assistant-buyer-chat': AI_BUYER_CHAT_CAPABILITY,
+  'ai-capability-catalog-description-writer-seller': 'catalog.description-writer.seller',
+  'ai-capability-catalog-description-writer-admin': 'catalog.description-writer.admin',
+});
+/** Every capability switch code, as the AI Gateway page shows and saves them. */
+export const AI_CAPABILITY_SWITCH_CODES: readonly string[] = Object.freeze(
+  Object.keys(AI_CAPABILITY_SWITCHES),
+);
+
 /** Every AI Gateway setting code (the AI Gateway page). */
 export const AI_GATEWAY_CODES: readonly string[] = Object.freeze([
   AI_GATEWAY_EMERGENCY_STOP_CODE,
   ...AI_CAP_CODES,
+  ...AI_CAPABILITY_SWITCH_CODES,
 ]);
 
 /** A cap's stored value in micro-dollars; null for `none` or anything else. */
@@ -215,11 +237,13 @@ export function capOf(value: string): number | null {
 /**
  * Whether changing an AI Gateway setting from `was` to `next` allows more AI (design section 8): a
  * cap raised or lifted, or the emergency stop switched off. Such a change needs the admin's fresh
- * two-step code and is never made by a revert; tightening never needs either. A value the
- * definition does not allow is taken as the tightest (cap 0, stop on), so leaving it loosens.
+ * two-step code and is never made by a revert; tightening never needs either. A capability switch
+ * moved to `on` loosens too (G4d3). A value the definition does not allow is taken as the
+ * tightest (cap 0, stop on, switch off), so leaving it loosens.
  */
 export function loosensAi(code: string, was: string, next: string): boolean {
   if (code === AI_GATEWAY_EMERGENCY_STOP_CODE) return was !== 'off' && next === 'off';
+  if (AI_CAPABILITY_SWITCH_CODES.includes(code)) return was !== 'on' && next === 'on';
   if (!AI_CAP_CODES.includes(code)) return false;
   const before = was === AI_CAP_NONE ? Infinity : (capOf(was) ?? 0);
   const after = next === AI_CAP_NONE ? Infinity : (capOf(next) ?? 0);
@@ -462,6 +486,30 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = Object.freeze([
     defaultValue: AI_CAP_BUYER_CHAT_MONTH_DEFAULT,
     // An invalid stored value is read as 0: nothing allowed (ADR-0019 R8).
     safeValue: '0',
+  },
+  {
+    code: 'ai-capability-assistant-buyer-chat',
+    label: 'AI capability switch: buyer assistant chat',
+    values: AI_CAPABILITY_SWITCH_VALUES,
+    defaultValue: 'on',
+    // An invalid stored value switches the capability off (ADR-0019 R8).
+    safeValue: 'off',
+  },
+  {
+    code: 'ai-capability-catalog-description-writer-seller',
+    label: 'AI capability switch: description writer (sellers)',
+    values: AI_CAPABILITY_SWITCH_VALUES,
+    defaultValue: 'on',
+    // An invalid stored value switches the capability off (ADR-0019 R8).
+    safeValue: 'off',
+  },
+  {
+    code: 'ai-capability-catalog-description-writer-admin',
+    label: 'AI capability switch: description writer (admins)',
+    values: AI_CAPABILITY_SWITCH_VALUES,
+    defaultValue: 'on',
+    // An invalid stored value switches the capability off (ADR-0019 R8).
+    safeValue: 'off',
   },
   {
     code: 'ai-models-chat',

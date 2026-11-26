@@ -1,3 +1,4 @@
+import type { SettingHistoryView } from '../application/use-cases/view-ai-gateway-history.use-case';
 import type { AiModelsView } from '../application/use-cases/view-ai-models.use-case';
 import type { EvaluationEstimate } from '../application/use-cases/estimate-ai-evaluation.use-case';
 import type { PlaygroundAnswer } from '../application/use-cases/run-ai-playground.use-case';
@@ -525,5 +526,65 @@ export const aiPlaygroundBody = (answers: readonly PlaygroundAnswer[]): AiPlaygr
     costMicroUsd: answer.costMicroUsd,
     latencyMs: answer.latencyMs,
     route: answer.route,
+  })),
+});
+
+// AI Gateway G4d3: the history of one AI setting and a panel revert.
+
+export class SettingHistoryEntryBody {
+  @ApiProperty({ enum: SETTING_DEFINITIONS.map((definition) => definition.code) }) code!: string;
+  @ApiProperty({ description: 'The version this change made (1 for the first change).' })
+  version!: number;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'The value before the change; null while the default was in force.',
+  })
+  previousValue!: string | null;
+  @ApiProperty() value!: string;
+  @ApiProperty({ format: 'date-time' }) changedAt!: string;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'The display name of the admin who made the change; null when unknown.',
+  })
+  changedBy!: string | null;
+  @ApiProperty({ type: String, nullable: true, description: "The admin's reason, if any." })
+  note!: string | null;
+  @ApiProperty({ description: 'Whether this version is the one in force.' }) current!: boolean;
+}
+
+export class SettingHistoryBody {
+  @ApiProperty({ type: [SettingHistoryEntryBody], description: 'Newest first, at most 50.' })
+  history!: SettingHistoryEntryBody[];
+}
+
+export class RevertSettingRequest {
+  @ApiProperty({ description: 'The setting to revert, a code of the page.' }) code!: string;
+  @ApiProperty({
+    description: 'The version whose value comes back; 0 is the default (before any change).',
+  })
+  version!: number;
+  @ApiProperty({ description: 'The version in force the admin saw; a stale one is refused (409).' })
+  expectedVersion!: number;
+  @ApiProperty({
+    required: false,
+    description:
+      'The reason, 1 to 500 characters: always required for ai-gateway-emergency-stop, else ' +
+      'required where reviewed.',
+  })
+  note?: string;
+}
+
+export const settingHistoryBody = (views: readonly SettingHistoryView[]): SettingHistoryBody => ({
+  history: views.map((view) => ({
+    code: view.code,
+    version: view.version,
+    previousValue: view.previousValue,
+    value: view.value,
+    changedAt: view.changedAt.toString(),
+    changedBy: view.changedBy,
+    note: view.note,
+    current: view.current,
   })),
 });

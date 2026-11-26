@@ -1,6 +1,7 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
-import { isPlatformAdminActor } from '../../../platform/authz';
+import { isPlatformAdminActor, type StepUpRefusal } from '../../../platform/authz';
+import { ASSISTANT_RESUME_STEP_UP } from '../contracts/step-up';
 import {
   DEFAULT_ASSISTANT_SETTINGS,
   inRollout,
@@ -23,7 +24,13 @@ export type AssistantSettingsFailure =
    * Another admin changed the settings first; the screen reloads and tries again. `lastChanged`
    * is the winning save, null when it cannot be read.
    */
-  | { readonly code: 'assistant.conflict'; readonly lastChanged?: LastChanged | null };
+  | { readonly code: 'assistant.conflict'; readonly lastChanged?: LastChanged | null }
+  /** Switching the assistant on needs a fresh two-step code of this admin (G4d3). */
+  | {
+      readonly code: 'second-factor.required' | 'second-factor.enrolment-required';
+      readonly actionKey: string;
+    }
+  | { readonly code: 'access.unavailable' };
 
 export type PreviewTokenFailure =
   | { readonly code: 'access.denied' }
@@ -176,6 +183,17 @@ export async function viewAssistantSettings(
 }
 
 /** An admin replaces the settings from the version they saw; each change is a new version, audited. */
+/** identity's refusal of the step-up, as a settings change answers it; anything else stays closed. */
+function stepUpFailure(refusal: StepUpRefusal): AssistantSettingsFailure {
+  if (
+    refusal.code === 'second-factor.required' ||
+    refusal.code === 'second-factor.enrolment-required'
+  ) {
+    return { code: refusal.code, actionKey: refusal.actionKey };
+  }
+  return { code: refusal.code === 'access.unavailable' ? 'access.unavailable' : 'access.denied' };
+}
+
 export async function setAssistantSettings(
   deps: AssistantDependencies,
   context: CallContext,
@@ -205,6 +223,12 @@ export async function setAssistantSettings(
       // The same settings again change nothing: no new version, no audit row.
       if (sameSettings(before, next))
         return ok(await viewOf(deps, context, currentVersion, before));
+      // Switching the assistant on spends the admin's fresh two-step code in this unit, after the
+      // version check (G4d3, design section 8); switching it off, or tuning it, needs none.
+      if (!before.enabled && next.enabled) {
+        const spent = await deps.stepUp.consume(context, ASSISTANT_RESUME_STEP_UP);
+        if (!spent.ok) return err(stepUpFailure(spent.error));
+      }
 
       const version = currentVersion + 1;
       const written = await deps.settings.append(context.market, {

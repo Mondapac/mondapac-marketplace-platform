@@ -3,6 +3,7 @@ import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
   MarketSettingChange,
+  MarketSettingHistoryRecord,
   MarketSettingRecord,
   MarketSettingRepository,
 } from '../application/ports/market-setting.repository';
@@ -23,6 +24,26 @@ const toRecord = (row: Row): MarketSettingRecord => ({
   version: row.version,
   updatedAt: Temporal.Instant.fromEpochMilliseconds(row.updatedAt.getTime()),
   updatedBy: row.updatedByAccountId as Id<'Account'>,
+});
+
+interface HistoryRow {
+  readonly code: string;
+  readonly version: number;
+  readonly previousValue: string | null;
+  readonly value: string;
+  readonly changedAt: Date;
+  readonly changedByAccountId: string;
+  readonly note: string | null;
+}
+
+const toHistory = (row: HistoryRow): MarketSettingHistoryRecord => ({
+  code: row.code,
+  version: row.version,
+  previousValue: row.previousValue,
+  value: row.value,
+  changedAt: Temporal.Instant.fromEpochMilliseconds(row.changedAt.getTime()),
+  changedBy: row.changedByAccountId as Id<'Account'>,
+  note: row.note,
 });
 
 /** {@link MarketSettingRepository} on `settings.market_settings`, scoped by `marketId`. */
@@ -89,5 +110,30 @@ export class PrismaMarketSettingRepository implements MarketSettingRepository {
       },
     });
     return true;
+  }
+
+  async history(
+    market: MarketContext,
+    code: string,
+    limit: number,
+  ): Promise<readonly MarketSettingHistoryRecord[]> {
+    // The primary key (market_id, code, version) serves the filter and the order.
+    const rows = await this.prisma.tx(market).settingsMarketSettingHistory.findMany({
+      where: { marketId: market.marketId, code },
+      orderBy: { version: 'desc' },
+      take: limit,
+    });
+    return rows.map(toHistory);
+  }
+
+  async historyVersion(
+    market: MarketContext,
+    code: string,
+    version: number,
+  ): Promise<MarketSettingHistoryRecord | null> {
+    const row = await this.prisma.tx(market).settingsMarketSettingHistory.findFirst({
+      where: { marketId: market.marketId, code, version },
+    });
+    return row === null ? null : toHistory(row);
   }
 }

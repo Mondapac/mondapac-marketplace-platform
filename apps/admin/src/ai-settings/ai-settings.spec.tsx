@@ -234,6 +234,31 @@ describe('Settings › AI', () => {
   });
 });
 
+describe('switching Write with AI on (G4d3)', () => {
+  beforeEach(() => vi.clearAllMocks());
+  afterEach(cleanup);
+
+  it('says the two-step code is needed when the server still asks for one, and stays off', async () => {
+    call.mockResolvedValue({
+      ok: false,
+      failure: {
+        status: 403,
+        code: 'second-factor.enrolment-required',
+        details: { actionKey: 'settings.ai-capability.resume' },
+      },
+    });
+    view();
+    fireEvent.click(screen.getByRole('switch'));
+    expect(
+      await screen.findByText(
+        'Switching Write with AI on needs your two-step code. Try again and enter the code.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('false');
+    expect(aiProblemOf({ status: 403, code: 'second-factor.required' })).toBe('second-factor');
+  });
+});
+
 describe('answers and refusals', () => {
   it('falls back to off when the API names no row', () => {
     expect(settingOf({ settings: [] }, 'ai-description-writer').value).toBe('off');

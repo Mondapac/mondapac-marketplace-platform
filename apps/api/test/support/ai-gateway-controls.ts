@@ -59,14 +59,35 @@ export const capsOfBudget = (budget: TestBudget): AiCaps => ({
 });
 
 /**
+ * Capability switches with every capability on but those named (G4d3): what a Market answers when
+ * no admin switched a capability off, for whichever capability ids a test registers.
+ */
+export const switchesOnBut = (off: ReadonlySet<string> = new Set()): Record<string, boolean> =>
+  new Proxy<Record<string, boolean>>(
+    {},
+    {
+      get: (_target, key) => typeof key === 'string' && !off.has(key),
+      has: (_target, key) => typeof key === 'string' && !off.has(key),
+      getOwnPropertyDescriptor: (_target, key) =>
+        typeof key === 'string' && !off.has(key)
+          ? { value: true, writable: false, enumerable: true, configurable: true }
+          : undefined,
+    },
+  );
+
+/**
  * {@link AiGatewayControls} for unit tests: by default AU has no caps (counted only) and ZZ the
  * caps its fixture had; `stopped` Markets have the emergency stop on; `models` holds a Market's
- * model lists (none: no route, the capability is off); `failing` throws (the settings store is down).
+ * model lists (none: no route, the capability is off); `switchedOff` holds a Market's capability
+ * ids switched off (every other capability is on) and `switches` a Market's exact switches (a
+ * capability without an entry is off); `failing` throws (the settings store is down).
  */
 export class TestAiGatewayControls implements AiGatewayControls {
   readonly caps = new Map<string, AiCaps>([['ZZ', ZZ_TEST_AI_CAPS]]);
   readonly stopped = new Set<string>();
   readonly models = new Map<string, AiModelLists>();
+  readonly switchedOff = new Map<string, Set<string>>();
+  readonly switches = new Map<string, Readonly<Record<string, boolean>>>();
   failing = false;
   reads = 0;
 
@@ -74,6 +95,16 @@ export class TestAiGatewayControls implements AiGatewayControls {
   routed(family: string, markets: readonly string[]): this {
     for (const market of markets) {
       if (!this.models.has(market)) this.models.set(market, listsOf(family));
+    }
+    return this;
+  }
+
+  /** Switches one capability off in the Markets named (the AI Gateway page's switch, G4d3). */
+  switchOff(capability: string, markets: readonly string[]): this {
+    for (const market of markets) {
+      const off = this.switchedOff.get(market) ?? new Set<string>();
+      off.add(capability);
+      this.switchedOff.set(market, off);
     }
     return this;
   }
@@ -96,6 +127,7 @@ export class TestAiGatewayControls implements AiGatewayControls {
       stopped: this.stopped.has(marketId),
       caps: this.caps.get(marketId) ?? this.default,
       models: this.models.get(marketId) ?? NO_MODEL_LISTS,
+      capabilities: this.switches.get(marketId) ?? switchesOnBut(this.switchedOff.get(marketId)),
     });
   }
 }

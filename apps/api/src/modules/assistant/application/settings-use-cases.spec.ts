@@ -52,6 +52,7 @@ import { ViewAssistantSettingsHistory } from './use-cases/view-assistant-setting
 import { ViewAssistantSettings } from './use-cases/view-assistant-settings.use-case';
 import { IssuePreviewToken } from './use-cases/issue-preview-token.use-case';
 import { ViewStorefrontAssistant } from './use-cases/view-storefront-assistant.use-case';
+import { FakeStepUp } from '../../../../test/support/step-up-fakes';
 
 // The buyer assistant settings in memory on both Market fixtures: defaults (off), validation of
 // every bound, an admin change with a version and an audit row, the conflict, and the safe subset
@@ -264,6 +265,7 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
   let actors: FakeChangeActors;
   let clock: FixedClock;
   let runtime: FakeRuntime;
+  let stepUp: FakeStepUp;
   const market = testMarketContext(code, 'default');
   const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
   const actor = (population: 'admin' | 'seller') =>
@@ -286,6 +288,7 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
     clock = new FixedClock(T0);
     audit = new RecordingAudit(clock);
     actors = new FakeChangeActors();
+    stepUp = new FakeStepUp();
     const unitOfWork = new FakeUnitOfWork();
     runtime = new FakeRuntime();
     runtime.unitOfWork = unitOfWork;
@@ -308,6 +311,7 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
       quickPrompts: new FixedQuickPrompts(),
       previewTokens: new FakePreviewTokens(),
       trail: changeTrailOf(unitOfWork, audit, actors),
+      stepUp,
     };
   });
 
@@ -389,6 +393,32 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
         },
       }),
     );
+  });
+
+  it('spends a fresh two-step code to switch the assistant on, never to switch it off or tune it (G4d3)', async () => {
+    stepUp.proofs = 0;
+    expect(await set(on())).toEqual({
+      ok: false,
+      error: { code: 'second-factor.required', actionKey: 'assistant.settings.resume' },
+    });
+    expect(settings.rows).toHaveLength(0);
+    expect(audit.entries).toHaveLength(0);
+    stepUp.proofs = 1;
+    expect((await set(on())).ok).toBe(true);
+    expect(stepUp.spent).toEqual(['assistant.settings.resume']);
+    // A stale version spends no proof; tuning while on and switching off need none.
+    stepUp.proofs = 1;
+    expect(!(await set(on({ welcomeText: 'Hi' }), 0)).ok).toBe(true);
+    stepUp.proofs = 0;
+    expect((await set(on({ welcomeText: 'Hi' }), 1)).ok).toBe(true);
+    expect((await set(on({ enabled: false, welcomeText: 'Hi' }), 2)).ok).toBe(true);
+    expect(stepUp.spent).toEqual(['assistant.settings.resume']);
+    // Switching it on again asks again.
+    expect(await set(on({ welcomeText: 'Hi' }), 3)).toEqual({
+      ok: false,
+      error: { code: 'second-factor.required', actionKey: 'assistant.settings.resume' },
+    });
+    expect(settings.rows).toHaveLength(3);
   });
 
   it('answers a conflict for a stale version or a lost race, and writes nothing', async () => {

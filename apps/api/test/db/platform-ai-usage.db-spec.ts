@@ -31,7 +31,12 @@ import { AI_ROUTE_CATALOGUE } from '../../src/platform/ai/catalogue/route-catalo
 import { AI_EVALUATION_RESULTS } from '../../src/platform/ai/evaluations/evaluation-results';
 import { CATALOG_AI_CAPABILITIES } from '../../src/modules/catalog/contracts/ai-capabilities';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
-import { capsOfBudget, listsOf, type TestBudget } from '../support/ai-gateway-controls';
+import {
+  capsOfBudget,
+  listsOf,
+  switchesOnBut,
+  type TestBudget,
+} from '../support/ai-gateway-controls';
 import {
   AI_GATEWAY_CONTROLS,
   NO_CAPS,
@@ -163,7 +168,13 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
     const read = controls.read.bind(controls);
     controls.read = async (context) => {
       const real = await read(context);
-      return { ...real, models: lists, caps: pinnedCaps ?? real.caps };
+      // The capability switches pinned on (G4d3): the settings spec writes switch rows in parallel.
+      return {
+        ...real,
+        models: lists,
+        caps: pinnedCaps ?? real.caps,
+        capabilities: switchesOnBut(),
+      };
     };
     sql = new Client({ connectionString: testDatabaseUrl() });
     await sql.connect();

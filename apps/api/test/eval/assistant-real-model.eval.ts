@@ -80,8 +80,9 @@ import {
 } from '../../src/modules/assistant/domain/evaluation-set';
 import { GatewayAssistantRuntime } from '../../src/modules/assistant/infrastructure/gateway-assistant-runtime';
 import { NO_CAPS, type AiGatewayControls } from '../../src/platform/ai/gateway-controls';
-import { listsOf } from '../support/ai-gateway-controls';
+import { listsOf, switchesOnBut } from '../support/ai-gateway-controls';
 import { FacadeAssistantTools } from '../../src/modules/assistant/infrastructure/facade-assistant-tools';
+import { FakeStepUp } from '../support/step-up-fakes';
 
 /*
  * The real-model evaluation of the buyer assistant (ADR-0019 decision 9; assistant
@@ -465,7 +466,14 @@ function configFromEnvironment(): { config: AppConfig; family: string; markets: 
  * Evaluation only: the API reads the lists from settings (AI Gateway G4b).
  */
 const evaluationControls = (family: string): AiGatewayControls => ({
-  read: () => Promise.resolve({ stopped: false, caps: NO_CAPS, models: listsOf(family) }),
+  read: () =>
+    Promise.resolve({
+      stopped: false,
+      caps: NO_CAPS,
+      models: listsOf(family),
+      // Every capability on: the run evaluates the model, not the Market's switches (G4d3).
+      capabilities: switchesOnBut(),
+    }),
 });
 
 const shownText = (sentences: readonly string[]) => sentences.join(' ').toLowerCase();
@@ -606,6 +614,7 @@ describe(`buyer assistant real-model evaluation (${EVALUATION_VERSION})`, () => 
             feedback: new MemoryFeedback(conversations),
             insights: new FakeInsights(),
             trail: unusedChangeTrail,
+            stepUp: new FakeStepUp(),
           };
           const conversationId = `0199eeee-0000-7000-8000-${(index + 1).toString(16).padStart(12, '0')}`;
           const errorRow = (error: string): CaseResult => ({

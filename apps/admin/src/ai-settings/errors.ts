@@ -7,6 +7,9 @@ const BY_CODE: Readonly<Record<string, string>> = {
   'access.acting-as-refused': 'acting-as',
   'request.csrf': 'csrf',
   'request.throttled': 'throttled',
+  // Switching on needs a two-step code (G4d3); the dialog asks, this is what is left after it.
+  'second-factor.required': 'second-factor',
+  'second-factor.enrolment-required': 'second-factor',
 };
 
 /** The message key (under `ai-settings.error`) for a failed call. */

@@ -34,6 +34,10 @@ export const SETTING_TARGET_IDS = [
   'offer-review-certificate-badges',
   'offer-review-emergency-stop',
   'ai-gateway-emergency-stop',
+  // The AI Gateway's capability switches (G4d3).
+  'ai-capability-assistant-buyer-chat',
+  'ai-capability-catalog-description-writer-seller',
+  'ai-capability-catalog-description-writer-admin',
 ] as const;
 
 /** Every AI cap code (AI Gateway, G4), the target id of its audit row. */

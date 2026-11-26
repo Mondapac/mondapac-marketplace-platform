@@ -87,6 +87,9 @@ it('maps every refusal code of the assistant routes to its exact status', () => 
     'assistant.paused': 503,
     'assistant.preview-unavailable': 503,
     'assistant.unavailable': 503,
+    // Switching the assistant on without a fresh two-step code (G4d3).
+    'second-factor.required': 403,
+    'second-factor.enrolment-required': 403,
   });
 });
 
@@ -217,6 +220,19 @@ describe.each(TEST_MARKETS)('assistant settings over HTTP in market %s', (code) 
       { name: 'view', input: {} },
       { name: 'set', input: { settings, expectedVersion: 2 } },
     ]);
+  });
+
+  it('answers a missing two-step code for switching the assistant on as 403 with the action (G4d3)', async () => {
+    await boot();
+    next = err({ code: 'second-factor.required', actionKey: 'assistant.settings.resume' });
+    const settings = { ...DEFAULT_ASSISTANT_SETTINGS, enabled: true };
+    const set = await call('put', 'admin', sessionOf('admin', 2), { expectedVersion: 2, settings });
+    expect(set.status).toBe(403);
+    expect(set.body).toEqual({
+      statusCode: 403,
+      code: 'second-factor.required',
+      details: { actionKey: 'assistant.settings.resume' },
+    });
   });
 
   it('never answers the API key itself', async () => {

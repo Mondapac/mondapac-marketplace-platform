@@ -41,6 +41,7 @@ import {
 import { PurgeConversations } from './use-cases/purge-conversations.use-case';
 import { SendGuestMessage } from './use-cases/send-guest-message.use-case';
 import { SendMessage } from './use-cases/send-message.use-case';
+import { FakeStepUp } from '../../../../test/support/step-up-fakes';
 
 // The buyer assistant's conversation in memory on both Market fixtures, against a scripted fake
 // model (no provider is ever called): the switch, the configuration and the rollout; guests and
@@ -171,6 +172,7 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
       quickPrompts: new FixedQuickPrompts(),
       previewTokens: new FakePreviewTokens(),
       trail: unusedChangeTrail,
+      stepUp: new FakeStepUp(),
     };
   });
 

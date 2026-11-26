@@ -14,6 +14,9 @@ export const ASSISTANT_STATUS: Readonly<Record<string, number>> = Object.freeze(
   'assistant.conversation-not-found': 404,
   'assistant.message-not-found': 404,
   'assistant.conflict': 409,
+  // Switching the assistant on needs a fresh two-step code (G4d3).
+  'second-factor.required': 403,
+  'second-factor.enrolment-required': 403,
   'assistant.conversation-full': 409,
   'request.throttled': 429,
   'assistant.paused': 503,
@@ -78,6 +81,9 @@ export function refusal(
   if (error.fields !== undefined) return fail(status, error.code, { fields: error.fields });
   if (error.retryAfterSeconds !== undefined) {
     return fail(status, error.code, { retryAfterSeconds: error.retryAfterSeconds });
+  }
+  if (typeof error.actionKey === 'string') {
+    return fail(status, error.code, { actionKey: error.actionKey });
   }
   const conflict = conflictDetails(error);
   if (conflict !== undefined) return fail(status, error.code, conflict);
