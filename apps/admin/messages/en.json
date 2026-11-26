@@ -4300,6 +4300,7 @@
         "roles": "Roles & permissions",
         "lists": "List paging",
         "ai": "Write with AI",
+        "ai-gateway": "AI Gateway",
         "promotions": "Promotion rules",
         "review-policy": "Approval rules",
         "offer-review": "Offer review",
@@ -4311,6 +4312,7 @@
         "refund-limits": "Seller refund caps,refund cap",
         "lists": "Lists,pagination,page numbers",
         "ai": "AI,AI writing,product descriptions",
+        "ai-gateway": "AI,gateway,emergency stop,spending cap,budget,capability,kill switch,revert",
         "promotions": "Promotions,discounts,free delivery,first order",
         "review-policy": "Review policy,System requests,second admin,review",
         "offer-review": "Offers,approval,probation,new sellers,price check,sampling,Approval required,queue alert,backlog",
@@ -4328,6 +4330,7 @@
         "promotions": "Discount switch, first-order discount and free delivery",
         "assistant": "On or off, who sees it, what it answers and spends",
         "ai": "AI drafts of product descriptions, on or off",
+        "ai-gateway": "AI emergency stop, capability switches and spending caps",
         "account-deletion": "Whether customers can delete their account, and the wait",
         "ship-to-retention": "When old orders' addresses and phone numbers are erased",
         "admins": "Who can sign in to this panel, and invitations",
@@ -9632,6 +9635,12 @@
         "ai-capability": {
           "resume": "switch AI on"
         },
+        "ai-gateway-limits": {
+          "raise": "raise an AI spending cap"
+        },
+        "ai-gateway-emergency-stop": {
+          "resume": "switch AI on again after the emergency stop"
+        },
         "ai-settings": {
           "revert": "restore an earlier AI setting"
         }
@@ -14596,6 +14605,109 @@
       "unknown": "Something went wrong. Try again."
     }
   },
+  "ai-gateway": {
+    "title": "AI Gateway",
+    "permission-view": "AI Gateway: view",
+    "load-failed": "Couldn't load the AI Gateway settings.",
+    "read-only": "You can view these settings but not change them.",
+    "saved": "Saved.",
+    "never-changed": "Not changed yet. The default is in force.",
+    "last-changed": "Last changed {when}.",
+    "state": {
+      "on": "On",
+      "off": "Off"
+    },
+    "code": {
+      "ai-gateway-emergency-stop": "Emergency stop",
+      "ai-cap-market-day": "Market, per day",
+      "ai-cap-market-month": "Market, per month",
+      "ai-cap-capability-day": "Each capability, per day",
+      "ai-cap-seller-day": "Each seller, per day",
+      "ai-cap-guest-day": "Guests, per day",
+      "ai-cap-buyer-chat-day": "Buyer assistant chat, per day",
+      "ai-cap-buyer-chat-month": "Buyer assistant chat, per month",
+      "ai-cap-evaluation-month": "Evaluations, per month",
+      "ai-capability-assistant-buyer-chat": "Buyer assistant chat",
+      "ai-capability-catalog-description-writer-seller": "Description writer for sellers",
+      "ai-capability-catalog-description-writer-admin": "Description writer for admins"
+    },
+    "note": {
+      "section": "Note",
+      "intro": "Sent with the next change. Always needed for the emergency stop and where changes are reviewed.",
+      "label": "Note for this change",
+      "help": "Up to {max} characters. No personal data.",
+      "error": {
+        "required": "Write a note first.",
+        "rejected": "This note isn't accepted. Check its length."
+      }
+    },
+    "stop": {
+      "section": "Emergency stop",
+      "intro": "Switches every AI feature of this Market off at once, whatever else is switched on.",
+      "label": "AI emergency stop",
+      "help": "Switching it on needs a note and no code. Switching it off asks for your two-step code.",
+      "badge-on": "On",
+      "badge-off": "Off",
+      "switch-on": "Stop all AI",
+      "resume": "Switch AI on again",
+      "on-title": "All AI is stopped for this Market.",
+      "on-body": "No AI feature runs until the emergency stop is switched off."
+    },
+    "capabilities": {
+      "section": "Capabilities",
+      "intro": "Each AI feature has its own switch. A feature also needs its own module switch and a passed evaluation.",
+      "held": "held off by the emergency stop",
+      "help": {
+        "ai-capability-assistant-buyer-chat": "The chat window for buyers.",
+        "ai-capability-catalog-description-writer-seller": "Draft product descriptions for sellers.",
+        "ai-capability-catalog-description-writer-admin": "Draft product descriptions in this panel."
+      }
+    },
+    "limits": {
+      "section": "Spending caps",
+      "intro": "In US dollars. A call that would pass a cap is refused and the page works without AI. Type none for no cap.",
+      "help": "US dollars, up to 6 decimals, or none.",
+      "help-no-none": "US dollars, up to 6 decimals. 0 allows no evaluation.",
+      "invalid": "Enter dollars such as 10 or 0.5, or none.",
+      "save": "Save caps"
+    },
+    "cap": {
+      "none": "No cap"
+    },
+    "history": {
+      "section": "History",
+      "intro": "The latest 50 changes of one setting. Restoring makes a new change and always asks for your two-step code.",
+      "setting": "Setting",
+      "show": "Show history",
+      "list": "Changes",
+      "empty": "No changes yet. The default is in force.",
+      "failed": "Couldn't load the history.",
+      "default": "default",
+      "current": "In force",
+      "unknown": "an admin",
+      "change": "Version {version}: {before} to {after}",
+      "by-at": "{name}, {when}",
+      "restore": "Restore version {version}",
+      "restore-value": "Restore version {version}: {value}",
+      "restore-default": "Restore the default",
+      "capped": "Older changes are in the audit log."
+    },
+    "error": {
+      "invalid": "This value isn't allowed.",
+      "same": "That value is already in force.",
+      "version": "That version can't be restored any more. Show the history again.",
+      "chat-pair": "The buyer chat day cap can't be above its month cap.",
+      "refresh": "Saved, but the page couldn't refresh. Reload it before changing anything else.",
+      "conflict": "Someone else changed this. The values were reloaded.",
+      "denied": "You don't have permission to change this.",
+      "acting-as": "AI Gateway settings can't be changed while you are acting as a seller.",
+      "second-factor": "This change needs your two-step code. Try again and enter the code.",
+      "csrf": "Your session expired. Reload the page.",
+      "throttled": "Too many attempts. Wait a moment and try again.",
+      "unavailable": "The service isn't available right now. Try again.",
+      "unknown": "Something went wrong. Try again."
+    }
+  },
   "ai-settings": {
     "title": "Write with AI",
     "permission-view": "Write with AI settings: view",
@@ -17858,6 +17970,21 @@
           {
             "label": "Admins",
             "href": "/settings/admins"
+          }
+        ]
+      },
+      "settings-ai-gateway": {
+        "title": "AI Gateway",
+        "about": "Stop all AI at once, switch single AI features on or off, and set how much AI may spend.",
+        "good": [
+          "The emergency stop and switching a feature off need no code and work at once.",
+          "Switching on, raising a cap and every restore ask for your two-step code.",
+          "Nothing runs until its model passed evaluation, whatever is switched on here."
+        ],
+        "related": [
+          {
+            "label": "Write with AI",
+            "href": "/settings/ai"
           }
         ]
       },

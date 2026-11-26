@@ -265,6 +265,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/description-writer',
     'catalog/admin/description-writer/model-setup',
     'settings/admin/ai',
+    // The AI Gateway page (settings; keys settings.ai-gateway.view / .manage): caps, switches,
+    // emergency stop and the history of one of them (query `code`, `limit`).
+    'settings/admin/ai-gateway',
+    'settings/admin/ai-gateway/history',
     // The Offer review policy (settings; keys settings.offer-review.view / .manage).
     'settings/admin/offer-review',
     // Whether the Offer review emergency stop is on (settings; any admin, the banner).
@@ -314,6 +318,11 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // One AI setting (settings): code, value and `expectedVersion`; protected key
     // `settings.ai.manage`, so it may ask a fresh two-step code.
     'settings/admin/ai',
+    // AI Gateway writes (settings; protected key settings.ai-gateway.manage, so each may ask a
+    // fresh two-step code): caps, the emergency stop and the capability switches.
+    'settings/admin/ai-gateway/limits',
+    'settings/admin/ai-gateway/emergency-stop',
+    'settings/admin/ai-gateway/capabilities',
     // The Offer review policy (settings): every changed setting with its `expectedVersion`, all
     // or nothing.
     'settings/admin/offer-review',
@@ -333,6 +342,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   ]),
   DELETE: new Set([]),
   POST: new Set([
+    // A restore of an earlier AI Gateway setting (settings; protected key
+    // settings.ai-gateway.manage; every restore asks a fresh two-step code).
+    'settings/admin/ai-gateway/revert',
     // Approve several low-risk system requests: by ids, or every one a list filter matches.
     'system-requests/admin/requests/bulk-approve',
     'system-requests/admin/requests/bulk-approve-matching',
@@ -947,6 +959,8 @@ const GENERIC_LIST_KEY =
 const SYSTEM_REQUESTS_EXPORT = 'system-requests/admin/requests/export';
 
 const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
+  // The history of one AI Gateway setting: its code and how many versions (the API validates both).
+  'settings/admin/ai-gateway/history': ['code', 'limit'],
   // The assistant insights: the day range and the page of the unanswered questions.
   'assistant/admin/insights': ['from', 'to', 'page', 'pageSize'],
   // The System requests queue: the view, search, filters, sort and either page numbers or a
@@ -1857,6 +1871,10 @@ const ACCOUNT_LIST_SHAPES: Readonly<Record<string, RegExp>> = {
   direction: /^(asc|desc)$/,
 };
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
+  'settings/admin/ai-gateway/history': {
+    code: /^ai-[a-z0-9-]{1,80}$/,
+    limit: /^[0-9]{1,2}$/,
+  },
   'assistant/admin/insights': {
     from: /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/,
     to: /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/,
