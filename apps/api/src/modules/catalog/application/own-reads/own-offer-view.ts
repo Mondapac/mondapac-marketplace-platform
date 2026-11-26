@@ -40,6 +40,17 @@ export interface OwnOfferView {
    * it never had one. On the single read only.
    */
   readonly pendingChange?: OwnOfferChangeView | null;
+  /**
+   * Slice 7: why a once-published Offer is off sale after an admin's take-down: the reason code
+   * and the time, only while the Offer is `changes-needed` and was published before; null else.
+   * Never the admin's note, the misconduct flag or any sampling fact. On the single read only.
+   */
+  readonly takeDown?: OwnOfferTakeDownView | null;
+}
+
+export interface OwnOfferTakeDownView {
+  readonly reasonCode: string;
+  readonly at: string;
 }
 
 /** One open tag as the seller sees it (design 5.3 "Seller sees"): badge data only while active. */

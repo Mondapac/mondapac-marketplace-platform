@@ -2061,6 +2061,19 @@
       },
       "changes-needed": "We asked for changes to this offer and emailed you the reason. Edit the offer, then submit it again.",
       "waiting": "This offer is waiting for our review. You can't change it until we decide.",
+      "taken-down": {
+        "title": "Taken down",
+        "body": "This offer was taken off sale because {reason}.",
+        "next": "Edit the offer, then submit it again. Orders already placed will still ship.",
+        "reason": {
+          "content-unclear": "its content is unclear",
+          "description-claim": "its description makes a claim we can't accept",
+          "sku-or-condition": "its SKU or condition doesn't match the product",
+          "handling-unclear": "its handling is unclear",
+          "other": "of a problem we explained in the email we sent you",
+          "unknown": "of a problem we explained in the email we sent you"
+        }
+      },
       "error": {
         "handling-missing": "This offer can't be submitted yet because its handling is not set. Choose a handling on Edit offer, then submit again.",
         "not-submittable": "This offer can't be submitted in its current state. Reload the page.",
@@ -3204,6 +3217,12 @@
       },
       "save-first": "Save or discard your changes first, then search again.",
       "stock-unavailable": "Stock can't be shown right now, so Status checks prices only. Reload the page to try again."
+    },
+    "probation": {
+      "title": "Your first offers are being reviewed",
+      "restarted": "A shorter review applies to your next offers",
+      "progress": "{count} of {target} offers reviewed",
+      "help": "Until these are reviewed, new offers may wait for our review before they go on sale."
     }
   },
   "stock": {

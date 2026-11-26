@@ -10,7 +10,7 @@ import type {
   OfferPostReviewReasonReceipt,
   OfferPostReviewRepository,
 } from '../application/ports/offer-post-review';
-import type { OfferChangeReason } from '../domain/events';
+import { OFFER_CHANGE_REASONS, type OfferChangeReason } from '../domain/events';
 import {
   OfferPostReview,
   type OfferPostReviewReason,
@@ -186,6 +186,25 @@ export class PrismaOfferPostReviewRepository implements OfferPostReviewRepositor
       select: { id: true },
     });
     return row !== null;
+  }
+
+  async latestTakeDownOf(
+    market: MarketContext,
+    offerId: Id<'Offer'>,
+  ): Promise<{ readonly reasonCode: OfferChangeReason; readonly at: Temporal.Instant } | null> {
+    const row = await this.prisma.tx(market).catalogOfferPostReview.findFirst({
+      where: { marketId: market.marketId, offerId, status: 'taken-down' },
+      orderBy: { decidedAt: 'desc' },
+      select: { decisionReasonCode: true, decidedAt: true },
+    });
+    if (row === null || row.decisionReasonCode === null || row.decidedAt === null) return null;
+    return {
+      // An unknown stored code reads as `other`, never passed on as it is.
+      reasonCode: (OFFER_CHANGE_REASONS as readonly string[]).includes(row.decisionReasonCode)
+        ? (row.decisionReasonCode as OfferChangeReason)
+        : 'other',
+      at: toInstant(row.decidedAt),
+    };
   }
 
   async list(

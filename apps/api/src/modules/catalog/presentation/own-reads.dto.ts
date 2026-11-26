@@ -353,6 +353,16 @@ export class OwnOfferSellUnitDto {
   @ApiProperty() selling!: boolean;
 }
 
+export class OwnOfferTakeDownDto {
+  @ApiProperty({
+    description:
+      'The reason code the reviewer gave (content-unclear, description-claim, sku-or-condition, ' +
+      'handling-unclear or other).',
+  })
+  reasonCode!: string;
+  @ApiProperty() at!: string;
+}
+
 export class OwnOfferViewDto {
   @ApiProperty({ format: 'uuid' }) offerId!: string;
   @ApiProperty({ format: 'uuid' }) productId!: string;
@@ -396,6 +406,16 @@ export class OwnOfferViewDto {
       'null when it never had one. On the single-Offer read only.',
   })
   pendingChange?: OwnOfferChangeViewDto | null;
+  @ApiProperty({
+    type: OwnOfferTakeDownDto,
+    nullable: true,
+    required: false,
+    description:
+      'Slice 7: set while the Offer is off sale after an admin take-down of a once-published ' +
+      'Offer (status changes-needed and firstPublishedAt set); null otherwise. Reason code and ' +
+      'time only: never the admin note, misconduct or sampling facts. Single-Offer read only.',
+  })
+  takeDown?: OwnOfferTakeDownDto | null;
 }
 
 export class OwnOfferStatusCounts {

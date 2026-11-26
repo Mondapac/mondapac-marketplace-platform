@@ -6,9 +6,17 @@ import { FieldList } from './field-list.tsx';
 import { formatInstant, known, OFFER_STATUSES, readable } from './format.ts';
 import { OfferActions } from './offer-actions.tsx';
 import { OfferHeader } from './offer-header.tsx';
-import type { OfferView } from './types.ts';
+import { ProbationBar } from './probation-bar.tsx';
+import type { OfferView, ReviewStanding } from './types.ts';
 
 const HANDLINGS = ['SEALED_ORIGINAL', 'REPACKED', 'PREPARED', 'FRESH'];
+const TAKE_DOWN_REASONS = [
+  'content-unclear',
+  'description-claim',
+  'sku-or-condition',
+  'handling-unclear',
+  'other',
+];
 const CAUSES = [
   'type-not-allowed',
   'product-retired',
@@ -28,6 +36,7 @@ export async function OfferDetail({
   csrfToken = '',
   shelves = [],
   sizes = null,
+  standing = null,
 }: {
   readonly offer: OfferView;
   readonly canEdit?: boolean;
@@ -36,12 +45,19 @@ export async function OfferDetail({
   readonly shelves?: readonly ShelfChoice[];
   /** The "Sizes, prices and stock" card: the table, or why it could not be read. */
   readonly sizes?: ReactNode;
+  /** The seller's probation progress; null shows no bar. */
+  readonly standing?: ReviewStanding | null;
 }) {
   const t = await getTranslations();
   const marketLocale = await getLocale();
   const zone = await getTimeZone();
   const status = known(offer.status, OFFER_STATUSES);
+  // Called, not rendered as an element: an async component cannot nest under a test render.
+  const probation = await ProbationBar({ standing });
   const descriptions = Object.entries(offer.description);
+  // Taken down: off sale after it was published (a first-publication send-back has no first
+  // publication on record).
+  const takenDown = offer.firstPublishedAt !== null && (offer.takeDown ?? null) !== null;
   const offSale =
     offer.offSaleCauses.length > 0 ? (
       <Card title={t('catalog.offer.off-sale')}>
@@ -55,7 +71,18 @@ export async function OfferDetail({
   return (
     <div className="flex flex-col gap-6">
       <OfferHeader offer={offer} canEdit={canEdit} t={t} />
-      {status === 'changes-needed' ? (
+      {status === 'changes-needed' && takenDown ? (
+        <Banner tone="critical" title={t('catalog.offer-actions.taken-down.title')}>
+          <p>
+            {t('catalog.offer-actions.taken-down.body', {
+              reason: t(
+                `catalog.offer-actions.taken-down.reason.${known(offer.takeDown?.reasonCode ?? '', TAKE_DOWN_REASONS)}`,
+              ),
+            })}
+          </p>
+          <p>{t('catalog.offer-actions.taken-down.next')}</p>
+        </Banner>
+      ) : status === 'changes-needed' ? (
         <Banner tone="attention">{t('catalog.offer-actions.changes-needed')}</Banner>
       ) : null}
       {status === 'pending-first-publish' ? (
@@ -64,6 +91,7 @@ export async function OfferDetail({
       {canEdit ? (
         <OfferActions offerId={offer.offerId} status={status} csrfToken={csrfToken} />
       ) : null}
+      {probation}
       <Card title={t('catalog.offer.your-offer')}>
         <FieldList
           rows={[

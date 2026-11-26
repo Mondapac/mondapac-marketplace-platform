@@ -1,4 +1,5 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
+import type { OfferChangeReason } from '../../domain/events';
 import type {
   OfferPostReview,
   OfferPostReviewReason,
@@ -83,6 +84,15 @@ export interface OfferPostReviewRepository {
 
   /** Whether any row of the Offer was ever `taken-down` (the resubmit goes to R6). */
   everTakenDown(market: MarketContext, offerId: Id<'Offer'>): Promise<boolean>;
+
+  /**
+   * The Offer's latest take-down as its seller may read it: the reason code and the time, never
+   * the admin's note or the misconduct flag. Null when it was never taken down.
+   */
+  latestTakeDownOf(
+    market: MarketContext,
+    offerId: Id<'Offer'>,
+  ): Promise<{ readonly reasonCode: OfferChangeReason; readonly at: Temporal.Instant } | null>;
 
   list(
     market: MarketContext,

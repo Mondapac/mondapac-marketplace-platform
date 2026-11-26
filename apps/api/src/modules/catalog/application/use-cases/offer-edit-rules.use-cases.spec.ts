@@ -1,3 +1,4 @@
+import { InMemoryOfferPostReviews } from '../../../../../test/support/catalog-offer-post-review-fakes';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, MarketContext, MarketId, Result } from '@mondapac/shared-kernel';
 import {
@@ -353,6 +354,7 @@ describe.each([
           locales: () => ({ default: locale, allowed: [locale] }),
         } as unknown as CatalogMarketPolicy,
         pendingChanges,
+        postReviews: new InMemoryOfferPostReviews(),
       }),
       offerId: initial.id,
       current: () => current,

@@ -128,6 +128,11 @@
   },
   { "name": "catalog.own-products-list", "rule": "permissions", "whenSellerNotApproved": "allow" },
   {
+    "name": "catalog.own-review-standing",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
     "name": "catalog.own-saved-filter-create",
     "rule": "permissions",
     "whenSellerNotApproved": "allow"

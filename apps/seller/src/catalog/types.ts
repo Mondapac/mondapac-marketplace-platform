@@ -196,6 +196,20 @@ export interface OfferView {
     variantSku: string | null;
     selling: boolean;
   }[];
+  /**
+   * Set while a once-published offer is off sale after our take-down (single read only): the
+   * reason code and the time. Never an admin note.
+   */
+  readonly takeDown?: { readonly reasonCode: string; readonly at: string } | null;
+}
+
+/** `GET catalog/seller/review-standing`: the seller's own probation progress, nothing more. */
+export interface ReviewStanding {
+  readonly status: 'probation' | 'trusted';
+  readonly count: number;
+  readonly target: number;
+  /** True while the shorter probation after a take-down runs. */
+  readonly restarted: boolean;
 }
 
 /** The row actions the list names (`actions` of a list row); Prices and Stock are added by the panel. */

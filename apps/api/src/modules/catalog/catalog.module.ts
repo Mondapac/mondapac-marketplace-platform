@@ -86,6 +86,8 @@ import { ChangeCategoryAlwaysReview } from './application/use-cases/change-categ
 import { ChangeCategoryReviewStop } from './application/use-cases/change-category-review-stop.use-case';
 import { ViewCategoryOfferReviewFlags } from './application/use-cases/view-category-offer-review-flags.use-case';
 import { ViewSellerReviewStanding } from './application/use-cases/view-seller-review-standing.use-case';
+import { OwnReviewStandingController } from './presentation/own-review-standing.controller';
+import { OwnReviewStanding } from './application/use-cases/own-review-standing.use-case';
 import { CatalogOfferReviewController } from './presentation/offer-review-flags.controller';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { registerEvents } from '../../platform/events/event-catalogue';
@@ -1156,6 +1158,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
     OfferReviewController,
     OfferPostReviewController,
     CatalogOfferReviewController,
+    OwnReviewStandingController,
     AdminProductListController,
     AdminCustomVariantLabelsController,
     ClaimTermsImpactCountController,
@@ -2515,6 +2518,12 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       sellerFlags: true,
       reviewInputs: true,
     }),
+    useCaseProvider(OwnReviewStanding, {
+      unitOfWork: true,
+      standings: true,
+      sellerFlags: true,
+      reviewInputs: true,
+    }),
     useCaseProvider(ViewCategoryOfferReviewFlags, { unitOfWork: true, categoryFlags: true }),
     useCaseProvider(ChangeCategoryAlwaysReview, CATEGORY_OFFER_REVIEW_FLAG_CHANGE_PORTS),
     useCaseProvider(ChangeCategoryReviewStop, CATEGORY_OFFER_REVIEW_FLAG_CHANGE_PORTS),
@@ -3372,6 +3381,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       ownReader: true,
       policy: true,
       pendingChanges: true,
+      postReviews: true,
     }),
     useCaseProvider(OwnOfferReadSellUnits, {
       unitOfWork: true,
