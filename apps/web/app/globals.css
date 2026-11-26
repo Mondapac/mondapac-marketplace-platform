@@ -5686,16 +5686,21 @@ svg {
   min-width: 0;
 }
 /* The whole right column (summary and help) sticks as one, so the summary never slides over
-   the help card; it scrolls on its own when the viewport is shorter than the column. */
+   the help card. It has no scroll of its own. On a viewport up to 1000px tall it stays in the
+   page flow instead: with one cart line the column is about 740px, and each further line adds
+   about 85px, so a shorter viewport would cut its bottom (Pay, help) off. */
 @media (min-width: 1000px) {
   .ckside {
     position: sticky;
     top: calc(var(--sf-header-height) + 16px);
     align-self: start;
-    max-height: calc(100vh - var(--sf-header-height) - 32px);
-    overflow-y: auto;
   }
   .ckside > .cs.stick {
+    position: static;
+  }
+}
+@media (min-width: 1000px) and (max-height: 1000px) {
+  .ckside {
     position: static;
   }
 }
