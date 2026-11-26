@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261126-ai-gateway-drop-assistant-cap-columns",
+  "area": "assistant",
+  "title": "درگاه AI: حذف ستون‌های بازنشستهٔ سقف هزینه از assistant.settings",
+  "desc": "در G4d2 سقف روزانه و ماهانهٔ دستیار به سقف‌های درگاه (ai-cap-buyer-chat-day و ai-cap-buyer-chat-month) منتقل شد. ستون‌های daily_spend_cap_usd_cents و monthly_spend_cap_usd_cents (NOT NULL با CHECK) بدون حذف ماندند تا بازگشت به نسخهٔ قبل ممکن باشد؛ ردیف تازه مقدار نسخهٔ قبل را (یا پیش‌فرض قدیم را) می‌نویسد و هیچ کدی آن را نمی‌خواند. پس از یک انتشار، یک migration برگشت‌پذیر ستون‌ها و CHECK آن‌ها را حذف کند و repository دیگر آن‌ها را ننویسد؛ فیلدهای اختیاری cap در audit دستیار برای ردیف‌های قدیم بمانند.",
+  "src": "docs/design/domain/platform-ai.md (Built in G4d2)",
+  "date": "2026-11-26",
+  "trig": "یک انتشار پس از G4d2، همراه FE-20261125-ai-gateway-drop-assistant-model-tier",
+  "prio": "پایین",
+  "status": "موکول"
+}

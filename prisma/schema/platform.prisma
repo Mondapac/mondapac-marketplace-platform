@@ -408,6 +408,9 @@ model AiBudgetReservation {
   capability       String   @db.VarChar(100)
   sellerId         String?  @map("seller_id") @db.Uuid
   guest            Boolean
+  /// The reservation held the capability's month counter too (every one since AI Gateway G4d2);
+  /// false for one made before, whose settle and sweep leave that counter.
+  capabilityMonth  Boolean  @default(false) @map("capability_month")
   estimateMicroUsd BigInt   @map("estimate_micro_usd")
   createdAt        DateTime @map("created_at") @db.Timestamptz(6)
   expiresAt        DateTime @map("expires_at") @db.Timestamptz(6)

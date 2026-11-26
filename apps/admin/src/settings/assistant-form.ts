@@ -16,15 +16,12 @@ export const BOUNDS = Object.freeze({
   audiencePercent: { min: 1, max: 100 },
   guestMessageLimit: { min: 5, max: 60 },
   customerMessageLimit: { min: 5, max: 120 },
-  dailySpendCapUsdCents: { min: 100, max: 100_000 },
-  monthlySpendCapUsdCents: { min: 100, max: 2_000_000 },
   welcomeTextLength: 200,
 });
 
 /** Controls, invisible format characters, line separators and markup; U+200C stays allowed. */
 const FORBIDDEN_TEXT = /(?!‌)[\p{Cc}\p{Cf}\p{Zl}\p{Zp}<>]/u;
 const WHOLE = /^\d{1,7}$/;
-const DOLLARS = /^(\d{1,5})(?:\.(\d{1,2}))?$/;
 
 export interface AssistantForm {
   readonly enabled: boolean;
@@ -36,9 +33,6 @@ export interface AssistantForm {
   readonly customerMessageLimit: string;
   readonly retention: Retention;
   readonly replyLanguage: ReplyLanguage;
-  /** US dollars, as typed. */
-  readonly dailySpendCap: string;
-  readonly monthlySpendCap: string;
   readonly supportHandoff: SupportHandoff;
   /** "Basket proposals from a list" switch; off by default. */
   readonly basketProposals: boolean;
@@ -51,8 +45,6 @@ export type FieldKey =
   | 'scope'
   | 'guestMessageLimit'
   | 'customerMessageLimit'
-  | 'dailySpendCapUsdCents'
-  | 'monthlySpendCapUsdCents'
   | 'supportHandoff'
   | 'welcomeText';
 
@@ -61,25 +53,9 @@ const FIELD_KEYS: readonly FieldKey[] = [
   'scope',
   'guestMessageLimit',
   'customerMessageLimit',
-  'dailySpendCapUsdCents',
-  'monthlySpendCapUsdCents',
   'supportHandoff',
   'welcomeText',
 ];
-
-/** "12.5" for 1250 cents; whole dollars drop the cents. */
-export function dollarsOf(cents: number): string {
-  const whole = Math.floor(cents / 100);
-  const rest = cents % 100;
-  return rest === 0 ? String(whole) : `${whole}.${String(rest).padStart(2, '0')}`;
-}
-
-/** Cents of a typed dollar amount (no float arithmetic), or null when it is not one. */
-export function centsOf(text: string): number | null {
-  const match = DOLLARS.exec(text.trim());
-  if (match === null) return null;
-  return Number(match[1]) * 100 + Number((match[2] ?? '').padEnd(2, '0'));
-}
 
 export function formOf(settings: AssistantSettings): AssistantForm {
   return {
@@ -92,8 +68,6 @@ export function formOf(settings: AssistantSettings): AssistantForm {
     customerMessageLimit: String(settings.customerMessageLimit),
     retention: settings.retention,
     replyLanguage: settings.replyLanguage,
-    dailySpendCap: dollarsOf(settings.dailySpendCapUsdCents),
-    monthlySpendCap: dollarsOf(settings.monthlySpendCapUsdCents),
     supportHandoff: settings.supportHandoff,
     basketProposals: settings.basketProposals,
     welcomeText: settings.welcomeText ?? '',
@@ -130,19 +104,6 @@ export function settingsOf(
   if (guestMessageLimit === null) invalid.push('guestMessageLimit');
   const customerMessageLimit = wholeIn(form.customerMessageLimit, BOUNDS.customerMessageLimit);
   if (customerMessageLimit === null) invalid.push('customerMessageLimit');
-  const monthly = centsOf(form.monthlySpendCap);
-  const monthlyOk =
-    monthly !== null &&
-    monthly >= BOUNDS.monthlySpendCapUsdCents.min &&
-    monthly <= BOUNDS.monthlySpendCapUsdCents.max;
-  if (!monthlyOk) invalid.push('monthlySpendCapUsdCents');
-  const daily = centsOf(form.dailySpendCap);
-  const dailyOk =
-    daily !== null &&
-    daily >= BOUNDS.dailySpendCapUsdCents.min &&
-    daily <= BOUNDS.dailySpendCapUsdCents.max &&
-    (!monthlyOk || daily <= monthly);
-  if (!dailyOk) invalid.push('dailySpendCapUsdCents');
   if (unavailable.supportHandoff.includes(form.supportHandoff)) invalid.push('supportHandoff');
   const text = form.welcomeText.normalize('NFC').trim();
   if (FORBIDDEN_TEXT.test(text) || Array.from(text).length > BOUNDS.welcomeTextLength) {
@@ -161,8 +122,6 @@ export function settingsOf(
       customerMessageLimit: customerMessageLimit!,
       retention: form.retention,
       replyLanguage: form.replyLanguage,
-      dailySpendCapUsdCents: daily!,
-      monthlySpendCapUsdCents: monthly!,
       supportHandoff: form.supportHandoff,
       basketProposals: form.basketProposals,
       welcomeText: text === '' ? null : text,

@@ -314,7 +314,12 @@ describe.each(TEST_MARKETS)('settings in market %s (database)', (code) => {
       const controls = await new SettingsAiGatewayControls(deps).read(seller);
       expect(controls).toEqual({
         stopped: true,
-        caps: { ...NO_CAPS, guestDay: 250 },
+        caps: {
+          ...NO_CAPS,
+          guestDay: 250,
+          // No row: the buyer chat's own defaults (G4d2).
+          capabilities: { 'assistant.buyer-chat': { day: 10_000_000, month: 200_000_000 } },
+        },
         models: NO_MODEL_LISTS,
       });
       expect(

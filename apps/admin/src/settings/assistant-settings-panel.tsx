@@ -57,8 +57,6 @@ const FIELD_LABEL: Record<FieldKey, string> = {
   scope: 'scope.label',
   guestMessageLimit: 'guest-limit.label',
   customerMessageLimit: 'customer-limit.label',
-  dailySpendCapUsdCents: 'spend.daily',
-  monthlySpendCapUsdCents: 'spend.monthly',
   supportHandoff: 'support.label',
   welcomeText: 'welcome.label',
 };
@@ -69,15 +67,10 @@ const TYPED_KEYS: ReadonlySet<keyof AssistantForm> = new Set<keyof AssistantForm
   'welcomeText',
   'guestMessageLimit',
   'customerMessageLimit',
-  'dailySpendCap',
-  'monthlySpendCap',
 ]);
 
-/** Form keys whose API field has another name. */
-const FIELD_OF: Partial<Record<keyof AssistantForm, FieldKey>> = {
-  dailySpendCap: 'dailySpendCapUsdCents',
-  monthlySpendCap: 'monthlySpendCapUsdCents',
-};
+/** Form keys whose API field has another name (none since the spend caps went, AI Gateway G4d2). */
+const FIELD_OF: Partial<Record<keyof AssistantForm, FieldKey>> = {};
 
 type Translate = ReturnType<typeof useTranslations>;
 
@@ -92,8 +85,6 @@ const CHANGE_LABEL: Record<keyof AssistantForm, string> = {
   customerMessageLimit: 'customer-limit.label',
   retention: 'retention.label',
   replyLanguage: 'language.label',
-  dailySpendCap: 'spend.daily',
-  monthlySpendCap: 'spend.monthly',
   supportHandoff: 'support.label',
   basketProposals: 'basket.label',
   welcomeText: 'welcome.label',
@@ -118,12 +109,6 @@ function shownValue(key: keyof AssistantForm, form: AssistantForm, t: Translate)
     return value.trim() === ''
       ? t('settings.conflict.unset')
       : t(`${P}.audience.percent-of`, { percent: value.trim() });
-  }
-  if (key === 'dailySpendCap' || key === 'monthlySpendCap') {
-    const dollars = Number(value);
-    return value.trim() !== '' && Number.isFinite(dollars)
-      ? t(`${P}.spend.amount`, { amount: dollars })
-      : value;
   }
   if (key === 'welcomeText') return value.trim() === '' ? t(`${P}.welcome.default`) : value.trim();
   return value;
@@ -202,8 +187,6 @@ export function AssistantSettingsPanel({
   const leave = (key: keyof AssistantForm) => {
     const field = FIELD_OF[key] ?? key;
     if (field in FIELD_LABEL) live.touch(field as FieldKey);
-    // The daily cap may not pass the monthly one, so leaving the monthly cap re-checks the daily.
-    if (field === 'monthlySpendCapUsdCents') live.touch('dailySpendCapUsdCents');
   };
   const checkedNow = settingsOf(form, answer.unavailableOptions);
   const live = useLiveErrors<FieldKey>(checkedNow.ok ? [] : checkedNow.invalid);
@@ -528,49 +511,6 @@ export function AssistantSettingsPanel({
         </SettingRow>
       </SettingsSection>
 
-      <SettingsSection title={t(`${P}.section.spend`)} description={t(`${P}.spend.intro`)}>
-        <SettingRow
-          id={rowId('dailySpendCapUsdCents')}
-          label={t(`${P}.spend.daily`)}
-          help={t(`${P}.spend.daily-help`, {
-            min: BOUNDS.dailySpendCapUsdCents.min / 100,
-            max: BOUNDS.dailySpendCapUsdCents.max / 100,
-          })}
-          changed={changed('dailySpendCap')}
-          error={errorOf('dailySpendCapUsdCents')}
-        >
-          <SettingInput
-            name="dailySpendCap"
-            prefix="US$"
-            inputMode="decimal"
-            autoComplete="off"
-            value={form.dailySpendCap}
-            onChange={(event) => set('dailySpendCap', event.target.value)}
-            onBlur={() => leave('dailySpendCap')}
-          />
-        </SettingRow>
-        <SettingRow
-          id={rowId('monthlySpendCapUsdCents')}
-          label={t(`${P}.spend.monthly`)}
-          help={t(`${P}.spend.monthly-help`, {
-            min: BOUNDS.monthlySpendCapUsdCents.min / 100,
-            max: BOUNDS.monthlySpendCapUsdCents.max / 100,
-          })}
-          changed={changed('monthlySpendCap')}
-          error={errorOf('monthlySpendCapUsdCents')}
-        >
-          <SettingInput
-            name="monthlySpendCap"
-            prefix="US$"
-            inputMode="decimal"
-            autoComplete="off"
-            value={form.monthlySpendCap}
-            onChange={(event) => set('monthlySpendCap', event.target.value)}
-            onBlur={() => leave('monthlySpendCap')}
-          />
-        </SettingRow>
-      </SettingsSection>
-
       <SettingsSection title={t(`${P}.section.data`)}>
         <SettingRow
           label={t(`${P}.retention.label`)}
@@ -617,7 +557,7 @@ function StatusCard({
 }) {
   const t = useTranslations();
   const locale = useLocale();
-  const { spend, settings } = answer;
+  const { spend } = answer;
   const usd = (amount: number) => t(`${P}.spend.amount`, { amount });
   const usdPrecise = (amount: number) => t(`${P}.spend.amount-precise`, { amount });
   const muted = (text: string) => <span className="text-fg-muted">{text}</span>;
@@ -641,17 +581,12 @@ function StatusCard({
     },
     {
       label: t(`${P}.status.spend-today`),
-      value: t(`${P}.status.spend-of`, {
-        spent: usd(spend.todayMicroUsd / 1_000_000),
-        cap: usd(settings.dailySpendCapUsdCents / 100),
-      }),
+      // The caps are the AI Gateway's since G4d2 (its page, G5): only the spend is shown here.
+      value: usd(spend.todayMicroUsd / 1_000_000),
     },
     {
       label: t(`${P}.status.spend-month`),
-      value: t(`${P}.status.spend-of`, {
-        spent: usd(spend.monthMicroUsd / 1_000_000),
-        cap: usd(settings.monthlySpendCapUsdCents / 100),
-      }),
+      value: usd(spend.monthMicroUsd / 1_000_000),
     },
     {
       label: t(`${P}.status.conversations-today`),
@@ -712,14 +647,6 @@ function summaryRows(
     { label: t(`${P}.users.label`), value: t(`${P}.users.${settings.users}`) },
     { label: t(`${P}.guest-limit.label`), value: String(settings.guestMessageLimit) },
     { label: t(`${P}.customer-limit.label`), value: String(settings.customerMessageLimit) },
-    {
-      label: t(`${P}.spend.daily`),
-      value: t(`${P}.spend.amount`, { amount: settings.dailySpendCapUsdCents / 100 }),
-    },
-    {
-      label: t(`${P}.spend.monthly`),
-      value: t(`${P}.spend.amount`, { amount: settings.monthlySpendCapUsdCents / 100 }),
-    },
     { label: t(`${P}.retention.label`), value: t(`${P}.retention.${settings.retention}`) },
     { label: t(`${P}.support.label`), value: t(`${P}.support.${settings.supportHandoff}`) },
   ];

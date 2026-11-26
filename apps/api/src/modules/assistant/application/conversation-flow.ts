@@ -7,7 +7,6 @@ import { DEFAULT_ASSISTANT_SETTINGS, inRollout } from '../domain/assistant-setti
 import type { AssistantSettings } from '../domain/assistant-settings';
 import { cardRefOf, type AssistantCard, type AssistantNotice } from '../domain/cards';
 import {
-  capReached,
   HISTORY_MESSAGES,
   MAX_CARDS_PER_TURN,
   MAX_MODEL_ROUNDS,
@@ -81,6 +80,48 @@ const logger = new Logger('AssistantConversation');
 const SPEND_DAY_NAMESPACE = 'assistant.spend-day.v1';
 
 /** The one aggregate id of a Market's spend on one of its days: a UUID v7 shape from a hash. */
+/**
+ * Asks the gateway whether one of the chat's own caps is full now (outside any unit: it reads in
+ * units of its own) and, when one is, records the Market day's "cap reached" once and writes the
+ * admins' event in the same unit (at most one a Market day: `markAutoOff` answers true once).
+ * Answers the cap recorded by this call, or null. A failed read records nothing (logged): the cap
+ * itself still holds at the gateway's reservation.
+ */
+async function recordCapReached(
+  deps: AssistantDependencies,
+  context: CallContext,
+  today: Temporal.PlainDate,
+  now: Temporal.Instant,
+): Promise<'daily' | 'monthly' | null> {
+  const { market } = context;
+  let cap: 'daily' | 'monthly' | null;
+  try {
+    cap = await deps.spend.capReached(context);
+  } catch {
+    logger.warn({
+      msg: 'assistant.spend-cap.read-failed',
+      marketId: market.marketId,
+      correlationId: context.correlationId,
+    });
+    return null;
+  }
+  if (cap === null) return null;
+  const reached = cap;
+  const recorded = await deps.unitOfWork.run<boolean, never>(market, async () => {
+    if (!(await deps.spend.markAutoOff(market, today, reached, now))) return ok(false);
+    await deps.outbox.append(context, [
+      AssistantSpendCapReached.record({
+        aggregateId: spendDayAggregateId(market, today),
+        aggregateVersion: 1,
+        occurredAt: now,
+        payload: { cap: reached },
+      }),
+    ]);
+    return ok(true);
+  });
+  return recorded.ok && recorded.value ? reached : null;
+}
+
 export function spendDayAggregateId(market: MarketContext, day: Temporal.PlainDate): Id {
   const bytes = createHash('sha256')
     .update(`${SPEND_DAY_NAMESPACE}:${market.marketId}:${day.toString()}`)
@@ -335,15 +376,14 @@ export async function sendMessage(
     async () => {
       const latest = await deps.settings.latest(market);
       const settings = latest?.settings ?? DEFAULT_ASSISTANT_SETTINGS;
-      // The gateway's own status (kill switch, route, its budget caps) is asked after this unit:
-      // it reads the budget in a unit of its own (AI Gateway G2, Mohammad's entry condition).
+      // The gateway's own status (kill switch, route, its budget caps, the chat's day and month
+      // caps since G4d2) is asked after this unit: it reads the budget in a unit of its own (AI
+      // Gateway G2, Mohammad's entry condition).
       const on = settings.enabled && inRollout(settings, market.marketId, visitorKey, preview);
       if (!on) return err({ code: 'assistant.off' });
       if (caller.kind === 'guest' && settings.users === 'customers-only') {
         return err({ code: 'assistant.sign-in-required' });
       }
-      const spend = await deps.spend.totals(market, today);
-      if (capReached(settings, spend) !== null) return err({ code: 'assistant.paused' });
       const conversation = await deps.conversations.find(market, conversationId);
       // A deleted or purged conversation's id is spent: refused before any model call, so a
       // re-sent id never costs what the caps cannot count (Hassan, PR 947).
@@ -366,9 +406,11 @@ export async function sendMessage(
   );
   if (!loaded.ok) return loaded;
   const { settings, conversation, history } = loaded.value;
-  if (!(await deps.runtime.available(context))) {
-    return err({ code: 'assistant.off' });
-  }
+  // A full cap is the gateway's cap answer: the assistant is paused for the rest of the day or
+  // month (AI Gateway G4d2; the caps are the gateway's, `ai-cap-buyer-chat-day` and `-month`).
+  const availability = await deps.runtime.availability(context);
+  if (availability === 'over-budget') return err({ code: 'assistant.paused' });
+  if (availability !== 'on') return err({ code: 'assistant.off' });
 
   const limit =
     caller.kind === 'customer' ? settings.customerMessageLimit : settings.guestMessageLimit;
@@ -390,12 +432,9 @@ export async function sendMessage(
   const retentionDays =
     conversation?.retentionDays ??
     retentionDaysOf(settings.retention, caller.kind === 'customer' ? 'customer' : 'guest');
-  // First unit: the turn and the spend, of a size the buyer cannot grow, so the caps always
-  // count what the model cost (Hassan, H1). The text is stored in a second unit.
-  const written = await deps.unitOfWork.run<
-    { counted: boolean; autoOff: 'daily' | 'monthly' | null },
-    never
-  >(market, async () => {
+  // First unit: the turn and its new conversation, of a size the buyer cannot grow (Hassan, H1);
+  // the gateway settled what the model cost inside `run`. The text is stored in a second unit.
+  const written = await deps.unitOfWork.run<{ counted: boolean }, never>(market, async () => {
     let counted = true;
     if (conversation === null) {
       counted = await deps.conversations.create(market, {
@@ -415,22 +454,11 @@ export async function sendMessage(
       outputTokens: turn.outputTokens,
       conversations: conversation === null && counted ? 1 : 0,
     });
-    const cap = capReached(settings, await deps.spend.totals(market, today));
-    const autoOff =
-      cap !== null && (await deps.spend.markAutoOff(market, today, cap, now)) ? cap : null;
-    if (autoOff !== null) {
-      // At most one a Market day (markAutoOff answers true once): the admins' bell notice.
-      await deps.outbox.append(context, [
-        AssistantSpendCapReached.record({
-          aggregateId: spendDayAggregateId(market, today),
-          aggregateVersion: 1,
-          occurredAt: now,
-          payload: { cap: autoOff },
-        }),
-      ]);
-    }
-    return ok({ counted, autoOff });
+    return ok({ counted });
   });
+  // The gateway's cap answer after the turn (G4d2): a cap of the chat this turn filled switches
+  // it off, recorded once a Market day with the admins' bell notice.
+  const autoOff = written.ok ? await recordCapReached(deps, context, today, now) : null;
   // A turn another request took first is answered but not stored (the cap still holds).
   if (written.ok && written.value.counted && retentionDays > 0) {
     await deps.unitOfWork.run<null, never>(market, async () => {
@@ -451,13 +479,13 @@ export async function sendMessage(
       return ok(null);
     });
   }
-  if (written.ok && written.value.autoOff !== null) {
+  if (autoOff !== null) {
     // The settings screen shows the last auto-off and the admins get a bell notice (the event
-    // above); this line is the operator's alert.
+    // recordCapReached wrote); this line is the operator's alert.
     logger.warn({
       msg: 'assistant.spend-cap.reached',
       marketId: market.marketId,
-      cap: written.value.autoOff,
+      cap: autoOff,
       correlationId: context.correlationId,
     });
   }

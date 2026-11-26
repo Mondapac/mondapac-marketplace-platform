@@ -5,8 +5,9 @@ import type { Result } from '@mondapac/shared-kernel';
 // The guardrails (numbers only from server cards, certification only from evaluateClaim, no
 // mutating tool, never payment, refunds, orders, addresses, accounts, discount codes or Cost) and
 // the model API key are deliberately not settings. The chat's models are the Market's list for the
-// chat task type in the AI Gateway settings (the model tier setting went in AI Gateway G4d1). Every default is the recommended option, and
-// the assistant ships off.
+// chat task type in the AI Gateway settings (the model tier setting went in AI Gateway G4d1), and
+// its spend caps are the gateway's caps `ai-cap-buyer-chat-day` and `-month` (AI Gateway G4d2).
+// Every default is the recommended option, and the assistant ships off.
 
 export const AUDIENCES = ['internal', 'percent', 'all'] as const;
 export const SCOPES = ['read-only', 'cart-suggestions'] as const;
@@ -47,9 +48,6 @@ export interface AssistantSettings {
   /** For signed-in customers; a guest's conversation is kept 30 days at most whatever this says. */
   readonly retention: Retention;
   readonly replyLanguage: ReplyLanguage;
-  /** Provider spend caps, in US cents (the provider bills in US dollars). */
-  readonly dailySpendCapUsdCents: number;
-  readonly monthlySpendCapUsdCents: number;
   readonly supportHandoff: SupportHandoff;
   /**
    * "Basket proposals from a list": the assistant may plan a typed or pasted shopping list into
@@ -70,8 +68,6 @@ export const SETTING_FIELDS = [
   'customerMessageLimit',
   'retention',
   'replyLanguage',
-  'dailySpendCapUsdCents',
-  'monthlySpendCapUsdCents',
   'supportHandoff',
   'basketProposals',
   'welcomeText',
@@ -88,8 +84,6 @@ export const DEFAULT_ASSISTANT_SETTINGS: AssistantSettings = Object.freeze({
   customerMessageLimit: 40,
   retention: '30-days',
   replyLanguage: 'buyer',
-  dailySpendCapUsdCents: 1_000,
-  monthlySpendCapUsdCents: 20_000,
   supportHandoff: 'email-link',
   basketProposals: false,
   welcomeText: null,
@@ -99,8 +93,6 @@ export const BOUNDS = Object.freeze({
   audiencePercent: { min: 1, max: 100 },
   guestMessageLimit: { min: 5, max: 60 },
   customerMessageLimit: { min: 5, max: 120 },
-  dailySpendCapUsdCents: { min: 100, max: 100_000 },
-  monthlySpendCapUsdCents: { min: 100, max: 2_000_000 },
   welcomeTextLength: 200,
 });
 
@@ -196,21 +188,6 @@ export function parseAssistantSettings(
   );
   const retention = oneOf(raw.retention, RETENTIONS, 'retention', errors);
   const replyLanguage = oneOf(raw.replyLanguage, REPLY_LANGUAGES, 'replyLanguage', errors);
-  const daily = integerIn(
-    raw.dailySpendCapUsdCents,
-    BOUNDS.dailySpendCapUsdCents,
-    'dailySpendCapUsdCents',
-    errors,
-  );
-  const monthly = integerIn(
-    raw.monthlySpendCapUsdCents,
-    BOUNDS.monthlySpendCapUsdCents,
-    'monthlySpendCapUsdCents',
-    errors,
-  );
-  if (!errors.some((e) => e.path.endsWith('SpendCapUsdCents')) && daily > monthly) {
-    errors.push({ path: 'dailySpendCapUsdCents', code: 'range' });
-  }
   const supportHandoff = oneOf(raw.supportHandoff, SUPPORT_HANDOFFS, 'supportHandoff', errors);
   if (UNAVAILABLE_OPTIONS.supportHandoff.includes(supportHandoff)) {
     errors.push({ path: 'supportHandoff', code: 'unavailable' });
@@ -231,8 +208,6 @@ export function parseAssistantSettings(
     customerMessageLimit,
     retention,
     replyLanguage,
-    dailySpendCapUsdCents: daily,
-    monthlySpendCapUsdCents: monthly,
     supportHandoff,
     basketProposals: basketProposals as boolean,
     welcomeText: welcome.ok ? welcome.value : null,

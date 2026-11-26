@@ -160,8 +160,6 @@ describe.each(TEST_MARKETS)('assistant settings store in market %s (database)', 
       customerMessageLimit: 120,
       retention: '12-months' as const,
       replyLanguage: 'english' as const,
-      dailySpendCapUsdCents: 2_500,
-      monthlySpendCapUsdCents: 50_000,
       basketProposals: true,
       welcomeText: 'سلام! می‌توانم کمک کنم؟',
     };
@@ -184,6 +182,19 @@ describe.each(TEST_MARKETS)('assistant settings store in market %s (database)', 
       [market.marketId, from + 1],
     );
     expect(tier.rows).toEqual([{ model_tier: 'fast' }]);
+    // The retired spend cap columns (G4d2) carry the previous version's values forward (the
+    // defaults on a Market's first row), so a release before G4d2 rolled back to finds them.
+    const caps = await sql.query<{ version: number; daily: number; monthly: number }>(
+      `SELECT version, daily_spend_cap_usd_cents AS daily, monthly_spend_cap_usd_cents AS monthly
+         FROM assistant.settings WHERE market_id = $1 AND version IN ($2, $3) ORDER BY version`,
+      [market.marketId, from, from + 1],
+    );
+    const previous = caps.rows.find((row) => row.version === from);
+    expect(caps.rows.find((row) => row.version === from + 1)).toEqual({
+      version: from + 1,
+      daily: previous?.daily ?? 1_000,
+      monthly: previous?.monthly ?? 20_000,
+    });
 
     actors.labels.set(ADMIN, { kind: 'member', displayName: 'Sara K.' });
     const stale = await new SetAssistantSettings(gate, deps()).execute(admin(market), {

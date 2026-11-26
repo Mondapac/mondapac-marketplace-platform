@@ -1,5 +1,5 @@
 import { Temporal } from '@mondapac/shared-kernel';
-import { testMarketContext } from '@mondapac/shared-kernel/testing';
+import { testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import { CapabilityRegistry } from '../capability-registry';
 import type { CapabilitySpec } from '../capability';
 import { InMemoryAiUsageStore } from '../../../../test/support/in-memory-ai-usage';
@@ -7,6 +7,7 @@ import { PLATFORM_TENANT_ID } from '../../market-context/tenant';
 import { MarketRegistry } from '../../market-config/market-registry';
 import { loadMarketConfigs } from '../../market-config/market-config';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
+import type { AiGateway } from '../ai-gateway';
 import { AiUsageReport } from './ai-usage-report';
 
 const SPEC: CapabilitySpec = {
@@ -25,19 +26,32 @@ describe('AiUsageReport (AI Gateway G7)', () => {
   const day = Temporal.PlainDate.from('2026-11-25');
   const at = Temporal.Instant.from('2026-11-25T03:00:00Z');
 
+  const asked: string[] = [];
+
   function setUp() {
     const registry = new CapabilityRegistry();
     registry.register('alpha', [SPEC]);
     registry.register('beta', [{ ...SPEC, id: 'beta.write', task: 'write' }]);
     const store = new InMemoryAiUsageStore();
     const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
-    return { store, report: new AiUsageReport(store, registry, markets).for('alpha') };
+    const gateway = {
+      capabilityCapReached: (capability: string) => {
+        asked.push(capability);
+        return Promise.resolve('month' as const);
+      },
+    } as unknown as AiGateway;
+    return { store, report: new AiUsageReport(store, registry, markets, gateway).for('alpha') };
   }
 
   it('gives the owner platform no handle: platform.ai-evaluation is the evaluation budget (G4c)', () => {
     const registry = new CapabilityRegistry();
     const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
-    const report = new AiUsageReport(new InMemoryAiUsageStore(), registry, markets);
+    const report = new AiUsageReport(
+      new InMemoryAiUsageStore(),
+      registry,
+      markets,
+      {} as unknown as AiGateway,
+    );
     expect(() => report.for('platform')).toThrow('"platform" has no AI capability');
   });
 
@@ -90,6 +104,18 @@ describe('AiUsageReport (AI Gateway G7)', () => {
       await expect(report.lastCapReached(market, 'alpha.chatt')).rejects.toThrow(
         'has no AI capability',
       );
+      await expect(
+        report.capReached(testCallContext(market, 'system'), 'beta.write'),
+      ).rejects.toThrow('has no AI capability');
+    });
+
+    it('answers the gateway’s cap answer for its own capability only (G4d2)', async () => {
+      const { report } = setUp();
+      asked.length = 0;
+      await expect(
+        report.capReached(testCallContext(market, 'system'), 'alpha.chat'),
+      ).resolves.toBe('month');
+      expect(asked).toEqual(['alpha.chat']);
     });
 
     it('refuses a cap-reached record for a day after the Market day of its instant', async () => {

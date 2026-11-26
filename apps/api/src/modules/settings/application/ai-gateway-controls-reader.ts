@@ -8,6 +8,9 @@ import type {
 } from '../../../platform/ai/gateway-controls';
 import {
   acceptedValue,
+  AI_BUYER_CHAT_CAPABILITY,
+  AI_CAP_BUYER_CHAT_DAY_CODE,
+  AI_CAP_BUYER_CHAT_MONTH_CODE,
   AI_CAP_CAPABILITY_DAY_CODE,
   AI_CAP_EVALUATION_MONTH_CODE,
   AI_CAP_GUEST_DAY_CODE,
@@ -62,6 +65,13 @@ export class SettingsAiGatewayControls implements AiGatewayControls {
       guestDay: cap(AI_CAP_GUEST_DAY_CODE),
       // Never `none` (the definition refuses it); anything else is read as 0 (G4c, fail-closed).
       evaluationMonth: cap(AI_CAP_EVALUATION_MONTH_CODE) ?? 0,
+      // The buyer chat's own day and month (G4d2); their defaults cap a Market without a row.
+      capabilities: {
+        [AI_BUYER_CHAT_CAPABILITY]: {
+          day: cap(AI_CAP_BUYER_CHAT_DAY_CODE),
+          month: cap(AI_CAP_BUYER_CHAT_MONTH_CODE),
+        },
+      },
     };
     const lists: Record<string, readonly string[]> = {};
     const savers: Record<string, string> = {};

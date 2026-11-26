@@ -136,6 +136,11 @@ export interface ReservationRecord {
   readonly capability: string;
   readonly sellerId: string | null;
   readonly guest: boolean;
+  /**
+   * The reservation held the capability's month line too (every reservation since G4d2); false
+   * for one made before, whose settle and sweep leave that line as it is.
+   */
+  readonly capabilityMonth: boolean;
   readonly estimateMicroUsd: number;
   readonly createdAt: Temporal.Instant;
   readonly expiresAt: Temporal.Instant;

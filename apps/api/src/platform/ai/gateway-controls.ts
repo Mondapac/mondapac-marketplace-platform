@@ -2,10 +2,20 @@ import type { CallContext } from '@mondapac/shared-kernel';
 import type { CapabilityTask } from './capability';
 
 /**
+ * The caps of one capability of its own (G4d2): its day and its month, in US micro-dollars. Null
+ * is not capped by this entry; 0 allows nothing.
+ */
+export interface CapabilityCaps {
+  readonly day: number | null;
+  readonly month: number | null;
+}
+
+/**
  * A Market's AI budget caps in US micro-dollars (docs/design/domain/platform-ai.md section 7):
  * the Market's day and month, each capability's day, each seller's day (a seller-scoped
- * capability), the guest pool's day (buyer capabilities called by anonymous visitors) and the
- * evaluation budget's month (G4c). Null is not capped (counted only); 0 allows nothing.
+ * capability), the guest pool's day (buyer capabilities called by anonymous visitors), the
+ * evaluation budget's month (G4c) and, per capability id, a day and month of its own (G4d2). Null
+ * is not capped (counted only); 0 allows nothing.
  */
 export interface AiCaps {
   readonly marketDay: number | null;
@@ -19,6 +29,13 @@ export interface AiCaps {
    * its default is 0, so nothing is spent on evaluations until a senior admin sets it.
    */
   readonly evaluationMonth: number;
+  /**
+   * The caps of single capabilities, by capability id (G4d2; today `settings` fills only the
+   * buyer chat's). A capability's day line takes the stricter of its own day and
+   * {@link capabilityDay}; its month line is capped only by its own month. A capability without
+   * an entry has only the caps above.
+   */
+  readonly capabilities: Readonly<Record<string, CapabilityCaps>>;
 }
 
 /**
@@ -32,6 +49,7 @@ export const NO_CAPS: AiCaps = Object.freeze({
   sellerDay: null,
   guestDay: null,
   evaluationMonth: 0,
+  capabilities: Object.freeze({}),
 });
 
 /**

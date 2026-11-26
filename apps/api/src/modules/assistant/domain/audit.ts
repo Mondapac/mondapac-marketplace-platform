@@ -3,7 +3,8 @@ import { USER_GROUPS } from './assistant-settings';
 
 // The audited action of assistant (settings), registered at boot with
 // `registerAuditActions('assistant', ASSISTANT_AUDIT_ACTIONS)`. An audit field holds no free text,
-// so the row names the versions, the kill switch, who may chat, the retention and the spend caps;
+// so the row names the versions, the kill switch, who may chat and the retention (the spend caps
+// only on rows before AI Gateway G4d2);
 // every value before and after is in the
 // insert-only `assistant.settings` history, which is part of the audit evidence: it must never be
 // granted UPDATE or DELETE.
@@ -17,8 +18,13 @@ const SNAPSHOT = {
   users: auditField.enumOf(USER_GROUPS),
   /** The retention in days for a signed-in customer: 0 (none), 30 or 365. */
   retentionDays: auditField.integer(),
-  dailySpendCapUsdCents: auditField.integer(),
-  monthlySpendCapUsdCents: auditField.integer(),
+  /**
+   * The spend caps in US cents, on the rows written before AI Gateway G4d2 only: the caps are the
+   * gateway's since (`settings.ai-cap.changed`), and no new row names them. Kept optional so the
+   * older rows stay described by the catalogue.
+   */
+  dailySpendCapUsdCents: auditField.optional(auditField.integer()),
+  monthlySpendCapUsdCents: auditField.optional(auditField.integer()),
 };
 
 /** An admin changed the Market's assistant settings. `version` 0 is the built-in default. */

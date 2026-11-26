@@ -1,7 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Temporal } from '@mondapac/shared-kernel';
-import type { MarketContext } from '@mondapac/shared-kernel';
+import type { CallContext, MarketContext } from '@mondapac/shared-kernel';
 import { MarketRegistry } from '../../market-config/market-registry';
+import { AiGateway } from '../ai-gateway';
 import { CapabilityRegistry, RESERVED_OWNER } from '../capability-registry';
 import {
   AI_USAGE_STORE,
@@ -44,6 +45,13 @@ export interface CapabilityUsageReport {
   ): Promise<boolean>;
   /** The capability's newest "cap reached" record in the Market, or null. */
   lastCapReached(market: MarketContext, capability: string): Promise<CapReached | null>;
+  /**
+   * Which of the capability's own gateway caps is full now for the caller's Market (G4d2): its
+   * day, then its month, null when neither (see `AiGateway.capabilityCapReached`). Never called
+   * inside a UnitOfWork (it reads in units of its own); throws when the caps or the budget cannot
+   * be read.
+   */
+  capReached(context: CallContext, capability: string): Promise<BudgetPeriod | null>;
 }
 
 /**
@@ -58,6 +66,7 @@ export class AiUsageReport {
     @Inject(AI_USAGE_STORE) private readonly store: AiUsageStore,
     private readonly registry: CapabilityRegistry,
     private readonly markets: MarketRegistry,
+    private readonly gateway: AiGateway,
   ) {}
 
   /** The handle of one module (`assistant`, `catalog`, ...): only capabilities `<owner>.*`. */
@@ -91,6 +100,10 @@ export class AiUsageReport {
       lastCapReached: async (market, capability) => {
         own(capability);
         return this.store.lastCapReached(market, capability);
+      },
+      capReached: async (context, capability) => {
+        own(capability);
+        return this.gateway.capabilityCapReached(capability, context);
       },
     };
   }

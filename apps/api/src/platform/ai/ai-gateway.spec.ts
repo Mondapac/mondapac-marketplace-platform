@@ -1231,6 +1231,55 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
     });
   });
 
+  describe("a capability's own day and month caps (G4d2, design section 7)", () => {
+    // alpha.buyer-chat's largest call: 2 x 4000 input and 500 output tokens at 1 and 5 micro-USD
+    // a token is 10 500 micro-USD.
+    const chatCaps = (day: number | null, month: number | null) =>
+      TestAiGatewayControls.everywhere({ capabilities: { 'alpha.buyer-chat': { day, month } } });
+
+    it.each([AU, ZZ])(
+      'answers status over-budget and the full cap while one cannot take a call (%s)',
+      async (market) => {
+        const guest = testCallContext(market, 'anonymous');
+        const day = gatewayOf(false, chatCaps(1, 1_000_000), ['AU', 'ZZ']);
+        expect(await day.status('alpha.buyer-chat', guest, {})).toEqual({
+          on: false,
+          reason: 'over-budget',
+        });
+        expect(await day.capabilityCapReached('alpha.buyer-chat', guest)).toBe('day');
+        expect(await day.run('alpha.buyer-chat', guest, REQUEST, {})).toEqual({
+          ok: false,
+          reason: 'over-budget',
+          costMicroUsd: 0,
+        });
+        expect(provider.requests).toHaveLength(0);
+
+        // The status measure: a month with less room than the largest call is full.
+        const month = gatewayOf(false, chatCaps(20_000, 10_000), ['AU', 'ZZ']);
+        expect(await month.capabilityCapReached('alpha.buyer-chat', guest)).toBe('month');
+        // Another capability has only the general caps: not full.
+        expect(await month.status('alpha.admin-writer', adminContext(market), {})).toEqual({
+          on: true,
+        });
+
+        const roomy = gatewayOf(false, chatCaps(1_000_000, 1_000_000), ['AU', 'ZZ']);
+        expect(await roomy.status('alpha.buyer-chat', guest, {})).toEqual({ on: true });
+        expect(await roomy.capabilityCapReached('alpha.buyer-chat', guest)).toBeNull();
+        expect(await roomy.run('alpha.buyer-chat', guest, REQUEST, {})).toMatchObject({ ok: true });
+      },
+    );
+
+    it('refuses an unregistered capability and throws when the settings cannot be read', async () => {
+      const gateway = gatewayOf(false, chatCaps(1, 1), ['AU', 'ZZ']);
+      const guest = testCallContext(AU, 'anonymous');
+      await expect(gateway.capabilityCapReached('alpha.nope', guest)).rejects.toThrow(
+        'not a registered capability',
+      );
+      controls.failing = true;
+      await expect(gateway.capabilityCapReached('alpha.buyer-chat', guest)).rejects.toThrow();
+    });
+  });
+
   it('shows the setup without the key, and without models (they are the Market lists)', () => {
     expect(gatewayOf().setup(AU.marketId)).toEqual({ killSwitch: false, keyConfigured: true });
     expect(gatewayOf().setup(ZZ.marketId)).toEqual({ killSwitch: false, keyConfigured: false });

@@ -620,11 +620,17 @@ describe.each(TEST_MARKETS)('assistant conversations store in market %s (databas
     ).forModule('assistant');
   };
 
-  it('writes one spend-cap event in the unit of the turn that reached the cap', async () => {
+  it('writes one spend-cap event after the turn the gateway answers a full cap for, then pauses (G4d2)', async () => {
     const fake = new FakeRuntime();
     fake.script.push(answer({ text: 'One.', costMicroUsd: 2_000_000 }));
-    // The cost is settled in the gateway's day row before the answer, as the gateway does: the turn
-    // that crosses the cap sees it in its own unit and records the event (Hassan, PR 1354 note 6).
+    // The cost is settled in the gateway's day row before the answer, as the gateway does; after
+    // the turn the gateway answers that the chat's day cap is full (its computation against the
+    // caps is tested in platform-ai-usage.db-spec), and from then on it refuses the chat.
+    let full = false;
+    const capSpend = new PrismaSpendRepository(
+      db.service,
+      assistantUsageReport(db.service, () => Promise.resolve(full ? 'day' : null)),
+    );
     const calendar = new RegistryMarketCalendar(markets);
     // A day of its own, so the other tests' spend never reaches this cap first.
     const day = T0.add({ hours: 24 * 40 });
@@ -637,8 +643,6 @@ describe.each(TEST_MARKETS)('assistant conversations store in market %s (databas
           ...DEFAULT_ASSISTANT_SETTINGS,
           enabled: true,
           audience: 'all',
-          dailySpendCapUsdCents: 100,
-          monthlySpendCapUsdCents: 2_000_000,
         }),
         runtime,
         audit: new NoAudit(),
@@ -646,7 +650,7 @@ describe.each(TEST_MARKETS)('assistant conversations store in market %s (databas
         conversations,
         feedback: new PrismaFeedbackRepository(db.service),
         insights: new PrismaInsightsRepository(db.service, keys, assistantUsageReport(db.service)),
-        spend,
+        spend: capSpend,
         tools: new FakeTools(),
         limits: new MemoryLimits(),
         guestTokens: new SequenceGuestTokens(),
@@ -666,7 +670,14 @@ describe.each(TEST_MARKETS)('assistant conversations store in market %s (databas
         token: null,
         origin: '203.0.113.9',
       });
+    const first = fake.complete.bind(fake);
+    fake.complete = async (...args) => {
+      const reply = await first(...args);
+      full = true;
+      return reply;
+    };
     expect((await message()).ok).toBe(true);
+    fake.overBudget = true;
     expect(await message()).toEqual({ ok: false, error: { code: 'assistant.paused' } });
 
     const rows = await sql.query<{ type: string; payload: unknown; aggregate_version: number }>(

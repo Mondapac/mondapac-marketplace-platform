@@ -7,7 +7,11 @@ import { ASSISTANT_EVENTS } from '../../domain/events';
 import type { ModelRequest, ModelTurn } from '../../../../platform/ai/model-provider';
 import type { AssistantCard } from '../../domain/cards';
 import type { ToolRequest } from '../../domain/tools';
-import type { AssistantRuntime, ModelAnswer } from '../ports/assistant-runtime';
+import type {
+  AssistantRuntime,
+  ModelAnswer,
+  RuntimeAvailability,
+} from '../ports/assistant-runtime';
 import type { AssistantTools, ToolOutcome } from '../ports/assistant-tools';
 import type {
   ConversationCursor,
@@ -45,18 +49,20 @@ export class FakeRuntime implements AssistantRuntime {
     return this.key;
   }
   /**
-   * A full AI budget cap, as the gateway answers it through `GatewayAssistantRuntime`: `available`
-   * is false (status over-budget) and `complete` is unavailable at no cost (run over-budget).
+   * A full AI budget cap, as the gateway answers it through `GatewayAssistantRuntime`:
+   * `availability` is `over-budget` (status over-budget) and `complete` is unavailable at no cost
+   * (run over-budget).
    */
   overBudget = false;
-  /** When set, `available` fails inside an open unit, as the real gateway answers off there. */
+  /** When set, `availability` fails inside an open unit, as the real gateway answers off there. */
   unitOfWork?: { readonly open: number };
   readonly turnIds: string[] = [];
-  available() {
+  availability(): Promise<RuntimeAvailability> {
     if ((this.unitOfWork?.open ?? 0) > 0) {
-      return Promise.reject(new Error('available() called inside a unit of work'));
+      return Promise.reject(new Error('availability() called inside a unit of work'));
     }
-    return Promise.resolve(!this.overBudget && this.key && this.priced && this.routed);
+    if (!(this.key && this.priced && this.routed)) return Promise.resolve('off');
+    return Promise.resolve(this.overBudget ? 'over-budget' : 'on');
   }
   complete(
     _context: CallContext,
@@ -398,6 +404,22 @@ export class MemorySpend implements SpendRepository {
     });
     return Promise.resolve();
   }
+  /**
+   * The gateway's cap answer for the chat (G4d2): what a test sets (`capFull`), and how many times
+   * it was asked; `capFailing` makes the read throw. Rejects inside an open unit, as the real one.
+   */
+  capFull: 'daily' | 'monthly' | null = null;
+  capFailing = false;
+  capReads = 0;
+  unitOfWork?: { readonly open: number };
+  capReached(): Promise<'daily' | 'monthly' | null> {
+    this.capReads += 1;
+    if ((this.unitOfWork?.open ?? 0) > 0) {
+      return Promise.reject(new Error('capReached() called inside a unit of work'));
+    }
+    if (this.capFailing) return Promise.reject(new Error('gateway caps down'));
+    return Promise.resolve(this.capFull);
+  }
   markAutoOff(
     market: MarketContext,
     day: Temporal.PlainDate,
@@ -405,8 +427,8 @@ export class MemorySpend implements SpendRepository {
     at: Temporal.Instant,
   ) {
     const key = this.#key(market, day);
-    const row = this.days.get(key);
-    if (row === undefined || row.autoOff !== null) return Promise.resolve(false);
+    const row = this.days.get(key) ?? { microUsd: 0, conversations: 0, autoOff: null };
+    if (row.autoOff !== null) return Promise.resolve(false);
     this.days.set(key, { ...row, autoOff: { at, cap } });
     return Promise.resolve(true);
   }

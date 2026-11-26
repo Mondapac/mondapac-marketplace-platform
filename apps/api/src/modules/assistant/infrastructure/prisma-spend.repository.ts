@@ -1,5 +1,5 @@
 import { Temporal } from '@mondapac/shared-kernel';
-import type { MarketContext } from '@mondapac/shared-kernel';
+import type { CallContext, MarketContext } from '@mondapac/shared-kernel';
 import type { CapabilityUsageReport } from '../../../platform/ai/usage/ai-usage-report';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import { BUYER_CHAT } from '../contracts/ai-capabilities';
@@ -64,6 +64,11 @@ export class PrismaSpendRepository implements SpendRepository {
       },
       update: { conversations: { increment: spend.conversations } },
     });
+  }
+
+  async capReached(context: CallContext): Promise<'daily' | 'monthly' | null> {
+    const period = await this.usage.capReached(context, BUYER_CHAT);
+    return period === null ? null : period === 'month' ? 'monthly' : 'daily';
   }
 
   markAutoOff(

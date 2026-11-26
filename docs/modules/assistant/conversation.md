@@ -22,7 +22,7 @@ body or the model.
 
 A refusal is ordinary JSON: 400 `validation.failed`, 403 `assistant.off` (off, not configured, not
 in the rollout) or `assistant.sign-in-required`, 404, 409 `assistant.conversation-full` (30 buyer
-messages), 429 `request.throttled` with `Retry-After`, 503 `assistant.paused` (a spend cap) or
+messages), 429 `request.throttled` with `Retry-After`, 503 `assistant.paused` (a full AI Gateway cap of the chat, G4d2) or
 `assistant.unavailable` (limiter or store down: fail closed).
 
 An answer is `200 text/event-stream`, `Cache-Control: no-store`, sent after the server checked the
@@ -133,10 +133,14 @@ session and CSRF token, only after the buyer clicks (ADR-0019 R4).
 
 - Message limits per 10 minutes from the settings: per account, or per client origin plus per
   guest token, counted in `platform.rate_limit_counters` (class `assistant-message`, keyed HMAC).
-- Spend: each call is priced from the Market's configured token price and counted in
-  `assistant.spend_days` (Market calendar day). At the daily or monthly cap the Market answers
-  `assistant.paused` until the next day or month; the first pause of a day is recorded (admin
-  read `spend.lastAutoOff`) and logged as a warning. The same unit writes one
+- Spend: each call is priced and counted by the AI Gateway (AI Gateway G7: its usage record of
+  the buyer chat, read through `AiUsageReport`). Since G4d2 the chat's day and month caps are the
+  gateway's (`ai-cap-buyer-chat-day`, `ai-cap-buyer-chat-month`, in the Market's day and month):
+  the gateway refuses a call a cap cannot take, and while one is full its status answers
+  `over-budget`, which the assistant answers as `assistant.paused` (before any model call) until
+  the next day or month. After each turn the assistant asks the gateway, outside any unit, which of
+  the chat's caps is full (`CapabilityUsageReport.capReached`); the first answer of a Market day is
+  recorded (admin read `spend.lastAutoOff`), logged as a warning and, in the same unit, writes one
   `assistant.spend-cap-reached.v1` event (payload: the cap only) to `assistant.outbox`, once per
   Market and day; notifications turns it into the admin bell notice
   `admin.assistant-spend-cap-reached`, shown to admins holding `assistant.settings.view`.

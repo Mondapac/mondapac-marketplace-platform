@@ -13,11 +13,13 @@ import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import {
+  BOUNDS,
   DEFAULT_ASSISTANT_SETTINGS,
   inRollout,
   parseAssistantSettings,
   parseWelcomeText,
   rolloutBucket,
+  SETTING_FIELDS,
   type AssistantSettings,
 } from '../domain/assistant-settings';
 import {
@@ -115,8 +117,6 @@ describe('parseAssistantSettings', () => {
       customerMessageLimit: 40,
       retention: '30-days',
       replyLanguage: 'buyer',
-      dailySpendCapUsdCents: 1_000,
-      monthlySpendCapUsdCents: 20_000,
       supportHandoff: 'email-link',
       basketProposals: false,
       welcomeText: null,
@@ -142,9 +142,6 @@ describe('parseAssistantSettings', () => {
     ['customerMessageLimit', 4, 'range'],
     ['customerMessageLimit', 121, 'range'],
     ['customerMessageLimit', '40', 'type'],
-    ['dailySpendCapUsdCents', 99, 'range'],
-    ['dailySpendCapUsdCents', 100_001, 'range'],
-    ['monthlySpendCapUsdCents', 2_000_001, 'range'],
     ['enabled', 'true', 'type'],
     ['audience', 'everyone', 'type'],
     ['audiencePercent', 10, 'type'],
@@ -190,16 +187,12 @@ describe('parseAssistantSettings', () => {
     });
   });
 
-  it('refuses a daily cap above the monthly cap', () => {
-    const result = parseAssistantSettings({
-      ...DEFAULT_ASSISTANT_SETTINGS,
-      dailySpendCapUsdCents: 5_000,
-      monthlySpendCapUsdCents: 4_000,
-    });
-    expect(result).toEqual({
-      ok: false,
-      error: [{ path: 'dailySpendCapUsdCents', code: 'range' }],
-    });
+  it('holds no spend caps since AI Gateway G4d2: they are the gateway caps of the buyer chat', () => {
+    expect(SETTING_FIELDS).not.toContain('dailySpendCapUsdCents');
+    expect(SETTING_FIELDS).not.toContain('monthlySpendCapUsdCents');
+    const result = parseAssistantSettings({ ...DEFAULT_ASSISTANT_SETTINGS });
+    expect(result.ok && Object.keys(result.value)).not.toContain('dailySpendCapUsdCents');
+    expect(Object.keys(BOUNDS)).not.toContain('dailySpendCapUsdCents');
   });
 
   it('refuses a non-object', () => {
@@ -355,16 +348,16 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
           enabled: false,
           users: 'guests-and-customers' as const,
           retentionDays: 30,
-          dailySpendCapUsdCents: 1_000,
-          monthlySpendCapUsdCents: 20_000,
+          dailySpendCapUsdCents: null,
+          monthlySpendCapUsdCents: null,
         },
         after: {
           version: 1,
           enabled: true,
           users: 'guests-and-customers' as const,
           retentionDays: 30,
-          dailySpendCapUsdCents: 1_000,
-          monthlySpendCapUsdCents: 20_000,
+          dailySpendCapUsdCents: null,
+          monthlySpendCapUsdCents: null,
         },
       }),
     ]);
@@ -383,16 +376,16 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
           enabled: true,
           users: 'guests-and-customers' as const,
           retentionDays: 30,
-          dailySpendCapUsdCents: 1_000,
-          monthlySpendCapUsdCents: 20_000,
+          dailySpendCapUsdCents: null,
+          monthlySpendCapUsdCents: null,
         },
         after: {
           version: 2,
           enabled: false,
           users: 'guests-and-customers' as const,
           retentionDays: 30,
-          dailySpendCapUsdCents: 1_000,
-          monthlySpendCapUsdCents: 20_000,
+          dailySpendCapUsdCents: null,
+          monthlySpendCapUsdCents: null,
         },
       }),
     );
@@ -434,12 +427,12 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
     actors.labels.set(ADMIN, { kind: 'member', displayName: 'Sara K.' });
     await set(on({ welcomeText: 'Secret greeting' }));
     clock.advance(Temporal.Duration.from({ minutes: 3 }));
-    await set(on({ welcomeText: 'Secret greeting', dailySpendCapUsdCents: 2_000 }), 1);
+    await set(on({ welcomeText: 'Secret greeting', users: 'customers-only' }), 1);
     const history = (input: object, context = admin()) =>
       new ViewAssistantSettingsHistory(gate, deps).execute(context, input);
     const page = await history({});
     expect(page.ok && page.value.items.map((i) => [i.at, i.byDisplayName, i.fields])).toEqual([
-      [T0.add({ minutes: 3 }), 'Sara K.', ['dailySpendCapUsdCents']],
+      [T0.add({ minutes: 3 }), 'Sara K.', ['users']],
       [T0, 'Sara K.', ['enabled']],
     ]);
     expect(JSON.stringify(page)).not.toContain('Secret greeting');

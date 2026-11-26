@@ -16,6 +16,7 @@ export const ZZ_TEST_AI_CAPS: AiCaps = Object.freeze({
   sellerDay: 50_000_000,
   guestDay: 100_000_000,
   evaluationMonth: 0,
+  capabilities: Object.freeze({}),
 });
 
 /**
@@ -43,6 +44,8 @@ export interface TestBudget {
   readonly guestDayMicroUsd?: number;
   /** The evaluation budget's month (G4c); never uncapped, 0 when not given. */
   readonly evaluationMonthMicroUsd?: number;
+  /** Single capabilities' own day and month caps (G4d2), by capability id. */
+  readonly capabilities?: AiCaps['capabilities'];
 }
 
 export const capsOfBudget = (budget: TestBudget): AiCaps => ({
@@ -52,6 +55,7 @@ export const capsOfBudget = (budget: TestBudget): AiCaps => ({
   sellerDay: budget.sellerDayMicroUsd ?? null,
   guestDay: budget.guestDayMicroUsd ?? null,
   evaluationMonth: budget.evaluationMonthMicroUsd ?? 0,
+  capabilities: budget.capabilities ?? {},
 });
 
 /**

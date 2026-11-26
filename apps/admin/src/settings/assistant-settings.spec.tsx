@@ -9,7 +9,7 @@ import messages from '../../messages/en.json';
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
-import { centsOf, dollarsOf, formOf, refusedFields, settingsOf } from './assistant-form.ts';
+import { formOf, refusedFields, settingsOf } from './assistant-form.ts';
 import { AssistantSettingsPanel } from './assistant-settings-panel.tsx';
 import type { AssistantSettings, AssistantSettingsAnswer } from './assistant-types.ts';
 
@@ -30,8 +30,6 @@ const DEFAULTS: AssistantSettings = {
   customerMessageLimit: 40,
   retention: '30-days',
   replyLanguage: 'buyer',
-  dailySpendCapUsdCents: 1_000,
-  monthlySpendCapUsdCents: 20_000,
   supportHandoff: 'email-link',
   basketProposals: false,
   welcomeText: null,
@@ -76,8 +74,6 @@ describe('AssistantSettingsPanel', () => {
     expect(screen.getByLabelText<HTMLSelectElement>('Show to').value).toBe('internal');
     expect(screen.getByLabelText<HTMLSelectElement>('What it can do').value).toBe('read-only');
     expect(screen.getByLabelText<HTMLInputElement>('Messages per guest').value).toBe('20');
-    expect(screen.getByLabelText<HTMLInputElement>('Daily cap').value).toBe('10');
-    expect(screen.getByLabelText<HTMLInputElement>('Monthly cap').value).toBe('200');
     // The status card and the two switch rows say Off.
     expect(screen.getAllByText('Off')).toHaveLength(3);
     // Nothing changed: no save bar.
@@ -225,7 +221,7 @@ describe('AssistantSettingsPanel', () => {
       wrap(
         <AssistantSettingsPanel
           initial={answer(
-            { dailySpendCapUsdCents: 1_000, monthlySpendCapUsdCents: 20_000 },
+            {},
             {
               spend: {
                 todayMicroUsd: 2_345_000,
@@ -242,8 +238,10 @@ describe('AssistantSettingsPanel', () => {
         />,
       ),
     );
-    expect(screen.getByText('USD 2.35 of USD 10.00')).toBeTruthy();
-    expect(screen.getByText('USD 61.50 of USD 200.00')).toBeTruthy();
+    // The caps are the AI Gateway's since G4d2: the card shows the spend only.
+    expect(screen.getByText('USD 2.35')).toBeTruthy();
+    expect(screen.getByText('USD 61.50')).toBeTruthy();
+    expect(screen.queryByText(/ of USD /)).toBeNull();
     expect(screen.getByText('17')).toBeTruthy();
     expect(screen.getByText('USD 0.0123 over the last 30 days')).toBeTruthy();
     expect(screen.getByText(/Daily cap reached, /)).toBeTruthy();
@@ -281,7 +279,7 @@ describe('AssistantSettingsPanel', () => {
     fireEvent.click(screen.getByLabelText('Assistant switched on'));
     fireEvent.change(screen.getByLabelText('Show to'), { target: { value: 'percent' } });
     fireEvent.change(screen.getByLabelText('Share of visitors (%)'), { target: { value: '10' } });
-    fireEvent.change(screen.getByLabelText('Daily cap'), { target: { value: '12.5' } });
+    fireEvent.change(screen.getByLabelText('Messages per customer'), { target: { value: '60' } });
     expect(screen.getByText('4 unsaved changes')).toBeTruthy();
     save();
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
@@ -295,7 +293,7 @@ describe('AssistantSettingsPanel', () => {
           enabled: true,
           audience: 'percent',
           audiencePercent: 10,
-          dailySpendCapUsdCents: 1_250,
+          customerMessageLimit: 60,
         },
       },
       'csrf',
@@ -311,16 +309,14 @@ describe('AssistantSettingsPanel', () => {
   it('names bad fields once they are left, before calling the API', () => {
     mount(answer());
     fireEvent.change(screen.getByLabelText('Messages per guest'), { target: { value: '61' } });
-    fireEvent.change(screen.getByLabelText('Daily cap'), { target: { value: '300' } });
+    fireEvent.change(screen.getByLabelText('Messages per customer'), { target: { value: '121' } });
     // While typing nothing is flagged yet.
     expect(screen.queryByText('Enter a whole number from 5 to 60.')).toBeNull();
     fireEvent.blur(screen.getByLabelText('Messages per guest'));
-    fireEvent.blur(screen.getByLabelText('Daily cap'));
+    fireEvent.blur(screen.getByLabelText('Messages per customer'));
     // No Save click: once left, the errors, the count and the summary are there.
     expect(screen.getByText('Enter a whole number from 5 to 60.')).toBeTruthy();
-    expect(
-      screen.getByText(/no more than the monthly cap/, { selector: 'p[id$="-error"]' }),
-    ).toBeTruthy();
+    expect(screen.getByText('Enter a whole number from 5 to 120.')).toBeTruthy();
     expect(call).not.toHaveBeenCalled();
     // The bar counts the errors and Save is off until they are fixed.
     expect(screen.getByText(/2 need fixing/)).toBeTruthy();
@@ -335,7 +331,7 @@ describe('AssistantSettingsPanel', () => {
     fireEvent.change(screen.getByLabelText('Messages per guest'), { target: { value: '30' } });
     expect(screen.queryByText('Enter a whole number from 5 to 60.')).toBeNull();
     expect(screen.getByText(/1 needs fixing/)).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('Daily cap'), { target: { value: '3' } });
+    fireEvent.change(screen.getByLabelText('Messages per customer'), { target: { value: '100' } });
     expect(screen.queryByText(/needs fixing/)).toBeNull();
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(
       false,
@@ -441,15 +437,19 @@ describe('AssistantSettingsPanel', () => {
 });
 
 describe('assistant form', () => {
-  it('converts dollars and cents without float error', () => {
-    expect(centsOf('10')).toBe(1_000);
-    expect(centsOf('0.29')).toBe(29);
-    expect(centsOf('12.5')).toBe(1_250);
-    expect(centsOf('1.234')).toBeNull();
-    expect(centsOf('-1')).toBeNull();
-    expect(centsOf('1e3')).toBeNull();
-    expect(dollarsOf(1_250)).toBe('12.50');
-    expect(dollarsOf(20_000)).toBe('200');
+  it('has no spend cap inputs: the caps are the AI Gateway caps of the buyer chat (G4d2)', () => {
+    const form = formOf(DEFAULTS);
+    expect(Object.keys(form)).not.toContain('dailySpendCap');
+    const sent = settingsOf(form, UNAVAILABLE);
+    expect(sent.ok && Object.keys(sent.settings)).not.toContain('dailySpendCapUsdCents');
+    expect(sent.ok && Object.keys(sent.settings)).not.toContain('monthlySpendCapUsdCents');
+  });
+
+  it('shows no spend cap field on the page', () => {
+    mount(answer());
+    expect(screen.queryByLabelText('Daily cap')).toBeNull();
+    expect(screen.queryByLabelText('Monthly cap')).toBeNull();
+    expect(screen.queryByText('Spend caps')).toBeNull();
   });
 
   it('sends null for an empty welcome text and refuses markup or hidden characters', () => {

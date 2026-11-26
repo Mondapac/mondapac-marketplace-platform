@@ -1,4 +1,4 @@
-import type { MarketContext, Temporal } from '@mondapac/shared-kernel';
+import type { CallContext, MarketContext, Temporal } from '@mondapac/shared-kernel';
 
 /** A Market's assistant spend for one day of its calendar, and the month it is in. */
 export interface SpendTotals {
@@ -31,6 +31,12 @@ export interface SpendRepository {
       readonly conversations: number;
     },
   ): Promise<void>;
+  /**
+   * Which of the chat's own gateway caps is full now (AI Gateway G4d2): `daily`, `monthly`, or
+   * null. Computed against the gateway's caps, as the gateway refuses the next call. Never called
+   * inside a UnitOfWork (it reads in units of its own); throws when it cannot be read.
+   */
+  capReached(context: CallContext): Promise<'daily' | 'monthly' | null>;
   /** Records that a cap switched the assistant off; false when this day already has a record. */
   markAutoOff(
     market: MarketContext,

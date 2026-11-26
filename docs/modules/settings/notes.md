@@ -142,3 +142,22 @@ the version, when it was last switched and the display name of who switched it (
 `SettingsFacade.offerReviewPolicy` carries `emergencyStop`; the catalog policy adds the
 `emergency-stop` reason to every new Offer while it is on, whatever the mode. Deferred:
 FE-20261125-offer-review-stop-reminder, -stop-scopes, -stop-recent-sampling.
+
+## Buyer chat caps (AI Gateway G4d2): a data move into this store
+
+- `ai-cap-buyer-chat-day` and `ai-cap-buyer-chat-month` (US micro-dollars or `none`, defaults
+  10000000 and 200000000) hold the buyer assistant's spend caps, which lived in
+  `assistant.settings` before. The platform migration `20261126030000_ai_gateway_buyer_chat_caps`
+  wrote rows into `settings.market_settings` and `settings.market_setting_history` (version 1, no
+  previous value, no note, the admin and time of the Market's latest assistant version) for each
+  Market whose assistant caps differed from the defaults (cents x 10000). This is the one time
+  rows of this store were written by a migration, not by a use case; a Market on the defaults got
+  no row.
+- Rollback: the migration's `down.sql` (one transaction) first carries a gateway cap stricter
+  than the assistant's latest value back as a new assistant settings version (floor of
+  micro-dollars / 10000 cents, at least the column's minimum of 100 cents), then deletes every row
+  and history row of the two codes, so a looser cap saved on the AI Gateway page after the
+  migration is lost and the assistant's value is in force again. It briefly disables the
+  insert-only delete triggers for that and switches them on again.
+- A revert of a rejected review can leave the day cap above the month cap (the page refuses it,
+  a revert is never blocked); the gateway enforces both lines independently on every call.
