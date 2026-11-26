@@ -11,6 +11,10 @@ import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared
 import { AppModule } from '../../src/app.module';
 import { AI_ROUTE_CATALOGUE } from '../../src/platform/ai/catalogue/route-catalogue';
 import { AiEvaluationControl } from '../../src/platform/ai/evaluations/evaluation-control';
+import {
+  AI_GATEWAY_CONTROLS,
+  type AiGatewayControls,
+} from '../../src/platform/ai/gateway-controls';
 import { AiEvaluationRunner } from '../../src/platform/ai/evaluations/evaluation-runner';
 import {
   AI_EVALUATION_STORE,
@@ -48,6 +52,11 @@ describe('platform AI evaluations (database integration, AI Gateway G4c)', () =>
   let runner: AiEvaluationRunner;
   let control: AiEvaluationControl;
   let sql: Client;
+  /** The Market's evaluation month cap, micro-dollars (the setting's default 0: closed). */
+  let evaluationMonth = 0;
+  afterEach(() => {
+    evaluationMonth = 0;
+  });
   const provider: ModelProvider = {
     call: () =>
       Promise.resolve({
@@ -83,6 +92,22 @@ describe('platform AI evaluations (database integration, AI Gateway G4c)', () =>
     unitOfWork = app.get(UNIT_OF_WORK);
     runner = app.get(AiEvaluationRunner);
     control = app.get(AiEvaluationControl);
+    // The real settings reader still answers each read (a failing store still closes), but what
+    // the close rule and the evaluation budget depend on is pinned by the test: the stop off, no
+    // Market month cap (no share, so no saver close) and the evaluation month cap below. Other
+    // spec files write and delete the AU and ZZ settings rows in parallel (settings-core deletes
+    // them before each of its tests; the usage spec switches the stop on for a moment), so this
+    // spec writes no settings row and reads none of theirs.
+    const controls = app.get<AiGatewayControls>(AI_GATEWAY_CONTROLS, { strict: false });
+    const read = controls.read.bind(controls);
+    controls.read = async (context) => {
+      const real = await read(context);
+      return {
+        ...real,
+        stopped: false,
+        caps: { ...real.caps, marketMonth: null, evaluationMonth },
+      };
+    };
     sql = new Client({ connectionString: testDatabaseUrl() });
     await sql.connect();
   });
@@ -133,17 +158,6 @@ describe('platform AI evaluations (database integration, AI Gateway G4c)', () =>
     latencyMs: 400,
     finishedAt: clock.now(),
   });
-
-  const setSetting = async (market: MarketContext, code: string, value: string) => {
-    await sql.query(
-      `INSERT INTO settings.market_settings
-         (market_id, tenant_id, code, value, version, updated_at, updated_by_account_id)
-       VALUES ($1, $2, $3, $4, 1, now(), $5)
-       ON CONFLICT (market_id, code)
-       DO UPDATE SET value = EXCLUDED.value, version = settings.market_settings.version + 1`,
-      [market.marketId, PLATFORM_TENANT_ID, code, value, uuid()],
-    );
-  };
 
   describe.each(TEST_MARKETS)('Market %s', (code) => {
     const market = marketOf(code);
@@ -384,7 +398,7 @@ describe('platform AI evaluations (database integration, AI Gateway G4c)', () =>
     });
 
     it('works a queued run end to end with catalog suites, on the evaluation budget only', async () => {
-      await setSetting(market, 'ai-cap-evaluation-month', '100000000');
+      evaluationMonth = 100_000_000;
       const context = testCallContext(market, 'system');
       const estimate = await control.estimate(context, 'anthropic', 'model-fast');
       expect(estimate.blockers).toEqual([]);
@@ -419,7 +433,6 @@ describe('platform AI evaluations (database integration, AI Gateway G4c)', () =>
       // unit tests, not here.
       const runCost = detail!.samples.reduce((sum, item) => sum + item.costMicroUsd, 0);
       expect((await spentOnEvaluation()) - before).toBe(runCost);
-      await setSetting(market, 'ai-cap-evaluation-month', '0');
     });
   });
 });
