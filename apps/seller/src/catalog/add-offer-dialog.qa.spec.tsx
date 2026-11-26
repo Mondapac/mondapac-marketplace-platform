@@ -31,7 +31,7 @@ const page = (items: PlatformProduct[]) =>
 function open(navigate = vi.fn()) {
   render(
     <NextIntlClientProvider locale="en" messages={messages}>
-      <AddOfferDialog open csrfToken="csrf" onClose={vi.fn()} navigate={navigate} />
+      <AddOfferDialog open csrfToken="csrf" marketId="AU" onClose={vi.fn()} navigate={navigate} />
     </NextIntlClientProvider>,
   );
   return navigate;

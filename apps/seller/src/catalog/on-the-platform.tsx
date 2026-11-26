@@ -253,6 +253,7 @@ export function OnThePlatform({
           open
           initialText={text}
           csrfToken={csrfToken}
+          marketId={marketId}
           onClose={() => setSeeAll(false)}
           navigate={(path) => {
             setSeeAll(false);

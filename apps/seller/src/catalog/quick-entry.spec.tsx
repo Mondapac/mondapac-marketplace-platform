@@ -68,6 +68,7 @@ function mount(over: Partial<Parameters<typeof QuickEntryTable>[0]> = {}) {
         canEditStock
         canEstimate={false}
         csrfToken="csrf"
+        marketId="AU"
         {...over}
       />
     </NextIntlClientProvider>,

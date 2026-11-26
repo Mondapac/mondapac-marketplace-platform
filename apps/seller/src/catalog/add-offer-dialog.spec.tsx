@@ -46,7 +46,7 @@ const ok = <T,>(body: T) => Promise.resolve({ ok: true as const, status: 200, bo
 function open(navigate = vi.fn()) {
   render(
     <NextIntlClientProvider locale="en" messages={messages}>
-      <AddOfferDialog open csrfToken="csrf" onClose={vi.fn()} navigate={navigate} />
+      <AddOfferDialog open csrfToken="csrf" marketId="AU" onClose={vi.fn()} navigate={navigate} />
     </NextIntlClientProvider>,
   );
   return navigate;
@@ -81,6 +81,31 @@ describe('helpers', () => {
 });
 
 describe('Add offer dialog', () => {
+  it('shows the product photo through the Market image route, a tile when there is none', async () => {
+    const image = '0190bbbb-0000-7000-8000-000000000009';
+    call.mockImplementation((_method, path) =>
+      path.includes('options')
+        ? ok({ conditions: ['new'] })
+        : ok(
+            answer([
+              product({ primaryImageId: image }),
+              product({ productId: '0190aaaa-0000-7000-8000-000000000002', name: 'Lamb' }),
+            ]),
+          ),
+    );
+    const { container } = render(
+      <NextIntlClientProvider locale="en" messages={messages}>
+        <AddOfferDialog open csrfToken="csrf" marketId="AU" onClose={vi.fn()} navigate={vi.fn()} />
+      </NextIntlClientProvider>,
+    );
+    await screen.findByLabelText(/Beef mince/);
+    const photos = container.ownerDocument.querySelectorAll('img');
+    expect(photos).toHaveLength(1);
+    expect(photos[0]?.getAttribute('src')).toBe(
+      `/api/catalog/public-images/AU/0190aaaa-0000-7000-8000-000000000001/${image}/thumb`,
+    );
+  });
+
   it('lists what may be sold and shows a product already sold as not selectable', async () => {
     call.mockImplementation((_method, path) =>
       path.includes('options')
