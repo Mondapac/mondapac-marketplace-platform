@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261126-best-sellers-new-pages",
+  "area": "storefront",
+  "title": "صفحه‌های واقعی /best-sellers و /new",
+  "desc": "این دو مسیر فعلاً «به‌زودی» هستند (به‌جای ۴۰۴). صفحهٔ پرفروش‌ها با search/bestsellers قابل ساخت است ولی کارت‌ها قیمت ندارند (B2)؛ «جدیدترین» نیاز به مرتب‌سازی تازگی در API دارد (B4).",
+  "src": "storefront-live-gaps برش D",
+  "date": "2026-11-26",
+  "trig": "بعد از B2 و B4 در API",
+  "prio": "متوسط",
+  "status": "موکول"
+}
