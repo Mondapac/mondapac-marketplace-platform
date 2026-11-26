@@ -7124,6 +7124,7 @@ button.login {
   font-weight: 800;
 }
 .rail h3.rah .rname {
+  position: relative;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
