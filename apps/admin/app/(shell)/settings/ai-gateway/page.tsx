@@ -6,6 +6,7 @@ import {
   GATEWAY_MANAGE_PERMISSION,
   GATEWAY_PATH,
   GATEWAY_VIEW_PERMISSION,
+  isComplete,
   settingsOf,
 } from '../../../../src/ai-gateway/types.ts';
 import { serverGet } from '../../../../src/server/server-fetch.ts';
@@ -46,7 +47,8 @@ export default async function AiGatewayPage() {
   }
   const answer = await serverGet<unknown>(GATEWAY_PATH);
   if (answer.kind === 'signed-out') redirect('/session-ended');
-  const rows = answer.kind === 'ok' ? settingsOf(answer.body) : null;
+  const parsed = answer.kind === 'ok' ? settingsOf(answer.body) : null;
+  const rows = parsed !== null && isComplete(parsed) ? parsed : null;
   if (rows === null) {
     return shell(
       <SettingsPage title={title}>

@@ -959,6 +959,8 @@ const GENERIC_LIST_KEY =
 const SYSTEM_REQUESTS_EXPORT = 'system-requests/admin/requests/export';
 
 const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
+  // The history of one AI Gateway setting: its code and how many versions (the API validates both).
+  'settings/admin/ai-gateway/history': ['code', 'limit'],
   // The assistant insights: the day range and the page of the unanswered questions.
   'assistant/admin/insights': ['from', 'to', 'page', 'pageSize'],
   // The System requests queue: the view, search, filters, sort and either page numbers or a
@@ -1869,6 +1871,10 @@ const ACCOUNT_LIST_SHAPES: Readonly<Record<string, RegExp>> = {
   direction: /^(asc|desc)$/,
 };
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
+  'settings/admin/ai-gateway/history': {
+    code: /^ai-[a-z0-9-]{1,80}$/,
+    limit: /^[0-9]{1,2}$/,
+  },
   'assistant/admin/insights': {
     from: /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/,
     to: /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/,

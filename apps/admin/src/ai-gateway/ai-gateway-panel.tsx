@@ -14,7 +14,7 @@ import {
   toast,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { formatInstant } from '../shared/format.ts';
 import { REVIEW_NOTE_MAX, isNoteFailure, useSentForReview } from '../shared/review-note.tsx';
@@ -75,6 +75,7 @@ export function AiGatewayPanel({
   const [historyCode, setHistoryCode] = useState<string>(STOP_CODE);
   const [history, setHistory] = useState<readonly HistoryEntry[] | null>(null);
   const [historyFailed, setHistoryFailed] = useState(false);
+  const historyWanted = useRef<string>(STOP_CODE);
 
   const stop = find(rows, STOP_CODE);
   const stopOn = stop.value === 'on';
@@ -111,10 +112,12 @@ export function AiGatewayPanel({
     setNoteError(null);
     const result = await guarded<unknown>(method, path, body, csrfToken);
     if (result.ok) {
-      await reload();
+      const fresh = await reload();
       setNote('');
       toast.success(t('saved'));
       sentForReview(result.body);
+      // The write is saved, but what the page shows may be old: say so, never look current.
+      if (!fresh) setProblem('refresh');
       setBusy(null);
       return true;
     }
@@ -122,11 +125,14 @@ export function AiGatewayPanel({
       if (result.failure.status === 401) {
         window.location.assign('/session-ended');
       } else if (isNoteFailure(result.failure)) {
-        setNoteError('rejected');
+        const missing = (result.failure.details?.fields ?? []).some(
+          (field) => field.path === 'note' && field.code === 'required',
+        );
+        setNoteError(missing ? 'required' : 'rejected');
       } else {
         const key = gatewayProblemOf(result.failure);
         setProblem(key);
-        if (key === 'conflict') await reload();
+        if (key === 'conflict' && !(await reload())) setProblem('refresh');
       }
     }
     setBusy(null);
@@ -181,6 +187,7 @@ export function AiGatewayPanel({
   }
 
   async function loadHistory(code: string) {
+    historyWanted.current = code;
     setHistoryCode(code);
     setHistory(null);
     setHistoryFailed(false);
@@ -192,21 +199,25 @@ export function AiGatewayPanel({
       window.location.assign('/session-ended');
       return;
     }
+    // A slow answer for a setting the admin has moved away from must not show under another one.
+    if (historyWanted.current !== code) return;
     const entries = answer.ok ? historyOf(answer.body) : null;
     if (entries === null) setHistoryFailed(true);
     else setHistory(entries);
   }
 
-  async function restore(version: number) {
-    const sent = needNote(historyCode === STOP_CODE);
+  /** Restores what the admin sees in one history row (`version` 0 is the default). */
+  async function restore(code: string, version: number) {
+    const sent = needNote(code === STOP_CODE);
     if (sent === false) return;
     const saved = await write('revert', 'POST', GATEWAY_REVERT_PATH, {
-      code: historyCode,
+      code,
       version,
-      expectedVersion: find(rows, historyCode).version,
+      expectedVersion: find(rows, code).version,
       ...(sent === null ? {} : { note: sent }),
     });
-    if (saved) await loadHistory(historyCode);
+    // Saved or refused as stale, the list on screen is the one to refresh.
+    if (saved || historyWanted.current === code) await loadHistory(code);
   }
 
   const disabled = !canManage || busy !== null;
@@ -270,7 +281,7 @@ export function AiGatewayPanel({
           help={t('stop.help')}
           plain
         >
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <Badge tone={stopOn ? 'critical' : 'success'}>
               {stopOn ? t('stop.badge-on') : t('stop.badge-off')}
             </Badge>
@@ -311,7 +322,10 @@ export function AiGatewayPanel({
                   disabled={disabled}
                   onCheckedChange={(next) => void switchCapability(code, next)}
                 />
-                <span aria-live="polite">{on ? t('state.on') : t('state.off')}</span>
+                <span aria-live="polite">
+                  {on ? t('state.on') : t('state.off')}
+                  {on && stopOn ? ` · ${t('capabilities.held')}` : ''}
+                </span>
               </div>
             </SettingRow>
           );
@@ -372,6 +386,7 @@ export function AiGatewayPanel({
             options={HISTORY_CODES.map((code) => ({ value: code, label: label(code) }))}
             value={historyCode}
             onChange={(event) => {
+              historyWanted.current = event.target.value;
               setHistory(null);
               setHistoryFailed(false);
               setHistoryCode(event.target.value);
@@ -402,7 +417,7 @@ export function AiGatewayPanel({
                       })}
                       {entry.current ? <Badge tone="info">{t('history.current')}</Badge> : null}
                     </p>
-                    <p className="text-fg-muted">
+                    <p className="break-words text-fg-muted">
                       {t('history.by-at', {
                         name: entry.changedBy ?? t('history.unknown'),
                         when: formatInstant(entry.changedAt, locale),
@@ -411,13 +426,28 @@ export function AiGatewayPanel({
                     </p>
                   </div>
                   {canManage && !entry.current ? (
-                    <Button
-                      variant="secondary"
-                      disabled={disabled}
-                      onClick={() => void restore(entry.version)}
-                    >
-                      {t('history.restore', { version: entry.version })}
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="secondary"
+                        disabled={disabled}
+                        aria-label={t('history.restore-value', {
+                          version: entry.version,
+                          value: showValue(entry.code, entry.value),
+                        })}
+                        onClick={() => void restore(entry.code, entry.version)}
+                      >
+                        {t('history.restore', { version: entry.version })}
+                      </Button>
+                      {entry.previousValue === null ? (
+                        <Button
+                          variant="secondary"
+                          disabled={disabled}
+                          onClick={() => void restore(entry.code, 0)}
+                        >
+                          {t('history.restore-default')}
+                        </Button>
+                      ) : null}
+                    </div>
                   ) : null}
                 </li>
               ))}

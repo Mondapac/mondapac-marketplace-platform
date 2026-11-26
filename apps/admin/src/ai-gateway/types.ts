@@ -155,3 +155,9 @@ export function raisesCap(before: string, after: string): boolean {
   if (before === 'none') return false;
   return BigInt(after) > BigInt(before);
 }
+
+/** True when the answer names every setting the page shows; a missing one is a load error, never a default. */
+export const isComplete = (rows: readonly GatewaySetting[]): boolean =>
+  [STOP_CODE, ...CAP_CODES, ...CAPABILITY_CODES].every((code) =>
+    rows.some((row) => row.code === code),
+  );

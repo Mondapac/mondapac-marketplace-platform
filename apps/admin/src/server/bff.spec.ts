@@ -711,6 +711,28 @@ describe('relay allowlist for seller decisions', () => {
     expect((await relay(config, extra, [...path.split('/'), 'extra'], fetchImpl)).status).toBe(404);
   });
 
+  it('relays the AI Gateway history with its code and limit, and drops anything else', async () => {
+    const path = 'settings/admin/ai-gateway/history';
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+    const upstream = () => {
+      const target = fetchImpl.mock.calls.at(-1)?.[0];
+      return target instanceof Request ? target.url : String(target);
+    };
+    const ask = (query: string) =>
+      relay(
+        config,
+        new Request(`http://admin.localhost:3002/api/${path}${query}`, { headers: sameOrigin }),
+        path.split('/'),
+        fetchImpl,
+      );
+    expect((await ask('?code=ai-cap-market-day&limit=50')).status).toBe(200);
+    expect(upstream()).toContain('code=ai-cap-market-day&limit=50');
+    expect((await ask('?code=ai-cap-market-day&secret=1')).status).toBe(200);
+    expect(upstream()).not.toContain('secret');
+    expect((await ask('?code=../x')).status).toBe(200);
+    expect(upstream()).not.toContain('code=');
+  });
+
   it('relays the own display name (PUT) and password change (POST) on their exact paths only', async () => {
     const name = 'identity/admin/profile/display-name';
     expect((await call('PUT', name)).status).toBe(200);

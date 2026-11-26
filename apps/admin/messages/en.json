@@ -14656,6 +14656,7 @@
     "capabilities": {
       "section": "Capabilities",
       "intro": "Each AI feature has its own switch. A feature also needs its own module switch and a passed evaluation.",
+      "held": "held off by the emergency stop",
       "help": {
         "ai-capability-assistant-buyer-chat": "The chat window for buyers.",
         "ai-capability-catalog-description-writer-seller": "Draft product descriptions for sellers.",
@@ -14687,10 +14688,16 @@
       "change": "Version {version}: {before} to {after}",
       "by-at": "{name}, {when}",
       "restore": "Restore version {version}",
+      "restore-value": "Restore version {version}: {value}",
+      "restore-default": "Restore the default",
       "capped": "Older changes are in the audit log."
     },
     "error": {
       "invalid": "This value isn't allowed.",
+      "same": "That value is already in force.",
+      "version": "That version can't be restored any more. Show the history again.",
+      "chat-pair": "The buyer chat day cap can't be above its month cap.",
+      "refresh": "Saved, but the page couldn't refresh. Reload it before changing anything else.",
       "conflict": "Someone else changed this. The values were reloaded.",
       "denied": "You don't have permission to change this.",
       "acting-as": "AI Gateway settings can't be changed while you are acting as a seller.",
