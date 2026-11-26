@@ -48,9 +48,11 @@ buyers on one hot row, and every read adds a WAL write and a dead tuple. Sharded
    count of a Redis class is counted in the instance's memory (`RateLimiterMemory`), not refused:
    **for these three classes the failure rule changes from "fail closed, 503" to "continue on each
    instance's memory"**, so during an outage the real limit can rise to "limit x instances". A
-   circuit breaker sends every request to memory for 5 seconds after 3 failures in a row, then
-   lets one request try Redis, so a slow Redis adds no 200 ms to every request and counts do not
-   alternate between the stores. A Redis restart, failover or eviction can also restart a window
+   circuit breaker sends every request to memory for 5 seconds after 3 failures in a row; when the
+   5 seconds end, requests try Redis again (the requests that arrive together all try, there is no
+   single probe request) and the first failure sends every request to memory for another 5
+   seconds, so a slow Redis adds no 200 ms to every request and counts do not alternate between
+   the stores. A Redis restart, failover or eviction can also restart a window
    early. This is accepted for these three classes only. The package's `insuranceLimiter` is not
    used (it hides the failure from the breaker; the behaviour is the same), nor
    `inMemoryBlockOnConsumed` (the counters never refuse: `points` is the safe-integer ceiling and
@@ -72,9 +74,8 @@ buyers on one hot row, and every read adds a WAL write and a dead tuple. Sharded
    DEL MULTI EXEC PING INFO` (no `SCRIPT`, `KEYS`, `FLUSH*`, `CONFIG`, `CLIENT`); ACL is checked on
    each command inside the Lua script too, so a CI test runs the counters as that user. The client
    therefore sends no `CLIENT SETNAME` or `SETINFO`.
-7. **Phases.** R1 (this ADR, code, CI Redis); R2, a contract migration that deletes the remaining
-   rows of the Redis classes and narrows `rate_limit_counters_key_check` (`NOT VALID`, then
-   `VALIDATE`, `lock_timeout 5s`), only when no pre-R1 instance is alive (Mojtaba); R3 with the
+7. **Phases.** R1 (this ADR, code, CI Redis); R2, documentation only (amended 2026-11-26, see
+   below); R3 with the
    first deployment (Phase 7): ElastiCache Valkey 8, `volatile-ttl` in a custom parameter group,
    no snapshots, the ACL user, alarms and the runbook (Kazem, Hassan), after the K1 rate-limit
    secret exists.
@@ -86,6 +87,18 @@ buyers on one hot row, and every read adds a WAL write and a dead tuple. Sharded
   exact pin, owner-approved on 2026-11-26 (ADR-0018 decision 8).
 - During a Redis outage the three classes are weaker (per-instance counts); the degraded line
   must page (R3). Until R3, readiness does not depend on Redis.
-- A new Redis class needs no migration; a new PostgreSQL class still widens the key CHECK.
+- Every new class, in either store, still widens the key CHECK: the rollback switch and a run
+  without Redis count the Redis classes in PostgreSQL (amendment below).
 - CI runs a Redis service (Valkey 8) in every job that boots the API; tests count in memory unless
   they ask for Redis (`createTestApp({ rateLimitStore: 'redis' })`, a key prefix per worker).
+
+## Amendment 2026-11-26 (R2)
+R2 was planned as a contract migration that deletes the rows of the Redis classes and narrows
+`rate_limit_counters_key_check` to the PostgreSQL classes. Building it showed that the narrower
+CHECK breaks decision 5: with `RATE_LIMIT_STORE=postgres`, or in development or test without
+`REDIS_URL`, `RoutedRateLimitCounters` counts `default`, `public-search` and `public-media` in
+PostgreSQL, and those writes would fail the CHECK and every route would fail closed with 503.
+The owner chose to keep the CHECK as it is, listing every counted class, so the rollback switch
+keeps working. No migration: rows of the Redis classes written before R1, or during a rollback,
+are deleted by the usual purge of windows that ended over an hour ago. R2 is this amendment, the
+aligned wording of decision 3 and the review notes in the future-enhancements register.

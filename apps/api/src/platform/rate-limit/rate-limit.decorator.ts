@@ -15,9 +15,11 @@ import { Reflector } from '@nestjs/core';
  * - `default`: every other market-scoped route. 300 a minute for AU.
  *
  * A new class names its store in `RATE_LIMIT_STORE_OF` (ADR-0054; it does not compile until it
- * does). A class counted in PostgreSQL also needs a migration that widens
+ * does). Every class, in either store, also needs a migration that widens
  * `rate_limit_counters_key_check` (docs/design/data/platform.md section 12), or its requests fail
- * closed with 503; a class counted in Redis needs no migration.
+ * closed with 503 whenever it is counted in PostgreSQL: always for a PostgreSQL class, and for a
+ * Redis class under the rollback switch `RATE_LIMIT_STORE=postgres` or without `REDIS_URL`
+ * (ADR-0054 amendment of 2026-11-26).
  */
 export const RATE_LIMIT_CLASSES = [
   'anonymous-identity',

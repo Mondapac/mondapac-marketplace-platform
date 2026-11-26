@@ -40,7 +40,8 @@ export interface RedisCounterStats {
  * real limit can rise to "limit x instances" during an outage). A short circuit breaker keeps a
  * failing Redis from adding 200 ms to every request and keeps counts from alternating between
  * the stores: after {@link BREAKER_FAILURES_TO_OPEN} failures in a row every request goes to
- * memory for {@link BREAKER_OPEN_MS}, then one request tries Redis again.
+ * memory for {@link BREAKER_OPEN_MS}; after that the requests try Redis again (every request that
+ * arrives then, no single probe) and the first failure opens the circuit for another period.
  *
  * The package's own `insuranceLimiter` is not used: it hides the failure from this class, which
  * then could not run the breaker or log the change of state. The behaviour is the same, an
