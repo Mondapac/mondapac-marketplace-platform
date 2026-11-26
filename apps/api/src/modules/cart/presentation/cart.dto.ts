@@ -76,6 +76,14 @@ export class LineDisplayView {
       'catalog/public-images/:market/:productId/:imageId/:size.',
   })
   imageId!: string | null;
+
+  @ApiProperty({
+    type: String,
+    format: 'uuid',
+    nullable: true,
+    description: "The product's primary category in the published revision; for the picture only.",
+  })
+  categoryId!: string | null;
 }
 
 export class CartLineView {

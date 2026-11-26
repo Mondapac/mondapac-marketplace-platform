@@ -103,6 +103,7 @@ const displayBody = (display: LineDisplay | null) =>
         productName: display.productName,
         variantLabel: display.variantLabel,
         imageId: display.imageId,
+        categoryId: display.categoryId,
       };
 
 const viewBody = (view: CartView) => ({

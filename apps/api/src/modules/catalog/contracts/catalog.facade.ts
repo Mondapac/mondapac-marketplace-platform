@@ -57,6 +57,11 @@ export interface SellUnitKey {
 export interface SellUnitLabel {
   readonly productName: string;
   readonly variantLabel: string | null;
+  /**
+   * The product's primary category in the PUBLISHED revision (else its first by position), or
+   * null when the revision has none. For a picture only: never a decision.
+   */
+  readonly categoryId: Id<'Category'> | null;
 }
 
 /** The answer of `sellUnitLabels`, keyed by {@link sellUnitKey}. */
@@ -127,6 +132,8 @@ export interface OfferListing {
    */
   readonly displaySku: string | null;
   readonly primaryImageId: Id | null;
+  /** The primary category of the published revision (else the first), or null; picture only. */
+  readonly categoryId: Id<'Category'> | null;
   readonly tags: readonly OfferListingTag[];
 }
 

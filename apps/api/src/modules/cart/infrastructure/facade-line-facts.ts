@@ -277,6 +277,7 @@ export class FacadeLineFacts implements LineFactsSource {
           productName: listing.productName,
           variantLabel: listing.variantLabel,
           imageId: listing.primaryImageId,
+          categoryId: listing.categoryId,
         });
       }
     }

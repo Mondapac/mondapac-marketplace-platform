@@ -26,7 +26,7 @@ import { NavigationProgress } from './navigation-progress.tsx';
 import { PageFrame } from './page-frame.tsx';
 import { Rail } from './rail.tsx';
 import { SearchView } from './search-view.tsx';
-import type { LiveCart } from '../cart/live-cart.ts';
+import type { Departments, LiveCart } from '../cart/live-cart.ts';
 import { StoreProvider, type PhotoBase } from './store-context.tsx';
 import { TabBar } from './tab-bar.tsx';
 
@@ -36,6 +36,7 @@ export function StoreShell({
   cartSource,
   liveCart = null,
   photoBase = null,
+  departments = {},
   locator,
   deliverTo,
   deliverGuess = null,
@@ -51,6 +52,8 @@ export function StoreShell({
   /** Live: the buyer's cart as this page's server read it; null reads it in the browser. */
   readonly liveCart?: LiveCart | null;
   readonly photoBase?: PhotoBase | null;
+  /** Department slug by category id: the picture of a cart line without a photo. */
+  readonly departments?: Departments;
   readonly locator: DeliveryLocatorSource;
   readonly deliverTo: DeliverTo | null;
   /** The approximate area from the edge's location headers, when nothing is confirmed. */
@@ -71,6 +74,7 @@ export function StoreShell({
       cartSource={cartSource}
       initialLiveCart={liveCart}
       photoBase={photoBase}
+      departments={departments}
       initialDeliverTo={deliverTo}
       deliverGuess={deliverGuess}
       live={live}

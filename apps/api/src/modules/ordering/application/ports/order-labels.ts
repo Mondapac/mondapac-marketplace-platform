@@ -14,6 +14,8 @@ export interface OrderUnitKey {
 export interface OrderUnitLabel {
   readonly productName: string;
   readonly variantLabel: string | null;
+  /** The product's primary category (published), for the line's picture only; null if none. */
+  readonly categoryId: Id<'Category'> | null;
 }
 
 /** Who placed an order, for an admin entitled to see it. PERSONAL DATA: never logged. */

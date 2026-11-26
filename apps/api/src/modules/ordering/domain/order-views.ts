@@ -142,6 +142,8 @@ export interface OrderCustomerView {
 export interface LabelledLineView extends OrderLineView {
   readonly productName: string | null;
   readonly variantLabel: string | null;
+  /** The product's primary category (published), for the line's picture only; null if unknown. */
+  readonly categoryId: string | null;
 }
 
 /** A seller's part of an order with the public store name (null when unknown). */

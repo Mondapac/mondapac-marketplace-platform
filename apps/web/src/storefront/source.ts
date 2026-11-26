@@ -163,6 +163,17 @@ export async function loadProduct(id: string): Promise<ProductDetail | undefined
 }
 
 /**
+ * The department slug of every category id, for the picture of a cart or order line. The same
+ * category read the shell makes (one per request); empty when it fails, so a line then shows the
+ * general icon.
+ */
+export async function loadDepartments(): Promise<Readonly<Record<string, string>>> {
+  if (!storefrontIsLive()) return {};
+  const tree = await readOnce('catalog/categories');
+  return Object.fromEntries(departmentsOf((tree.kind === 'ok' ? treeOf(tree.body) : null) ?? []));
+}
+
+/**
  * The sample cart's line details and each seller's delivery terms, while the API is off. With
  * the API on, the cart comes from `loadLiveCart`.
  */
@@ -175,8 +186,12 @@ export async function loadCartSource(): Promise<CartSource> {
  * API is off or when the read fails (the browser then reads it once the page is up).
  */
 export async function loadLiveCart(): Promise<LiveCart | null> {
-  const [read, photo] = await Promise.all([sessionGet<unknown>('cart'), photoUrls()]);
-  return read.kind === 'ok' ? liveCartOf(read.body, photo) : null;
+  const [read, photo, departments] = await Promise.all([
+    sessionGet<unknown>('cart'),
+    photoUrls(),
+    loadDepartments(),
+  ]);
+  return read.kind === 'ok' ? liveCartOf(read.body, photo, departments) : null;
 }
 
 /**
@@ -520,8 +535,12 @@ export async function loadSellers(query: SellerQuery): Promise<SellerResults> {
  */
 export async function loadAccount(): Promise<AccountSource> {
   if (!storefrontIsLive()) return { ...SAMPLE_ACCOUNT, live: false };
-  const [read, labels] = await Promise.all([sessionGet('orders?limit=100'), orderLabels()]);
-  const orders = read.kind === 'ok' ? accountOrdersOf(read.body, labels) : null;
+  const [read, labels, departments] = await Promise.all([
+    sessionGet('orders?limit=100'),
+    orderLabels(),
+    loadDepartments(),
+  ]);
+  const orders = read.kind === 'ok' ? accountOrdersOf(read.body, labels, departments) : null;
   // Live, nothing of the sample reaches the page: the named lists and email choices have no API
   // yet (they show an honest "not available yet" state), and the profile and address book are the
   // session's (account-area.tsx replaces the sample customer and mobile).
@@ -542,8 +561,14 @@ export async function loadAccountOrder(id: string): Promise<AccountOrder | null 
   if (!storefrontIsLive()) return 'sample';
   if (!isOrderId(id)) return null;
   const path = `orders/${id.toLowerCase()}` as const;
-  const [read, labels] = await Promise.all([sessionGet(path), orderLabels()]);
-  return read.kind === 'ok' ? accountOrderOf(read.body, labels, shipToLine(read.body)) : null;
+  const [read, labels, departments] = await Promise.all([
+    sessionGet(path),
+    orderLabels(),
+    loadDepartments(),
+  ]);
+  return read.kind === 'ok'
+    ? accountOrderOf(read.body, labels, shipToLine(read.body), departments)
+    : null;
 }
 
 /**

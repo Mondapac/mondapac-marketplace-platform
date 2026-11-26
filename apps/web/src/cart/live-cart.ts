@@ -2,6 +2,19 @@ import type { PhotoUrl } from '../storefront/photos.ts';
 import type { CartItem, CartSource, IncludedTaxPreview, Money } from '../storefront/types.ts';
 import { lineLimit, type Cart } from './cart.ts';
 
+/** Department slug by category id ({@link departmentsOf}); plain so the server can pass it on. */
+export type Departments = Readonly<Record<string, string>>;
+
+/** The department a line's category belongs to; '' (the general icon) when unknown. */
+function departmentOf(display: unknown, departments: Departments): string {
+  const categoryId = isRecord(display) ? id(display.categoryId) : null;
+  return (
+    (categoryId !== null && Object.hasOwn(departments, categoryId)
+      ? departments[categoryId]
+      : undefined) ?? ''
+  );
+}
+
 // The buyer's real cart (`GET /cart`) and saved list (`GET /cart/saved`) as the cart screens show
 // them. The API answers sell units (an Offer and one of its Variants); the screens key a line by
 // one string, so a unit's key is `offerId:variantId` and is parsed back for every write. Every
@@ -129,6 +142,7 @@ function itemOf(
   sellerId: string,
   sellerName: string | null,
   photo: PhotoUrl | null,
+  departments: Departments,
 ): CartItem | null {
   if (line.state !== 'buyable') return null;
   const price = moneyOf(line.unitPrice);
@@ -140,8 +154,8 @@ function itemOf(
     name: display.name,
     sellerId,
     ...(sellerName === null ? {} : { sellerName }),
-    // No category on a cart line: the thumbnail falls back to the general icon.
-    category: '',
+    // The department of the line's category; unknown falls back to the general icon.
+    category: departmentOf(line.display, departments),
     price,
     ...(lowStock === undefined ? {} : { lowStock }),
     ...(display.imageUrl === undefined ? {} : { imageUrl: display.imageUrl }),
@@ -154,7 +168,11 @@ function itemOf(
  * (only when the API says the minimum applies); delivery is priced at checkout. Lines that are
  * not buyable or have no name are set aside as not available. Null for a body that is not a cart.
  */
-export function liveCartOf(body: unknown, photo: PhotoUrl | null): LiveCart | null {
+export function liveCartOf(
+  body: unknown,
+  photo: PhotoUrl | null,
+  departments: Departments = {},
+): LiveCart | null {
   if (!isRecord(body) || !Array.isArray(body.groups)) return null;
   const items: Record<string, CartItem> = {};
   const sellers: Record<string, CartSource['sellers'][string]> = {};
@@ -179,7 +197,10 @@ export function liveCartOf(body: unknown, photo: PhotoUrl | null): LiveCart | nu
       if (typeof quantity !== 'number' || !Number.isSafeInteger(quantity) || quantity < 1) continue;
       const key = unitKey({ offerId, variantId });
       lineIds[key] = lineId;
-      const item = sellerId === null ? null : itemOf(line, sellerId, text(group.sellerName), photo);
+      const item =
+        sellerId === null
+          ? null
+          : itemOf(line, sellerId, text(group.sellerName), photo, departments);
       if (item === null || sellerId === null) {
         unavailable.push({ key, lineId, name: displayOf(line.display, null)?.name ?? null });
         continue;
@@ -202,7 +223,11 @@ export function liveCartOf(body: unknown, photo: PhotoUrl | null): LiveCart | nu
 }
 
 /** The account's saved list of a `GET /cart/saved` body, newest first; null when it is not one. */
-export function liveSavedOf(body: unknown, photo: PhotoUrl | null): LiveSavedItem[] | null {
+export function liveSavedOf(
+  body: unknown,
+  photo: PhotoUrl | null,
+  departments: Departments = {},
+): LiveSavedItem[] | null {
   if (!isRecord(body) || !Array.isArray(body.items)) return null;
   return body.items.flatMap((entry): LiveSavedItem[] => {
     if (!isRecord(entry)) return [];
@@ -216,7 +241,7 @@ export function liveSavedOf(body: unknown, photo: PhotoUrl | null): LiveSavedIte
       {
         key: unitKey({ offerId, variantId }),
         savedId,
-        item: sellerId === null ? null : itemOf(entry, sellerId, sellerName, photo),
+        item: sellerId === null ? null : itemOf(entry, sellerId, sellerName, photo, departments),
       },
     ];
   });

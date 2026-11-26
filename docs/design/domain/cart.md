@@ -448,3 +448,5 @@ cart, account or guest id leaves the adapter. Two aggregate statements in the ca
 tenant (lines grouped by currency and quantity with their prices summed; carts with a line counted),
 no cap and no rows in memory (Mojtaba M1). Details:
 `docs/modules/reporting/notes.md` (Abandoned carts).
+
+**Added after: category on cart and order lines (`feat/cart-order-line-category`).** The cart `display` (and the saved item's) now also carries `categoryId`: the primary category of the product's PUBLISHED revision, else its first by position, or null. Order lines (`LabelledOrderLineBody`) carry the same `categoryId` through `catalog.sellUnitLabels`. It is for the line's picture only (the storefront maps it to a department); it is never a decision and never a certification input. Catalog reads `product_revision_categories` for the published revisions in one extra statement. No schema change.

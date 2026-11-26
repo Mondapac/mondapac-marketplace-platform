@@ -114,7 +114,7 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.read-sell-units in market %s', (
                 .filter((key) => key.variantId === v1)
                 .map((key) => [
                   `${key.offerId}:${key.variantId}`,
-                  { productName: 'Rice', variantLabel: 'Small' },
+                  { productName: 'Rice', variantLabel: 'Small', categoryId: null },
                 ]),
             ),
           );

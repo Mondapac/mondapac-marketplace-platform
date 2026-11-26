@@ -28,6 +28,7 @@ import {
   liveCartOf,
   liveSavedOf,
   unitOf,
+  type Departments,
   type LiveCart,
   type UnavailableLine,
 } from '../cart/live-cart.ts';
@@ -57,6 +58,8 @@ export interface PlacedOrder {
   /** The buyer's note to each seller, by seller id. */
   readonly notes: Readonly<Record<string, string>>;
 }
+
+const NO_DEPARTMENTS: Departments = {};
 
 const NO_SOURCE: CartSource = {
   items: {},
@@ -190,6 +193,7 @@ export function StoreProvider({
   initialCart = {},
   initialLiveCart = null,
   photoBase = null,
+  departments = NO_DEPARTMENTS,
   initialDeliverTo = null,
   deliverGuess = null,
   initialCustomer = null,
@@ -205,6 +209,8 @@ export function StoreProvider({
    */
   readonly initialLiveCart?: LiveCart | null;
   readonly photoBase?: PhotoBase | null;
+  /** Department slug by category id: the picture of a cart line without a photo. */
+  readonly departments?: Departments;
   /** The location kept in this browser (the delivery cookie). */
   readonly initialDeliverTo?: DeliverTo | null;
   /** The approximate area guessed from the connection (see the context's `deliverGuess`). */
@@ -290,12 +296,12 @@ export function StoreProvider({
   }, []);
   const readCart = useCallback(async () => {
     const read = await api.readCart();
-    const next = read.kind === 'ok' ? liveCartOf(read.value, photo) : null;
+    const next = read.kind === 'ok' ? liveCartOf(read.value, photo, departments) : null;
     if (next !== null && waiting.current === 0) applyCart(next);
-  }, [photo, applyCart]);
+  }, [photo, departments, applyCart]);
   const readSaved = useCallback(async () => {
     const read = await api.readSaved();
-    const items = read.kind === 'ok' ? liveSavedOf(read.value, photo) : null;
+    const items = read.kind === 'ok' ? liveSavedOf(read.value, photo, departments) : null;
     if (items === null) return;
     savedIds.current = Object.fromEntries(items.map((entry) => [entry.key, entry.savedId]));
     savedItems.current = Object.fromEntries(
@@ -303,7 +309,7 @@ export function StoreProvider({
     );
     setSaved(items.map((entry) => entry.key));
     setSource((current) => ({ ...current, items: { ...current.items, ...savedItems.current } }));
-  }, [photo]);
+  }, [photo, departments]);
   /** Runs one API change after the ones before it, then reads the cart (and the list) again. */
   const send = useCallback(
     (change: () => Promise<unknown>, alsoSaved = false) => {

@@ -1537,8 +1537,13 @@ export class FakeLabels implements OrderLabels {
   }
 
   /** Sets the label of one (Offer, Variant). */
-  label(key: OrderUnitKey, productName: string, variantLabel: string | null): void {
-    this.units.set(orderUnitKey(key), { productName, variantLabel });
+  label(
+    key: OrderUnitKey,
+    productName: string,
+    variantLabel: string | null,
+    categoryId: Id<'Category'> | null = null,
+  ): void {
+    this.units.set(orderUnitKey(key), { productName, variantLabel, categoryId });
   }
 }
 
