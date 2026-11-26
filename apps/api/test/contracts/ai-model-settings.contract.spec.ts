@@ -5,11 +5,20 @@ import { CATALOG_AI_CAPABILITIES } from '../../src/modules/catalog/contracts/ai-
 import {
   AI_BUYER_CHAT_CAPABILITY,
   AI_CAPABILITY_SWITCHES,
+  AI_IN_HOUSE_ROLLBACK_LIMIT,
+  AI_IN_HOUSE_ROLLBACK_SAMPLE,
+  AI_IN_HOUSE_STAGE_VALUES,
   AI_MODEL_TASKS,
   familiesOf,
 } from '../../src/modules/settings/domain/definitions';
 import { CAPABILITY_TASKS } from '../../src/platform/ai/capability';
 import { checkedInCatalogue } from '../../src/platform/ai/catalogue';
+import {
+  IN_HOUSE_STAGES,
+  ROLLBACK_LIMIT_CEILING_PERMILLE,
+  ROLLBACK_MIN_SAMPLE_FLOOR,
+  ROLLBACK_MIN_SAMPLE_TOP,
+} from '../../src/platform/ai/own-model/in-house-stage';
 
 // settings keeps one priority list and one saver model per task type of platform/ai, and a list
 // value holds the catalogue's families (AI Gateway G4b; Mohammad, G4b review 1 and 2).
@@ -66,5 +75,16 @@ describe('AI model settings and the platform/ai catalogue (G4b)', () => {
     };
     walk(root);
     expect([...new Set(registering)].sort()).toEqual(['assistant', 'catalog']);
+  });
+
+  // settings holds the in-house stages and the rollback bounds as values of its own (it imports no
+  // AI code in its domain): they must be platform/ai's, so a stage or a ceiling never drifts (G6b).
+  it("holds platform/ai's in-house stages and rollback bounds (G6b)", () => {
+    expect([...AI_IN_HOUSE_STAGE_VALUES]).toEqual([...IN_HOUSE_STAGES]);
+    expect(AI_IN_HOUSE_ROLLBACK_LIMIT.max).toBe(ROLLBACK_LIMIT_CEILING_PERMILLE);
+    expect(AI_IN_HOUSE_ROLLBACK_SAMPLE).toEqual({
+      min: ROLLBACK_MIN_SAMPLE_FLOOR,
+      max: ROLLBACK_MIN_SAMPLE_TOP,
+    });
   });
 });

@@ -25,6 +25,8 @@ import { createSystemChangeRegistrar, SYSTEM_REQUEST_RECORDER } from '../system-
 import { ChangeAiSetting } from './application/use-cases/change-ai-setting.use-case';
 import { ChangeAiGatewayEmergencyStop } from './application/use-cases/change-ai-gateway-emergency-stop.use-case';
 import { ChangeAiModels } from './application/use-cases/change-ai-models.use-case';
+import { ChangeAiInHouse } from './application/use-cases/change-ai-in-house.use-case';
+import { ViewAiInHouse } from './application/use-cases/view-ai-in-house.use-case';
 import { ChangeAiCapabilities } from './application/use-cases/change-ai-capabilities.use-case';
 import { RevertAiGatewaySetting } from './application/use-cases/revert-ai-gateway-setting.use-case';
 import { RevertAiModelsSetting } from './application/use-cases/revert-ai-models-setting.use-case';
@@ -161,6 +163,19 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       inject: [USE_CASE_GATE, AiModelChoices, ...PORTS.map(([, token]) => token)],
       useFactory: (gate: UseCaseGate, choices: AiModelChoices, ...values: unknown[]) =>
         new ChangeAiModels(gate, dependenciesOf(values), choices),
+    },
+    // The Mondapac Intelligence tab (G6b): its checks are AiModelChoices' too.
+    {
+      provide: ViewAiInHouse,
+      inject: [USE_CASE_GATE, AiModelChoices, ...PORTS.map(([, token]) => token)],
+      useFactory: (gate: UseCaseGate, choices: AiModelChoices, ...values: unknown[]) =>
+        new ViewAiInHouse(gate, dependenciesOf(values), choices),
+    },
+    {
+      provide: ChangeAiInHouse,
+      inject: [USE_CASE_GATE, AiModelChoices, ...PORTS.map(([, token]) => token)],
+      useFactory: (gate: UseCaseGate, choices: AiModelChoices, ...values: unknown[]) =>
+        new ChangeAiInHouse(gate, dependenciesOf(values), choices),
     },
     {
       provide: RevertAiModelsSetting,

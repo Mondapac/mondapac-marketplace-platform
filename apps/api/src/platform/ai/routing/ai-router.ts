@@ -16,6 +16,11 @@ import { CircuitBreaker } from './circuit-breaker';
 /** Why a model cannot be chosen or called (design section 8, server checks). */
 export type RouteProblem =
   | 'unknown-model'
+  /**
+   * An in-house (Mondapac Intelligence) family named where only an external model may stand: an
+   * external list or saver model (G6b; Mohammad, G6a review 9). It is reached through its stages.
+   */
+  | 'in-house-model'
   | 'task-unsupported'
   | 'not-checked'
   | 'region'
@@ -120,8 +125,40 @@ export class AiRouter {
     family: string,
   ): RouteProblem | null {
     const rows = this.catalogue.routesOf(family);
+    if (rows.length === 0) return 'unknown-model';
     // The in-house model is not an external choice (G6): it is reached through its stages only.
-    if (rows.length === 0 || this.catalogue.isInHouse(family)) return 'unknown-model';
+    if (this.catalogue.isInHouse(family)) return 'in-house-model';
+    return this.#familyRowsProblem(marketId, task, specs, rows);
+  }
+
+  /**
+   * Why an in-house family cannot be the model of a task type's in-house stage in the Market now
+   * (G6b; design section 8, "In-house route readiness"), or null: the same route checks as
+   * {@link familyProblem} (Hassan's check, region, key, not retired, and an evaluation pass for
+   * every capability of the task type), on the in-house family's rows. An external family is
+   * `external-model`; a family not in the catalogue `unknown-model`. Unlike an external list, a
+   * task type with no capability yet is refused (`no-capability`): a stage routes real calls of
+   * its capabilities, so it needs at least one with a pass.
+   */
+  inHouseFamilyProblem(
+    marketId: MarketId,
+    task: CapabilityTask,
+    specs: readonly CapabilitySpec[],
+    family: string,
+  ): RouteProblem | 'external-model' | 'no-capability' | null {
+    const rows = this.catalogue.routesOf(family);
+    if (rows.length === 0) return 'unknown-model';
+    if (!this.catalogue.isInHouse(family)) return 'external-model';
+    if (specs.length === 0) return 'no-capability';
+    return this.#familyRowsProblem(marketId, task, specs, rows);
+  }
+
+  #familyRowsProblem(
+    marketId: MarketId,
+    task: CapabilityTask,
+    specs: readonly CapabilitySpec[],
+    rows: readonly RouteRow[],
+  ): RouteProblem | null {
     if (specs.length === 0) {
       const problems = rows.map((row) => this.#rowProblem(marketId, task, row));
       return problems.includes(null) ? null : problems[0]!;

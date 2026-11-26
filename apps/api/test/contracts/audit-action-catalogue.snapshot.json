@@ -3749,7 +3749,7 @@
   {
     "action": "settings.ai-models.changed",
     "targetType": "settings.market-setting",
-    "targetId": "enumOf(ai-models-chat|ai-models-extract|ai-models-write|ai-models-vision|ai-saver-chat|ai-saver-extract|ai-saver-write|ai-saver-vision)",
+    "targetId": "enumOf(ai-models-chat|ai-models-extract|ai-models-write|ai-models-vision|ai-saver-chat|ai-saver-extract|ai-saver-write|ai-saver-vision|ai-in-house-model-chat|ai-in-house-model-extract|ai-in-house-model-write|ai-in-house-model-vision)",
     "actors": ["authenticated"],
     "before": {
       "models": "integer"
@@ -3773,20 +3773,20 @@
   {
     "action": "settings.market-setting.changed",
     "targetType": "settings.market-setting",
-    "targetId": "enumOf(list-paging|cart-mode|ai-description-writer|ai-description-writer-tier|offer-review-mode|offer-review-certificate-badges|offer-review-emergency-stop|ai-gateway-emergency-stop|ai-capability-assistant-buyer-chat|ai-capability-catalog-description-writer-seller|ai-capability-catalog-description-writer-admin)",
+    "targetId": "enumOf(list-paging|cart-mode|ai-description-writer|ai-description-writer-tier|offer-review-mode|offer-review-certificate-badges|offer-review-emergency-stop|ai-gateway-emergency-stop|ai-capability-assistant-buyer-chat|ai-capability-catalog-description-writer-seller|ai-capability-catalog-description-writer-admin|ai-in-house-stage-chat|ai-in-house-stage-extract|ai-in-house-stage-write|ai-in-house-stage-vision)",
     "actors": ["authenticated"],
     "before": {
-      "value": "enumOf(pages|prev-next|multi-store|single-store|off|on|fast|balanced|all|risk-based|review|automatic)"
+      "value": "enumOf(pages|prev-next|multi-store|single-store|off|on|fast|balanced|all|risk-based|review|automatic|shadow|percent|default)"
     },
     "after": {
-      "value": "enumOf(pages|prev-next|multi-store|single-store|off|on|fast|balanced|all|risk-based|review|automatic)",
+      "value": "enumOf(pages|prev-next|multi-store|single-store|off|on|fast|balanced|all|risk-based|review|automatic|shadow|percent|default)",
       "version": "integer"
     }
   },
   {
     "action": "settings.market-setting.number-changed",
     "targetType": "settings.market-setting",
-    "targetId": "enumOf(ai-saver-percent|offer-review-probation-offers|offer-review-reference-sellers|offer-review-price-band|offer-review-sampling|offer-review-backlog-count|offer-review-backlog-hours)",
+    "targetId": "enumOf(ai-saver-percent|offer-review-probation-offers|offer-review-reference-sellers|offer-review-price-band|offer-review-sampling|offer-review-backlog-count|offer-review-backlog-hours|ai-in-house-shadow-chat|ai-in-house-shadow-extract|ai-in-house-shadow-write|ai-in-house-shadow-vision|ai-in-house-rollout-chat|ai-in-house-rollout-extract|ai-in-house-rollout-write|ai-in-house-rollout-vision|ai-in-house-rollback-errors|ai-in-house-rollback-guard|ai-in-house-rollback-sample)",
     "actors": ["authenticated"],
     "before": {
       "value": "integer"

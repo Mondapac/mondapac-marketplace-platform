@@ -572,7 +572,7 @@ module.exports = {
     {
       name: 'ai-model-choices-only-from-settings',
       comment:
-        "Only settings checks a Market's AI model lists against the route catalogue (G4b; " +
+        "Only settings checks a Market's AI model lists and in-house stages against the route catalogue (G4b, G6b; " +
         'docs/design/domain/platform-ai.md sections 7 and 8): its module file, the AI model ' +
         'use cases (with the panel revert, G4d3) and their shared checks.',
       severity: 'error',
@@ -581,6 +581,8 @@ module.exports = {
           '^src/platform/ai/',
           '^src/modules/settings/settings\\.module\\.ts$',
           '^src/modules/settings/application/use-cases/(?:view|change)-ai-models\\.use-case\\.ts$',
+          // G6b: the Mondapac Intelligence tab (the in-house model's stages), same checks.
+          '^src/modules/settings/application/use-cases/(?:view|change)-ai-in-house\\.use-case\\.ts$',
           // G4d3: the shared External models checks and the models page's panel revert.
           '^src/modules/settings/application/ai-model-checks\\.ts$',
           '^src/modules/settings/application/use-cases/revert-ai-models-setting\\.use-case\\.ts$',

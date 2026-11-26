@@ -17,6 +17,8 @@ import {
   acceptedValue,
   AI_CAP_CODES,
   AI_GATEWAY_CODES,
+  AI_IN_HOUSE_CODES,
+  AI_IN_HOUSE_MODEL_CODES,
   AI_MODEL_CODES,
   AI_MODEL_LIST_CODES,
   AI_SAVER_CODES,
@@ -54,6 +56,7 @@ const HIGH_RISK_CODES: ReadonlySet<string> = new Set([
   ...AI_CODES,
   ...AI_GATEWAY_CODES,
   ...AI_MODEL_CODES,
+  ...AI_IN_HOUSE_CODES,
   ...OFFER_REVIEW_CODES,
   OFFER_REVIEW_EMERGENCY_STOP_CODE,
 ]);
@@ -93,7 +96,11 @@ function changeEntry(
       after: { microUsd: capOf(next), version },
     });
   }
-  if (AI_MODEL_LIST_CODES.includes(definition.code) || AI_SAVER_CODES.includes(definition.code)) {
+  if (
+    AI_MODEL_LIST_CODES.includes(definition.code) ||
+    AI_SAVER_CODES.includes(definition.code) ||
+    AI_IN_HOUSE_MODEL_CODES.includes(definition.code)
+  ) {
     // The families are on the history row; the audit row counts them (no free text, ADR-0009).
     return AiModelsChanged.entry(definition.code as (typeof AI_MODEL_TARGET_IDS)[number], {
       before: { models: familiesOf(acceptedValue(definition, was) ?? definition.safeValue).length },

@@ -41,6 +41,8 @@ import { ChangeAiGatewayEmergencyStop } from '../application/use-cases/change-ai
 import { ChangeAiGatewayLimits } from '../application/use-cases/change-ai-gateway-limits.use-case';
 import { ChangeAiSetting } from '../application/use-cases/change-ai-setting.use-case';
 import { ChangeAiModels } from '../application/use-cases/change-ai-models.use-case';
+import { ChangeAiInHouse } from '../application/use-cases/change-ai-in-house.use-case';
+import { ViewAiInHouse } from '../application/use-cases/view-ai-in-house.use-case';
 import { ChangeAiCapabilities } from '../application/use-cases/change-ai-capabilities.use-case';
 import { RevertAiGatewaySetting } from '../application/use-cases/revert-ai-gateway-setting.use-case';
 import { RevertAiModelsSetting } from '../application/use-cases/revert-ai-models-setting.use-case';
@@ -99,6 +101,8 @@ import {
   settingsListBody,
   AiModelsBody,
   aiModelsBody,
+  AiInHouseBody,
+  aiInHouseBody,
   RevertSettingRequest,
   SettingHistoryBody,
   settingHistoryBody,
@@ -189,6 +193,8 @@ export class AdminSettingsController {
     private readonly viewAiModelsHistory: ViewAiModelsHistory,
     private readonly revertAiGateway: RevertAiGatewaySetting,
     private readonly revertAiModels: RevertAiModelsSetting,
+    private readonly viewAiInHouse: ViewAiInHouse,
+    private readonly changeAiInHouse: ChangeAiInHouse,
   ) {}
 
   // AI Gateway G4c: evaluation runs and the playground (design section 8, Tab 1). The fixed paths
@@ -497,11 +503,92 @@ export class AdminSettingsController {
     return settingsChangeListBody(result.value);
   }
 
+  @Get('ai-models/in-house')
+  @ApiOperation({
+    summary: 'The in-house model (Mondapac Intelligence) settings of the Market (admin)',
+    description:
+      'Needs settings.ai-gateway.view. Per task type (chat, extract, write, vision) the stage ' +
+      'ai-in-house-stage-<task> (off, shadow, percent or default; off by default), the in-house ' +
+      'model ai-in-house-model-<task> (none or one in-house family), the shadow share ' +
+      'ai-in-house-shadow-<task> (0 to 100 %) and the percent share ai-in-house-rollout-<task> ' +
+      '(0 to 99 %); the auto-rollback limits ai-in-house-rollback-errors and ' +
+      'ai-in-house-rollback-guard (1 to 50 tenths of a percent, the server ceiling is 5 %) and ' +
+      'ai-in-house-rollback-sample (100 to 10000 calls), each with its version; and per task type ' +
+      'every in-house family of the route catalogue with why it cannot be its model now.',
+  })
+  @ApiOkResponse({ type: AiInHouseBody })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  async aiInHouse(@Call() context: CallContext, @Res({ passthrough: true }) response: Response) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.viewAiInHouse.execute(context, {});
+    logRoute(
+      this.#logger,
+      'settings.view-ai-in-house-route',
+      context,
+      result.ok ? 'read' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return aiInHouseBody(result.value);
+  }
+
+  // A change that sends more to the in-house model spends a two-step code in the use case's unit.
+  @Put('ai-models/in-house')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Change the in-house model (Mondapac Intelligence) settings of the Market (admin)',
+    description:
+      'Needs the protected settings.ai-models.manage; refused in an acting-as session. ' +
+      '`changes` lists each changed setting once with the version the admin saw. A stage other ' +
+      'than off, another model, a share raised, or a rollback limit or the minimum sample raised ' +
+      'needs a fresh two-step proof of this admin (`POST identity/admin/step-up/verify` for ' +
+      'settings.ai-in-house.raise; without it 403 second-factor.required with ' +
+      'details.actionKey); switching off, lowering a share or tightening a limit needs none. ' +
+      'Server checks on the page as it would stand (400 validation.failed, details.fields with ' +
+      'the setting code as path and the problem as code): the stage is one the gateway serves ' +
+      '(stage-not-served), shadow needs the owner approval recorded in ADR-0052 ' +
+      '(shadow-not-approved), a stage other than off needs a model (no-model) that is an ' +
+      'in-house family (unknown-model, external-model) usable in the Market for every capability ' +
+      'of the task type with an evaluation pass (no-capability, not-checked, region, no-key, ' +
+      'retired, not-evaluated, task-unsupported), and the stage needs its own share above 0 ' +
+      '(no-share). All or nothing: a stale version is 409 settings.conflict. Each change is ' +
+      'audited and, where reviewed, opens a high-risk review request. ' +
+      REVIEWED,
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: ChangeOfferReviewRequest })
+  @ApiOkResponse({ type: SettingsChangeListBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: STEP_UP_FORBIDDEN })
+  @ApiConflictResponse({ ...ERROR, description: 'settings.conflict' })
+  async putAiInHouse(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() requestBody: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, requestBody, ['changes', 'note']);
+    if (invalid !== null) throw invalid;
+    const { changes, note } = requestBody as { changes?: unknown; note?: unknown };
+    const result = await this.changeAiInHouse.execute(context, { changes, note });
+    logRoute(
+      this.#logger,
+      'settings.change-ai-in-house-route',
+      context,
+      result.ok ? 'set' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return settingsChangeListBody(result.value);
+  }
+
   @Get('ai-models/history')
   @ApiOperation({
     summary: 'The history of one AI models setting of the Market (admin)',
     description:
-      'Needs settings.ai-gateway.view. The latest changes of one setting of the AI models (`code`), ' +
+      'Needs settings.ai-gateway.view. The latest changes of one setting of the AI models, external ' +
+      'or in-house (`code`), ' +
       'newest first, at most `limit` (1 to 50, default 50): each version with the value before ' +
       'and after, when, the admin (display name, or null) and the note, and which one is in ' +
       'force. Older changes stay in the audit log.',
@@ -541,7 +628,9 @@ export class AdminSettingsController {
       '(`expectedVersion`; a stale one is 409 settings.conflict). A forward change: a new ' +
       'version with its history and audit row and, where reviewed, a high-risk review request. ' +
       "The External models tab's server checks run again on the page as it would stand (400 " +
-      'validation.failed, as for PUT ai-models). ' +
+      'validation.failed, as for PUT ai-models); for an in-house setting (Mondapac Intelligence, ' +
+      'including rolling the in-house model back to a previous version) those of PUT ' +
+      'ai-models/in-house. ' +
       'Every revert needs a fresh two-step proof of this admin (`POST ' +
       'identity/admin/step-up/verify` for settings.ai-settings.revert; without it 403 ' +
       'second-factor.required with details.actionKey). A version not in the history is 400 ' +

@@ -244,6 +244,8 @@ export function capOf(value: string): number | null {
 export function loosensAi(code: string, was: string, next: string): boolean {
   if (code === AI_GATEWAY_EMERGENCY_STOP_CODE) return was !== 'off' && next === 'off';
   if (AI_CAPABILITY_SWITCH_CODES.includes(code)) return was !== 'on' && next === 'on';
+  // The in-house model's settings (G6b): more calls or data to it, or a slower rollback.
+  if (AI_IN_HOUSE_CODES.includes(code)) return loosensInHouse(code, was, next);
   if (!AI_CAP_CODES.includes(code)) return false;
   const before = was === AI_CAP_NONE ? Infinity : (capOf(was) ?? 0);
   const after = next === AI_CAP_NONE ? Infinity : (capOf(next) ?? 0);
@@ -280,6 +282,78 @@ export const AI_MODEL_CODES: readonly string[] = Object.freeze([
   ...AI_SAVER_CODES,
   AI_SAVER_PERCENT_CODE,
 ]);
+
+/**
+ * The in-house model's stages (Mondapac Intelligence tab, design section 8; AI Gateway G6b), the
+ * values of platform/ai's `IN_HOUSE_STAGES` (a contract test checks they match; settings imports
+ * no AI code here). Off by default and when a stored value is not allowed.
+ */
+export const AI_IN_HOUSE_STAGE_VALUES = ['off', 'shadow', 'percent', 'default'] as const;
+export type AiInHouseStage = (typeof AI_IN_HOUSE_STAGE_VALUES)[number];
+const AI_IN_HOUSE_FAMILY_VALUE = new RegExp(`^${AI_FAMILY}$`);
+
+/** A task type's in-house stage. */
+export const aiInHouseStageCode = (task: AiModelTask): string => `ai-in-house-stage-${task}`;
+/** A task type's in-house model family (`none` or one family; "roll back to the previous version"
+ * is a change of this value). */
+export const aiInHouseModelCode = (task: AiModelTask): string => `ai-in-house-model-${task}`;
+/** The share (0 to 100 %) of a task type's calls also sent to the in-house model in shadow. */
+export const aiInHouseShadowCode = (task: AiModelTask): string => `ai-in-house-shadow-${task}`;
+/** The share (0 to 99 %) of a task type's calls the in-house model answers in percent. */
+export const aiInHouseRolloutCode = (task: AiModelTask): string => `ai-in-house-rollout-${task}`;
+/**
+ * The auto-rollback limits of the Market (design section 8, "Auto rollback"), for every task type
+ * in percent or default: the error rate and the guard-rejection rate in tenths of a percent (1 to
+ * 50, the server ceiling of 5 %, platform/ai `ROLLBACK_LIMIT_CEILING_PERMILLE`), and the fewest
+ * in-house calls before they are judged (100 to 10,000, `ROLLBACK_MIN_SAMPLE_FLOOR` and `_TOP`).
+ */
+export const AI_IN_HOUSE_ROLLBACK_ERRORS_CODE = 'ai-in-house-rollback-errors';
+export const AI_IN_HOUSE_ROLLBACK_GUARD_CODE = 'ai-in-house-rollback-guard';
+export const AI_IN_HOUSE_ROLLBACK_SAMPLE_CODE = 'ai-in-house-rollback-sample';
+export const AI_IN_HOUSE_ROLLBACK_LIMIT = { min: 1, max: 50 } as const;
+export const AI_IN_HOUSE_ROLLBACK_SAMPLE = { min: 100, max: 10_000 } as const;
+
+export const AI_IN_HOUSE_STAGE_CODES: readonly string[] = Object.freeze(
+  AI_MODEL_TASKS.map(aiInHouseStageCode),
+);
+export const AI_IN_HOUSE_MODEL_CODES: readonly string[] = Object.freeze(
+  AI_MODEL_TASKS.map(aiInHouseModelCode),
+);
+export const AI_IN_HOUSE_SHARE_CODES: readonly string[] = Object.freeze([
+  ...AI_MODEL_TASKS.map(aiInHouseShadowCode),
+  ...AI_MODEL_TASKS.map(aiInHouseRolloutCode),
+]);
+export const AI_IN_HOUSE_ROLLBACK_CODES: readonly string[] = Object.freeze([
+  AI_IN_HOUSE_ROLLBACK_ERRORS_CODE,
+  AI_IN_HOUSE_ROLLBACK_GUARD_CODE,
+  AI_IN_HOUSE_ROLLBACK_SAMPLE_CODE,
+]);
+/** Every in-house model setting code, as the Mondapac Intelligence tab shows and saves them. */
+export const AI_IN_HOUSE_CODES: readonly string[] = Object.freeze([
+  ...AI_IN_HOUSE_STAGE_CODES,
+  ...AI_IN_HOUSE_MODEL_CODES,
+  ...AI_IN_HOUSE_SHARE_CODES,
+  ...AI_IN_HOUSE_ROLLBACK_CODES,
+]);
+
+/**
+ * Whether changing an in-house setting from `was` to `next` sends more calls or data to the
+ * in-house model, or makes its rollback slower (design section 8, In-place confirmation): any
+ * change of the stage or the model but to off or `none`, a share raised, a rollback limit or the
+ * minimum sample raised. Such a change needs the admin's fresh two-step code and is never made by
+ * a review revert; switching off, lowering a share and tightening a limit need neither. A stored
+ * value the definition does not allow is taken as the tightest (stage off, no model, share 0,
+ * limit 1, sample 100), so leaving it loosens.
+ */
+export function loosensInHouse(code: string, was: string, next: string): boolean {
+  if (AI_IN_HOUSE_STAGE_CODES.includes(code)) return next !== 'off' && next !== was;
+  if (AI_IN_HOUSE_MODEL_CODES.includes(code)) return next !== AI_MODELS_NONE && next !== was;
+  const definition = findDefinition(code);
+  if (definition?.integer === undefined || !AI_IN_HOUSE_CODES.includes(code)) return false;
+  const tightest = definition.integer.min;
+  const before = acceptedValue(definition, was);
+  return Number(next) > (before === null ? tightest : Number(before));
+}
 
 /** The families of a stored list or saver value, in order; none for `none` or anything else. */
 export function familiesOf(value: string): readonly string[] {
@@ -587,6 +661,156 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = Object.freeze([
     defaultValue: '80',
     // The cheaper model from half the month cap on: the cheap side.
     safeValue: '50',
+  },
+  {
+    code: 'ai-in-house-stage-chat',
+    label: 'Mondapac Intelligence: chat stage',
+    values: AI_IN_HOUSE_STAGE_VALUES,
+    defaultValue: 'off',
+    safeValue: 'off',
+  },
+  {
+    code: 'ai-in-house-stage-extract',
+    label: 'Mondapac Intelligence: extract stage',
+    values: AI_IN_HOUSE_STAGE_VALUES,
+    defaultValue: 'off',
+    safeValue: 'off',
+  },
+  {
+    code: 'ai-in-house-stage-write',
+    label: 'Mondapac Intelligence: write stage',
+    values: AI_IN_HOUSE_STAGE_VALUES,
+    defaultValue: 'off',
+    safeValue: 'off',
+  },
+  {
+    code: 'ai-in-house-stage-vision',
+    label: 'Mondapac Intelligence: vision stage',
+    values: AI_IN_HOUSE_STAGE_VALUES,
+    defaultValue: 'off',
+    safeValue: 'off',
+  },
+  {
+    code: 'ai-in-house-model-chat',
+    label: 'Mondapac Intelligence: chat model',
+    values: [AI_MODELS_NONE],
+    pattern: AI_IN_HOUSE_FAMILY_VALUE,
+    defaultValue: AI_MODELS_NONE,
+    safeValue: AI_MODELS_NONE,
+  },
+  {
+    code: 'ai-in-house-model-extract',
+    label: 'Mondapac Intelligence: extract model',
+    values: [AI_MODELS_NONE],
+    pattern: AI_IN_HOUSE_FAMILY_VALUE,
+    defaultValue: AI_MODELS_NONE,
+    safeValue: AI_MODELS_NONE,
+  },
+  {
+    code: 'ai-in-house-model-write',
+    label: 'Mondapac Intelligence: write model',
+    values: [AI_MODELS_NONE],
+    pattern: AI_IN_HOUSE_FAMILY_VALUE,
+    defaultValue: AI_MODELS_NONE,
+    safeValue: AI_MODELS_NONE,
+  },
+  {
+    code: 'ai-in-house-model-vision',
+    label: 'Mondapac Intelligence: vision model',
+    values: [AI_MODELS_NONE],
+    pattern: AI_IN_HOUSE_FAMILY_VALUE,
+    defaultValue: AI_MODELS_NONE,
+    safeValue: AI_MODELS_NONE,
+  },
+  {
+    code: 'ai-in-house-shadow-chat',
+    label: 'Mondapac Intelligence: chat shadow share (%)',
+    values: [],
+    integer: { min: 0, max: 100 },
+    defaultValue: '0',
+    safeValue: '0',
+  },
+  {
+    code: 'ai-in-house-shadow-extract',
+    label: 'Mondapac Intelligence: extract shadow share (%)',
+    values: [],
+    integer: { min: 0, max: 100 },
+    defaultValue: '0',
+    safeValue: '0',
+  },
+  {
+    code: 'ai-in-house-shadow-write',
+    label: 'Mondapac Intelligence: write shadow share (%)',
+    values: [],
+    integer: { min: 0, max: 100 },
+    defaultValue: '0',
+    safeValue: '0',
+  },
+  {
+    code: 'ai-in-house-shadow-vision',
+    label: 'Mondapac Intelligence: vision shadow share (%)',
+    values: [],
+    integer: { min: 0, max: 100 },
+    defaultValue: '0',
+    safeValue: '0',
+  },
+  {
+    code: 'ai-in-house-rollout-chat',
+    label: 'Mondapac Intelligence: chat percent share (%)',
+    values: [],
+    integer: { min: 0, max: 99 },
+    defaultValue: '0',
+    safeValue: '0',
+  },
+  {
+    code: 'ai-in-house-rollout-extract',
+    label: 'Mondapac Intelligence: extract percent share (%)',
+    values: [],
+    integer: { min: 0, max: 99 },
+    defaultValue: '0',
+    safeValue: '0',
+  },
+  {
+    code: 'ai-in-house-rollout-write',
+    label: 'Mondapac Intelligence: write percent share (%)',
+    values: [],
+    integer: { min: 0, max: 99 },
+    defaultValue: '0',
+    safeValue: '0',
+  },
+  {
+    code: 'ai-in-house-rollout-vision',
+    label: 'Mondapac Intelligence: vision percent share (%)',
+    values: [],
+    integer: { min: 0, max: 99 },
+    defaultValue: '0',
+    safeValue: '0',
+  },
+  {
+    code: AI_IN_HOUSE_ROLLBACK_ERRORS_CODE,
+    label: 'Mondapac Intelligence: rollback error rate (0.1 %)',
+    values: [],
+    integer: AI_IN_HOUSE_ROLLBACK_LIMIT,
+    defaultValue: '20',
+    // The tightest limit: the gateway returns to the external models soonest.
+    safeValue: '1',
+  },
+  {
+    code: AI_IN_HOUSE_ROLLBACK_GUARD_CODE,
+    label: 'Mondapac Intelligence: rollback guard-rejection rate (0.1 %)',
+    values: [],
+    integer: AI_IN_HOUSE_ROLLBACK_LIMIT,
+    defaultValue: '10',
+    safeValue: '1',
+  },
+  {
+    code: AI_IN_HOUSE_ROLLBACK_SAMPLE_CODE,
+    label: 'Mondapac Intelligence: rollback minimum sample (calls)',
+    values: [],
+    integer: AI_IN_HOUSE_ROLLBACK_SAMPLE,
+    defaultValue: '200',
+    // The smallest sample: the rates are judged soonest.
+    safeValue: '100',
   },
   {
     code: MONTHLY_REVENUE_TARGET_CODE,

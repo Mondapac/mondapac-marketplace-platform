@@ -371,10 +371,41 @@ ADR-0026 decision 9 and ADR-0042 decision 7, so ADR-0053 supersedes those points
   provider. A `mondapac` family is never an External models choice nor in its scorecard
   (`router.families()` is external only; `inHouseFamilies()` lists the rest), and the router skips
   it in an external list or as the saver model even when a stale or restored value names it
-  (shown as `unknown-model`; a distinct problem code comes with the G6b screens). The evaluation and
+  (shown as `in-house-model` since G6b; Mohammad, G6a review 9). The evaluation and
   playground server routes can take an in-house family on purpose, so a version can earn its pass;
   their panel lists stay external until G6e. Each route kind has its adapter behind one
   `ModelProvider` (`route-providers.ts`). No migration: `ai_calls.provider` takes any provider id.
+- **Built in G6b (stage settings, no routing yet).** The Mondapac Intelligence tab's settings live
+  in `settings.market_settings` (ADR-0042; no migration): per task type `ai-in-house-stage-<task>`
+  (off, shadow, percent, default; off by default and when a stored value is not allowed),
+  `ai-in-house-model-<task>` (`none` or one in-house family; "roll back to the previous version" is a
+  change or a panel revert of this value), `ai-in-house-shadow-<task>` (0 to 100 %) and
+  `ai-in-house-rollout-<task>` (0 to 99 %; 100 % is `default`); for the Market the auto-rollback
+  limits `ai-in-house-rollback-errors` and `ai-in-house-rollback-guard` (1 to 50 tenths of a percent:
+  the server ceiling is 5 %, so no limit switches the rollback off) and
+  `ai-in-house-rollback-sample` (100 to 10,000 calls in the window before the rates are judged: a
+  floor against noise, a top so a quiet Market is still judged). The bounds are platform/ai's
+  (`own-model/in-house-stage.ts`; a contract test keeps settings' copies equal). Routes: `GET` and
+  `PUT settings/admin/ai-models/in-house` (view key `settings.ai-gateway.view`, protected manage key
+  `settings.ai-models.manage`); history and panel revert through `ai-models/history` and
+  `ai-models/revert`, which take these codes too. A change that sends more to the in-house model or
+  slows its rollback (a stage other than off, another model, a share raised, a limit or the sample
+  raised) spends the step-up `settings.ai-in-house.raise` in the change's unit; switching off,
+  lowering a share and tightening need none; a review revert never makes such a change
+  (`loosensAi`). Server checks, on the page as it would stand and before any proof is spent
+  (`AiModelChoices.checkInHouse`): the stage is one the gateway serves (`stage-not-served`:
+  `SERVED_IN_HOUSE_STAGES` is `off` only until G6c adds shadow and G6d percent and default), shadow
+  needs the owner's written approval recorded in ADR-0052 (`shadow-not-approved`:
+  `SHADOW_CUSTOMER_DATA_APPROVAL`, set by that PR only; every shadow call carries a real caller's
+  request), a stage other than off needs a model (`no-model`), the model is an in-house family
+  (`unknown-model`, `external-model`, checked even while off) and, while the stage is not off,
+  usable in the Market for every capability of the task type with its evaluation pass (readiness
+  conditions 1 to 5: `not-checked`, `region`, `no-key`, `retired`, `not-evaluated`,
+  `task-unsupported`, and `no-capability` for a task type without one), and the stage's own share is
+  above 0 (`no-share`). Audited per setting (the model as a count, no free text), high risk where
+  the area is reviewed. The gateway does not read these settings yet: G6c and G6d do, and check
+  every route again on each call. While the catalogue has no in-house row (`catalogue/in-house.ts`)
+  every stage but off is refused, so AI stays off.
 - **In-house route readiness (before any stage other than off).** All of these must hold, else
   every stage stays off (ADR-0052 decision 3, ADR-0053 decision 3): (1) a PR adds the row:
   endpoint, region, exact model version id, the price the platform counts it at, retirement day;
