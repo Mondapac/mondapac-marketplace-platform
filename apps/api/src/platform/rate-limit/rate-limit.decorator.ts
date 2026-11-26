@@ -14,8 +14,10 @@ import { Reflector } from '@nestjs/core';
  *   120 a minute for AU.
  * - `default`: every other market-scoped route. 300 a minute for AU.
  *
- * A new class also needs a migration that widens `rate_limit_counters_key_check`
- * (docs/design/data/platform.md section 12), or its requests fail closed with 503.
+ * A new class names its store in `RATE_LIMIT_STORE_OF` (ADR-0054; it does not compile until it
+ * does). A class counted in PostgreSQL also needs a migration that widens
+ * `rate_limit_counters_key_check` (docs/design/data/platform.md section 12), or its requests fail
+ * closed with 503; a class counted in Redis needs no migration.
  */
 export const RATE_LIMIT_CLASSES = [
   'anonymous-identity',

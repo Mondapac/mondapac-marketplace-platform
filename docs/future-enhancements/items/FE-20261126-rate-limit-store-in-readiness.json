@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261126-rate-limit-store-in-readiness",
+  "area": "infra",
+  "title": "وضعیت انبار شمارنده در پاسخ readiness",
+  "desc": "بدنهٔ /health/ready وضعیت Redis شمارنده‌ها (redis یا memory) را نشان دهد، بدون اینکه آمادگی به Redis وابسته شود؛ همراه با کار R3.",
+  "src": "docs/adr/0054-high-traffic-per-origin-rate-limit-counters-in-redis.md و design/infra/rate-limit-counters/rate-limit-counters-fa.html (بخش ۱۲)",
+  "date": "2026-11-26",
+  "trig": "کار R3 (اولین استقرار، فاز ۷)",
+  "prio": "متوسط",
+  "status": "موکول"
+}

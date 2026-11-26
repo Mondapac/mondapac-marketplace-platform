@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261126-rate-limit-in-guard-memory-block",
+  "area": "infra",
+  "title": "مسدودسازی مبدأ در حافظهٔ نگهبان پس از 429",
+  "desc": "پس از 429، مبدأ تا پایان پنجره در حافظهٔ همان نمونه رد شود تا درخواست‌های حمله به Redis نرسند.",
+  "src": "docs/adr/0054-high-traffic-per-origin-rate-limit-counters-in-redis.md و design/infra/rate-limit-counters/rate-limit-counters-fa.html (بخش ۱۲)",
+  "date": "2026-11-26",
+  "trig": "بار زیاد درخواست‌های ردشده روی Redis در محیط واقعی",
+  "prio": "متوسط",
+  "status": "موکول"
+}

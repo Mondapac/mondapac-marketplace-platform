@@ -37,12 +37,15 @@ services:
       timeout: 3s
       retries: 10
 
+  # The rate-limit counters (ADR-0054). Valkey 8, the engine of ElastiCache in production; it
+  # speaks the Redis protocol. Counts only, nothing to keep: no persistence.
   redis:
-    image: mirror.gcr.io/library/redis:7-alpine
+    image: mirror.gcr.io/valkey/valkey:8-alpine
+    command: ['valkey-server', '--save', '', '--appendonly', 'no']
     ports:
       - '127.0.0.1:${REDIS_PORT:-6379}:6379'
     healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
+      test: ['CMD', 'valkey-cli', 'ping']
       interval: 5s
       timeout: 3s
       retries: 10

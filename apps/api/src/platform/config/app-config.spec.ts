@@ -3,6 +3,13 @@ import { InvalidConfigError, loadAppConfig as load } from './app-config';
 
 const DATABASE_URL = 'postgresql://user:secret@localhost:5432/db';
 
+/** The Redis a production configuration needs (ADR-0054): rediss:// and the ACL user. */
+const PRODUCTION_REDIS = {
+  REDIS_URL: 'rediss://cache.internal',
+  REDIS_USERNAME: 'mondapac-rate-limit',
+  REDIS_PASSWORD: 'a-long-secret-from-k1',
+};
+
 /** Loads config with a valid DATABASE_URL and APP_ROLE unless the test overrides them. */
 function loadAppConfig(env: Record<string, string | undefined>) {
   return load({ DATABASE_URL, APP_ROLE: 'api', ...env });
@@ -26,6 +33,7 @@ describe('loadAppConfig', () => {
       localeConfigDirs: [expect.stringMatching(/config[\\/]locales$/)],
       databaseUrl: DATABASE_URL,
       databasePoolMax: 10,
+      rateLimitStore: { store: 'postgres' },
       mailCatcherUrl: null,
       objectStore: null,
       malwareScanner: null,
@@ -53,6 +61,113 @@ describe('loadAppConfig', () => {
       zoom2u: { apiKeys: {} },
       doordashDrive: { developerIds: {}, keyIds: {}, signingSecrets: {} },
       auspost: { apiKeys: {}, apiPasswords: {}, accountNumbers: {} },
+    });
+  });
+
+  describe('the Redis of the rate-limit counters (ADR-0054)', () => {
+    const issuesOf = (env: Record<string, string>): string => {
+      try {
+        loadAppConfig({ HOSTED_MARKETS: 'AU', ...env });
+      } catch (error) {
+        if (error instanceof InvalidConfigError) return error.message;
+        throw error;
+      }
+      return '';
+    };
+
+    it('counts in PostgreSQL locally when REDIS_URL is unset, and in Redis when it is set', () => {
+      expect(
+        loadAppConfig({ HOSTED_MARKETS: 'AU', NODE_ENV: 'development' }).rateLimitStore,
+      ).toEqual({ store: 'postgres' });
+      expect(
+        loadAppConfig({
+          HOSTED_MARKETS: 'AU',
+          NODE_ENV: 'test',
+          REDIS_URL: 'redis://127.0.0.1:6380/2',
+        }).rateLimitStore,
+      ).toEqual({
+        store: 'redis',
+        redis: { host: '127.0.0.1', port: 6380, db: 2, tls: false, username: null, password: null },
+      });
+    });
+
+    it('takes the ACL user and password from their own variables, never from the URL', () => {
+      expect(
+        loadAppConfig({
+          HOSTED_MARKETS: 'AU',
+          NODE_ENV: 'production',
+          CLAMD_HOST: 'clamd',
+          REDIS_URL: 'rediss://cache.internal',
+          REDIS_USERNAME: 'mondapac-rate-limit',
+          REDIS_PASSWORD: 'a-long-secret-from-k1',
+        }).rateLimitStore,
+      ).toEqual({
+        store: 'redis',
+        redis: {
+          host: 'cache.internal',
+          port: 6379,
+          db: 0,
+          tls: true,
+          username: 'mondapac-rate-limit',
+          password: 'a-long-secret-from-k1',
+        },
+      });
+      for (const url of [
+        'redis://user:secret@127.0.0.1:6379',
+        'redis://:secret@127.0.0.1',
+        'rediss://cache.internal?rejectUnauthorized=false',
+        'rediss://cache.internal/0?tls=false',
+        'http://127.0.0.1:6379',
+      ]) {
+        const issues = issuesOf({ NODE_ENV: 'test', REDIS_URL: url });
+        expect(issues).toContain('REDIS_URL: must be redis://host[:port][/db]');
+        expect(issues).not.toContain('secret');
+      }
+    });
+
+    it('requires rediss://, the ACL user and REDIS_URL itself in production', () => {
+      const production = { NODE_ENV: 'production', CLAMD_HOST: 'clamd' };
+      expect(issuesOf(production)).toContain('REDIS_URL: required when NODE_ENV is production');
+      expect(
+        issuesOf({
+          ...production,
+          REDIS_URL: 'redis://cache.internal',
+          REDIS_USERNAME: 'u',
+          REDIS_PASSWORD: 'p',
+        }),
+      ).toContain('REDIS_URL: must be rediss:// (TLS)');
+      expect(issuesOf({ ...production, REDIS_URL: 'rediss://cache.internal' })).toContain(
+        'REDIS_USERNAME and REDIS_PASSWORD: required',
+      );
+    });
+
+    it('lets the rollback switch count everything in PostgreSQL, even with a REDIS_URL', () => {
+      expect(
+        loadAppConfig({
+          HOSTED_MARKETS: 'AU',
+          NODE_ENV: 'test',
+          REDIS_URL: 'redis://127.0.0.1',
+          RATE_LIMIT_STORE: 'postgres',
+        }).rateLimitStore,
+      ).toEqual({ store: 'postgres' });
+      expect(
+        issuesOf({ NODE_ENV: 'production', CLAMD_HOST: 'clamd', RATE_LIMIT_STORE: 'postgres' }),
+      ).not.toContain('REDIS_URL');
+    });
+
+    it('refuses RATE_LIMIT_STORE=redis without a URL, a user without a password, and other values', () => {
+      expect(issuesOf({ NODE_ENV: 'test', RATE_LIMIT_STORE: 'redis' })).toContain(
+        'REDIS_URL: required when RATE_LIMIT_STORE is redis',
+      );
+      expect(
+        issuesOf({ NODE_ENV: 'test', REDIS_URL: 'redis://127.0.0.1', REDIS_USERNAME: 'u' }),
+      ).toContain('REDIS_USERNAME: set REDIS_PASSWORD with it');
+      expect(issuesOf({ NODE_ENV: 'test', RATE_LIMIT_STORE: 'memory' })).toContain(
+        'RATE_LIMIT_STORE',
+      );
+      expect(issuesOf({ NODE_ENV: 'test', REDIS_URL: 'redis://127.0.0.1/16' })).toContain(
+        'REDIS_URL: the database number must be 0 to 15',
+      );
     });
   });
 
@@ -165,7 +280,12 @@ describe('loadAppConfig', () => {
 
     it('refuses the dev-only placeholder in production only', () => {
       const placeholder = 'dev-only-assistant-preview-0123456789';
-      const production = { HOSTED_MARKETS: 'AU', NODE_ENV: 'production', CLAMD_HOST: 'clamav' };
+      const production = {
+        HOSTED_MARKETS: 'AU',
+        NODE_ENV: 'production',
+        CLAMD_HOST: 'clamav',
+        ...PRODUCTION_REDIS,
+      };
       expect(
         loadAppConfig({ HOSTED_MARKETS: 'AU', ASSISTANT_PREVIEW_TOKEN_KEY: placeholder })
           .assistantPreviewTokenKey,
@@ -751,8 +871,12 @@ describe('loadAppConfig', () => {
       'CLAMD_HOST',
     );
     expect(
-      loadAppConfig({ HOSTED_MARKETS: 'AU', NODE_ENV: 'production', CLAMD_HOST: 'clamav' })
-        .malwareScanner,
+      loadAppConfig({
+        HOSTED_MARKETS: 'AU',
+        NODE_ENV: 'production',
+        CLAMD_HOST: 'clamav',
+        ...PRODUCTION_REDIS,
+      }).malwareScanner,
     ).not.toBeNull();
     // Development and test stay free to run without one.
     expect(
@@ -890,6 +1014,7 @@ describe('loadAppConfig', () => {
           NODE_ENV: nodeEnv,
           HOSTED_MARKETS: 'AU',
           CLAMD_HOST: 'clamav',
+          ...PRODUCTION_REDIS,
           MIGRATION_DATABASE_URL: value,
         });
       } catch (error) {

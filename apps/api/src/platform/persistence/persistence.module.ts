@@ -21,7 +21,7 @@ import {
 import { ID_GENERATOR } from '../ids/ids.module';
 import { MarketRegistry } from '../market-config/market-registry';
 import { MarketContextFactory } from '../market-context/market-context.factory';
-import { RATE_LIMIT_COUNTERS } from '../rate-limit/rate-limit-counters';
+import { POSTGRES_RATE_LIMIT_COUNTERS } from '../rate-limit/rate-limit-counters';
 import { JOB_LOCK } from '../scheduler/job-lock';
 import {
   SECURITY_EVENT_STORE,
@@ -69,7 +69,8 @@ const modelMap: ModelMap = MODEL_MAP;
 /**
  * Persistence (platform persistence design, "P", 3.3, 5 to 7). Exports the guarded door for
  * modules (`PrismaService`), the `UnitOfWork` port, `DatabaseProbe`, and the implementations
- * of the event, scheduler and rate-limit ports (relay, bus, job lock, rate-limit counters); never the base client
+ * of the event, scheduler and rate-limit ports (relay, bus, job lock, the PostgreSQL rate-limit
+ * counters, which `RateLimitStoreModule` routes to); never the base client
  * (`PrismaRoot`) or the guarded client, so Nest cannot inject them elsewhere. The outbox writer
  * factory is not a provider at all: a module reaches only its own writer, through
  * {@link PersistenceModule.outboxWriterFor}. A static method, not a named export, so this file
@@ -148,7 +149,7 @@ const modelMap: ModelMap = MODEL_MAP;
       useFactory: (root: PrismaRoot) => new AdvisoryJobLock(root),
     },
     {
-      provide: RATE_LIMIT_COUNTERS,
+      provide: POSTGRES_RATE_LIMIT_COUNTERS,
       inject: [PrismaRoot, CLOCK],
       useFactory: (root: PrismaRoot, clock: Clock) => new PostgresRateLimitCounters(root, clock),
     },
@@ -162,7 +163,7 @@ const modelMap: ModelMap = MODEL_MAP;
     OUTBOX_RELAY,
     EVENT_DISPATCHER,
     JOB_LOCK,
-    RATE_LIMIT_COUNTERS,
+    POSTGRES_RATE_LIMIT_COUNTERS,
   ],
 })
 export class PersistenceModule {

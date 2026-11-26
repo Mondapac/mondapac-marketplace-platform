@@ -90,6 +90,24 @@ const envSchema = z.object({
     .regex(/^postgres(ql)?:\/\/\S+$/, 'must be a postgresql:// connection URL'),
   // Kazem, spike 6 decision 2: an explicit pool maximum per process, 10 unless set.
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
+  // ADR-0054: the Redis of the per-origin rate-limit counters. Host, port and database only: the
+  // user name and password are separate variables (K1 secrets), and a query string is refused, so
+  // the URL can never switch certificate checks off. rediss:// (TLS) in production.
+  REDIS_URL: z
+    .string()
+    .regex(
+      /^rediss?:\/\/[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?(?::\d{1,5})?(?:\/\d{1,2})?$/,
+      'must be redis://host[:port][/db] or rediss://host[:port][/db], with no user, password or query (they have their own variables)',
+    )
+    .optional(),
+  REDIS_USERNAME: z
+    .string()
+    .regex(/^[A-Za-z0-9_.-]{1,64}$/, 'must be 1 to 64 characters of A-Z a-z 0-9 _ . -')
+    .optional(),
+  REDIS_PASSWORD: z.string().min(1).max(512).optional(),
+  // ADR-0054 decision 5: the rollback switch. `postgres` counts every class in PostgreSQL again,
+  // without a code revert; `redis` requires REDIS_URL. Unset: Redis when REDIS_URL is set.
+  RATE_LIMIT_STORE: z.enum(['redis', 'postgres']).optional(),
   // Identity design 9: the local mail catcher's HTTP base URL (Mailpit's UI/API port).
   MAIL_CATCHER_URL: z
     .url({ protocol: /^https?$/, error: 'must be an http(s) URL such as http://localhost:8025' })
@@ -466,6 +484,12 @@ export interface AppConfig {
    */
   readonly databasePoolMax: number;
   /**
+   * Where the high-traffic per-origin rate-limit classes are counted (ADR-0054): `redis` with its
+   * connection, or `postgres` (every class in PostgreSQL, as before ADR-0054). Holds the Redis
+   * password: never log it.
+   */
+  readonly rateLimitStore: RateLimitStoreConfig;
+  /**
    * The local mail catcher's base URL (`MAIL_CATCHER_URL`), or null: then every mail send
    * fails and its delivery is retried and dead-lettered (identity design 9). Set, it is refused
    * unless `NODE_ENV` is explicitly `development` or `test` (`platform/mail/`).
@@ -648,6 +672,83 @@ export type ObjectStoreConfig =
     };
 
 /** The object store settings; an incomplete set is refused at start-up. Issues hold no secret. */
+/** The Redis connection of the rate-limit counters (ADR-0054). The password is a secret. */
+export interface RateLimitRedisConnection {
+  readonly host: string;
+  readonly port: number;
+  readonly db: number;
+  /** rediss://: TLS with the certificate and host name checked (never switched off). */
+  readonly tls: boolean;
+  readonly username: string | null;
+  readonly password: string | null;
+}
+
+export type RateLimitStoreConfig =
+  | { readonly store: 'postgres' }
+  | { readonly store: 'redis'; readonly redis: RateLimitRedisConnection };
+
+/**
+ * `REDIS_URL`, `REDIS_USERNAME`, `REDIS_PASSWORD` and `RATE_LIMIT_STORE` checked (ADR-0054,
+ * Hassan and Kazem on the design): in production the URL is required unless the rollback switch
+ * says `postgres`, it must be rediss://, and the ACL user and its password are required. No
+ * value is ever echoed.
+ */
+function rateLimitStoreSettings(data: {
+  readonly REDIS_URL?: string | undefined;
+  readonly REDIS_USERNAME?: string | undefined;
+  readonly REDIS_PASSWORD?: string | undefined;
+  readonly RATE_LIMIT_STORE?: 'redis' | 'postgres' | undefined;
+  readonly NODE_ENV: 'development' | 'test' | 'production';
+}): { readonly config: RateLimitStoreConfig; readonly issues: readonly string[] } {
+  // An unset NODE_ENV is development here: the rate-limit secret's stand-in already refuses to
+  // start without an explicit development or test value (origin-keys.ts).
+  const local = data.NODE_ENV !== 'production';
+  const issues: string[] = [];
+  if (data.REDIS_USERNAME !== undefined && data.REDIS_PASSWORD === undefined) {
+    issues.push('REDIS_USERNAME: set REDIS_PASSWORD with it');
+  }
+  const store = data.RATE_LIMIT_STORE ?? (data.REDIS_URL === undefined ? null : 'redis');
+  if (store === 'postgres') return { config: { store: 'postgres' }, issues };
+  if (data.REDIS_URL === undefined) {
+    if (store === 'redis') {
+      issues.push('REDIS_URL: required when RATE_LIMIT_STORE is redis');
+    } else if (!local) {
+      issues.push(
+        'REDIS_URL: required when NODE_ENV is production (or RATE_LIMIT_STORE=postgres, the rollback switch)',
+      );
+    }
+    return { config: { store: 'postgres' }, issues };
+  }
+  const url = new URL(data.REDIS_URL);
+  const tls = url.protocol === 'rediss:';
+  if (!tls && !local) {
+    issues.push('REDIS_URL: must be rediss:// (TLS) when NODE_ENV is production');
+  }
+  if (!local && (data.REDIS_USERNAME === undefined || data.REDIS_PASSWORD === undefined)) {
+    issues.push(
+      'REDIS_USERNAME and REDIS_PASSWORD: required when NODE_ENV is production (the rate-limit ACL user)',
+    );
+  }
+  const port = url.port === '' ? 6379 : Number(url.port);
+  if (port < 1 || port > 65535) issues.push('REDIS_URL: the port must be 1 to 65535');
+  const db = url.pathname.length > 1 ? Number(url.pathname.slice(1)) : 0;
+  if (db > 15) issues.push('REDIS_URL: the database number must be 0 to 15');
+  return {
+    config: {
+      store: 'redis',
+      redis: Object.freeze({
+        host: url.hostname,
+        port,
+        db,
+        tls,
+        username: data.REDIS_USERNAME ?? null,
+        password: data.REDIS_PASSWORD ?? null,
+      }),
+    },
+    issues,
+  };
+}
+
 function objectStoreSettings(data: {
   OBJECT_STORE_DRIVER?: 'disk' | 's3' | undefined;
   OBJECT_STORE_DIR?: string | undefined;
@@ -982,6 +1083,10 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
       'ASSISTANT_PREVIEW_TOKEN_KEY: a dev-only placeholder is refused when NODE_ENV is production (each environment has its own key)',
     );
   }
+  const rateLimitStore = parsed.success
+    ? rateLimitStoreSettings(parsed.data)
+    : { config: { store: 'postgres' } as const, issues: [] };
+  issues.push(...rateLimitStore.issues);
   const seedJobsOff = parsed.success
     ? parseSeedJobsOff(parsed.data.CATALOG_SEED_JOBS_OFF, env.NODE_ENV)
     : { names: [], issues: [] };
@@ -1010,6 +1115,7 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     localeConfigDirs: Object.freeze([path.resolve(parsed.data.LOCALE_CONFIG_DIR)]),
     databaseUrl: parsed.data.DATABASE_URL,
     databasePoolMax: parsed.data.DATABASE_POOL_MAX,
+    rateLimitStore: Object.freeze(rateLimitStore.config),
     mailCatcherUrl: parsed.data.MAIL_CATCHER_URL ?? null,
     objectStore: objectStore.config,
     malwareScanner:

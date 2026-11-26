@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261126-storefront-redis-read-cache",
+  "area": "infra",
+  "title": "کش خواندن‌های عمومی سایت روی Redis",
+  "desc": "استفادهٔ دوم از Redis برای cache خواندن‌های عمومی سایت فروشگاه، با طراحی جدا (امروز Redis فقط شمارش را نگه می‌دارد).",
+  "src": "docs/adr/0054-high-traffic-per-origin-rate-limit-counters-in-redis.md و design/infra/rate-limit-counters/rate-limit-counters-fa.html (بخش ۱۲)",
+  "date": "2026-11-26",
+  "trig": "کندی خواندن‌های سایت با رشد بازدید",
+  "prio": "پایین",
+  "status": "موکول"
+}

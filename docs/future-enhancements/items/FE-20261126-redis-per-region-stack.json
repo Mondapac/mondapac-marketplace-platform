@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261126-redis-per-region-stack",
+  "area": "infra",
+  "title": "Redis جدا برای هر استک منطقه",
+  "desc": "یک Redis برای هر Region Stack (MY، EU، US) هنگام راه‌اندازی آن استک‌ها (ADR-0003).",
+  "src": "docs/adr/0054-high-traffic-per-origin-rate-limit-counters-in-redis.md و design/infra/rate-limit-counters/rate-limit-counters-fa.html (بخش ۱۲)",
+  "date": "2026-11-26",
+  "trig": "راه‌اندازی استک منطقهٔ دوم",
+  "prio": "متوسط",
+  "status": "موکول"
+}
