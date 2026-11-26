@@ -51,6 +51,7 @@ vi.mock('../src/storefront/source.ts', () => ({
   loadStorefrontContent: () => Promise.resolve({}),
   loadCartSource: () => Promise.resolve({}),
   loadLiveCart: () => Promise.resolve(null),
+  loadDepartments: () => Promise.resolve({}),
   loadCheckout: () => Promise.resolve({ customer: null }),
   loadAssistant: () => Promise.resolve({}),
   loadDeliveryLocator: () => Promise.resolve({}),
