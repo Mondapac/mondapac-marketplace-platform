@@ -146,12 +146,13 @@ describe.each(TEST_MARKET_IDS)('Own review standing (slice 7) in %s', (code) => 
     );
   });
 
-  it('reads the admin flag as off when sellers cannot answer, never as Trusted', async () => {
+  it('is unavailable when sellers cannot answer the flags, never a misleading bar', async () => {
     const t = setUp();
     t.setFlags(null);
-    expect(await t.standing.execute(sellerOf(t, code), {})).toEqual(
-      ok({ status: 'probation', count: 0, target: 10, restarted: false }),
-    );
+    expect(await t.standing.execute(sellerOf(t, code), {})).toEqual({
+      ok: false,
+      error: { code: 'access.unavailable' },
+    });
   });
 
   it('is unavailable, never a guess, when a read fails', async () => {

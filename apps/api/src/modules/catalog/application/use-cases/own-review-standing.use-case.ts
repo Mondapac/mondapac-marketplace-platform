@@ -75,8 +75,10 @@ export class OwnReviewStanding extends UseCase<
     } catch {
       return err({ code: 'access.unavailable' });
     }
-    // Sellers could not answer: the flag is read as off (the stricter answer), never guessed on.
-    const trustedFromStart = flags?.trustedFromStart ?? { on: false, at: null };
+    // Sellers could not answer: no bar rather than a misleading "0 of N" for a Trusted seller
+    // (Sajad B6), as when the read throws.
+    if (flags === null) return err({ code: 'access.unavailable' });
+    const trustedFromStart = flags.trustedFromStart;
     let read;
     try {
       read = await deps.unitOfWork.run(

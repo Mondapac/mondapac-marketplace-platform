@@ -224,6 +224,7 @@ describe.each(TEST_MARKET_IDS)('the post-publication review list in market %s', 
       probation,
       savedOffers,
       offer: () => offer!,
+      setOffer: (over: Partial<OfferState>) => void (offer = { ...offer!, ...over }),
       openRow,
     };
   }
@@ -527,6 +528,18 @@ describe.each(TEST_MARKET_IDS)('the post-publication review list in market %s', 
       for (const secret of ['internal admin note', 'misconduct', 'sample', 'percent', 'doubled']) {
         expect(text).not.toContain(secret);
       }
+    });
+
+    it('does not tell an old take-down once the Offer was resubmitted and sent back again', async () => {
+      const r = rig({ offer: { firstPublishedAt: T0 } });
+      const row = r.openRow();
+      await r.takeDown.execute(admin(), takeDownBody(row.id));
+      const first = await r.read.execute(seller(), { offerId: r.offer().id });
+      expect(first.ok && first.value.takeDown).not.toBeNull();
+      // The seller resubmitted (R6) and a reviewer sent it back: a send-back, not a take-down.
+      r.setOffer({ submittedAt: clock.now().add({ hours: 1 }) });
+      const again = await r.read.execute(seller(), { offerId: r.offer().id });
+      expect(again.ok && again.value.takeDown).toBeNull();
     });
 
     it('has no take-down for an Offer never taken down, or never published', async () => {

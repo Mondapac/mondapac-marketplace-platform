@@ -85,13 +85,13 @@ export async function OfferDetail({
       ) : status === 'changes-needed' ? (
         <Banner tone="attention">{t('catalog.offer-actions.changes-needed')}</Banner>
       ) : null}
-      {probation}
       {status === 'pending-first-publish' ? (
         <Banner tone="info">{t('catalog.offer-actions.waiting')}</Banner>
       ) : null}
       {canEdit ? (
         <OfferActions offerId={offer.offerId} status={status} csrfToken={csrfToken} />
       ) : null}
+      {probation}
       <Card title={t('catalog.offer.your-offer')}>
         <FieldList
           rows={[

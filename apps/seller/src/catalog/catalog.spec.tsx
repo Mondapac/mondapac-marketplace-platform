@@ -164,10 +164,10 @@ describe('seller catalog pages', () => {
     expect(screen.getByText('Taken down')).toBeTruthy();
     expect(
       screen.getByText(
-        "This offer was taken off sale. Reason: the description makes a claim we can't accept.",
+        "This offer was taken off sale because its description makes a claim we can't accept.",
       ),
     ).toBeTruthy();
-    expect(screen.getByText(/Fix it and submit again/)).toBeTruthy();
+    expect(screen.getByText(/Edit the offer, then submit it again/)).toBeTruthy();
     view.unmount();
     render(
       await OfferDetail({
@@ -191,7 +191,7 @@ describe('seller catalog pages', () => {
     } as OfferView;
     const { container } = render(await OfferDetail({ offer: down }));
     // A code this panel does not know reads as the safe line, never the raw code.
-    expect(screen.getByText(/see the email we sent you/)).toBeTruthy();
+    expect(screen.getByText(/we explained in the email we sent you/)).toBeTruthy();
     const text = container.textContent ?? '';
     for (const word of [
       'internal admin note',
@@ -213,15 +213,18 @@ describe('seller catalog pages', () => {
     const bar = screen.getByRole('progressbar');
     expect(bar.getAttribute('aria-valuenow')).toBe('3');
     expect(bar.getAttribute('aria-valuemax')).toBe('10');
-    expect(screen.getAllByText('3 of 10 offers checked').length).toBeGreaterThan(0);
-    expect(screen.getByText('Your first offers are being checked')).toBeTruthy();
+    expect(bar.getAttribute('aria-valuetext')).toBe('3 of 10 offers reviewed');
+    expect(
+      screen.getByRole('heading', { name: 'Your first offers are being reviewed' }),
+    ).toBeTruthy();
+    expect(screen.getByText('Your first offers are being reviewed')).toBeTruthy();
     view.unmount();
     const shorter = render(
       await ProbationBar({
         standing: { status: 'probation', count: 0, target: 5, restarted: true },
       }),
     );
-    expect(screen.getByText('A shorter check applies to your next offers')).toBeTruthy();
+    expect(screen.getByText('A shorter review applies to your next offers')).toBeTruthy();
     shorter.unmount();
     for (const standing of [
       { status: 'trusted', count: 0, target: 0, restarted: false } as const,

@@ -10,7 +10,7 @@ import type {
   OfferPostReviewReasonReceipt,
   OfferPostReviewRepository,
 } from '../application/ports/offer-post-review';
-import type { OfferChangeReason } from '../domain/events';
+import { OFFER_CHANGE_REASONS, type OfferChangeReason } from '../domain/events';
 import {
   OfferPostReview,
   type OfferPostReviewReason,
@@ -199,7 +199,10 @@ export class PrismaOfferPostReviewRepository implements OfferPostReviewRepositor
     });
     if (row === null || row.decisionReasonCode === null || row.decidedAt === null) return null;
     return {
-      reasonCode: row.decisionReasonCode as OfferChangeReason,
+      // An unknown stored code reads as `other`, never passed on as it is.
+      reasonCode: (OFFER_CHANGE_REASONS as readonly string[]).includes(row.decisionReasonCode)
+        ? (row.decisionReasonCode as OfferChangeReason)
+        : 'other',
       at: toInstant(row.decidedAt),
     };
   }

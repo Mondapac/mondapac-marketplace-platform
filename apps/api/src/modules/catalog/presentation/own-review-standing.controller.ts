@@ -62,7 +62,12 @@ export class OwnReviewStandingController {
     response.setHeader('Cache-Control', 'no-store');
     const result = await this.standing.execute(context, {});
     const outcome: OwnReviewStandingDto | HttpException = result.ok
-      ? { ...result.value }
+      ? {
+          status: result.value.status,
+          count: result.value.count,
+          target: result.value.target,
+          restarted: result.value.restarted,
+        }
       : refusalWith(STATUS, result.error, response, context);
     const failed = outcome instanceof HttpException && outcome.getStatus() >= 500;
     this.#logger[failed ? 'warn' : 'log']({

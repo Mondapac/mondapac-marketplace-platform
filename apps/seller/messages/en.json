@@ -2063,15 +2063,15 @@
       "waiting": "This offer is waiting for our review. You can't change it until we decide.",
       "taken-down": {
         "title": "Taken down",
-        "body": "This offer was taken off sale. Reason: {reason}.",
-        "next": "Fix it and submit again. Orders already placed will still ship.",
+        "body": "This offer was taken off sale because {reason}.",
+        "next": "Edit the offer, then submit it again. Orders already placed will still ship.",
         "reason": {
-          "content-unclear": "the content is unclear",
-          "description-claim": "the description makes a claim we can't accept",
-          "sku-or-condition": "the SKU or the condition doesn't match",
-          "handling-unclear": "the handling is unclear",
-          "other": "see the email we sent you",
-          "unknown": "see the email we sent you"
+          "content-unclear": "its content is unclear",
+          "description-claim": "its description makes a claim we can't accept",
+          "sku-or-condition": "its SKU or condition doesn't match the product",
+          "handling-unclear": "its handling is unclear",
+          "other": "of a problem we explained in the email we sent you",
+          "unknown": "of a problem we explained in the email we sent you"
         }
       },
       "error": {
@@ -3219,10 +3219,10 @@
       "stock-unavailable": "Stock can't be shown right now, so Status checks prices only. Reload the page to try again."
     },
     "probation": {
-      "title": "Your first offers are being checked",
-      "restarted": "A shorter check applies to your next offers",
-      "progress": "{count} of {target} offers checked",
-      "help": "Until then, new offers may wait for our review before they go on sale."
+      "title": "Your first offers are being reviewed",
+      "restarted": "A shorter review applies to your next offers",
+      "progress": "{count} of {target} offers reviewed",
+      "help": "Until you finish, new offers may wait for our review before they go on sale."
     }
   },
   "stock": {

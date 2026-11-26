@@ -1,4 +1,4 @@
-import { err, ok, parseId } from '@mondapac/shared-kernel';
+import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
@@ -82,9 +82,18 @@ export class OwnOfferRead extends UseCase<OwnOfferReadInput, OwnOfferView, OwnOf
         const latest = await this.deps.pendingChanges.findLatestByOffer(market, offer.state.id);
         // A take-down is told only while the Offer is off sale after it: sent back with a first
         // publication on record. A first-publication send-back has none (slice 7).
-        const down =
+        const taken =
           status === 'changes-needed' && offer.state.firstPublishedAt !== null
             ? await this.deps.postReviews.latestTakeDownOf(market, offer.state.id)
+            : null;
+        // A later submit (the resubmit after a take-down) and a new send-back make this a
+        // first-style send-back again: the take-down is told only if it came after the last
+        // submit (Sajad B1).
+        const submitted = offer.state.submittedAt;
+        const down =
+          taken !== null &&
+          (submitted === null || Temporal.Instant.compare(taken.at, submitted) >= 0)
+            ? taken
             : null;
         return ok({
           ...offerViewOf(offer, label, { withTags: true }),
