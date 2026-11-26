@@ -21,6 +21,8 @@ import { find, historyOf, type GatewaySetting, type HistoryEntry } from '../ai-g
 import { formatInstant } from '../shared/format.ts';
 import { REVIEW_NOTE_MAX, isNoteFailure, useSentForReview } from '../shared/review-note.tsx';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
+import { EvaluationPanel } from './evaluation-panel.tsx';
+import { familiesOfOptions } from './evaluation-types.ts';
 import {
   DEFAULT_SAVER_PERCENT,
   MAX_FAMILIES,
@@ -117,7 +119,7 @@ export function AiModelsPanel({
   const sentForReview = useSentForReview();
   const [answer, setAnswer] = useState(initial);
   const [draft, setDraft] = useState(() => savedDraft(initial.settings));
-  const [tab, setTab] = useState<'external' | 'own'>('external');
+  const [tab, setTab] = useState<'external' | 'evaluation' | 'own'>('external');
   const [previewing, setPreviewing] = useState(false);
   const [busy, setBusy] = useState(false);
   // True when a save went through but the page could not refresh: nothing more is saved from stale values.
@@ -328,13 +330,22 @@ export function AiModelsPanel({
         label={t('tabs.label')}
         panelId="ai-models-panel"
         activeId={tab}
-        onSelect={(id) => setTab(id === 'own' ? 'own' : 'external')}
+        onSelect={(id) =>
+          setTab(id === 'own' ? 'own' : id === 'evaluation' ? 'evaluation' : 'external')
+        }
         items={[
           { id: 'external', label: t('tabs.external') },
+          { id: 'evaluation', label: t('tabs.evaluation') },
           { id: 'own', label: t('tabs.own') },
         ]}
       />
-      {tab === 'own' ? (
+      {tab === 'evaluation' ? (
+        <EvaluationPanel
+          families={familiesOfOptions(answer.options)}
+          canManage={canManage}
+          csrfToken={csrfToken}
+        />
+      ) : tab === 'own' ? (
         <div id="ai-models-panel" role="tabpanel" aria-labelledby="ai-models-panel-tab-own">
           <SettingsSection title={t('own.section')} description={t('own.body')}>
             <p className="px-5 py-4 text-sm">{t('own.later')}</p>

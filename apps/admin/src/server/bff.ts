@@ -272,6 +272,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The AI model choice (settings; same view key) and its history (query `code`, `limit`).
     'settings/admin/ai-models',
     'settings/admin/ai-models/history',
+    // The AI evaluation runs of the Market (query `family`, `cursor`) and what a run of one model
+    // would cost (query `provider`, `family`); one run is read by its UUID (see ALLOWED_WITH_ID).
+    'settings/admin/ai-models/evaluations',
+    'settings/admin/ai-models/evaluations/estimate',
     // The Offer review policy (settings; keys settings.offer-review.view / .manage).
     'settings/admin/offer-review',
     // Whether the Offer review emergency stop is on (settings; any admin, the banner).
@@ -352,6 +356,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // settings.ai-gateway.manage; every restore asks a fresh two-step code).
     'settings/admin/ai-gateway/revert',
     'settings/admin/ai-models/revert',
+    // Start an AI evaluation run of a model (settings; protected key settings.ai-models.manage;
+    // every start asks a fresh two-step code). Cancel is by run id (ALLOWED_WITH_ID).
+    'settings/admin/ai-models/evaluations',
     // Approve several low-risk system requests: by ids, or every one a list filter matches.
     'system-requests/admin/requests/bulk-approve',
     'system-requests/admin/requests/bulk-approve-matching',
@@ -471,6 +478,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
  */
 const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   POST: [
+    // Cancel a queued or running AI evaluation run (settings; protected key
+    // settings.ai-models.manage); no body.
+    'settings/admin/ai-models/evaluations/:id/cancel',
     // One system request (system-requests): a comment, and the three decisions.
     'system-requests/admin/requests/:id/comments',
     'system-requests/admin/requests/:id/approve',
@@ -835,6 +845,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   ],
   // The seller's commission rate and ledger, read from the seller review page.
   GET: [
+    // One AI evaluation run of the Market, with its capabilities and samples (settings).
+    'settings/admin/ai-models/evaluations/:id',
     // One held edit of a live Offer with its live values, a seller's review standing and flags
     // (catalog and sellers, risk-based Offer approval slices 4 and 5).
     'catalog/admin/offer-changes/:id',
@@ -969,6 +981,8 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   // The history of one AI Gateway setting: its code and how many versions (the API validates both).
   'settings/admin/ai-gateway/history': ['code', 'limit'],
   'settings/admin/ai-models/history': ['code', 'limit'],
+  'settings/admin/ai-models/evaluations': ['family', 'cursor'],
+  'settings/admin/ai-models/evaluations/estimate': ['provider', 'family'],
   // The assistant insights: the day range and the page of the unanswered questions.
   'assistant/admin/insights': ['from', 'to', 'page', 'pageSize'],
   // The System requests queue: the view, search, filters, sort and either page numbers or a
@@ -1886,6 +1900,14 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   'settings/admin/ai-models/history': {
     code: /^ai-[a-z0-9-]{1,80}$/,
     limit: /^[0-9]{1,2}$/,
+  },
+  'settings/admin/ai-models/evaluations': {
+    family: /^[a-z0-9][a-z0-9.-]{0,19}$/,
+    cursor: /^[0-9]{1,16}\.[0-9a-f-]{36}$/i,
+  },
+  'settings/admin/ai-models/evaluations/estimate': {
+    provider: /^[a-z][a-z0-9-]{0,39}$/,
+    family: /^[a-z0-9][a-z0-9.-]{0,19}$/,
   },
   'assistant/admin/insights': {
     from: /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/,

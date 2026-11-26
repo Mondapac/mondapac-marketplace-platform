@@ -556,6 +556,20 @@ settings/admin/ai-gateway/emergency-stop` (protected key `settings.ai-gateway.ma
   buttons (keyboard and phone friendly); drag and drop, the evaluation scorecard and the playground
   come in later PRs (G5c, G5d).
 
+- **Built in G5c (Settings > AI Models, tab Evaluation).** Per model family: the estimated cost of
+  an evaluation run (per capability, with the evaluation budget left and anything that blocks the
+  run), starting the run (always behind the two-step code, with the estimate the admin saw sent
+  back as `expectedEstimateMicroUsd`; a stale estimate is read again), the Market's runs (filter by
+  model, older pages by cursor, cancel while queued or running, no code), and one run's result:
+  each capability's verdict and each sample's outcome, checks, tokens, cost and time. A
+  `pass-candidate` is shown as a candidate and never as a pass; no model text exists to show. The
+  status of a running run is refreshed with a button (automatic refresh: FE-20261126-ai-gateway-
+  evaluation-live-progress). The usage metrics of the design's scorecard (cost per 1000 requests,
+  error rate, p95, fallbacks) wait for an API read of `ai_usage_days`
+  (FE-20261126-ai-gateway-scorecard-usage-metrics). Files: `apps/admin/src/ai-models/evaluation-*`,
+  BFF allow-list (the run id routes use the `:id` UUID templates), step-up label
+  `settings.ai-evaluation.run`, help, i18n.
+
 ## 9. Security (Hassan)
 
 - **Keys** live in the environment's secret manager, one per provider and Market, plus separate keys
