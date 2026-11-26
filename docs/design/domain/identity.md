@@ -874,7 +874,7 @@ at boot and never logged (Hassan, H4), also for unknown addresses.
 | Challenge attempts | On the challenge | 5, then the challenge is void |
 | `second-factor.account` (HF2) | Failed codes and recovery codes per account, across challenges | 10 failed codes or recovery codes in 24 hours, across challenges. The factor step is then refused for 24 hours and the account is mailed. Nothing lifts the block early: not a password reset or change (seller or admin), not a second-factor reset, not an operator action. It expires only when its window ends (Ali 2026-10-08, Hassan I-4) |
 | `mail.account`, `mail.origin` | Reset, verification re-send, sign-up, enrolment link, invitation mail | 3 per hour per account; 10 per hour per origin |
-| Generic, per origin | Every request: the platform rate limiter of slice 0, before any `identity` code; package and store after spike 3 (13). One instance may count in memory; a second needs a shared store | 20 per minute on anonymous `identity` routes, 300 per minute elsewhere |
+| Generic, per origin | Every request: the platform rate limiter of slice 0, before any `identity` code; package and store after spike 3 (13). One instance may count in memory; a second needs a shared store. ADR-0054: the high-traffic classes count in Redis (each instance's memory while Redis is unreachable); anonymous `identity` routes stay in PostgreSQL and fail closed | 20 per minute on anonymous `identity` routes, 300 per minute elsewhere |
 
 | Rule | Design |
 |---|---|
@@ -1315,7 +1315,7 @@ shop; races on the last role holder; second-factor resets obtained through suppo
 | Audit writer, seal table, sealer; `ANONYMOUS` in the actor CHECK | 6a (writer, tables, migration) and 6b (sealer, verifier, log anchor), one slice set (ADR-0015 decision 1) |
 | Permission registry | 8a-1 |
 | Audit-chain hardening set: Object Lock anchor (compliance mode), worker-only INSERT group, chain-epoch recovery, `transaction_timeout` on the login roles, operator log for `SYSTEM` commands, owner answers to Q5 and Q7 | Release trigger, not a slice: before any non-local environment, shared staging included, that holds non-synthetic data or is reachable by anyone outside the dev team (`platform-audit.md` 15; ADR-0032, ADR-0032, amending ADR-0015 decision 3; checked by Bagher) |
-| Redis client | Not triggered by `identity`; only if the generic limiter needs a shared store |
+| Redis client | Not triggered by `identity`; only if the generic limiter needs a shared store. **Triggered by ADR-0054 (2026-11-26):** `ioredis` 5.11.1 for the high-traffic per-origin counters |
 
 ### 12.3 Spikes still needed (run, not merged)
 | # | Spike | Status |
@@ -1336,7 +1336,7 @@ shop; races on the last role holder; second-factor resets obtained through suppo
 | Session and link tokens, CSRF token | Yes: random bytes, SHA-256, HMAC, constant-time compare | — | **No package** |
 | Cookie reading and writing | Yes, with the installed HTTP adapter: a strict reader for our own cookie names; `Set-Cookie` through the response | `cookie-parser` | **No package** |
 | Sign-in throttling | Yes: counters in PostgreSQL (6.8) | — | **No package** |
-| Generic rate limiting per origin | No | `@nestjs/throttler`, `rate-limiter-flexible`; criteria: works under NestJS 12 and the test setup, memory and shared stores, no install script | **One package, named after spike 3**; a Redis client only with a second API instance. **Approved by the owner on 2026-10-07: `rate-limiter-flexible` 11.2.1** (exact pin; memory store now, its PostgreSQL store when a second API instance exists; no Redis client). Added with its lockfile by the shared-file PR `chore/identity-rate-limiter-dep`, before slice 1d merges |
+| Generic rate limiting per origin | No | `@nestjs/throttler`, `rate-limiter-flexible`; criteria: works under NestJS 12 and the test setup, memory and shared stores, no install script | **One package, named after spike 3**; a Redis client only with a second API instance. **Approved by the owner on 2026-10-07: `rate-limiter-flexible` 11.2.1** (exact pin; memory store now, its PostgreSQL store when a second API instance exists; no Redis client). **Amended by ADR-0054 (owner decision 2026-11-26):** its Redis store for `default`, `public-search` and `public-media`, with the Redis client `ioredis` 5.11.1 (exact pin). Added with its lockfile by the shared-file PR `chore/identity-rate-limiter-dep`, before slice 1d merges |
 | Sending mail | Partly: `fetch` covers an HTTP interface | `nodemailer` if only SMTP is available | **None if spike 4 passes; otherwise `nodemailer`** |
 | Mail templates | Yes: named placeholders | An ICU formatter, with `notifications` | **No package in Phase 2** |
 | Common-password list | A checked-in data file, not a package; its licence is checked | — | **Data file** |

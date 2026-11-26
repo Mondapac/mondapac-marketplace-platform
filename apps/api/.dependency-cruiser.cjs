@@ -875,6 +875,16 @@ module.exports = {
       to: { path: '(^|/node_modules/)@aws-sdk/client-s3(/|$)' },
     },
     {
+      // ADR-0054: Redis holds the rate-limit counts and nothing else (ADR-0018 decision 2).
+      name: 'ioredis-only-in-rate-limit-redis',
+      comment:
+        'The Redis client is imported only by platform/rate-limit/rate-limit-redis.ts: Redis ' +
+        'holds rate-limit counts only, never sessions, access or any other data.',
+      severity: 'error',
+      from: { pathNot: '^src/platform/rate-limit/rate-limit-redis\\.ts$' },
+      to: { path: '(^|/node_modules/)ioredis(/|$)' },
+    },
+    {
       name: 'no-circular',
       comment: 'Circular dependencies hide coupling between files and modules.',
       severity: 'error',

@@ -21,7 +21,8 @@ export interface SubjectCount {
 }
 
 /**
- * Per-subject counters on the shared table of the per-origin limiter (buyer assistant package 4):
+ * Per-subject counters on the shared table of the per-origin limiter (buyer assistant package 4;
+ * every subject class stays in PostgreSQL and fails closed, ADR-0054 decision 2):
  * a module names a subject (a guest token hash, an account id, an origin, always with its
  * Market) and gets the count of the class's fixed window, shared by every API instance. The
  * module compares it with its own limit, so the limit can be a Market setting. The stored key is

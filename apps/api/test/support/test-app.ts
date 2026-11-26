@@ -10,9 +10,11 @@ import { AppModule } from '../../src/app.module';
 import { APP_OPTIONS, configureApp } from '../../src/configure-app';
 import { MODEL_PROVIDER, type ModelProvider } from '../../src/platform/ai/model-provider';
 import { RATE_LIMIT_COUNTERS } from '../../src/platform/rate-limit/rate-limit-counters';
+import { RATE_LIMIT_REDIS_KEY_PREFIX } from '../../src/platform/rate-limit/rate-limit-store.module';
 import { FakeModelProvider } from './fake-model-provider';
 import { MemoryRateLimitCounters } from './memory-rate-limit-counters';
 import { panelOriginMarketConfigDirs, testAppConfig } from './test-config';
+import { testRedisEnv, testRedisKeyPrefix } from './test-redis';
 
 // nestjs-pino builds its pino-http instance once per module registry, so in one Jest test
 // file only the first application's log destination receives lines. A spec file that
@@ -51,9 +53,16 @@ export interface TestAppOptions {
   /**
    * Where the rate limiter counts: `memory` (the default) gives each application counters of
    * its own, so suites without a database run and parallel database suites never share a
-   * window; `postgres` keeps the application's PostgreSQL store (the rate-limit database suite).
+   * window; `postgres` keeps the application's PostgreSQL store (the rate-limit database suite);
+   * `redis` counts the Redis classes in the Redis of `REDIS_URL` (ADR-0054), under
+   * {@link redisKeyPrefix}, and every other class in PostgreSQL.
    */
-  readonly rateLimitStore?: 'memory' | 'postgres';
+  readonly rateLimitStore?: 'memory' | 'postgres' | 'redis';
+  /**
+   * With `rateLimitStore: 'redis'`: the key prefix, so applications that must share windows (two
+   * "instances") pass the same one. A fresh prefix of this worker otherwise.
+   */
+  readonly redisKeyPrefix?: string;
   /**
    * The model provider: a {@link FakeModelProvider} with an empty script by default, so no test
    * ever calls a real model.
@@ -76,7 +85,10 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     },
   });
 
-  const base = testAppConfig(options.env);
+  const base = testAppConfig({
+    ...(options.rateLimitStore === 'redis' ? testRedisEnv() : {}),
+    ...options.env,
+  });
   const config = options.panelOrigins
     ? { ...base, marketConfigDirs: panelOriginMarketConfigDirs() }
     : base;
@@ -90,7 +102,11 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
   const builder =
     options.rateLimitStore === 'postgres'
       ? offline
-      : offline.overrideProvider(RATE_LIMIT_COUNTERS).useValue(new MemoryRateLimitCounters());
+      : options.rateLimitStore === 'redis'
+        ? offline
+            .overrideProvider(RATE_LIMIT_REDIS_KEY_PREFIX)
+            .useValue(options.redisKeyPrefix ?? testRedisKeyPrefix())
+        : offline.overrideProvider(RATE_LIMIT_COUNTERS).useValue(new MemoryRateLimitCounters());
   const moduleRef = await (options.override ? options.override(builder) : builder).compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>(APP_OPTIONS);
   app.useLogger(app.get(Logger));

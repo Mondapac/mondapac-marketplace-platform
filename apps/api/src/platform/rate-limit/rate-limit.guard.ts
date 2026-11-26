@@ -37,11 +37,12 @@ export const UNAVAILABLE_CODE = 'access.unavailable';
  * - **Key:** the resolved client address (`platform/http/client-address.ts`, ADR-0037: the
  *   socket's, or the one a BFF proved), as the IPv4 address or the IPv6 /64
  *   ({@link clientOriginOf}). Forwarded headers are never read.
- * - **Counters:** in PostgreSQL ({@link RateLimitCounters}, the package's PostgreSQL store), so
- *   every API instance counts the same window (identity design 13; buyer scale-out item (a)).
- *   One per limit class and origin, not split by Market (PF I11): the limiter is the
- *   cross-Market control. The stored key is the keyed hash of the origin
- *   ({@link RateLimitOriginKeys}), never the address.
+ * - **Counters:** shared by every API instance ({@link RateLimitCounters}; identity design 13,
+ *   buyer scale-out item (a)): `default`, `public-search` and `public-media` in Redis, and in
+ *   each instance's memory while Redis is unreachable; `anonymous-identity` in PostgreSQL, where
+ *   a failure fails closed (ADR-0054). One per limit class and origin, not split by Market (PF
+ *   I11): the limiter is the cross-Market control. The stored key is the keyed hash of the
+ *   origin ({@link RateLimitOriginKeys}), never the address.
  * - **Limits:** the request Market's `requestLimits` (Market configuration); the class comes
  *   from `@RateLimit()`, `default` otherwise. Fixed windows of 60 seconds.
  * - **Answers:** over the limit, 429 `{ statusCode, code: 'request.throttled', details: {

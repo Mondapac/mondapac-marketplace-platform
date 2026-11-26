@@ -2,7 +2,7 @@ import { MODULE_METADATA } from '@nestjs/common/constants';
 import { testAppConfig } from '../../../test/support/test-config';
 import { EVENT_BUS, OUTBOX_RELAY } from '../events/event-bus';
 import { EVENT_DISPATCHER } from '../events/event-delivery';
-import { RATE_LIMIT_COUNTERS } from '../rate-limit/rate-limit-counters';
+import { POSTGRES_RATE_LIMIT_COUNTERS } from '../rate-limit/rate-limit-counters';
 import { JOB_LOCK } from '../scheduler/job-lock';
 import { SUBJECT_KEY_STORE } from '../subject-keys/subject-key-store';
 import { InvalidUnitOfWorkOptionsError } from '../unit-of-work/errors';
@@ -33,7 +33,7 @@ describe('PersistenceModule (platform persistence design 3.3)', () => {
       OUTBOX_RELAY,
       EVENT_DISPATCHER,
       JOB_LOCK,
-      RATE_LIMIT_COUNTERS,
+      POSTGRES_RATE_LIMIT_COUNTERS,
     ]);
   });
 

@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261126-rate-limit-sliding-window",
+  "area": "infra",
+  "title": "پنجرهٔ لغزان برای شمارنده‌های محدودیت درخواست",
+  "desc": "پنجرهٔ لغزان (sliding window) به‌جای پنجرهٔ ثابت ۶۰ ثانیه‌ای برای کلاس‌های Redis.",
+  "src": "docs/adr/0054-high-traffic-per-origin-rate-limit-counters-in-redis.md و design/infra/rate-limit-counters/rate-limit-counters-fa.html (بخش ۱۲)",
+  "date": "2026-11-26",
+  "trig": "دیده شدن حمله در لبهٔ پنجره",
+  "prio": "پایین",
+  "status": "موکول"
+}

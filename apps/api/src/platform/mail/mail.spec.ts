@@ -108,7 +108,15 @@ describe('mailTransportFor', () => {
     );
     expect(() => mailTransportFor(loadAppConfig(base))).toThrow(MailCatcherNotAllowedError);
     expect(() =>
-      mailTransportFor(loadAppConfig({ ...base, NODE_ENV: 'production', CLAMD_HOST: 'clamav' })),
+      mailTransportFor(
+        loadAppConfig({
+          ...base,
+          NODE_ENV: 'production',
+          CLAMD_HOST: 'clamav',
+          // Production needs a Redis for the rate-limit counters, or the rollback switch (ADR-0054).
+          RATE_LIMIT_STORE: 'postgres',
+        }),
+      ),
     ).toThrow(MailCatcherNotAllowedError);
   });
 });

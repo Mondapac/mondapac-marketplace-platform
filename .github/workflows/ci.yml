@@ -53,10 +53,25 @@ jobs:
           --health-timeout 3s
           --health-retries 10
 
+      # ADR-0054: the Redis of the rate-limit counters, the same engine and major version as
+      # docker-compose.yml (Valkey 8, as ElastiCache in production). A service the API needs,
+      # added like PostgreSQL; nothing about a failure is hidden.
+      redis:
+        image: mirror.gcr.io/valkey/valkey:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
     # Job level holds only what the application may see. MIGRATION_DATABASE_URL is set on the
     # two steps that need it, never here, so the boot probe runs without it
     # (docs/design/data/platform.md 10.7).
     env:
+      # ADR-0054: the Redis service above counts the high-traffic rate-limit classes.
+      REDIS_URL: redis://127.0.0.1:6379
       DATABASE_URL: postgresql://mondapac_api:mondapac_api@localhost:5432/mondapac
       HOSTED_MARKETS: ${{ matrix.region.hosted_markets }}
       # The local subject-key wrapper starts only on an explicit development or test NODE_ENV
@@ -142,13 +157,20 @@ jobs:
           kill -TERM "$worker"
           wait "$worker" || { echo "Worker did not stop cleanly on SIGTERM" >&2; exit 1; }
 
-      # The only step that runs docker-compose.yml's PostgreSQL: the init-directory path of the
+      # The only step that runs docker-compose.yml's PostgreSQL and Redis: the init-directory path of the
       # bootstrap and `pnpm db:bootstrap`. Port 5433 keeps it apart from the service container.
-      - name: Compose smoke (PostgreSQL only)
+      # Redis too (ADR-0054): the counters' local store must start and answer. Port 6380 keeps it
+      # apart from the Redis service container.
+      - name: Compose smoke (PostgreSQL and Redis)
         env:
           POSTGRES_PORT: '5433'
+          REDIS_PORT: '6380'
         run: |
-          docker compose up -d --wait postgres
+          docker compose up -d --wait postgres redis
+          if [ "$(docker compose exec -T redis valkey-cli ping)" != "PONG" ]; then
+            echo "The Compose Redis did not answer PING" >&2
+            exit 1
+          fi
           state=$(docker compose exec -T postgres psql -U postgres -d mondapac -Atc "
             SELECT (SELECT count(*) FROM pg_roles
                      WHERE rolname IN ('mondapac_app', 'mondapac_api', 'mondapac_migrator')
@@ -165,8 +187,9 @@ jobs:
         if: always()
         env:
           POSTGRES_PORT: '5433'
+          REDIS_PORT: '6380'
         run: |
-          if [ "${{ job.status }}" != "success" ]; then docker compose logs postgres || true; fi
+          if [ "${{ job.status }}" != "success" ]; then docker compose logs postgres redis || true; fi
           docker compose down -v
 
   # The operational test data loader (scripts/ops-data) at smoke size: the loader's "ci" profile
@@ -195,9 +218,24 @@ jobs:
           --health-timeout 3s
           --health-retries 10
 
+      # ADR-0054: the Redis of the rate-limit counters, the same engine and major version as
+      # docker-compose.yml (Valkey 8, as ElastiCache in production). A service the API needs,
+      # added like PostgreSQL; nothing about a failure is hidden.
+      redis:
+        image: mirror.gcr.io/valkey/valkey:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
     # Job level holds only what the application may see (as in the verify job); the loader's own
     # variables are set on the steps that need them.
     env:
+      # ADR-0054: the Redis service above counts the high-traffic rate-limit classes.
+      REDIS_URL: redis://127.0.0.1:6379
       DATABASE_URL: postgresql://mondapac_api:mondapac_api@localhost:5432/mondapac
       HOSTED_MARKETS: AU
       NODE_ENV: test
@@ -309,7 +347,22 @@ jobs:
           --health-timeout 3s
           --health-retries 10
 
+      # ADR-0054: the Redis of the rate-limit counters, the same engine and major version as
+      # docker-compose.yml (Valkey 8, as ElastiCache in production). A service the API needs,
+      # added like PostgreSQL; nothing about a failure is hidden.
+      redis:
+        image: mirror.gcr.io/valkey/valkey:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
     env:
+      # ADR-0054: the Redis service above counts the high-traffic rate-limit classes.
+      REDIS_URL: redis://127.0.0.1:6379
       DATABASE_URL: postgresql://mondapac_api:mondapac_api@localhost:5432/mondapac
       HOSTED_MARKETS: ${{ matrix.region.hosted_markets }}
       NODE_ENV: test
