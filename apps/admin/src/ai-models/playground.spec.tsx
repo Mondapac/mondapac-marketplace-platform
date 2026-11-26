@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
@@ -148,9 +148,55 @@ describe('AI playground', () => {
     await pick();
     fireEvent.click(screen.getByRole('button', { name: 'Run on both models' }));
     fireEvent.change(screen.getByLabelText('Sample'), { target: { value: 's2' } });
-    finish({ ok: true, status: 200, body: ANSWERS } as never);
-    await Promise.resolve();
+    await act(async () => {
+      finish({ ok: true, status: 200, body: ANSWERS } as never);
+      await Promise.resolve();
+    });
+    // The run answered after the choice changed: nothing of it may show.
     expect(screen.queryByText('Other text')).toBeNull();
+    expect(screen.queryByText('Dropped a required fact')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Run on both models' })).toBeTruthy();
+  });
+
+  it('never shows an answer with a failed check as a plain success', async () => {
+    view();
+    await pick();
+    fireEvent.click(screen.getByRole('button', { name: 'Run on both models' }));
+    expect(await screen.findByText('Answered, failed checks')).toBeTruthy();
+    expect(screen.getAllByText('Answered')).toHaveLength(1);
+  });
+
+  it('shows a call that timed out or was refused, with no text', async () => {
+    const empty = { text: null, checks: [], costMicroUsd: 0, latencyMs: null, route: null };
+    call.mockImplementation((method) =>
+      method === 'GET'
+        ? ok(SAMPLES)
+        : ok({
+            answers: [
+              { family: 'model-a', outcome: 'timeout', ...empty },
+              { family: 'model-b', outcome: 'refused', ...empty },
+            ],
+          }),
+    );
+    view();
+    await pick();
+    fireEvent.click(screen.getByRole('button', { name: 'Run on both models' }));
+    expect(await screen.findByText('Timed out')).toBeTruthy();
+    expect(screen.getByText('Sample too large')).toBeTruthy();
+    expect(screen.getAllByText('Nothing would be shown for this answer.')).toHaveLength(2);
+    expect(screen.queryByText('Answered')).toBeNull();
+  });
+
+  it.each([
+    ['access.acting-as-refused', 403, /can't be used while you are acting as a seller/],
+    ['request.csrf', 403, /Your session expired/],
+    ['access.denied', 403, /don't have permission to run the playground/],
+  ])('explains a refusal %s', async (code, status, message) => {
+    call.mockImplementation((method) => (method === 'GET' ? ok(SAMPLES) : fail(status, code)));
+    view();
+    await pick();
+    fireEvent.click(screen.getByRole('button', { name: 'Run on both models' }));
+    expect(await screen.findByText(message)).toBeTruthy();
   });
 
   it('shows a load failure', async () => {

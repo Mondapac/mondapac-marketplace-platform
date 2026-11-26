@@ -14883,6 +14883,7 @@
       "route": "Route",
       "outcome": {
         "ok": "Answered",
+        "ok-failed": "Answered, failed checks",
         "timeout": "Timed out",
         "unavailable": "Not available",
         "rate-limited": "Rate limited",

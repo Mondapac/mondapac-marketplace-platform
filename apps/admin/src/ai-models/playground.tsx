@@ -200,8 +200,17 @@ export function AiPlayground({
             <SettingsSection key={answer.family} title={answer.family}>
               <div className="flex flex-col gap-3 px-5 py-4">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone={answer.outcome === 'ok' ? 'success' : 'attention'}>
-                    {t(`outcome.${answer.outcome}`)}
+                  {/* An answer that failed a check is never shown as a plain success. */}
+                  <Badge
+                    tone={
+                      answer.outcome === 'ok' && answer.checks.length === 0
+                        ? 'success'
+                        : 'attention'
+                    }
+                  >
+                    {answer.outcome === 'ok' && answer.checks.length > 0
+                      ? t('outcome.ok-failed')
+                      : t(`outcome.${answer.outcome}`)}
                   </Badge>
                   {answer.checks.map((check) => (
                     <Badge key={check} tone="attention">
