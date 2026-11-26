@@ -57,6 +57,9 @@ import { RevertAiGatewaySetting } from '../../src/modules/settings/application/u
 import { ViewAiGatewayHistory } from '../../src/modules/settings/application/use-cases/view-ai-gateway-history.use-case';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
+// A task type's in-house page with no stored row (G6c).
+const OFF_PAGE = { stage: 'off', family: null, shadowPercent: 0, rolloutPercent: 0 };
+
 // The settings store as the application role in both Market fixtures: the tables' own guards (the
 // primary keys, the CHECKs, the insert-only history, no delete, column-level grants) and the use
 // cases on the real store: a change with its history row, two admins saving from the same
@@ -329,6 +332,11 @@ describe.each(TEST_MARKETS)('settings in market %s (database)', (code) => {
           'assistant.buyer-chat': true,
           'catalog.description-writer.seller': true,
           'catalog.description-writer.admin': true,
+        },
+        // No row: every in-house stage off, the rollback limits at their defaults (G6c).
+        inHouse: {
+          tasks: { chat: OFF_PAGE, extract: OFF_PAGE, write: OFF_PAGE, vision: OFF_PAGE },
+          rollback: { errorsPermille: 20, guardPermille: 10, minSample: 200 },
         },
       });
       expect(

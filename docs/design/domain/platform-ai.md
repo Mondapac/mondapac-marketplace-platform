@@ -435,7 +435,7 @@ ADR-0026 decision 9 and ADR-0042 decision 7, so ADR-0053 supersedes those points
   the stage and the approval are evaluated again, and the shadow call takes the same masked
   request, never awaited by the caller; its answer is dropped. It is counted on the Market's and the
   capability's budget only, never on a seller's or the guest pool's (the experiment is the
-  platform's cost; recommended to the owner, decision card of 26 Nov); a shadow call refused for
+  platform's cost; owner decision, 26 Nov 2026); a shadow call refused for
   budget counts no refusal. On close, sampling stops and the shadow calls still out settle before
   the database pool closes (`beforeApplicationShutdown`; the pool closes in
   `onApplicationShutdown`). Each call keeps its row in `platform.ai_calls`: the shadow call with
