@@ -897,6 +897,13 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
     expect(used.status).toBe(200);
     expect(used.headers['cache-control']).toBe('no-store');
     expect(used.body).toEqual(usage);
+    // A seller session on the admin host is an anonymous actor to the usage read (Hassan L-3);
+    // the real access rule refuses it (the stub only records the actor).
+    const kindsBefore = actorKinds.length;
+    await http()
+      .get(`${base}/usage`)
+      .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...sessionOf('seller', 40) });
+    expect(actorKinds.slice(kindsBefore)).toEqual(['anonymous']);
 
     next = ok([{ capability: 'catalog.description-writer.admin', setVersion: 'p-1', samples: [] }]);
     expect((await call('get', `${base}/playground/samples`, 'admin', session)).status).toBe(200);
@@ -941,6 +948,7 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
       'run-evaluation',
       'cancel-evaluation',
       'view-model-usage',
+      'view-model-usage',
       'view-playground-samples',
       'run-playground',
       'run-playground',
@@ -948,6 +956,6 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
     expect(calls[0]?.input).toEqual({ family: 'model-fast', cursor: undefined });
     expect(calls[4]?.input).toEqual(body);
     expect(calls[5]?.input).toEqual({ runId });
-    expect(calls[8]?.input).toEqual(play);
+    expect(calls[9]?.input).toEqual(play);
   });
 });

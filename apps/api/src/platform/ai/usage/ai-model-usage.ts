@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ok } from '@mondapac/shared-kernel';
+import { ok, Temporal } from '@mondapac/shared-kernel';
 import type { Clock, MarketContext } from '@mondapac/shared-kernel';
 import { CLOCK } from '../../clock/clock.module';
 import { MarketRegistry } from '../../market-config/market-registry';
@@ -18,6 +18,13 @@ import {
 
 /** The scorecard and the monthly estimate read the last 30 days (design section 8). */
 export const MODEL_USAGE_DAYS = 30;
+
+/**
+ * How long one Market's read is reused (Hassan M-1, Mojtaba 1): the read is several passes over
+ * 30 days of `platform.ai_calls`, so repeated panel loads and concurrent requests share one read
+ * instead of each starting their own. A failed read is never kept.
+ */
+export const MODEL_USAGE_REUSE_SECONDS = 60;
 
 /** The p95 latency bucket: at most `bound` ms, or slower than the last bound when `above`. */
 export interface LatencyBucket {
@@ -70,8 +77,10 @@ export interface ModelUsageView {
 export function p95Of(calls: number, atMostMs: readonly number[]): LatencyBucket | null {
   if (calls <= 0) return null;
   const rank = Math.ceil(calls * 0.95);
+  // The counts come from separate statements that may each see a few more calls than `calls`
+  // (read-only units are not one snapshot, ADR-0025); a count is never taken above the total.
   for (const [index, bound] of LATENCY_BUCKETS_MS.entries()) {
-    if ((atMostMs[index] ?? 0) >= rank) return { bound, above: false };
+    if (Math.min(atMostMs[index] ?? 0, calls) >= rank) return { bound, above: false };
   }
   return { bound: LATENCY_BUCKETS_MS[LATENCY_BUCKETS_MS.length - 1]!, above: true };
 }
@@ -113,9 +122,34 @@ export class AiModelUsage {
     private readonly capabilities: CapabilityRegistry,
   ) {}
 
-  /** The last 30 days of the caller's Market. Throws when the store cannot be read. */
-  async read(market: MarketContext): Promise<ModelUsageView> {
+  readonly #reused = new Map<
+    string,
+    { readonly at: Temporal.Instant; readonly view: Promise<ModelUsageView> }
+  >();
+
+  /**
+   * The last 30 days of the caller's Market. Throws when the store cannot be read. A read started
+   * less than `MODEL_USAGE_REUSE_SECONDS` ago for the same Market (and tenant) is shared.
+   */
+  read(market: MarketContext): Promise<ModelUsageView> {
+    const key = `${market.marketId}\u0000${market.tenantId}`;
     const now = this.clock.now();
+    const kept = this.#reused.get(key);
+    if (
+      kept !== undefined &&
+      Temporal.Instant.compare(now, kept.at.add({ seconds: MODEL_USAGE_REUSE_SECONDS })) < 0
+    ) {
+      return kept.view;
+    }
+    const view = this.#read(market, now);
+    this.#reused.set(key, { at: now, view });
+    view.catch(() => {
+      if (this.#reused.get(key)?.view === view) this.#reused.delete(key);
+    });
+    return view;
+  }
+
+  async #read(market: MarketContext, now: Temporal.Instant): Promise<ModelUsageView> {
     const zone = this.markets.get(market.marketId).timezone;
     const to = now.toZonedDateTimeISO(zone).toPlainDate();
     const from = to.subtract({ days: MODEL_USAGE_DAYS - 1 });

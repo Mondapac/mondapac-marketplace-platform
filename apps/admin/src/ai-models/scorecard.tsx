@@ -2,6 +2,7 @@
 
 import { Banner, Button, SettingsSection } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
+import type { ReactNode } from 'react';
 import { dollars } from './evaluation-types.ts';
 import {
   costPerThousand,
@@ -11,12 +12,12 @@ import {
   type ModelUsage,
 } from './usage-types.ts';
 
-/** The p95 bucket as text: "≤ 2 s", "> 32 s"; a dash without calls. */
+/** The p95 bucket as text: "≤ 2 s", "> 32 s"; null without calls (the caller shows a dash). */
 function latencyText(
   item: FamilyUsage,
   t: (key: string, values?: Record<string, string | number>) => string,
-): string {
-  if (item.p95 === null) return t('dash');
+): string | null {
+  if (item.p95 === null) return null;
   const seconds = item.p95.bound / 1000;
   return item.p95.above ? t('p95-above', { seconds }) : t('p95-at-most', { seconds });
 }
@@ -44,8 +45,12 @@ export function Scorecard({
   // Cents, unless the amount is below one cent (then every digit, so it never reads as zero).
   const money = (micro: number) =>
     t('money', { amount: micro >= 10_000 ? roundDollars(micro) : dollars(micro) });
-  const header = 'py-2 pe-4 text-start font-medium';
-  const cell = 'py-2 pe-4 tabular-nums';
+  // A dash a screen reader reads as "No data", not "en dash".
+  const shown = (value: string | null): ReactNode =>
+    value === null ? <span aria-label={t('no-data')}>{t('dash')}</span> : value;
+  const header = 'py-2 pe-4 text-end font-medium whitespace-nowrap';
+  const cell = 'py-2 pe-4 text-end tabular-nums whitespace-nowrap';
+  const empty = usage !== null && usage.families.every((item) => item.calls === 0);
   return (
     <SettingsSection
       title={t('section')}
@@ -55,17 +60,22 @@ export function Scorecard({
     >
       <div className="flex flex-col gap-4 px-5 py-4">
         {failed ? <Banner tone="critical">{t('failed')}</Banner> : null}
-        {loading && usage === null ? <p className="text-sm">{t('loading')}</p> : null}
+        {loading && usage === null ? (
+          <p role="status" className="text-sm">
+            {t('loading')}
+          </p>
+        ) : null}
+        {empty ? <p className="text-sm">{t('empty')}</p> : null}
         {usage === null ? null : (
-          <ul className="flex flex-col divide-y divide-line md:hidden" aria-label={t('table')}>
+          <ul className="flex flex-col divide-y divide-line lg:hidden" aria-label={t('table')}>
             {usage.families.map((item) => {
               const per = costPerThousand(item);
               const rate = errorPercent(item);
-              const facts: readonly (readonly [string, string])[] = [
+              const facts: readonly (readonly [string, ReactNode])[] = [
                 [t('col.calls'), whole(item.calls)],
-                [t('col.cost-per-1000'), per === null ? t('dash') : money(per)],
-                [t('col.error-rate'), rate === null ? t('dash') : t('percent', { value: rate })],
-                [t('col.p95'), latencyText(item, t)],
+                [t('col.cost-per-1000'), shown(per === null ? null : money(per))],
+                [t('col.error-rate'), shown(rate === null ? null : t('percent', { value: rate }))],
+                [t('col.p95'), shown(latencyText(item, t))],
                 [t('col.stood-in'), whole(item.stoodIn)],
                 [
                   t('col.evaluation'),
@@ -89,12 +99,17 @@ export function Scorecard({
           </ul>
         )}
         {usage === null ? null : (
-          <div className="hidden overflow-x-auto md:block">
+          <div
+            className="hidden overflow-x-auto lg:block"
+            role="region"
+            aria-label={t('table')}
+            tabIndex={0}
+          >
             <table className="w-full text-start text-sm">
               <caption className="sr-only">{t('table')}</caption>
               <thead>
                 <tr className="border-b border-line">
-                  <th scope="col" className={header}>
+                  <th scope="col" className="py-2 pe-4 text-start font-medium">
                     {t('col.model')}
                   </th>
                   <th scope="col" className={header}>
@@ -112,7 +127,7 @@ export function Scorecard({
                   <th scope="col" className={header}>
                     {t('col.stood-in')}
                   </th>
-                  <th scope="col" className="py-2 text-start font-medium">
+                  <th scope="col" className="py-2 text-end font-medium whitespace-nowrap">
                     {t('col.evaluation')}
                   </th>
                 </tr>
@@ -123,17 +138,20 @@ export function Scorecard({
                   const rate = errorPercent(item);
                   return (
                     <tr key={item.family} className="border-b border-line">
-                      <th scope="row" className="py-2 pe-4 text-start font-normal">
+                      <th
+                        scope="row"
+                        className="py-2 pe-4 text-start font-normal whitespace-nowrap"
+                      >
                         {item.family}
                       </th>
                       <td className={cell}>{whole(item.calls)}</td>
-                      <td className={cell}>{per === null ? t('dash') : money(per)}</td>
+                      <td className={cell}>{shown(per === null ? null : money(per))}</td>
                       <td className={cell}>
-                        {rate === null ? t('dash') : t('percent', { value: rate })}
+                        {shown(rate === null ? null : t('percent', { value: rate }))}
                       </td>
-                      <td className={cell}>{latencyText(item, t)}</td>
+                      <td className={cell}>{shown(latencyText(item, t))}</td>
                       <td className={cell}>{whole(item.stoodIn)}</td>
-                      <td className="py-2 tabular-nums">
+                      <td className="py-2 text-end tabular-nums whitespace-nowrap">
                         {t('passed', { passed: item.evaluation.passed, of: item.evaluation.of })}
                       </td>
                     </tr>
@@ -146,7 +164,7 @@ export function Scorecard({
         <p className="text-sm text-fg-muted">{t('note')}</p>
         <div>
           <Button variant="secondary" disabled={loading} onClick={onRefresh}>
-            {t('refresh')}
+            {loading ? t('refreshing') : t('refresh')}
           </Button>
         </div>
       </div>

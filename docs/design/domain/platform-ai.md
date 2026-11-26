@@ -330,7 +330,9 @@ ADR-0026 decision 9 and ADR-0042 decision 7, so ADR-0053 supersedes those points
   saver model, to an assistant's own list, to a revert and to the auto-rollback limits. The saver
   model must be cheaper than model 1.
 - **Scorecard.** Cost per 1000 requests, error rate, p95 latency, number of times the next model
-  stood in, evaluation result; all from the last 30 days of `ai_usage_days`.
+  stood in, evaluation result; from the last 30 Market days of `platform.ai_calls` (the day rows
+  have no model column; amended in G5e). One Market's read is reused for 60 seconds. The
+  evaluation result counts a pass on any route of the family, not only the Market's routes.
 - **Playground.** The admin runs ready evaluation samples (no customer data) on two models side by
   side. The server accepts only a sample id; no free text from the browser reaches a model. Runs are
   limited per admin per day and paid from the evaluation budget. Answers are shown as plain text,

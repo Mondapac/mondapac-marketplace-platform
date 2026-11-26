@@ -55,7 +55,7 @@ const CONFIG = {
   },
 } as unknown as AppConfig;
 
-function setUp() {
+function setUp(clock = new FixedClock(NOW)) {
   const registry = new CapabilityRegistry();
   registry.register('alpha', [WRITER, CHAT]);
   registry.seal();
@@ -66,17 +66,17 @@ function setUp() {
     passesFor([WRITER, CHAT], ['model-balanced']),
     new ModelGateway(CONFIG, NO_PROVIDER),
     MARKETS,
-    new FixedClock(NOW),
+    clock,
   );
   const usage = new AiModelUsage(
     store,
     new InMemoryAiUsageUnitOfWork(store),
-    new FixedClock(NOW),
+    clock,
     MARKETS,
     router,
     registry,
   );
-  return { store, usage };
+  return { store, usage, clock };
 }
 
 let n = 0;
@@ -109,6 +109,16 @@ describe('p95Of', () => {
     expect(p95Of(20, [19, 19, 20, 20, 20, 20, 20])).toEqual({ bound: 500, above: false });
     expect(p95Of(20, [18, 18, 19, 20, 20, 20, 20])).toEqual({ bound: 2000, above: false });
     expect(p95Of(1, [0, 0, 0, 0, 0, 0, 0])).toEqual({ bound: 32_000, above: true });
+    // Exactly 95 % at a bound is enough; one call less is not.
+    expect(p95Of(100, [94, 95, 100, 100, 100, 100, 100])).toEqual({ bound: 1000, above: false });
+    expect(p95Of(1, [1, 1, 1, 1, 1, 1, 1])).toEqual({ bound: 500, above: false });
+  });
+
+  it('never takes a bucket count above the call total (separate statements, Hassan L-2)', () => {
+    // 20 calls, rank 19: a count that saw 3 calls recorded after the totals is capped at 20,
+    // which still decides on its own bound, not an earlier one it never reached.
+    expect(p95Of(20, [0, 23, 23, 23, 23, 23, 23])).toEqual({ bound: 1000, above: false });
+    expect(p95Of(20, [18, 18, 18, 18, 18, 18, 18])).toEqual({ bound: 32_000, above: true });
   });
 });
 
@@ -215,5 +225,40 @@ describe.each(['AU', 'ZZ'])('AiModelUsage (G5e), Market %s', (code) => {
     const { store, usage } = setUp();
     store.failing = true;
     await expect(usage.read(market)).rejects.toThrow();
+  });
+
+  it('shares one read for a minute, then reads again; a failed read is not kept', async () => {
+    const { store, usage, clock } = setUp();
+    store.calls.push(call({}));
+    const first = await usage.read(market);
+    store.calls.push(call({}));
+    // Concurrent and repeated loads within the minute share the first read.
+    const [again, alsoAgain] = await Promise.all([usage.read(market), usage.read(market)]);
+    expect(again).toBe(first);
+    expect(alsoAgain).toBe(first);
+    clock.advance(Temporal.Duration.from({ seconds: 60 }));
+    const later = await usage.read(market);
+    expect(later.families.find((item) => item.family === 'model-fast')!.calls).toBe(2);
+
+    store.failing = true;
+    clock.advance(Temporal.Duration.from({ seconds: 60 }));
+    await expect(usage.read(market)).rejects.toThrow();
+    store.failing = false;
+    await expect(usage.read(market)).resolves.toBeDefined();
+  });
+
+  it('starts the window at midnight of the first Market day, 29 days before today', async () => {
+    const zone = MARKETS.get(market.marketId).timezone;
+    const today = NOW.toZonedDateTimeISO(zone).toPlainDate();
+    const start = today.subtract({ days: 29 }).toZonedDateTime({ timeZone: zone }).toInstant();
+    const { store, usage } = setUp();
+    store.calls.push(
+      call({ occurredAt: start, costMicroUsd: 1 }),
+      call({ occurredAt: start.subtract({ milliseconds: 1 }), costMicroUsd: 99_999 }),
+    );
+    const view = await usage.read(market);
+    expect(view.from).toBe(today.subtract({ days: 29 }).toString());
+    const fast = view.families.find((item) => item.family === 'model-fast')!;
+    expect(fast).toMatchObject({ calls: 1, costMicroUsd: 1 });
   });
 });

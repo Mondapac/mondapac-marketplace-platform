@@ -17,6 +17,7 @@ vi.mock('../step-up/step-up.tsx', async () => {
 import { callApi } from '../api/client.ts';
 import { AiModelsPanel } from './ai-models-panel.tsx';
 import { familiesOf, modelsAnswerOf, moved, valueOfFamilies, type ModelsAnswer } from './types.ts';
+import { monthlyChangeOf, roundDollars, usageOf, type ModelUsage } from './usage-types.ts';
 
 const call = vi.mocked(callApi);
 const row = (code: string, value: string, version = 0) => ({
@@ -259,7 +260,7 @@ describe('Settings › AI Models', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Review changes' }));
     expect(await screen.findByText('Estimated monthly cost')).toBeTruthy();
     expect(
-      screen.getByText('about US$4.00 more a month (US$2.00 to US$6.00 a month)', { exact: false }),
+      screen.getByText('about US$4.00 more a month (now US$2.00, after US$6.00)', { exact: false }),
     ).toBeTruthy();
     expect(screen.getByText(/Saver models and the threshold are not counted/)).toBeTruthy();
   });
@@ -318,6 +319,7 @@ describe('Settings › AI Models', () => {
         .getAllByRole('cell')
         .map((cell) => cell.textContent),
     ).toEqual(['0', '–', '–', '–', '0', '0 of 2 passed']);
+    expect(within(opus).getAllByLabelText('No data')).toHaveLength(3);
     expect(screen.getByText(/from 2026-10-28 to 2026-11-26/)).toBeTruthy();
   });
 
@@ -329,9 +331,100 @@ describe('Settings › AI Models', () => {
       Promise.resolve({ ok: false as const, failure: { status: 500, code: 'internal' } }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Refresh scorecard' }));
-    expect(
-      await screen.findByText('The scorecard could not be read. Try Refresh scorecard.'),
-    ).toBeTruthy();
+    expect(await screen.findByText('The scorecard could not be loaded. Try again.')).toBeTruthy();
     expect(screen.queryByRole('table', { name: 'Scorecard of the last 30 days' })).toBeNull();
+  });
+
+  it('estimates an emptied list as nothing, and totals two changed task types', async () => {
+    call.mockImplementation(() =>
+      ok({
+        ...USAGE,
+        tasks: [
+          ...USAGE.tasks,
+          {
+            task: 'write',
+            calls: 10,
+            inputTokens: 1000,
+            outputTokens: 100,
+            costByFamily: [{ family: 'claude-haiku-5-5', costMicroUsd: 500_000 }],
+          },
+        ],
+      }),
+    );
+    view({
+      initial: {
+        ...ANSWER,
+        settings: [
+          row('ai-models-chat', 'claude-haiku-5-5', 2),
+          row('ai-models-write', 'claude-haiku-5-5', 1),
+        ],
+      },
+    });
+    await waitFor(() => expect(call).toHaveBeenCalled());
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remove claude-haiku-5-5' })[0]!);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remove claude-haiku-5-5' })[0]!);
+    fireEvent.click(screen.getByRole('button', { name: 'Review changes' }));
+    expect(
+      await screen.findByText(/about US\$2.00 less a month \(now US\$2.00, after US\$0.00\)/),
+    ).toBeTruthy();
+    expect(screen.getByText('In total: about US$2.50 less a month')).toBeTruthy();
+  });
+
+  it('says the total leaves out a line without an estimate', async () => {
+    view({
+      initial: {
+        ...ANSWER,
+        settings: [
+          row('ai-models-chat', 'claude-haiku-5-5', 2),
+          row('ai-models-write', 'claude-haiku-5-5', 1),
+          row('ai-models-extract', 'claude-haiku-5-5', 1),
+        ],
+      },
+    });
+    await waitFor(() => expect(call).toHaveBeenCalled());
+    // Chat and Extract have an estimate (Extract: no usage), Write has no answer: unknown.
+    for (let i = 0; i < 3; i += 1) {
+      fireEvent.click(screen.getAllByRole('button', { name: 'Remove claude-haiku-5-5' })[0]!);
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Review changes' }));
+    expect((await screen.findAllByText(/Cannot be estimated/)).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/^In total:/)).toBeNull();
+  });
+});
+
+describe('usage helpers', () => {
+  const usage = usageOf(USAGE) as ModelUsage;
+
+  it('reads the answer, and refuses a malformed one', () => {
+    expect(usage).not.toBeNull();
+    expect(usageOf({ ...USAGE, families: [{ family: 'x' }] })).toBeNull();
+    expect(usageOf({ ...USAGE, days: -1 })).toBeNull();
+  });
+
+  it('rounds micro-dollars half up to cents', () => {
+    expect(roundDollars(0)).toBe('0.00');
+    expect(roundDollars(4_999)).toBe('0.00');
+    expect(roundDollars(5_000)).toBe('0.01');
+    expect(roundDollars(25_100_000)).toBe('25.10');
+    expect(roundDollars(123_456_789_000)).toBe('123456.79');
+  });
+
+  it('estimates a first-model change, an emptied list, no usage and an unknown price', () => {
+    expect(monthlyChangeOf(usage, 'chat', 'claude-haiku-5-5', 'claude-sonnet-5-5')).toEqual({
+      kind: 'estimate',
+      beforeMicroUsd: 2_000_000,
+      afterMicroUsd: 6_000_000,
+    });
+    expect(monthlyChangeOf(usage, 'chat', 'claude-haiku-5-5', null)).toEqual({
+      kind: 'estimate',
+      beforeMicroUsd: 2_000_000,
+      afterMicroUsd: 0,
+    });
+    expect(monthlyChangeOf(usage, 'chat', 'claude-haiku-5-5', 'claude-opus-5-5')).toEqual({
+      kind: 'unknown',
+    });
+    expect(monthlyChangeOf(usage, 'write', null, 'claude-haiku-5-5')).toEqual({ kind: 'unknown' });
+    const idle = { ...usage, tasks: [{ ...usage.tasks[0]!, calls: 0 }] };
+    expect(monthlyChangeOf(idle, 'chat', null, 'claude-haiku-5-5')).toEqual({ kind: 'no-usage' });
   });
 });

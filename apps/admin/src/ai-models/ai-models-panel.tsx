@@ -154,6 +154,7 @@ export function AiModelsPanel({
     setUsageLoading(true);
     const result = await callApi<unknown>('GET', USAGE_PATH);
     if (!result.ok && result.failure.status === 401) {
+      setUsageLoading(false);
       window.location.assign('/session-ended');
       return;
     }
@@ -321,8 +322,13 @@ export function AiModelsPanel({
   const disabled = !canManage || busy || stale;
   const dirty = changes.length > 0;
   const taskLabel = (task: Task) => t(`task.${task}.label`);
+  // A list reads "a, b" (the API value is "a,b"), so it wraps between models on a phone.
   const shown = (value: string | null) =>
-    value === null ? t('history.default') : value === 'none' ? t('none') : value;
+    value === null
+      ? t('history.default')
+      : value === 'none'
+        ? t('none')
+        : value.split(',').join(', ');
 
   // The preview's estimate (G5e): for each task type whose first model changes, the last 30 days'
   // tokens priced on the old and the new first model. Saver models and the threshold are not in it.
@@ -732,8 +738,12 @@ export function AiModelsPanel({
             </li>
           ))}
         </ul>
-        <section aria-labelledby="ai-models-cost-heading" className="mt-4 flex flex-col gap-2">
-          <h3 id="ai-models-cost-heading" className="text-sm font-medium">
+        <section
+          aria-labelledby="ai-models-cost-heading"
+          aria-live="polite"
+          className="mt-4 flex flex-col gap-2 border-t border-line pt-4"
+        >
+          <h3 id="ai-models-cost-heading" className="text-base font-semibold">
             {t('preview.cost.title')}
           </h3>
           {costLines.length === 0 ? (
@@ -754,8 +764,13 @@ export function AiModelsPanel({
             </ul>
           )}
           {costLines.length > 0 && usage !== null && known.length > 1 ? (
-            <p className="text-sm font-medium">
-              {t('preview.cost.total', { change: signed(totalDelta) })}
+            <p className="border-t border-line pt-2 text-sm font-medium">
+              {t(
+                costLines.every((line) => line.change.kind !== 'unknown')
+                  ? 'preview.cost.total'
+                  : 'preview.cost.total-partial',
+                { change: signed(totalDelta) },
+              )}
             </p>
           ) : null}
           <p className="text-xs text-fg-muted">
