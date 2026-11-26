@@ -1,6 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { lineLimit } from '../cart/cart.ts';
 import { unitKey } from '../cart/live-cart.ts';
@@ -24,8 +25,21 @@ export function AddControl({
   const { cart, add, remove, online, live } = useStore();
   const off = online ? undefined : true;
   const limit = lineLimit(product.lowStock);
-  if (limit === 0) return null;
   // A sample card is carted by its product id; a real one by its sell unit.
+  const id = live && product.unit !== undefined ? unitKey(product.unit) : product.id;
+  const quantity = cart[id]?.quantity ?? 0;
+  // The pressed button is replaced by the other form (add <-> stepper): keep the keyboard focus
+  // on the control that takes its place instead of letting it fall back to the page.
+  const addRef = useRef<HTMLButtonElement>(null);
+  const plusRef = useRef<HTMLButtonElement>(null);
+  const minusRef = useRef<HTMLButtonElement>(null);
+  const refocus = useRef<'add' | 'step' | null>(null);
+  useEffect(() => {
+    if (refocus.current === 'step') (plusRef.current ?? minusRef.current)?.focus();
+    if (refocus.current === 'add') addRef.current?.focus();
+    refocus.current = null;
+  }, [quantity]);
+  if (limit === 0) return null;
   const choose = product.priceFrom === true || (live && product.unit === undefined);
   if (choose) {
     return (
@@ -38,16 +52,18 @@ export function AddControl({
       </Link>
     );
   }
-  const id = live && product.unit !== undefined ? unitKey(product.unit) : product.id;
-  const quantity = cart[id]?.quantity ?? 0;
   if (quantity === 0) {
     return (
       <button
+        ref={addRef}
         className="addb one ctl"
         type="button"
         aria-disabled={off}
         aria-label={t('add', { name: product.name })}
-        onClick={() => add(id, product.price, limit)}
+        onClick={() => {
+          refocus.current = 'step';
+          add(id, product.price, limit);
+        }}
       >
         <Icon name="plus" />
       </button>
@@ -57,10 +73,14 @@ export function AddControl({
   return (
     <div className="addb step ctl" role="group" aria-label={t('quantity', { name: product.name })}>
       <button
+        ref={minusRef}
         type="button"
         aria-label={t('decrease')}
         aria-disabled={off}
-        onClick={() => remove(id)}
+        onClick={() => {
+          if (quantity === 1) refocus.current = 'add';
+          remove(id);
+        }}
       >
         <Icon name="minus" />
       </button>
@@ -68,6 +88,7 @@ export function AddControl({
         {quantity}
       </output>
       <button
+        ref={plusRef}
         type="button"
         aria-label={full ? t('max-reached') : t('increase')}
         aria-disabled={off}

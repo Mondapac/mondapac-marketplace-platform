@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, describe, expect, it } from 'vitest';
 import messages from '../messages/en.json';
@@ -65,6 +65,16 @@ describe('shelf card from the API', () => {
     const { container } = show({ ...CARD, price: { amount: 2290, currency: 'AUD' } });
     expect(container.querySelector('.badge')).toBeNull();
     expect(container.querySelector('.pr b.sp')).toBeNull();
+  });
+
+  it('keeps the keyboard focus on the stepper after the first add, and on add after the last remove', () => {
+    show({ ...CARD, price: { amount: 2290, currency: 'AUD' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add Lamb shoulder, 1 kg to cart' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Increase' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Decrease' }));
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Add Lamb shoulder, 1 kg to cart' }),
+    );
   });
 
   describe('live', () => {
