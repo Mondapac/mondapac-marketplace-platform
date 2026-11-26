@@ -20,6 +20,7 @@ import type { OfferSearchReader, OfferSearchRequest } from './ports/offer-search
 import type { FilterDefinition, SearchFilterSource } from './ports/search-filters';
 import { MemoryZeroResultLog } from './testing/memory-zero-result-log';
 import type { SearchDependencies } from './search-dependencies';
+import { StubCardFacts } from './testing/stub-card-facts';
 import { SearchProducts } from './use-cases/search-products.use-case';
 
 // SearchProducts with attribute filters (search A7), in memory on a Market fixture: which reader
@@ -155,6 +156,7 @@ describe('SearchProducts with attribute filters', () => {
         unitsWithGtin: () => Promise.resolve([]),
         hitsOf: () => Promise.resolve([]),
       },
+      cards: new StubCardFacts(),
     }) as unknown as SearchDependencies;
   const search = (input: Parameters<SearchProducts['execute']>[1]) =>
     new SearchProducts(gate, deps()).execute(anonymous, input);

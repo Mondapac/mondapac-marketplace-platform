@@ -78,6 +78,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 export const isProductId = (id: string): boolean => UUID.test(id);
 
 const TYPE_CODE = /^[a-z][a-z0-9-]{1,31}$/u;
+const ARTWORK_KEY = /^[a-z][a-z0-9-]{0,63}$/u;
 const ISO_DATE = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/u;
 const MAX_BADGES = 10;
 const MAX_TEXT = 200;
@@ -107,9 +108,13 @@ function badgeOf(raw: unknown): CertificationBadge | null {
   if (typeof b.sellerClaim !== 'boolean' || typeof b.verifiedWithIssuer !== 'boolean') return null;
   if (b.issuerName !== null && !isText(b.issuerName)) return null;
   if (b.validUntilLocalDate !== null && !isIsoDate(b.validUntilLocalDate)) return null;
+  // The seal artwork is display only: a key out of shape (or none) draws the seal by its type.
+  const artwork =
+    typeof b.artworkKey === 'string' && ARTWORK_KEY.test(b.artworkKey) ? b.artworkKey : undefined;
   return {
     type: b.typeCode,
     label: b.typeName,
+    ...(artwork === undefined ? {} : { artwork }),
     basis: b.basis,
     sellerClaim: b.sellerClaim,
     verifiedWithIssuer: b.verifiedWithIssuer,

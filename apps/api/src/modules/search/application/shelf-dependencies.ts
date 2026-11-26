@@ -1,4 +1,5 @@
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
+import type { CardFactSource } from './card-facts';
 import type { CategorySubtreeSource } from './ports/category-subtree';
 import type { OfferSearchReader } from './ports/offer-search.reader';
 import type { ProductImages } from './ports/product-images';
@@ -22,4 +23,6 @@ export interface ShelfDependencies {
   readonly sellUnits: OfferVariantReader;
   readonly images: ProductImages;
   readonly categories: CategorySubtreeSource;
+  /** The seller name, seals and low stock a card shows (product page sources). */
+  readonly cards: CardFactSource;
 }

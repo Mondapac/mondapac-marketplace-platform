@@ -44,6 +44,7 @@ import {
   CATEGORY_DIRECT_PAGES,
   SyncOfferDocuments,
 } from './use-cases/sync-offer-documents.use-case';
+import { StubCardFacts } from './testing/stub-card-facts';
 
 // The three search use cases in memory on both Market fixtures (AU: english, en-AU; ZZ: simple,
 // ja-JP): the index follows catalog, a rebuild repairs it, a query is checked against catalog and
@@ -494,6 +495,7 @@ describe.each([
   let sellUnits: StubSellUnits;
   let zeroResults: MemoryZeroResultLog;
   let deps: SearchDependencies;
+  let cards: StubCardFacts;
   // The cultures catalog's facade answers per Offer (multi-culture package 3a); `down` fails it.
   const cultureSource = {
     codes: new Map<Id<'Offer'>, readonly string[]>(),
@@ -531,7 +533,9 @@ describe.each([
     cultureSource.codes.clear();
     cultureSource.down = false;
     cultureSource.asked = [];
+    cards = new StubCardFacts();
     deps = {
+      cards,
       unitOfWork: new FakeUnitOfWork(),
       documents,
       storeDocuments: storeRows,
@@ -1162,6 +1166,34 @@ describe.each([
       });
     });
 
+    it('adds the card facts to each result: store name and live seals; no count without a cart unit', async () => {
+      reader.hits = [hit(1)];
+      cards.sellerNames.set(SELLER, { storeName: 'Kedron Farms' });
+      cards.offerBadges.set(offer(1), [
+        {
+          typeCode: 'kosher',
+          typeName: 'Kosher',
+          artworkKey: 'kosher',
+          basis: 'SELLER',
+          sellerClaim: false,
+          issuerName: null,
+          validUntilLocalDate: null,
+          verifiedWithIssuer: false,
+        },
+      ]);
+
+      const result = await search({ q: 'sausages' });
+
+      expect(result.ok && result.value.items).toEqual([
+        expect.objectContaining({
+          sellerName: 'Kedron Farms',
+          badges: [{ typeCode: 'kosher', typeName: 'Kosher', artworkKey: 'kosher' }],
+          onlyLeft: null,
+        }),
+      ]);
+      expect(cards.stockCalls).toEqual([]);
+    });
+
     it("asks the index with the Market's configuration and returns ids, text and categories", async () => {
       reader.hits = [hit(1), hit(2)];
 
@@ -1183,6 +1215,9 @@ describe.each([
               variantId: null,
               cartVariantId: null,
               price: null,
+              sellerName: null,
+              badges: [],
+              onlyLeft: null,
             },
             {
               offerId: offer(2),
@@ -1196,6 +1231,9 @@ describe.each([
               variantId: null,
               cartVariantId: null,
               price: null,
+              sellerName: null,
+              badges: [],
+              onlyLeft: null,
             },
           ],
           page: 1,

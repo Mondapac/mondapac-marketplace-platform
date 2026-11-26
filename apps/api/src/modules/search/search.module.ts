@@ -132,6 +132,7 @@ const PORTS: readonly [keyof SearchDependencies, InjectionToken][] = [
   ['storeDocuments', STORE_DOCUMENT_REPOSITORY],
   ['cultures', OFFER_CULTURE_SOURCE],
   ['zeroResults', ZERO_RESULT_LOG],
+  ['cards', PRODUCT_DETAIL_SOURCES],
 ];
 
 /** Every search use case shares one dependency object, built from the same ports. */
@@ -193,6 +194,7 @@ const SHELF_PORTS: readonly [keyof ShelfDependencies, InjectionToken][] = [
   ['sellUnits', OFFER_VARIANT_READER],
   ['images', PRODUCT_IMAGES],
   ['categories', CATEGORY_SUBTREE_SOURCE],
+  ['cards', PRODUCT_DETAIL_SOURCES],
 ];
 
 /** The specials shelf adds the Market's was-price rule (owned by promotions) to the shelf ports. */

@@ -23,6 +23,8 @@ import { OFFER_HANDLINGS, type OfferHandling } from '../domain/offer';
 const UNAVAILABLE = err({ code: 'claim.check-unavailable' } as const);
 
 const REASON = /^[a-z][a-z0-9-]{0,63}$/;
+/** A badge artwork key (certification's `BADGE_ICON_KEY_PATTERN`; not imported across modules). */
+const ARTWORK_KEY = /^[a-z][a-z0-9-]{0,63}$/;
 
 /**
  * {@link ClaimEvaluator} over `certification.evaluateClaims` and `certificationTypes` (catalog
@@ -123,11 +125,12 @@ export class CertificationClaimEvaluator implements ClaimEvaluator {
       }
       const names = new Map<string, CertificationTypeName>();
       for (const type of answer.value as readonly unknown[]) {
-        const { code, status, publishedRevisionId, locales } = (type ?? {}) as {
+        const { code, status, publishedRevisionId, locales, badgeIconKey } = (type ?? {}) as {
           code?: unknown;
           status?: unknown;
           publishedRevisionId?: unknown;
           locales?: unknown;
+          badgeIconKey?: unknown;
         };
         const revisionId = idOf(publishedRevisionId);
         if (
@@ -144,7 +147,12 @@ export class CertificationClaimEvaluator implements ClaimEvaluator {
         if (!Object.hasOwn(locales, locale)) continue;
         const name = (locales as Record<string, { name?: unknown } | null>)[locale]?.name;
         if (typeof name !== 'string' || name.trim().length === 0 || name.length > 200) continue;
-        names.set(code, { typeRevisionId: revisionId, name });
+        // The artwork key is a display choice only: a key out of shape draws the plain text badge.
+        const artworkKey =
+          typeof badgeIconKey === 'string' && ARTWORK_KEY.test(badgeIconKey)
+            ? badgeIconKey
+            : 'text';
+        names.set(code, { typeRevisionId: revisionId, name, artworkKey });
       }
       return ok(names);
     } catch (error) {

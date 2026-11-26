@@ -8,6 +8,7 @@ import { matchVariants } from '../../domain/variant-match';
 import type { Money } from '@mondapac/shared-kernel';
 import type { ShelfDependencies } from '../shelf-dependencies';
 import { withPrimaryImages } from '../product-images';
+import { withCardFacts, type CardFacts } from '../card-facts';
 import type { ProductSearchItem, ProductSearchItemFacts } from './search-products.use-case';
 
 /** How many ranked Offers are asked of ordering: enough to fill a shelf after drops. */
@@ -20,7 +21,7 @@ export interface ShelfPage {
 }
 
 /** A best seller with the price a card shows and the unit its add button carts (like search). */
-export interface BestsellerItem extends ProductSearchItem {
+export interface BestsellerItem extends ProductSearchItem, CardFacts {
   /** The lowest in-stock buyer price and whether the units differ ("From"); null when none. */
   readonly price: { readonly from: Money; readonly varies: boolean } | null;
   /** The only sellable unit, else null (the card then opens the product page). */
@@ -64,7 +65,7 @@ export const inAnyOf = (categoryIds: readonly Id<'Category'>[] | null) => {
  * order; a short shelf is filled from search's browse order (the category's, or the Market's by
  * name). Every Offer is re-checked with catalog and sellers before it is shown; a source or check
  * that cannot be made is `search.unavailable`, never an unchecked list. Same item shape as the
- * search route: ids, text and categories, no badge, price or stock.
+ * search route: ids, text, categories, price and the card facts (seller name, seals, low stock).
  */
 export class ListBestsellers extends UseCase<ShelfRequest, BestsellersPage, ShelfFailure> {
   static override readonly access: AccessDeclaration = {
@@ -144,7 +145,14 @@ export class ListBestsellers extends UseCase<ShelfRequest, BestsellersPage, Shel
           : matchVariants({ ...own, groups: [], price: null });
       return { ...itemOf(hit), price: match.price, cartVariantId: match.cartVariantId };
     });
-    const items = await withPrimaryImages(this.deps.images, context, facts);
+    const [pictured, described] = await Promise.all([
+      withPrimaryImages(this.deps.images, context, facts),
+      withCardFacts(this.deps.cards, context, facts, (item) => item.cartVariantId),
+    ]);
+    const items = pictured.map((item, index) => {
+      const { sellerName, badges, onlyLeft } = described[index]!;
+      return { ...item, sellerName, badges, onlyLeft };
+    });
     return ok({ items });
   }
 }

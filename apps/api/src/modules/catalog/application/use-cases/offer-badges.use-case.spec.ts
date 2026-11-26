@@ -36,6 +36,7 @@ const T0 = Temporal.Instant.from('2026-10-17T00:00:00Z');
 
 /** Every key a view may have: pinned, so a new field is a decision and not an accident. */
 const VIEW_KEYS = [
+  'artworkKey',
   'basis',
   'issuerName',
   'sellerClaim',
@@ -166,7 +167,11 @@ describe.each([
       askedInsideUnit ||= insideUnit;
       return evaluate(...args);
     };
-    evaluator.names.set(typeCode, { typeRevisionId: certificate.typeRevisionId, name: 'Halal' });
+    evaluator.names.set(typeCode, {
+      typeRevisionId: certificate.typeRevisionId,
+      name: 'Halal',
+      artworkKey: 'halal',
+    });
   });
 
   afterEach(() => jest.restoreAllMocks());
@@ -187,6 +192,7 @@ describe.each([
       {
         typeCode,
         typeName: 'Halal',
+        artworkKey: 'halal',
         basis: 'SELLER',
         sellerClaim: true,
         issuerName: null,
@@ -218,6 +224,7 @@ describe.each([
       {
         typeCode,
         typeName: 'Halal',
+        artworkKey: 'halal',
         basis: 'SELLER',
         sellerClaim: false,
         issuerName: 'Issuer Council',
@@ -317,6 +324,7 @@ describe.each([
       {
         typeCode,
         typeName: 'Halal',
+        artworkKey: 'halal',
         basis: 'MANUFACTURER',
         sellerClaim: false,
         issuerName: null,
@@ -410,7 +418,11 @@ describe.each([
     expect(thrown.ok && thrown.value.size).toBe(0);
 
     evaluator = new FakeClaimEvaluator((q) => allowedDecision(q, certificate), [typeCode]);
-    evaluator.names.set(typeCode, { typeRevisionId: certificate.typeRevisionId, name: 'Halal' });
+    evaluator.names.set(typeCode, {
+      typeRevisionId: certificate.typeRevisionId,
+      name: 'Halal',
+      artworkKey: 'halal',
+    });
     claims.publishedSnapshot = () => Promise.reject(new Error('category path'));
     const readFailed = await ask([offerId]);
     expect(readFailed.ok && readFailed.value.size).toBe(0);
@@ -442,7 +454,11 @@ describe.each([
   it('drops the badge when the name is of another type revision than the badge, and logs it', async () => {
     const offerId = add(offerState(), [activeTag()]);
     // The live badge is decided on `certificate.typeRevisionId`; the names map holds another.
-    evaluator.names.set(typeCode, { typeRevisionId: ids.next(), name: 'Halal' });
+    evaluator.names.set(typeCode, {
+      typeRevisionId: ids.next(),
+      name: 'Halal',
+      artworkKey: 'halal',
+    });
     const result = await ask([offerId]);
     expect(result.ok && result.value.size).toBe(0);
     expect(hiddenLogs()).toEqual([
@@ -460,7 +476,11 @@ describe.each([
   it('asks and shows only the active type when another type of the Offer is suspended', async () => {
     const other = 'aaa-cert';
     const offerId = add(offerState(), [activeTag(), activeTag({ status: 'suspended' }, other)]);
-    evaluator.names.set(other, { typeRevisionId: certificate.typeRevisionId, name: 'Other' });
+    evaluator.names.set(other, {
+      typeRevisionId: certificate.typeRevisionId,
+      name: 'Other',
+      artworkKey: 'halal',
+    });
     const result = await ask([offerId]);
     expect(result.ok && result.value.get(offerId)!.map((b) => b.typeCode)).toEqual([typeCode]);
     expect(new Set(evaluator.calls[0]!.map((q) => q.typeCode))).toEqual(new Set([typeCode]));
@@ -492,7 +512,11 @@ describe.each([
   it('keeps the badge of one type when another type is refused, in type-code order', async () => {
     const other = 'aaa-cert';
     const offerId = add(offerState(), [activeTag(), activeTag({}, other)]);
-    evaluator.names.set(other, { typeRevisionId: certificate.typeRevisionId, name: 'Other' });
+    evaluator.names.set(other, {
+      typeRevisionId: certificate.typeRevisionId,
+      name: 'Other',
+      artworkKey: 'halal',
+    });
     evaluator.decide = (query) =>
       query.typeCode === typeCode
         ? allowedDecision(query, certificate)

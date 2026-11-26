@@ -15,6 +15,7 @@ import type { OfferHit } from '../../domain/offer-document';
 import { gtinOfQuery, matchVariants } from '../../domain/variant-match';
 import type { HitSellUnits } from '../ports/offer-variant.reader';
 import { withProductImages } from '../product-images';
+import { withCardFacts, type CardFacts } from '../card-facts';
 import {
   buildFilterViews,
   choiceGroups,
@@ -50,7 +51,8 @@ export type ProductSearchItemFacts = Omit<ProductSearchItem, 'primaryImage'>;
 
 /**
  * A result of the search route: a {@link ProductSearchItem} with, from the index (variants V8),
- * the variant to open and the "From" price. No badge and no stock count.
+ * the variant to open and the "From" price, and the card facts read live per request (seller
+ * name, seals from catalog's `offerBadges`, "Only N left" in the low band only; never a count).
  */
 export interface SearchResultItem extends ProductSearchItem {
   /**
@@ -71,10 +73,17 @@ export interface SearchResultItem extends ProductSearchItem {
   readonly cartVariantId: Id<'Variant'> | null;
   /** Every public photo of the product (at most 8, main one first); `primaryImage` is the first. */
   readonly images: readonly ImageRef[];
+  /** The seller's store name, the seals and "Only N left" of the cart unit ({@link CardFacts}). */
+  readonly sellerName: CardFacts['sellerName'];
+  readonly badges: CardFacts['badges'];
+  readonly onlyLeft: CardFacts['onlyLeft'];
 }
 
-/** A search result before its photo is read. */
-type SearchResultFacts = Omit<SearchResultItem, 'primaryImage' | 'images'>;
+/** A search result before its photo and card facts are read. */
+type SearchResultFacts = Omit<
+  SearchResultItem,
+  'primaryImage' | 'images' | 'sellerName' | 'badges' | 'onlyLeft'
+>;
 
 export interface ProductSearchPage {
   readonly items: readonly SearchResultItem[];
@@ -371,7 +380,7 @@ export class SearchProducts extends UseCase<
           matchVariants({ ...units, groups, price: priceRange }),
         ),
       );
-    const items = await withProductImages(this.deps.images, context, facts);
+    const items = await this.#cards(context, facts);
     let counts: ProductSearchPage['counts'] = null;
     if (scoped) {
       // The tree names the "In categories" lines; a tree that cannot be read leaves the counts out
@@ -415,6 +424,24 @@ export class SearchProducts extends UseCase<
    * reach a person is not noted. Best effort: a failed note is logged without the text and never
    * changes the answer.
    */
+  /**
+   * The result cards: the photos and the card facts (seller name, seals, low stock of the unit the
+   * card carts), read side by side. Neither ever fails the page.
+   */
+  async #cards(
+    context: CallContext,
+    facts: readonly SearchResultFacts[],
+  ): Promise<SearchResultItem[]> {
+    const [pictured, described] = await Promise.all([
+      withProductImages(this.deps.images, context, facts),
+      withCardFacts(this.deps.cards, context, facts, (item) => item.cartVariantId),
+    ]);
+    return pictured.map((item, index) => {
+      const { sellerName, badges, onlyLeft } = described[index]!;
+      return { ...item, sellerName, badges, onlyLeft };
+    });
+  }
+
   async #noteZeroResult(context: CallContext, query: SearchQuery): Promise<void> {
     const key = query.text === null ? null : zeroResultKeyOf(query.text);
     if (key === null) return;
@@ -486,7 +513,7 @@ export class SearchProducts extends UseCase<
         };
       }),
     );
-    const items = await withProductImages(this.deps.images, context, facts);
+    const items = await this.#cards(context, facts);
     const first = shown[0]!;
     return {
       items,

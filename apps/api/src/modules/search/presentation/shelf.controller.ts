@@ -16,6 +16,7 @@ import { RateLimit } from '../../../platform/rate-limit/rate-limit.decorator';
 import type { ShelfRequest } from '../domain/shelf-query';
 import {
   ListBestsellers,
+  type BestsellerItem,
   type ShelfFailure,
 } from '../application/use-cases/list-bestsellers.use-case';
 import { ListSpecials } from '../application/use-cases/list-specials.use-case';
@@ -23,6 +24,17 @@ import { BestsellersPageBody, SpecialsPageBody } from './search.dto';
 import { fail, shelfRequestOf } from './shelf-request';
 
 const money = (value: Money) => ({ amount: value.amount.toString(), currency: value.currency });
+
+/** The card facts of an item, field by field: nothing a source might add later is passed on. */
+const cardFactsOf = ({
+  sellerName,
+  badges,
+  onlyLeft,
+}: Pick<BestsellerItem, 'sellerName' | 'badges' | 'onlyLeft'>) => ({
+  sellerName,
+  badges: badges.map(({ typeCode, typeName, artworkKey }) => ({ typeCode, typeName, artworkKey })),
+  onlyLeft,
+});
 
 const requestOf = (query: Record<string, unknown>): ShelfRequest =>
   shelfRequestOf(query, ['category', 'limit']);
@@ -52,7 +64,9 @@ export class ShelfController {
       'No session needed. Offers with the most paid order lines over the last 30 days, most ' +
       'first; a short shelf is filled in browse order (by name). `category` limits it to one ' +
       'platform category; `limit` is 1 to 24 (default 12). Only Offers that are sellable now ' +
-      'and whose seller may sell are returned, each with its lowest in-stock price (tax included).',
+      'and whose seller may sell are returned, each with its lowest in-stock price (tax included), ' +
+      'the seller store name, the certification seals (live from certification) and, when stock ' +
+      'is low, the units left of the unit the card carts.',
   })
   @ApiQuery({ name: 'category', required: false, description: 'A platform category id.' })
   @ApiQuery({ name: 'limit', required: false, description: '1 to 24, default 12.' })
@@ -77,6 +91,7 @@ export class ShelfController {
         price: item.price === null ? null : money(item.price.from),
         priceFrom: item.price?.varies === true,
         cartVariantId: item.cartVariantId,
+        ...cardFactsOf(item),
       })),
     };
   }
@@ -122,6 +137,7 @@ export class ShelfController {
         regularPrice: item.regularPrice === null ? null : money(item.regularPrice),
         taxInclusive: item.taxInclusive,
         specialEndsAt: item.specialEndsAt.toString(),
+        ...cardFactsOf(item),
       })),
     };
   }

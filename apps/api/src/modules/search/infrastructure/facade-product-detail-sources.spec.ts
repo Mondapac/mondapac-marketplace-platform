@@ -128,6 +128,7 @@ describe.each([
     const badge = {
       typeCode: 'halal',
       typeName: 'Halal',
+      artworkKey: 'halal',
       basis: 'MANUFACTURER' as const,
       sellerClaim: false,
       issuerName: 'Council',
@@ -146,6 +147,7 @@ describe.each([
     expect(calls).toEqual([[context, [OFFER]]]);
     const only = badges?.get(OFFER)?.[0];
     expect(Object.keys(only ?? {}).sort()).toEqual([
+      'artworkKey',
       'basis',
       'issuerName',
       'sellerClaim',

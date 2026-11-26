@@ -185,6 +185,7 @@ export class OfferBadgesQuery extends UseCase<
         badges.push({
           typeCode: judged.badge.typeCode,
           typeName: type.name,
+          artworkKey: type.artworkKey,
           basis: judged.badge.basis,
           sellerClaim: judged.badge.sellerClaim,
           issuerName: judged.badge.issuer === null ? null : judged.badge.issuer.displayName,

@@ -41,6 +41,7 @@ const ITEM = {
 const BADGE = {
   typeCode: 'halal',
   typeName: 'Halal',
+  artworkKey: 'halal',
   basis: 'SELLER',
   sellerClaim: false,
   issuerName: 'Council',
@@ -48,6 +49,17 @@ const BADGE = {
   verifiedWithIssuer: true,
 };
 const ENDS = '2026-10-20T00:00:00Z';
+/** The card facts a shelf item carries; the stray `issuerName` must not reach the body. */
+const FACTS = {
+  sellerName: 'Kedron Farms',
+  badges: [{ typeCode: 'halal', typeName: 'Halal', artworkKey: 'halal', issuerName: 'Council' }],
+  onlyLeft: 3,
+};
+const FACTS_BODY = {
+  sellerName: 'Kedron Farms',
+  badges: [{ typeCode: 'halal', typeName: 'Halal', artworkKey: 'halal' }],
+  onlyLeft: 3,
+};
 const MEAT = {
   id: CATEGORY,
   parentId: null,
@@ -73,6 +85,7 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
     ...ITEM,
     price: { from: { amount: 900n, currency }, varies: false },
     cartVariantId: id<'Variant'>(4),
+    ...FACTS,
   };
   let app: NestExpressApplication;
   let calls: Call[];
@@ -105,6 +118,7 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
           regularPrice: { amount: 1000n, currency },
           taxInclusive: true,
           specialEndsAt: Temporal.Instant.from(ENDS),
+          ...FACTS,
         },
       ],
     });
@@ -256,6 +270,7 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
           price: { amount: '900', currency },
           priceFrom: false,
           cartVariantId: id<'Variant'>(4),
+          ...FACTS_BODY,
         },
       ],
     });
@@ -283,6 +298,7 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
           regularPrice: { amount: '1000', currency },
           taxInclusive: true,
           specialEndsAt: ENDS,
+          ...FACTS_BODY,
         },
       ],
     });
@@ -299,6 +315,9 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
           regularPrice: null,
           taxInclusive: true,
           specialEndsAt: Temporal.Instant.from(ENDS),
+          sellerName: null,
+          badges: [],
+          onlyLeft: null,
         },
       ],
     });

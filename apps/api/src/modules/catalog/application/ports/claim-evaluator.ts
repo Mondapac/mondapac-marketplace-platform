@@ -42,7 +42,8 @@ export interface ClaimEvaluator {
   /**
    * The names of the Market's active certification types in one locale (no fallback to another
    * locale), by type code, each with the id of the type revision the name belongs to. A type
-   * without a name in that locale is left out. Display text for `offerBadges`.
+   * without a name in that locale is left out. Display text for `offerBadges`, with the badge
+   * artwork key the type's published revision names (`text` when it has no artwork).
    */
   typeNames(
     context: CallContext,
@@ -54,6 +55,12 @@ export interface ClaimEvaluator {
 export interface CertificationTypeName {
   readonly typeRevisionId: string;
   readonly name: string;
+  /**
+   * The badge artwork key of that revision (`config/certification-badge-artwork/keys.json`): the
+   * storefront draws the seal by it, so every type shows its own seal. `text` when the revision
+   * names no artwork or a key out of shape.
+   */
+  readonly artworkKey: string;
 }
 
 export const CLAIM_EVALUATOR = Symbol('CLAIM_EVALUATOR');

@@ -8,6 +8,7 @@ import { departmentsOf } from './departments.ts';
 import { SAMPLE_CONTENT } from './sample-home.ts';
 import { emptySet, legacySlideOf, PLACEHOLDER_KEYS, slideSetOf } from './slides.ts';
 import type {
+  CertificationBadge,
   Category,
   HomeSection,
   Money,
@@ -26,8 +27,9 @@ import type {
 // "This section didn't load" with Try again, so a fault is never mistaken for an empty store.
 // With the API on, no sample data is ever shown (the sample home is only for API_BASE_URL empty).
 //
-// Not in the API yet, so left off the cards: seller names, prices of best sellers and category
-// shelves (no add button either), certification seals, store delivery windows and logos.
+// Not in the API yet, so left off the cards: prices of category shelves (no add button either),
+// store delivery windows and logos. Seller names, seals and "Only N left" come with the search,
+// best-sellers and specials items (`sellerName`, `badges`, `onlyLeft`).
 // The info strip, text block and image-text modules have no design on the buyer site yet and are
 // skipped.
 
@@ -143,17 +145,55 @@ export function categoriesOf(body: unknown): {
   return { top, slugs: new Map(rows.map((c) => [c.id, c.slug])), departments: departmentsOf(rows) };
 }
 
+/** A certification type code, as the product page checks it. */
+const TYPE_CODE = /^[a-z][a-z0-9-]{1,31}$/u;
+/** A seal artwork key (certification's own shape). */
+const ARTWORK_KEY = /^[a-z][a-z0-9-]{0,63}$/u;
+/** The most seals a card shows (the API sends at most 2: two fit a phone tile). */
+export const MAX_CARD_SEALS = 2;
+/** The largest "Only N left" a card shows: a bigger number is not a low band and is ignored. */
+const MAX_ONLY_LEFT = 99;
+
+/**
+ * The seals of a card from the untrusted `badges` list: each is catalog's live badge (built from
+ * evaluateClaim; AI rule R1), checked field by field here. A badge with any field missing or out
+ * of shape is dropped whole, never shown in part; one per type, at most {@link MAX_CARD_SEALS}.
+ */
+export function cardSealsOf(raw: unknown): CertificationBadge[] {
+  if (!Array.isArray(raw)) return [];
+  const seals: CertificationBadge[] = [];
+  for (const item of raw as unknown[]) {
+    if (seals.length === MAX_CARD_SEALS) break;
+    if (!isObject(item)) continue;
+    const { typeCode, artworkKey } = item;
+    const label =
+      typeof item.typeName === 'string' && item.typeName.length <= 200
+        ? textOf(item.typeName, 200)
+        : undefined;
+    if (typeof typeCode !== 'string' || !TYPE_CODE.test(typeCode) || label === undefined) continue;
+    if (typeof artworkKey !== 'string' || !ARTWORK_KEY.test(artworkKey)) continue;
+    if (seals.some((seal) => seal.type === typeCode)) continue;
+    seals.push({ type: typeCode, label, artwork: artworkKey });
+  }
+  return seals;
+}
+
+/** "Only N left": a whole number from 1 to {@link MAX_ONLY_LEFT}; anything else is no line. */
+const onlyLeftOf = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= MAX_ONLY_LEFT
+    ? value
+    : undefined;
+
 const UNIT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const uuidOf = (value: unknown): string | undefined =>
   typeof value === 'string' && UNIT_UUID.test(value) ? value.toLowerCase() : undefined;
 
 /**
  * A shelf item as a card, or null when it cannot be shown: no id or name, or a price that excludes
- * tax (the card says "including GST"). Without a price (best sellers and category shelves carry
- * none yet, nor does a price without a currency) the card shows no price and no add button; no
- * shelf route carries the seller's name, so that line is left out. The certification seal is
- * never built here (AI rule R1: it comes only from evaluateClaim, and the shelf routes do not
- * carry it).
+ * tax (the card says "including GST"). Without a price (category shelves carry none yet, nor
+ * does a price without a currency) the card shows no price and no add button. The seller's store
+ * name, the seals and "Only N left" are shown only as the item carries them: a seal is never built
+ * here (AI rule R1: only catalog's live badges, from evaluateClaim, become one).
  */
 export function cardOf(
   item: unknown,
@@ -208,10 +248,11 @@ export function cardOf(
     price !== undefined && offerId !== undefined && unitVariant !== undefined
       ? { offerId, variantId: unitVariant }
       : undefined;
+  const lowStock = onlyLeftOf(item.onlyLeft);
   return {
     id: item.productId,
     name,
-    sellerName: '',
+    sellerName: textOf(item.sellerName, 120) ?? '',
     ...(unit === undefined ? {} : { unit }),
     category: (typeof firstCategory === 'string' ? slugs.get(firstCategory) : undefined) ?? '',
     ...(price === undefined ? {} : { price }),
@@ -220,7 +261,10 @@ export function cardOf(
     // An item of the specials shelf (it carries the special's end) is on special even when the
     // was-price rule withholds the regular price: the pill says so, no saving is shown.
     ...(price !== undefined && typeof item.specialEndsAt === 'string' ? { onSpecial: true } : {}),
-    certifications: [],
+    certifications: cardSealsOf(item.badges),
+    // The low band of the unit the card carts (the API sends it for that unit only): it also caps
+    // the card's stepper.
+    ...(lowStock === undefined ? {} : { lowStock }),
     ...(imageUrl === undefined ? {} : { imageUrl }),
     ...(imageUrl === undefined || imageSet === undefined ? {} : { imageSet }),
     ...(large.length === 0 ? {} : { largeImages: large }),

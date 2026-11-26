@@ -40,6 +40,7 @@ import {
   type Persistence,
 } from './persistence-support';
 import { searchDocumentsTestDatabaseUrl } from './test-database';
+import { StubCardFacts } from '../../src/modules/search/application/testing/stub-card-facts';
 
 // The read model search.offer_documents on PostgreSQL, as the application role, for both Market
 // fixtures: the trigger-built vector, ranked text queries with each Market's configuration,
@@ -418,6 +419,7 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
     const hidden = doc({ name: 'Hidden mug' });
     await seed(market, shown, hidden);
     const deps: SearchDependencies = {
+      cards: new StubCardFacts(),
       unitOfWork: db.unitOfWork,
       documents,
       index: new PostgresOfferSearchIndex(
@@ -1336,6 +1338,7 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
         [second, ['general']],
       ]);
       const deps: SearchDependencies = {
+        cards: new StubCardFacts(),
         unitOfWork: db.unitOfWork,
         documents,
         index: new PostgresOfferSearchIndex(
