@@ -11,6 +11,10 @@ name: Assistant real-model evaluation
 # changed this file or the evaluation cannot reach the key (Hassan M1). It is the provider API key
 # held under the no-retention, no-training contract the owner approved (R7), used for both Market
 # fixtures of the run and never printed. All data sent is synthetic.
+# ASSISTANT_EVAL_BEDROCK_API_KEY (same environment) is the Amazon Bedrock API key of the
+# bedrock-mantle route in Sydney (ADR-0052 decision 5). AU has no other usable route (owner
+# decision, 25 Nov 2026), so an AU pass needs it (Hassan, Bedrock Sydney review 2). At least one of
+# the two keys is set.
 on:
   workflow_dispatch:
     inputs:
@@ -47,9 +51,10 @@ jobs:
         env:
           MODEL: ${{ inputs.model }}
           KEY: ${{ secrets.ASSISTANT_EVAL_MODEL_API_KEY }}
+          BEDROCK_KEY: ${{ secrets.ASSISTANT_EVAL_BEDROCK_API_KEY }}
         run: |
-          if [ -z "$KEY" ]; then
-            echo "::error::Secret ASSISTANT_EVAL_MODEL_API_KEY is not set in the assistant-eval environment."
+          if [ -z "$KEY" ] && [ -z "$BEDROCK_KEY" ]; then
+            echo "::error::Neither ASSISTANT_EVAL_MODEL_API_KEY nor ASSISTANT_EVAL_BEDROCK_API_KEY is set in the assistant-eval environment."
             exit 1
           fi
           if ! printf '%s' "$MODEL" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,99}$'; then
@@ -76,11 +81,18 @@ jobs:
       - name: Run the evaluation
         env:
           KEY: ${{ secrets.ASSISTANT_EVAL_MODEL_API_KEY }}
+          BEDROCK_KEY: ${{ secrets.ASSISTANT_EVAL_BEDROCK_API_KEY }}
           ASSISTANT_EVAL_FAMILY: ${{ inputs.model }}
           ASSISTANT_EVAL_REPORT_DIR: ${{ github.workspace }}/assistant-eval-report
         run: |
-          export ASSISTANT_MODEL_API_KEY="AU=$KEY,ZZ=$KEY"
-          unset KEY
+          if [ -n "$KEY" ]; then
+            export ASSISTANT_MODEL_API_KEY="AU=$KEY,ZZ=$KEY"
+          fi
+          if [ -n "$BEDROCK_KEY" ]; then
+            export AI_BEDROCK_API_KEY="AU=$BEDROCK_KEY,ZZ=$BEDROCK_KEY"
+            echo "::add-mask::$AI_BEDROCK_API_KEY"
+          fi
+          unset KEY BEDROCK_KEY
           pnpm --filter @mondapac/api eval:assistant
 
       # The report holds the synthetic cases, what the model wrote and what the buyer would see;

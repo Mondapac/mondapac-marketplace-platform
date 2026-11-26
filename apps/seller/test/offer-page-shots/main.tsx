@@ -34,6 +34,20 @@ globalThis.fetch = (input, init) => {
       new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } }),
     );
   }
+  // "Typical price" (Offer page PR 9-UI): 500 g and 250 g have a range, 1 kg has none.
+  if (url.endsWith('/typical-prices')) {
+    const body = {
+      offerId: 'o1',
+      variants: [
+        { variantId: 'v1', range: { lowMinor: '890', highMinor: '2700' } },
+        { variantId: 'v2', range: { lowMinor: '1200', highMinor: '1900' } },
+        { variantId: 'v3', range: null },
+      ],
+    };
+    return Promise.resolve(
+      new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } }),
+    );
+  }
   if (!url.includes('/receive-estimates')) return realFetch(input, init);
   const lines = decodeURIComponent(url.split('lines=')[1] ?? '')
     .split(',')
@@ -167,6 +181,7 @@ createRoot(document.getElementById('root')!).render(
         currency="AUD"
         canEditPrice
         canEditStock
+        canViewTypical
         units={{ canEdit: true, productScope: 'PLATFORM', sellerSku: 'KED-021' }}
         csrfToken="csrf"
         canEstimate

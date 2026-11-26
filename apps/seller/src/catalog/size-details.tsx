@@ -1,10 +1,11 @@
 'use client';
 
-import { Tabs, tabIdOf } from '@mondapac/ui';
+import { FieldStatus, Tabs, tabIdOf } from '@mondapac/ui';
 import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import { formatMinor, minorOf } from '../price/money.ts';
 import { formatInZone, resolveZone } from '../price/zone-time.ts';
 import type { ReceiveEstimate } from '../price/receive-estimates.ts';
+import type { TypicalRange, Unusual } from '../price/typical.ts';
 import type { SourceView } from '../stock/types.ts';
 import { stockKey, type TableRow } from './variants-table-logic.ts';
 
@@ -50,6 +51,7 @@ export function SizeDetails({
   sources,
   stockDrafts,
   receive = null,
+  typical = null,
   special = null,
   cost = null,
 }: {
@@ -70,6 +72,11 @@ export function SizeDetails({
   readonly stockDrafts: Readonly<Record<string, string>>;
   /** "What you receive"; null when the seller may not see it (no price or ledger key). */
   readonly receive?: ReceiveView | null;
+  /**
+   * The typical price of the size (Offer page PR 9): the range other businesses sell it in, and
+   * whether the price in the row is outside it. Null when the API gave no range.
+   */
+  readonly typical?: { readonly range: TypicalRange; readonly unusual: Unusual } | null;
   /** The size's special price and its fields (Offer page PR 6), under the price lines. */
   readonly special?: React.ReactNode;
   /** The size's private Cost and Estimated profit (Offer page PR 7-UI), in the Cost tab. */
@@ -119,6 +126,17 @@ export function SizeDetails({
                 </>
               )}
             </Line>
+            {typical === null ? null : (
+              <Line label={t('typical.label')}>
+                <span className="tabular-nums">
+                  {t('typical.range', {
+                    low: money(typical.range.lowMinor),
+                    high: money(typical.range.highMinor),
+                  })}
+                </span>
+                <span className="block text-sm text-fg-muted">{t('typical.help')}</span>
+              </Line>
+            )}
             {priceDraft === null || receive?.source === 'typed' ? null : (
               <Line label={t('price.unsaved')}>
                 {draftMinor === null ? priceDraft : money(draftMinor)}
@@ -131,6 +149,11 @@ export function SizeDetails({
               </Line>
             )}
           </dl>
+        ) : null}
+        {tab === 'price' && typical?.unusual != null ? (
+          <div className="max-w-xl py-2">
+            <FieldStatus tone="info">{t(`typical.unusual.${typical.unusual}`)}</FieldStatus>
+          </div>
         ) : null}
         {tab === 'price' && price?.retired === true ? (
           <p className="max-w-xl py-2 text-sm text-fg-muted">{t('price.retired')}</p>
