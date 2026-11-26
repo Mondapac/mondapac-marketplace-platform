@@ -6499,14 +6499,26 @@ svg {
   inset-inline-end: 12px;
   bottom: 12px;
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  max-width: calc(100% - 24px);
   padding: 6px 10px;
   border-radius: 8px;
   background: var(--sf-white);
   box-shadow: 0 2px 8px var(--sf-shadow-panel);
   font-size: calc(12px * var(--fs));
   pointer-events: none;
+}
+.lmkey {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* The outline's source credit (CC BY): small, under the key. */
+.lmcredit {
+  color: var(--sf-slate);
+  font-size: calc(11px * var(--fs));
 }
 .lmlegend i {
   width: 14px;

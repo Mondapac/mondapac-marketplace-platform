@@ -304,10 +304,18 @@ function samplePayment(request: PayRequest): PayAnswer {
 export async function loadDeliveryLocator(): Promise<DeliveryLocatorSource> {
   const live = lookupIsLive(placesDeps(), await headers());
   const map = live ? mapConfig() : null;
+  // With the API, the outline is the real ServiceArea one, fetched by the modal when it opens
+  // (FE-098); the sample shape is never shown next to real answers.
   const base: DeliveryLocatorSource =
     storefrontApiConfig() === null
       ? SAMPLE_DELIVERY_LOCATOR
-      : { ...SAMPLE_DELIVERY_LOCATOR, addresses: [], suburbs: [] };
+      : {
+          ...SAMPLE_DELIVERY_LOCATOR,
+          area: { ...SAMPLE_DELIVERY_LOCATOR.area, boundary: [] },
+          outlineFromApi: true,
+          addresses: [],
+          suburbs: [],
+        };
   if (!live) return base;
   return map ? { ...base, live, map } : { ...base, live };
 }

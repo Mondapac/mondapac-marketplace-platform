@@ -10,6 +10,10 @@ const DEFAULT_SERVICE_AREA_CONFIG_DIR = path.resolve(
   __dirname,
   '../../../../../config/service-areas',
 );
+const DEFAULT_SERVICE_AREA_BOUNDARY_DIR = path.resolve(
+  __dirname,
+  '../../../../../config/service-area-boundaries',
+);
 const DEFAULT_LOCALE_CONFIG_DIR = path.resolve(__dirname, '../../../../../config/locales');
 
 /** A Market code as used in `market_id` columns (ADR-0004), by the kernel's single rule. */
@@ -84,6 +88,7 @@ const envSchema = z.object({
   AI_KILL_SWITCH: z.enum(['true', 'false']).default('false'),
   MARKET_CONFIG_DIR: z.string().min(1).default(DEFAULT_MARKET_CONFIG_DIR),
   SERVICE_AREA_CONFIG_DIR: z.string().min(1).default(DEFAULT_SERVICE_AREA_CONFIG_DIR),
+  SERVICE_AREA_BOUNDARY_DIR: z.string().min(1).default(DEFAULT_SERVICE_AREA_BOUNDARY_DIR),
   LOCALE_CONFIG_DIR: z.string().min(1).default(DEFAULT_LOCALE_CONFIG_DIR),
   DATABASE_URL: z
     .string({ error: 'DATABASE_URL is required' })
@@ -453,6 +458,12 @@ export interface AppConfig {
   readonly marketConfigDirs: readonly string[];
   /** Directories holding `<MARKET>.json` ServiceArea postcode sets (ADR-0005 decision 7). */
   readonly serviceAreaConfigDirs: readonly string[];
+  /**
+   * Directories holding the area outlines, `<MARKET>.json` (optional per Market; built by
+   * scripts/service-areas/build-boundaries.mjs). `SERVICE_AREA_BOUNDARY_DIR`, default
+   * `config/service-area-boundaries`.
+   */
+  readonly serviceAreaBoundaryDirs: readonly string[];
   /**
    * Directories holding translation catalogues, `<locale>/<module>.json` (INTL-11; identity
    * design 9). `LOCALE_CONFIG_DIR`, default `config/locales`.
@@ -1007,6 +1018,7 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     seedJobsOff: Object.freeze([...seedJobsOff.names]),
     marketConfigDirs: Object.freeze([path.resolve(parsed.data.MARKET_CONFIG_DIR)]),
     serviceAreaConfigDirs: Object.freeze([path.resolve(parsed.data.SERVICE_AREA_CONFIG_DIR)]),
+    serviceAreaBoundaryDirs: Object.freeze([path.resolve(parsed.data.SERVICE_AREA_BOUNDARY_DIR)]),
     localeConfigDirs: Object.freeze([path.resolve(parsed.data.LOCALE_CONFIG_DIR)]),
     databaseUrl: parsed.data.DATABASE_URL,
     databasePoolMax: parsed.data.DATABASE_POOL_MAX,

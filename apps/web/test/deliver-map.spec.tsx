@@ -9,7 +9,7 @@ import { DEFAULT_MAP_STYLE, parseMapConfig } from '../src/delivery/map-config.ts
 import { DeliveryMap } from '../src/delivery/delivery-map.tsx';
 import { MapboxMap, WORKER_URL } from '../src/delivery/mapbox-map.tsx';
 import { storefrontCsp } from '../src/security/storefront-csp.ts';
-import type { GeoPoint } from '../src/storefront/types.ts';
+import type { AreaShape, GeoPoint } from '../src/storefront/types.ts';
 
 const PUBLIC = 'pk.eyJ1IjoibW9uZGFwYWMiLCJhIjoidGVzdCJ9.not-a-real-token';
 
@@ -87,7 +87,10 @@ const gl = vi.hoisted(() => {
     static last: FakeMap | undefined;
     container: HTMLElement;
     handlers = new Map<string, Handler>();
-    sources = new Map<string, { data: unknown; setData: (d: unknown) => void }>();
+    sources = new Map<
+      string,
+      { data: unknown; attribution?: string; setData: (d: unknown) => void }
+    >();
     layers = new Map<string, { layout?: Record<string, unknown> }>();
     removed = false;
     eased: unknown[] = [];
@@ -115,9 +118,10 @@ const gl = vi.hoisted(() => {
     isStyleLoaded() {
       return this.layers.size > 0;
     }
-    addSource(id: string, spec: { data: unknown }) {
+    addSource(id: string, spec: { data: unknown; attribution?: string }) {
       const source = {
         data: spec.data,
+        attribution: spec.attribution,
         setData: (data: unknown) => {
           source.data = data;
         },
@@ -132,6 +136,12 @@ const gl = vi.hoisted(() => {
     }
     getLayer(id: string) {
       return this.layers.get(id);
+    }
+    removeLayer(id: string) {
+      this.layers.delete(id);
+    }
+    removeSource(id: string) {
+      this.sources.delete(id);
     }
     setLayoutProperty(id: string, name: string, value: unknown) {
       this.layers.get(id)!.layout![name] = value;
@@ -161,14 +171,21 @@ vi.mock('mapbox-gl/dist/mapbox-gl-csp.js', () => ({ default: gl.module }));
 
 describe('the Mapbox map', () => {
   const start: GeoPoint = { lat: -27.47, lng: 153.02 };
-  const boundary: GeoPoint[] = [
-    { lat: -27.3, lng: 152.9 },
-    { lat: -27.3, lng: 153.2 },
-    { lat: -27.6, lng: 153.2 },
+  const boundary: AreaShape = [
+    [
+      [
+        { lat: -27.3, lng: 152.9 },
+        { lat: -27.3, lng: 153.2 },
+        { lat: -27.6, lng: 153.2 },
+      ],
+    ],
   ];
   const onMove = vi.fn<(point: GeoPoint) => void>();
 
-  function draw(point = start, extra: { outside?: boolean; accuracy?: boolean } = {}) {
+  function draw(
+    point = start,
+    extra: { outside?: boolean; accuracy?: boolean; credit?: string | null } = {},
+  ) {
     return (
       <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
         <MapboxMap
@@ -176,6 +193,7 @@ describe('the Mapbox map', () => {
           style={DEFAULT_MAP_STYLE}
           areaName="Greater Brisbane"
           boundary={boundary}
+          credit={extra.credit}
           bounds={{ north: -27, south: -28, west: 152.5, east: 153.5 }}
           labels={[]}
           point={point}
@@ -216,15 +234,32 @@ describe('the Mapbox map', () => {
     await open();
     const map = gl.FakeMap.last!;
     act(() => map.fire('load'));
-    const area = map.getSource('lm-area')!.data as { geometry: { coordinates: number[][][] } };
-    // Closed ring, longitude first.
-    expect(area.geometry.coordinates[0]).toEqual([
+    const area = map.getSource('lm-area')!.data as {
+      geometry: { type: string; coordinates: number[][][][] };
+    };
+    // A MultiPolygon; each ring closed, longitude first.
+    expect(area.geometry.type).toBe('MultiPolygon');
+    expect(area.geometry.coordinates[0]![0]).toEqual([
       [152.9, -27.3],
       [153.2, -27.3],
       [153.2, -27.6],
       [152.9, -27.3],
     ]);
     expect(map.getLayer('lm-ring')!.layout!['visibility']).toBe('none');
+  });
+
+  it("puts the outline's credit into the map's own attribution once it arrives", async () => {
+    const view = await open();
+    const map = gl.FakeMap.last!;
+    act(() => map.fire('load'));
+    expect(map.getSource('lm-area')!.attribution).toBeUndefined();
+    view.rerender(draw(start, { credit: 'Based on test data, CC BY 4.0' }));
+    await act(() => Promise.resolve());
+    expect(map.getSource('lm-area')!.attribution).toBe('Based on test data, CC BY 4.0');
+    expect(map.getLayer('lm-area-fill')).toBeTruthy();
+    expect(map.getLayer('lm-area-line')).toBeTruthy();
+    // Not in the legend over the map, which stays short on a phone.
+    expect(screen.queryByText(/Based on test data/)).toBeNull();
   });
 
   it('moves by a tap, a drag and the arrow keys, through onMove', async () => {

@@ -10,13 +10,16 @@ import {
   type ReactNode,
 } from 'react';
 import { Icon } from '../icons/icon.tsx';
-import type { GeoPoint, MapBounds, Place } from '../storefront/types.ts';
+import type { AreaShape, GeoPoint, MapBounds, Place } from '../storefront/types.ts';
 import { PLANE, clampToPlane, fromPlane, toPlane, type PlanePoint } from './geo.ts';
 
 /** What the modal gives a map. A real map provider takes the same props. */
 export interface DeliveryMapProps {
   readonly areaName: string;
-  readonly boundary: readonly GeoPoint[];
+  /** The area's outline; empty draws none (not loaded yet, or no area open). */
+  readonly boundary: AreaShape;
+  /** The outline's credit line, shown under the legend; null or absent shows none. */
+  readonly credit?: string | null;
   readonly bounds: MapBounds;
   /** Suburb names drawn on the map. */
   readonly labels: readonly Place[];
@@ -57,6 +60,7 @@ const ARROWS: Record<string, readonly [number, number]> = {
 export function StubMap({
   areaName,
   boundary,
+  credit,
   bounds,
   labels,
   point,
@@ -144,7 +148,20 @@ export function StubMap({
     setZoom(Math.min(ZOOM_MAX, Math.max(1, next)));
   };
 
-  const area = boundary.map((p) => toPlane(p, bounds));
+  // Every ring as one path; even-odd filling leaves holes empty.
+  const area = boundary
+    .flatMap((polygon) =>
+      polygon.map(
+        (ring) =>
+          `M${ring
+            .map((p) => {
+              const at = toPlane(p, bounds);
+              return `${at.x.toFixed(1)} ${at.y.toFixed(1)}`;
+            })
+            .join('L')}Z`,
+      ),
+    )
+    .join('');
   return (
     <div
       className="lmmap"
@@ -171,7 +188,7 @@ export function StubMap({
           className="mroad"
           d="M0 100L400 140M0 330L400 310M120 0L150 400M300 0L270 400M0 40L400 60"
         />
-        <polygon className="marea" points={area.map((p) => `${p.x},${p.y}`).join(' ')} />
+        {area ? <path className="marea" fillRule="evenodd" d={area} /> : null}
         {labels.map((label) => {
           const at = toPlane(label.point, bounds);
           return (
@@ -220,11 +237,22 @@ export function StubMap({
           <Icon name="minus" />
         </button>
       </div>
-      <div className="lmlegend">
+      <MapLegend credit={credit} />
+      <div className="lmatt">{t('attribution')}</div>
+    </div>
+  );
+}
+
+/** The legend of the area's look, and the outline's credit when it has one (CC BY needs it). */
+export function MapLegend({ credit }: { readonly credit?: string | null }) {
+  const t = useTranslations('deliver');
+  return (
+    <div className="lmlegend">
+      <span className="lmkey">
         <i aria-hidden="true" />
         {t('legend')}
-      </div>
-      <div className="lmatt">{t('attribution')}</div>
+      </span>
+      {credit ? <small className="lmcredit">{t('legend-credit', { credit })}</small> : null}
     </div>
   );
 }

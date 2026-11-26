@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
   TEST_MARKET_IDS,
+  TEST_SERVICE_AREA_BOUNDARY_DIRS,
   TEST_SERVICE_AREA_CONFIG_DIRS,
   testMarketId,
 } from '../../../test/support/test-config';
@@ -331,5 +332,117 @@ describe.each([
     );
     expect(directory.sellerMayServe(marketId, 'a-one', 'b-one')).toBe(true);
     expect(directory.sellerMayServe(other, 'a-one', 'b-one')).toBe(false);
+  });
+});
+
+describe('ServiceArea boundaries', () => {
+  const square = (x: number) => ({
+    type: 'MultiPolygon',
+    coordinates: [
+      [
+        [
+          [x, 0],
+          [x + 1, 0],
+          [x + 1, 1],
+          [x, 1],
+          [x, 0],
+        ],
+      ],
+    ],
+  });
+  const source = { name: 'Shapes', licence: 'CC BY 4.0', attribution: 'Made by a test' };
+  const areasFile = {
+    market: 'AU',
+    areas: [area('a-one', ['1000-1999']), area('a-two', ['2000'], false)],
+  };
+  const load = (boundaries: unknown) =>
+    loadServiceAreas(
+      [directoryWith({ 'AU.json': areasFile })],
+      [AU],
+      [directoryWith({ 'AU.json': boundaries })],
+    );
+
+  it('keeps the checked-in outline in step with the checked-in postcodes', () => {
+    // Fails when config/service-areas changes without rebuilding config/service-area-boundaries.
+    expect(() =>
+      loadServiceAreas(
+        TEST_SERVICE_AREA_CONFIG_DIRS,
+        TEST_MARKET_IDS,
+        TEST_SERVICE_AREA_BOUNDARY_DIRS,
+      ),
+    ).not.toThrow();
+  });
+
+  it('draws only areas open for delivery, and nothing for a Market without a file', () => {
+    const directory = load({
+      market: 'AU',
+      source,
+      areas: [
+        { code: 'a-one', postcodes: ['1000-1999'], boundary: square(0) },
+        { code: 'a-two', postcodes: ['2000'], boundary: square(5) },
+      ],
+    });
+    const map = directory.deliveryMap(AU);
+    expect(map.areas.map((shape) => shape.code)).toEqual(['a-one']);
+    expect(map.source).toEqual(source);
+    expect(directory.deliveryMap(ZZ)).toEqual({ areas: [], source: null });
+    const none = loadServiceAreas([directoryWith({ 'AU.json': areasFile })], [AU], []);
+    expect(none.deliveryMap(AU)).toEqual({ areas: [], source: null });
+  });
+
+  it('refuses to start with a stale, unknown or broken outline', () => {
+    const file = (entry: Record<string, unknown>) => ({
+      market: 'AU',
+      source,
+      areas: [{ code: 'a-one', postcodes: ['1000-1999'], boundary: square(0), ...entry }],
+    });
+    expect(() => load(file({ postcodes: ['1000-1998'] }))).toThrow(/rebuild it/);
+    expect(() => load(file({ code: 'ghost' }))).toThrow(/not a service area/);
+    expect(() =>
+      load(
+        file({
+          boundary: {
+            type: 'MultiPolygon',
+            coordinates: [
+              [
+                [
+                  [0, 0],
+                  [1, 0],
+                  [1, 1],
+                  [0, 1],
+                ],
+              ],
+            ],
+          },
+        }),
+      ),
+    ).toThrow(InvalidServiceAreaConfigError);
+    expect(() =>
+      load(
+        file({
+          boundary: {
+            type: 'MultiPolygon',
+            coordinates: [
+              [
+                [
+                  [0, 0],
+                  [200, 0],
+                  [1, 1],
+                  [0, 0],
+                ],
+              ],
+            ],
+          },
+        }),
+      ),
+    ).toThrow(/invalid/);
+    expect(() => load(file({ boundary: { type: 'Polygon', coordinates: [] } }))).toThrow(/invalid/);
+    expect(() => load({ ...file({}), market: 'ZZ' })).toThrow(/must match the file name/);
+    expect(() => load({ ...file({}), extra: true })).toThrow(/invalid/);
+    const huge = Array.from({ length: 20_001 }, (_, i) => [i / 100_000, 0]);
+    huge.push([0, 1], [0, 0]);
+    expect(() =>
+      load(file({ boundary: { type: 'MultiPolygon', coordinates: [[[[0, 0], ...huge]]] } })),
+    ).toThrow(/at most 20000/);
   });
 });

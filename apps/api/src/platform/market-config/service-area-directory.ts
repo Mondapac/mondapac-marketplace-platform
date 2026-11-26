@@ -1,5 +1,6 @@
 import type { MarketId } from '@mondapac/shared-kernel';
 import { normalisePostcode, type PostcodeInterval } from './postcode-entry';
+import type { AreaBoundary, BoundarySource, MarketBoundaries } from './service-area-boundaries';
 
 export { normalisePostcode, type PostcodeInterval };
 
@@ -33,6 +34,22 @@ export interface CrossAreaSelling {
   readonly lanes: readonly AreaLane[];
 }
 
+export type { AreaBoundary, BoundarySource };
+
+/** An area open for delivery, with the outline the storefront map draws. */
+export interface DeliveryAreaShape {
+  readonly code: string;
+  readonly names: Readonly<Record<string, string>>;
+  readonly boundary: AreaBoundary;
+}
+
+/** What the storefront map may show for a Market: public configuration only. */
+export interface DeliveryAreaMap {
+  readonly areas: readonly DeliveryAreaShape[];
+  /** The shapes' credit, or null when the Market has no boundaries. */
+  readonly source: BoundarySource | null;
+}
+
 export interface ServiceAreaDefinition extends ServiceArea {
   /** Digits-only postcodes and ranges. */
   readonly intervals: readonly PostcodeInterval[];
@@ -50,7 +67,24 @@ export class ServiceAreaDirectory {
   constructor(
     private readonly areasByMarket: ReadonlyMap<MarketId, readonly ServiceAreaDefinition[]>,
     private readonly crossAreaByMarket: ReadonlyMap<MarketId, CrossAreaSelling> = new Map(),
+    private readonly boundariesByMarket: ReadonlyMap<MarketId, MarketBoundaries> = new Map(),
   ) {}
+
+  /**
+   * The outlines of the Market's areas open for delivery, for the storefront map. An area that
+   * is closed for delivery, or has no boundary, is left out (fail closed: the map never shows a
+   * place as served when the postcode check would refuse it). Unknown Market: no areas.
+   */
+  deliveryMap(marketId: MarketId): DeliveryAreaMap {
+    const boundaries = this.boundariesByMarket.get(marketId);
+    const areas: DeliveryAreaShape[] = [];
+    for (const area of this.areasByMarket.get(marketId) ?? []) {
+      const boundary = boundaries?.byArea.get(area.code);
+      if (!area.deliveryEnabled || boundary === undefined) continue;
+      areas.push({ code: area.code, names: area.names, boundary });
+    }
+    return { areas, source: areas.length > 0 ? (boundaries?.source ?? null) : null };
+  }
 
   /**
    * Whether a seller in `sellerAreaCode` may serve a buyer in `buyerAreaCode`. Fail-closed: the

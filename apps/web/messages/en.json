@@ -1115,6 +1115,7 @@
     "zoom-in": "Zoom in",
     "zoom-out": "Zoom out",
     "legend": "Delivery area",
+    "legend-credit": "Outline: {credit}",
     "map-loading": "Loading map…",
     "attribution": "Map provider and data to be chosen"
   },

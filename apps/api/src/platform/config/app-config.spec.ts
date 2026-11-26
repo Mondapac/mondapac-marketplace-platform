@@ -23,6 +23,7 @@ describe('loadAppConfig', () => {
       certificationReviewerDocumentsEnabled: false,
       marketConfigDirs: [expect.stringMatching(/config[\\/]markets$/)],
       serviceAreaConfigDirs: [expect.stringMatching(/config[\\/]service-areas$/)],
+      serviceAreaBoundaryDirs: [expect.stringMatching(/config[\\/]service-area-boundaries$/)],
       localeConfigDirs: [expect.stringMatching(/config[\\/]locales$/)],
       databaseUrl: DATABASE_URL,
       databasePoolMax: 10,

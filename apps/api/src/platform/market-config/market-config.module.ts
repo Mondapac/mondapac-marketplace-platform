@@ -26,7 +26,11 @@ import { ServiceAreaDirectory } from './service-area-directory';
       provide: ServiceAreaDirectory,
       inject: [APP_CONFIG],
       useFactory: (config: AppConfig) =>
-        loadServiceAreas(config.serviceAreaConfigDirs, config.hostedMarkets),
+        loadServiceAreas(
+          config.serviceAreaConfigDirs,
+          config.hostedMarkets,
+          config.serviceAreaBoundaryDirs,
+        ),
     },
   ],
   exports: [MarketRegistry, ServiceAreaDirectory, ContentFilter],

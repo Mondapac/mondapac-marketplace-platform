@@ -5,6 +5,7 @@ import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import {
   TEST_MARKET_CONFIG_DIRS,
   TEST_MARKET_IDS,
+  TEST_SERVICE_AREA_BOUNDARY_DIRS,
   TEST_SERVICE_AREA_CONFIG_DIRS,
 } from '../../../../test/support/test-config';
 import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
@@ -14,12 +15,17 @@ import { loadServiceAreas } from '../../../platform/market-config/service-area-c
 import { ConfigShippingPolicy } from '../infrastructure/config-shipping-policy';
 import type { ShippingDependencies } from './shipping-dependencies';
 import { DeliveryArea } from './use-cases/delivery-area.use-case';
+import { DeliveryAreaMap } from './use-cases/delivery-area-map.use-case';
 
 // The delivery area check on both Market fixtures (AU in AUD, ZZ in JPY). The delivery prices have
 // their own specs (the quote, charge and fee ledger use cases).
 
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
-const areas = loadServiceAreas(TEST_SERVICE_AREA_CONFIG_DIRS, TEST_MARKET_IDS);
+const areas = loadServiceAreas(
+  TEST_SERVICE_AREA_CONFIG_DIRS,
+  TEST_MARKET_IDS,
+  TEST_SERVICE_AREA_BOUNDARY_DIRS,
+);
 const T0 = Temporal.Instant.from('2026-10-14T10:00:00Z');
 
 describe.each([['AU'], ['ZZ']] as const)('shipping delivery area in market %s', (code) => {
@@ -44,6 +50,43 @@ describe.each([['AU'], ['ZZ']] as const)('shipping delivery area in market %s', 
     for (const bad of ['', '   ', 'x'.repeat(17), 'ä', 4031, null, undefined]) {
       expect(await ask(bad)).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
     }
+  });
+
+  it('gives anyone the outlines of the areas open for delivery only, with their box', async () => {
+    const anonymous = testCallContext(market, 'anonymous', 'ship-anon-map1');
+    const answer = await new DeliveryAreaMap(gate, deps).execute(anonymous, {});
+    if (code === 'AU') {
+      // Greater Brisbane has an outline but is not open for delivery yet: nothing is drawn.
+      expect(answer).toEqual(ok({ areas: [], bounds: null, source: null }));
+      return;
+    }
+    // ZZ: zz-central is open and has an outline; zz-coast is open but has none, so it is left out.
+    expect(answer).toEqual(
+      ok({
+        areas: [
+          {
+            code: 'zz-central',
+            names: { en: 'Central', ja: '中央' },
+            boundary: {
+              type: 'MultiPolygon',
+              coordinates: [
+                [
+                  [
+                    [10, 10],
+                    [11, 10],
+                    [11, 11],
+                    [10, 11],
+                    [10, 10],
+                  ],
+                ],
+              ],
+            },
+          },
+        ],
+        bounds: { north: 11, south: 10, west: 10, east: 11 },
+        source: { name: 'Synthetic test shapes', licence: 'CC0', attribution: 'Test data' },
+      }),
+    );
   });
 
   it('reads the fallback cap and the quote bounds from the Market shipping settings', () => {
