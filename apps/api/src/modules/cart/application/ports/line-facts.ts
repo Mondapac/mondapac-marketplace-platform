@@ -30,6 +30,8 @@ export interface LineDisplay {
   readonly variantLabel: string | null;
   /** The first clean image of the published revision; the client builds the URL. */
   readonly imageId: Id | null;
+  /** The product's primary category, for the line's picture only; null when unknown. */
+  readonly categoryId: Id<'Category'> | null;
 }
 
 export interface SellUnitRef {

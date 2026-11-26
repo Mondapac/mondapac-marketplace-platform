@@ -72,6 +72,7 @@ const DISPLAY: LineDisplay = {
   productName: 'Lamb mince',
   variantLabel: '500 g',
   imageId: id(21),
+  categoryId: id<'Category'>(22),
 };
 
 class MemoryCarts implements CartRepository {

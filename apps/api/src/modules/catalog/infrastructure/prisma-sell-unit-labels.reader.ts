@@ -17,7 +17,7 @@ function pick(texts: Readonly<Record<string, string>>, locale: string): string |
 
 /**
  * {@link SellUnitLabelsReader}: the Offers by `(market_id, id)`, their products' PUBLISHED
- * revision, then that revision's texts and Variant labels. Four statements, no join, every one
+ * revision, then that revision's texts and Variant labels. Five statements, no join, every one
  * scoped by `market_id`. A product without a published revision has no name, so its keys are
  * absent; the Variant label comes from the same published revision only.
  */
@@ -75,6 +75,22 @@ export class PrismaSellUnitLabelsReader implements SellUnitLabelsReader {
         labelsOf.set(`${row.revisionId}:${row.variantId}`, row.labels as Record<string, string>);
       }
     }
+    const categoryRows = await tx.catalogProductRevisionCategory.findMany({
+      where: { marketId: market.marketId, revisionId: { in: revisionIds } },
+      orderBy: [{ position: 'asc' }],
+      select: { revisionId: true, categoryId: true, isPrimary: true },
+    });
+    const categoryOf = new Map<string, { id: Id<'Category'>; primary: boolean }>();
+    for (const row of categoryRows) {
+      const seen = categoryOf.get(row.revisionId);
+      // Primary wins; otherwise the first by position (rows arrive in position order).
+      if (seen === undefined || (row.isPrimary && !seen.primary)) {
+        categoryOf.set(row.revisionId, {
+          id: row.categoryId as Id<'Category'>,
+          primary: row.isPrimary,
+        });
+      }
+    }
     const productOf = new Map(offers.map((o) => [o.id as Id<'Offer'>, o.productId] as const));
     for (const key of keys) {
       const productId = productOf.get(key.offerId);
@@ -85,7 +101,11 @@ export class PrismaSellUnitLabelsReader implements SellUnitLabelsReader {
       if (productName === undefined) continue;
       const labels = labelsOf.get(`${revisionId}:${key.variantId}`);
       const label = labels === undefined ? undefined : pick(labels, locale);
-      result.set(sellUnitKey(key), { productName, variantLabel: label ?? null });
+      result.set(sellUnitKey(key), {
+        productName,
+        variantLabel: label ?? null,
+        categoryId: categoryOf.get(revisionId)?.id ?? null,
+      });
     }
     return result;
   }

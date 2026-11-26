@@ -66,6 +66,34 @@ describe.each(TEST_MARKETS)('catalog sell-unit labels in market %s (database)', 
   interface Spec {
     texts: Record<string, string>;
     labels: Record<string, string>;
+    /** Categories of the revision in position order; at most one is primary. */
+    categories?: { primary?: boolean }[];
+  }
+  /** Ids of the categories `unit` seeded for the last revision it built, in position order. */
+  let seededCategories: string[] = [];
+
+  async function seedCategory(target: typeof market): Promise<string> {
+    const id = uuid7();
+    await owner.query(
+      `INSERT INTO catalog.category_trees (market_id, tenant_id, version) VALUES ($1, $2, 1)
+         ON CONFLICT DO NOTHING`,
+      [target.marketId, target.tenantId],
+    );
+    await insert('platform_categories', {
+      id,
+      market_id: target.marketId,
+      tenant_id: target.tenantId,
+      slug: `c-${uuid7().slice(-12)}`,
+      parent_id: null,
+      status: 'active',
+      merged_into_id: null,
+      vertical_root_code: null,
+      published_revision_id: null,
+      created_by_kind: 'seed',
+      version: 1,
+      created_at: T0.toString(),
+    });
+    return id;
   }
 
   /** A product with an Offer; `published` becomes the published revision, `draft` a newer one. */
@@ -138,6 +166,18 @@ describe.each(TEST_MARKETS)('catalog sell-unit labels in market %s (database)', 
       for (const [locale, name] of Object.entries(spec.texts)) {
         await insert('product_revision_texts', { ...base, revision_id: revisionId, locale, name });
       }
+      seededCategories = [];
+      for (const [index, entry] of (spec.categories ?? []).entries()) {
+        const categoryId = await seedCategory(target);
+        seededCategories.push(categoryId);
+        await insert('product_revision_categories', {
+          ...base,
+          revision_id: revisionId,
+          category_id: categoryId,
+          position: index + 1,
+          is_primary: entry.primary === true,
+        });
+      }
       await insert('product_revision_variants', {
         ...base,
         revision_id: revisionId,
@@ -186,7 +226,11 @@ describe.each(TEST_MARKETS)('catalog sell-unit labels in market %s (database)', 
       { texts: { 'en-AU': 'DRAFT NAME' }, labels: { 'en-AU': 'DRAFT LABEL' } },
     );
     const answer = await read([a]);
-    expect(answer.get(sellUnitKey(a))).toEqual({ productName: 'Dates', variantLabel: '500 g' });
+    expect(answer.get(sellUnitKey(a))).toEqual({
+      productName: 'Dates',
+      variantLabel: '500 g',
+      categoryId: null,
+    });
     expect(JSON.stringify([...answer])).not.toContain('DRAFT');
   });
 
@@ -197,8 +241,31 @@ describe.each(TEST_MARKETS)('catalog sell-unit labels in market %s (database)', 
     expect(answer.get(sellUnitKey(a))).toEqual({
       productName: 'Fallback name',
       variantLabel: 'Fallback',
+      categoryId: null,
     });
-    expect(answer.get(sellUnitKey(b))).toEqual({ productName: 'Plain', variantLabel: null });
+    expect(answer.get(sellUnitKey(b))).toEqual({
+      productName: 'Plain',
+      variantLabel: null,
+      categoryId: null,
+    });
+  });
+
+  it('gives the primary category of the published revision, else the first by position', async () => {
+    const withPrimary = await unit(market, {
+      texts: { 'en-AU': 'Primary' },
+      labels: {},
+      categories: [{}, { primary: true }, {}],
+    });
+    const primaryId = seededCategories[1];
+    const withoutPrimary = await unit(market, {
+      texts: { 'en-AU': 'First' },
+      labels: {},
+      categories: [{}, {}],
+    });
+    const firstId = seededCategories[0];
+    const answer = await read([withPrimary, withoutPrimary]);
+    expect(answer.get(sellUnitKey(withPrimary))?.categoryId).toBe(primaryId);
+    expect(answer.get(sellUnitKey(withoutPrimary))?.categoryId).toBe(firstId);
   });
 
   it('omits a product with no published revision, however much draft content it has', async () => {
@@ -222,6 +289,6 @@ describe.each(TEST_MARKETS)('catalog sell-unit labels in market %s (database)', 
     const crossVariant = await read([{ offerId: mine.offerId, variantId: foreign.variantId }]);
     expect(
       crossVariant.get(sellUnitKey({ offerId: mine.offerId, variantId: foreign.variantId })),
-    ).toEqual({ productName: 'Mine', variantLabel: null });
+    ).toEqual({ productName: 'Mine', variantLabel: null, categoryId: null });
   });
 });

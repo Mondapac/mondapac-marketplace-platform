@@ -135,6 +135,7 @@ describe('cart routes over HTTP', () => {
                         productName: 'Lamb mince',
                         variantLabel: '500 g',
                         imageId: IMAGE,
+                        categoryId: null,
                       },
                     ] as const,
                   ]
@@ -319,6 +320,7 @@ describe('cart routes over HTTP', () => {
         productName: 'Lamb mince',
         variantLabel: '500 g',
         imageId: IMAGE,
+        categoryId: null,
       });
     });
 
@@ -580,6 +582,7 @@ describe('cart routes over HTTP', () => {
               productName: 'Lamb mince',
               variantLabel: '500 g',
               imageId: IMAGE,
+              categoryId: null,
             },
             sellerName: 'Halal Corner',
           },

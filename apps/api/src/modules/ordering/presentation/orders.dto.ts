@@ -390,6 +390,14 @@ export class LabelledOrderLineBody extends OrderLineBody {
     description: 'The published Variant label; null when none or unknown.',
   })
   variantLabel!: string | null;
+  @ApiProperty({
+    type: String,
+    format: 'uuid',
+    nullable: true,
+    description:
+      "The product's primary category (published); for the picture only; null if unknown.",
+  })
+  categoryId!: string | null;
 }
 
 export class OwnSellerOrderBody extends SellerOrderBody {
@@ -553,6 +561,7 @@ const labelledLineBody = (
   ...lineBody(line),
   productName: line.productName,
   variantLabel: line.variantLabel,
+  categoryId: line.categoryId,
 });
 
 const sellerOrderBody = (seller: SellerOrderLike): SellerOrderBody => ({

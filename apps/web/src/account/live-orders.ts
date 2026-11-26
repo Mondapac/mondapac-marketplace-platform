@@ -1,4 +1,4 @@
-import { unitKey } from '../cart/live-cart.ts';
+import { unitKey, type Departments } from '../cart/live-cart.ts';
 import type {
   DeliveryMethod,
   AccountOrder,
@@ -62,7 +62,7 @@ function partStatus(cancelled: boolean, fulfilment: unknown): OrderPartStatus | 
   return fulfilment === 'to-ship' ? 'confirmed' : null;
 }
 
-function lineOf(value: unknown, unnamed: string): OrderLine | null {
+function lineOf(value: unknown, unnamed: string, departments: Departments): OrderLine | null {
   if (!isRecord(value)) return null;
   const offerId =
     typeof value.offerId === 'string' && UUID.test(value.offerId) ? value.offerId : null;
@@ -78,7 +78,10 @@ function lineOf(value: unknown, unnamed: string): OrderLine | null {
     // The sell unit's cart key, so Buy again adds the same unit.
     offerId: unitKey({ offerId: offerId.toLowerCase(), variantId: variantId.toLowerCase() }),
     name: name === null ? unnamed : label === null ? name : `${name}, ${label}`,
-    category: '',
+    category:
+      (typeof value.categoryId === 'string' && Object.hasOwn(departments, value.categoryId)
+        ? departments[value.categoryId]
+        : undefined) ?? '',
     quantity,
     unitPrice,
   };
@@ -89,6 +92,7 @@ export function accountOrderOf(
   body: unknown,
   labels: { readonly unnamedItem: string; readonly unnamedSeller: string },
   deliveredTo = '',
+  departments: Departments = {},
 ): AccountOrder | null {
   if (!isRecord(body)) return null;
   const orderId = typeof body.orderId === 'string' && UUID.test(body.orderId) ? body.orderId : null;
@@ -107,7 +111,7 @@ export function accountOrderOf(
     const deliveryFee = moneyOf(seller.shipping);
     const discount = optionalMoney(seller.discount);
     const deliveryDiscount = optionalMoney(seller.shippingDiscount);
-    const lines = seller.lines.map((line) => lineOf(line, labels.unnamedItem));
+    const lines = seller.lines.map((line) => lineOf(line, labels.unnamedItem, departments));
     if (sellerId === null || status === null || deliveryMethod === null || deliveryFee === null) {
       return null;
     }
@@ -155,10 +159,11 @@ export function accountOrderOf(
 export function accountOrdersOf(
   body: unknown,
   labels: { readonly unnamedItem: string; readonly unnamedSeller: string },
+  departments: Departments = {},
 ): AccountOrder[] | null {
   if (!isRecord(body) || !Array.isArray(body.orders)) return null;
   return body.orders.flatMap((order) => {
-    const shown = accountOrderOf(order, labels);
+    const shown = accountOrderOf(order, labels, '', departments);
     return shown === null ? [] : [shown];
   });
 }

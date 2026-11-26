@@ -118,7 +118,12 @@ export async function labelOwnOrders<V extends OrderView>(
 
 function labelLines(
   lines: readonly OrderLineView[],
-  unitLabels: ReadonlyMap<string, { productName: string; variantLabel: string | null }> | undefined,
+  unitLabels:
+    | ReadonlyMap<
+        string,
+        { productName: string; variantLabel: string | null; categoryId: string | null }
+      >
+    | undefined,
 ): LabelledLineView[] {
   return lines.map((line) => {
     const unit = unitLabels?.get(orderUnitKey(line));
@@ -126,6 +131,7 @@ function labelLines(
       ...line,
       productName: unit?.productName ?? null,
       variantLabel: unit?.variantLabel ?? null,
+      categoryId: unit?.categoryId ?? null,
     };
   });
 }

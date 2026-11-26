@@ -16,6 +16,7 @@ const OFFER = '0f8fad5b-d9cb-469f-a165-70867728950e';
 const VARIANT = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
 const SELLER = '886313e1-3b8a-5372-9b90-0c9aee199e5d';
 const SELLER_B = '16fd2706-8baf-433b-82eb-8c7fada847da';
+const CATEGORY = '5d1c2f3a-8b7e-4c6d-9a0b-1e2f3a4b5c6d';
 const LABELS = { unnamedItem: 'Item no longer listed', unnamedSeller: 'Seller' };
 
 const money = (amount: string, currency: string) => ({ amount, currency });
@@ -28,6 +29,7 @@ function orderBody(currency: string, extra: object = {}) {
     unitPrice: money('1250', currency),
     productName,
     variantLabel,
+    categoryId: CATEGORY,
   });
   return {
     orderId: ORDER,
@@ -98,6 +100,19 @@ describe.each(['AUD', 'JPY'])('a paid order in %s', (currency) => {
         },
       ],
     });
+  });
+
+  it('shows each line with the department of its category, else the general icon', () => {
+    const order = accountOrderOf(orderBody(currency), LABELS, '', { [CATEGORY]: 'seafood' });
+    expect(order?.parts.flatMap((part) => part.lines.map((line) => line.category))).toEqual([
+      'seafood',
+      'seafood',
+    ]);
+    const unknown = accountOrderOf(orderBody(currency), LABELS, '', { other: 'drinks' });
+    expect(unknown?.parts.flatMap((part) => part.lines.map((line) => line.category))).toEqual([
+      '',
+      '',
+    ]);
   });
 
   it('is delivered when every part is, and cancelled parts follow a cancelled order', () => {

@@ -55,6 +55,7 @@ export class FacadeOrderLabels implements OrderLabels {
           result.set(orderUnitKey(key), {
             productName: label.productName,
             variantLabel: label.variantLabel,
+            categoryId: label.categoryId,
           });
         }
       }

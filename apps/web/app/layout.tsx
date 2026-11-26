@@ -28,6 +28,7 @@ import {
   loadAssistant,
   loadCartSource,
   loadLiveCart,
+  loadDepartments,
   loadCheckout,
   loadDeliveryLocator,
   loadStorefrontContent,
@@ -74,6 +75,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     assistant,
     locator,
     incoming,
+    departments,
   ] = await Promise.all([
     getMessages(),
     getLocale(),
@@ -86,6 +88,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     loadAssistant(),
     loadDeliveryLocator(),
     headers(),
+    loadDepartments(),
   ]);
   const ga4Id = ga4IdFor(incoming.get('host'));
   const deliverTo = deliverToOf(jar.get(DELIVER_TO_COOKIE)?.value);
@@ -115,6 +118,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             cartSource={cartSource}
             liveCart={liveCart}
             photoBase={photos}
+            departments={departments}
             locator={locator}
             deliverTo={deliverTo}
             deliverGuess={deliverGuess}

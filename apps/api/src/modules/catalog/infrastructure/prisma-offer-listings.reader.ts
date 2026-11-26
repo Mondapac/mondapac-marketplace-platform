@@ -182,6 +182,22 @@ export class PrismaOfferListingsReader implements OfferListingsReader {
         .filter((row) => cleanImages.has(row.imageId))
         .map((row) => [row.revisionId, row.imageId as Id]),
     );
+    const categoryRows = await tx.catalogProductRevisionCategory.findMany({
+      where: { marketId: market.marketId, revisionId: { in: revisionIds } },
+      orderBy: [{ position: 'asc' }],
+      select: { revisionId: true, categoryId: true, isPrimary: true },
+    });
+    const categoryOf = new Map<string, { id: Id<'Category'>; primary: boolean }>();
+    for (const row of categoryRows) {
+      const seen = categoryOf.get(row.revisionId);
+      // Primary wins; otherwise the first by position (rows arrive in position order).
+      if (seen === undefined || (row.isPrimary && !seen.primary)) {
+        categoryOf.set(row.revisionId, {
+          id: row.categoryId as Id<'Category'>,
+          primary: row.isPrimary,
+        });
+      }
+    }
     // The anonymous rule reads no tag at all (Hassan; kept after slice 12).
     const tagRows =
       tags === 'none'
@@ -254,6 +270,7 @@ export class PrismaOfferListingsReader implements OfferListingsReader {
                 variantNo,
               }),
         primaryImageId: imageOf.get(revisionId) ?? null,
+        categoryId: categoryOf.get(revisionId)?.id ?? null,
         tags: tagsOf.get(offer.id) ?? [],
       });
     }

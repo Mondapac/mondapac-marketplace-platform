@@ -34,9 +34,15 @@ describe.each(['AU', 'ZZ'] as const)('order label adapter in market %s', (code) 
         return Promise.resolve(
           ok(
             new Map([
-              ...batch.map((k) => [sellUnitKey(k), { productName: 'Dates', variantLabel: null }]),
-              ['extra:key', { productName: 'Extra', variantLabel: null }],
-            ] as [string, { productName: string; variantLabel: null }][]),
+              ...batch.map((k) => [
+                sellUnitKey(k),
+                { productName: 'Dates', variantLabel: null, categoryId: 'cat-1' },
+              ]),
+              ['extra:key', { productName: 'Extra', variantLabel: null, categoryId: null }],
+            ] as [
+              string,
+              { productName: string; variantLabel: null; categoryId: string | null },
+            ][]),
           ),
         );
       },
@@ -56,6 +62,7 @@ describe.each(['AU', 'ZZ'] as const)('order label adapter in market %s', (code) 
     expect(labels.get(orderUnitKey(keys[200]!))).toEqual({
       productName: 'Dates',
       variantLabel: null,
+      categoryId: 'cat-1',
     });
   });
 

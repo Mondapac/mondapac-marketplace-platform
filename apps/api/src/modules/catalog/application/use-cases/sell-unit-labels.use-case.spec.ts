@@ -9,7 +9,12 @@ import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import type { UnitOfWork, UnitOfWorkOptions } from '../../../../platform/unit-of-work/unit-of-work';
-import { MAX_FACADE_BATCH, sellUnitKey, type SellUnitKey } from '../../contracts/catalog.facade';
+import {
+  MAX_FACADE_BATCH,
+  sellUnitKey,
+  type SellUnitKey,
+  type SellUnitLabel,
+} from '../../contracts/catalog.facade';
 import { CatalogFacadeImplementation } from '../../presentation/catalog.facade';
 import type { SellUnitLabelsReader } from '../ports/sell-unit-labels.reader';
 import { SellUnitLabelsQuery } from './sell-unit-labels.use-case';
@@ -44,11 +49,15 @@ describe.each(TEST_MARKETS)('sellUnitLabels in market %s', (code) => {
   const reader: SellUnitLabelsReader = {
     read: (m, keys, locale) => {
       reads.push({ market: m.marketId, keys, locale });
-      const answer = new Map<string, { productName: string; variantLabel: string | null }>();
+      const answer = new Map<string, SellUnitLabel>();
       for (const k of keys) {
         const row = stored.get(sellUnitKey(k));
         if (row?.market === m.marketId)
-          answer.set(sellUnitKey(k), { productName: row.productName, variantLabel: null });
+          answer.set(sellUnitKey(k), {
+            productName: row.productName,
+            variantLabel: null,
+            categoryId: null,
+          });
       }
       return Promise.resolve(answer);
     },

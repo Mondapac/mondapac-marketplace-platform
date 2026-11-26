@@ -13,6 +13,7 @@ const PRODUCT = '9b2d3a0e-3c1f-4a55-8f3e-2c1d0e9f8a7b';
 const IMAGE = 'c56a4180-65aa-42ec-a945-5fd21dec0538';
 const LINE = '6ec0bd7f-11c0-43da-975e-2a8ad9ebae0b';
 const LINE_B = 'a8098c1a-f86e-41a6-8c4b-2c4b3d5e6f70';
+const CATEGORY = '5d1c2f3a-8b7e-4c6d-9a0b-1e2f3a4b5c6d';
 const SAVED = 'e02fd0e4-00fd-490a-9a3c-3f3d6c1b2a10';
 
 describe.each([
@@ -36,6 +37,7 @@ describe.each([
       productName: 'Lamb mince',
       variantLabel: '500 g',
       imageId: IMAGE,
+      categoryId: CATEGORY,
     },
     ...extra,
   });
@@ -48,6 +50,24 @@ describe.each([
     ...extra,
   });
   const key = unitKey({ offerId: OFFER, variantId: VARIANT });
+
+  it('shows the department of the line category as its picture', () => {
+    const body = { groups: [group([line()])], lineCount: 1 };
+
+    const known = liveCartOf(body, photo, { [CATEGORY]: 'seafood' });
+    const unknown = liveCartOf(body, photo, { other: 'drinks' });
+    const none = liveCartOf(
+      { groups: [group([line({ display: { ...line().display, categoryId: null } })])] },
+      photo,
+      {
+        [CATEGORY]: 'seafood',
+      },
+    );
+
+    expect(known?.source.items[key]?.category).toBe('seafood');
+    expect(unknown?.source.items[key]?.category).toBe('');
+    expect(none?.source.items[key]?.category).toBe('');
+  });
 
   it('shows a buyable line with its name, label, photo, price and seller terms', () => {
     const cart = liveCartOf({ groups: [group([line()])], lineCount: 1 }, photo);
