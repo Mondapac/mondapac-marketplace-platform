@@ -5263,6 +5263,7 @@ svg {
   display: grid;
   gap: 10px;
   grid-template-columns: minmax(0, 1fr);
+  container-type: inline-size;
 }
 .adg .aopt {
   align-items: center;
@@ -5270,7 +5271,9 @@ svg {
 .adg .aopt input {
   margin: 0;
 }
-@media (min-width: 700px) {
+/* The wide row follows the width of the list, not the window: beside the order summary the
+   list is much narrower than the window, and a four-column row broke the address apart. */
+@container (min-width: 600px) {
   .adg .aopt {
     grid-template-columns: 24px minmax(130px, 170px) minmax(0, 1fr) auto;
     gap: 4px 14px;
