@@ -64,6 +64,11 @@ export interface SearchResultItem extends ProductSearchItem {
    * from the index, refreshed on price and stock events; the cart re-reads the live price.
    */
   readonly price: { readonly from: Money; readonly varies: boolean } | null;
+  /**
+   * The unit the card's add button carts: the only matching in-stock priced variant, else null (the
+   * card then opens the product page to pick one).
+   */
+  readonly cartVariantId: Id<'Variant'> | null;
   /** Every public photo of the product (at most 8, main one first); `primaryImage` is the first. */
   readonly images: readonly ImageRef[];
 }
@@ -114,10 +119,11 @@ export interface ProductSearchPage {
 function factsOf(
   hit: OfferHit,
   units: HitSellUnits | undefined,
-  match: (units: HitSellUnits) => Pick<SearchResultItem, 'variantId' | 'price'>,
+  match: (units: HitSellUnits) => Pick<SearchResultItem, 'variantId' | 'price' | 'cartVariantId'>,
 ): SearchResultFacts {
   const { offerId, productId, sellerId, name, shortText, categoryIds } = hit;
-  const matched = units === undefined ? { variantId: null, price: null } : match(units);
+  const matched =
+    units === undefined ? { variantId: null, price: null, cartVariantId: null } : match(units);
   return {
     offerId,
     productId,
@@ -127,6 +133,7 @@ function factsOf(
     categoryIds,
     variantId: matched.variantId,
     price: matched.price,
+    cartVariantId: matched.cartVariantId,
   };
 }
 
@@ -471,12 +478,11 @@ export class SearchProducts extends UseCase<
       factsOf(hit, units.get(hit.offerId), (sellUnits) => {
         const variantId = variantOf.get(hit.offerId) ?? null;
         const unit = sellUnits.variants.find((v) => v.variantId === variantId);
+        const sellable = unit !== undefined && unit.inStock && unit.price !== null;
         return {
           variantId,
-          price:
-            unit !== undefined && unit.inStock && unit.price !== null
-              ? { from: unit.price, varies: false }
-              : null,
+          price: sellable ? { from: unit.price, varies: false } : null,
+          cartVariantId: sellable ? variantId : null,
         };
       }),
     );

@@ -65,6 +65,15 @@ export class SearchResultItemBody extends ProductSearchItemBody {
   })
   variantId!: string | null;
   @ApiProperty({
+    format: 'uuid',
+    nullable: true,
+    type: String,
+    description:
+      'The unit the card add button puts in the cart: the only matching in-stock priced variant; ' +
+      'null when several match (the buyer picks on the product page) or none is sellable.',
+  })
+  cartVariantId!: string | null;
+  @ApiProperty({
     type: SearchItemPriceBody,
     nullable: true,
     description:
@@ -241,6 +250,30 @@ export class ShelfPageBody {
     description: 'In shelf order. Fewer than `limit` items when not enough are sellable.',
   })
   items!: ProductSearchItemBody[];
+}
+
+export class BestsellerItemBody extends ProductSearchItemBody {
+  @ApiProperty({
+    type: () => MoneyBody,
+    nullable: true,
+    description:
+      'The lowest buyer price of the in-stock priced variants (tax included); null when none is.',
+  })
+  price!: MoneyBody | null;
+  @ApiProperty({ description: 'True when the variants differ in price: show "From".' })
+  priceFrom!: boolean;
+  @ApiProperty({
+    format: 'uuid',
+    nullable: true,
+    type: String,
+    description: 'The unit the card add button carts: the only in-stock priced variant; else null.',
+  })
+  cartVariantId!: string | null;
+}
+
+export class BestsellersPageBody {
+  @ApiProperty({ type: [BestsellerItemBody], description: 'In shelf order.' })
+  items!: BestsellerItemBody[];
 }
 
 export class MoneyBody {

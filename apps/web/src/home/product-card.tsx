@@ -31,9 +31,7 @@ export function ProductCard({ product }: { readonly product: ShelfCard }) {
         {product.certifications.map((badge) => (
           <CertificationSeal key={badge.type} badge={badge} />
         ))}
-        {price === undefined || product.priceFrom === true ? null : (
-          <AddControl product={{ ...product, price }} />
-        )}
+        {price === undefined ? null : <AddControl product={{ ...product, price }} href={href} />}
       </div>
       {price === undefined ? null : (
         <>

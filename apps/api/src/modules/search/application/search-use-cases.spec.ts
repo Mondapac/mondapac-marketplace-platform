@@ -1181,6 +1181,7 @@ describe.each([
               primaryImage: null,
               images: [],
               variantId: null,
+              cartVariantId: null,
               price: null,
             },
             {
@@ -1193,6 +1194,7 @@ describe.each([
               primaryImage: null,
               images: [],
               variantId: null,
+              cartVariantId: null,
               price: null,
             },
           ],

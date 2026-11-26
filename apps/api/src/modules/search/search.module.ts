@@ -190,6 +190,7 @@ const SHELF_PORTS: readonly [keyof ShelfDependencies, InjectionToken][] = [
   ['visibility', PUBLIC_VISIBILITY],
   ['policy', SEARCH_POLICY],
   ['variants', PUBLISHED_VARIANTS],
+  ['sellUnits', OFFER_VARIANT_READER],
   ['images', PRODUCT_IMAGES],
   ['categories', CATEGORY_SUBTREE_SOURCE],
 ];

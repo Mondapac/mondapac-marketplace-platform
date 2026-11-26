@@ -11,6 +11,7 @@ import type { OfferHit } from '../domain/offer-document';
 import { ConfigSearchPolicy } from '../infrastructure/config-search-policy';
 import type { CategorySubtreeSource } from './ports/category-subtree';
 import type { OfferSearchReader, OfferSearchRequest } from './ports/offer-search.reader';
+import type { HitSellUnits, OfferVariantReader } from './ports/offer-variant.reader';
 import type { ProductImages, PublicImage } from './ports/product-images';
 import type { PublicVisibility } from './ports/public-visibility';
 import type { PublishedVariants } from './ports/published-variants';
@@ -143,6 +144,24 @@ class StubImages implements ProductImages {
   }
 }
 
+/** Sell units per Offer; an Offer with none listed is absent (no price). */
+class StubSellUnits implements OfferVariantReader {
+  units = new Map<Id<'Offer'>, HitSellUnits>();
+  sellUnitsOf(_market: MarketContext, offerIds: readonly Id<'Offer'>[]) {
+    return Promise.resolve(
+      new Map(
+        offerIds.flatMap((o) => (this.units.has(o) ? [[o, this.units.get(o)!] as const] : [])),
+      ),
+    );
+  }
+  unitsWithGtin() {
+    return Promise.resolve([]);
+  }
+  hitsOf() {
+    return Promise.resolve([]);
+  }
+}
+
 class StubVariants implements PublishedVariants {
   unpublished = new Set<Id<'Variant'>>();
   failing = false;
@@ -202,6 +221,7 @@ describe.each([
   let sources: StubSources;
   let visibility: StubVisibility;
   let variants: StubVariants;
+  let sellUnits: StubSellUnits;
   let images: StubImages;
   let categories: StubCategories;
   let deps: ShelfDependencies;
@@ -212,6 +232,7 @@ describe.each([
     sources = new StubSources();
     visibility = new StubVisibility();
     variants = new StubVariants();
+    sellUnits = new StubSellUnits();
     images = new StubImages();
     categories = new StubCategories();
     deps = {
@@ -222,6 +243,7 @@ describe.each([
       visibility,
       policy: new ConfigSearchPolicy(markets),
       variants,
+      sellUnits,
       images,
       categories,
     };
@@ -258,6 +280,8 @@ describe.each([
               name,
               shortText,
               categoryIds,
+              price: null,
+              cartVariantId: null,
               primaryImage: null,
             };
           }),
@@ -267,6 +291,28 @@ describe.each([
         { kind: 'bestsellers', actor: 'anonymous', limit: RANKED_DEPTH },
       ]);
       expect(shelves.browsed).toEqual([FILL_DEPTH]);
+    });
+
+    it('gives each item its lowest price and the unit to cart only when there is one', async () => {
+      shelves.documents = [hit(1), hit(2)];
+      sources.ranked = [offer(1), offer(2)];
+      const unit = (n: number, amount: bigint) => ({
+        variantId: variant(n),
+        position: n,
+        facetCodes: [],
+        gtin: null,
+        inStock: true,
+        price: { amount, currency },
+      });
+      sellUnits.units.set(offer(1), { facetCodes: [], variants: [unit(1, 900n)] });
+      sellUnits.units.set(offer(2), { facetCodes: [], variants: [unit(2, 500n), unit(3, 700n)] });
+
+      const result = await run({});
+
+      expect(result.ok && result.value.items.map((i) => [i.price, i.cartVariantId])).toEqual([
+        [{ from: { amount: 900n, currency }, varies: false }, variant(1)],
+        [{ from: { amount: 500n, currency }, varies: true }, null],
+      ]);
     });
 
     it('gives each item its first public photo, and none when the photo source fails', async () => {

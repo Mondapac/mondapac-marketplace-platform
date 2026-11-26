@@ -4,6 +4,8 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import { MAX_PAGE_SIZE, type SearchValidationFailed } from '../../domain/search-query';
 import { parseShelfQuery, type ShelfRequest } from '../../domain/shelf-query';
 import type { OfferHit } from '../../domain/offer-document';
+import { matchVariants } from '../../domain/variant-match';
+import type { Money } from '@mondapac/shared-kernel';
 import type { ShelfDependencies } from '../shelf-dependencies';
 import { withPrimaryImages } from '../product-images';
 import type { ProductSearchItem, ProductSearchItemFacts } from './search-products.use-case';
@@ -15,6 +17,18 @@ export const FILL_DEPTH = MAX_PAGE_SIZE + 1;
 
 export interface ShelfPage {
   readonly items: readonly ProductSearchItem[];
+}
+
+/** A best seller with the price a card shows and the unit its add button carts (like search). */
+export interface BestsellerItem extends ProductSearchItem {
+  /** The lowest in-stock buyer price and whether the units differ ("From"); null when none. */
+  readonly price: { readonly from: Money; readonly varies: boolean } | null;
+  /** The only sellable unit, else null (the card then opens the product page). */
+  readonly cartVariantId: Id<'Variant'> | null;
+}
+
+export interface BestsellersPage {
+  readonly items: readonly BestsellerItem[];
 }
 
 export type ShelfFailure = SearchValidationFailed | { readonly code: 'search.unavailable' };
@@ -52,7 +66,7 @@ export const inAnyOf = (categoryIds: readonly Id<'Category'>[] | null) => {
  * that cannot be made is `search.unavailable`, never an unchecked list. Same item shape as the
  * search route: ids, text and categories, no badge, price or stock.
  */
-export class ListBestsellers extends UseCase<ShelfRequest, ShelfPage, ShelfFailure> {
+export class ListBestsellers extends UseCase<ShelfRequest, BestsellersPage, ShelfFailure> {
   static override readonly access: AccessDeclaration = {
     name: 'search.list-bestsellers',
     rule: { kind: 'anonymous' },
@@ -68,7 +82,7 @@ export class ListBestsellers extends UseCase<ShelfRequest, ShelfPage, ShelfFailu
   protected async handle(
     context: CallContext,
     input: ShelfRequest,
-  ): Promise<Result<ShelfPage, ShelfFailure>> {
+  ): Promise<Result<BestsellersPage, ShelfFailure>> {
     const query = parseShelfQuery(input);
     if (!query.ok) return query;
     const { categoryId, limit } = query.value;
@@ -109,14 +123,28 @@ export class ListBestsellers extends UseCase<ShelfRequest, ShelfPage, ShelfFailu
     const candidates = [...first, ...read.value.fill.filter((hit) => !taken.has(hit.offerId))];
     const visible = await this.deps.visibility.visible(context, candidates);
     if (visible === null) return err({ code: 'search.unavailable' });
-    const items = await withPrimaryImages(
-      this.deps.images,
-      context,
-      candidates
-        .filter((hit) => visible.has(hit.offerId))
-        .slice(0, limit)
-        .map(itemOf),
+    const shown = candidates.filter((hit) => visible.has(hit.offerId)).slice(0, limit);
+    const units = await this.deps.unitOfWork.run(
+      market,
+      () =>
+        this.deps.sellUnits
+          .sellUnitsOf(
+            market,
+            shown.map((hit) => hit.offerId),
+          )
+          .then(ok),
+      { readOnly: true },
     );
+    if (!units.ok) return err({ code: 'search.unavailable' });
+    const facts = shown.map((hit) => {
+      const own = units.value.get(hit.offerId);
+      const match =
+        own === undefined
+          ? { price: null, cartVariantId: null }
+          : matchVariants({ ...own, groups: [], price: null });
+      return { ...itemOf(hit), price: match.price, cartVariantId: match.cartVariantId };
+    });
+    const items = await withPrimaryImages(this.deps.images, context, facts);
     return ok({ items });
   }
 }

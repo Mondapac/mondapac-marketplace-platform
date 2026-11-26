@@ -15,6 +15,11 @@ export interface VariantMatch {
    * unit), and whether they differ ("From $X"). Null when no such unit is in stock and priced.
    */
   readonly price: { readonly from: Money; readonly varies: boolean } | null;
+  /**
+   * The unit a card's add button puts in the cart: the one matching in-stock priced unit, when
+   * there is exactly one; null when several match (the buyer picks on the product page) or none.
+   */
+  readonly cartVariantId: Id<'Variant'> | null;
 }
 
 const inRange = (amount: bigint, range: PriceRange | null): boolean =>
@@ -50,7 +55,7 @@ export function matchVariants(input: {
       })
     : eligible;
   const first = matching[0];
-  if (first === undefined) return { variantId: null, price: null };
+  if (first === undefined) return { variantId: null, price: null, cartVariantId: null };
   const currency = first.price!.currency;
   const amounts = matching
     .filter((unit) => unit.price!.currency === currency)
@@ -58,6 +63,7 @@ export function matchVariants(input: {
   const lowest = amounts.reduce((low, amount) => (amount < low ? amount : low));
   return {
     variantId: narrowed ? first.variantId : null,
+    cartVariantId: matching.length === 1 ? first.variantId : null,
     price: {
       from: { amount: lowest, currency },
       varies: amounts.some((amount) => amount !== lowest),

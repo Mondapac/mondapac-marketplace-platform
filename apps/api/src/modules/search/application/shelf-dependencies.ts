@@ -2,6 +2,7 @@ import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { CategorySubtreeSource } from './ports/category-subtree';
 import type { OfferSearchReader } from './ports/offer-search.reader';
 import type { ProductImages } from './ports/product-images';
+import type { OfferVariantReader } from './ports/offer-variant.reader';
 import type { PublicVisibility } from './ports/public-visibility';
 import type { PublishedVariants } from './ports/published-variants';
 import type { SearchPolicy } from './ports/search-policy';
@@ -17,6 +18,8 @@ export interface ShelfDependencies {
   readonly visibility: PublicVisibility;
   readonly policy: SearchPolicy;
   readonly variants: PublishedVariants;
+  /** The sell units of a shelf's Offers, for the "From" price and the unit a card can cart. */
+  readonly sellUnits: OfferVariantReader;
   readonly images: ProductImages;
   readonly categories: CategorySubtreeSource;
 }
