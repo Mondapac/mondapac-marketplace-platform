@@ -12,3 +12,4 @@ prisma/migrations/
 .next/
 next-env.d.ts
 apps/web/public/vendor/
+config/service-area-boundaries/

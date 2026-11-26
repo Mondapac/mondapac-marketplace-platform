@@ -641,6 +641,26 @@ export interface MapBounds {
 }
 
 /**
+ * An area's outline: polygons, each an outer ring followed by its holes, as WGS 84 points. A ring
+ * need not repeat its first point at the end.
+ */
+export type AreaShape = readonly (readonly (readonly GeoPoint[])[])[];
+
+/** The outlines of the areas open for delivery, as the buyer site's /api/deliver-to/area gives them. */
+export interface AreaOutline {
+  readonly areas: readonly {
+    readonly code: string;
+    /** Display names by language tag; always has "en". */
+    readonly names: Readonly<Record<string, string>>;
+    readonly shape: AreaShape;
+  }[];
+  /** Around every outline; null when no area is open. */
+  readonly bounds: MapBounds | null;
+  /** The shapes' credit line ("Based on ... data, CC BY 4.0"), or null. */
+  readonly credit: string | null;
+}
+
+/**
  * What the Deliver to modal needs: the service area (ServiceArea config) and, while the map and
  * address-lookup provider is not chosen, the sample places its stubbed lookup knows.
  */
@@ -649,8 +669,15 @@ export interface DeliveryLocatorSource {
     readonly name: string;
     /** The region's short form in a one-line address ("QLD"). */
     readonly regionCode: string;
-    readonly boundary: readonly GeoPoint[];
+    /** The sample's outline; empty when {@link outlineFromApi} (the modal then fetches it). */
+    readonly boundary: AreaShape;
   };
+  /**
+   * True when the API is configured: the modal reads the real outlines of the areas open for
+   * delivery (ServiceArea, FE-098) from /api/deliver-to/area when it opens, so the shape is not in
+   * every page. False or absent: the sample outline above.
+   */
+  readonly outlineFromApi?: boolean;
   readonly bounds: MapBounds;
   /** Where the pin starts when the buyer has not chosen a place the lookup can find. */
   readonly start: Place;

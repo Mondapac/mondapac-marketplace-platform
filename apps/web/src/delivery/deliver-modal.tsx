@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import {
   useEffect,
@@ -15,7 +15,8 @@ import { createPortal } from 'react-dom';
 import { addressLine as savedLine, recipientName } from '../account/address-line.ts';
 import { Icon } from '../icons/icon.tsx';
 import { useStore } from '../shell/store-context.tsx';
-import type { DeliveryLocatorSource, GeoPoint, Place } from '../storefront/types.ts';
+import type { AreaOutline, DeliveryLocatorSource, GeoPoint, Place } from '../storefront/types.ts';
+import { fetchAreaOutline, joinedShape, paddedBounds } from './area-outline.ts';
 import { saveDeliverTo } from './deliver-to.ts';
 import { addressLine, insideArea, locality } from './geo.ts';
 import { deliveryAreaFor } from '../checkout/actions.ts';
@@ -54,6 +55,8 @@ const NARROW = '(max-width: 760px)';
  */
 export function DeliverModal({ source }: { readonly source: DeliveryLocatorSource }) {
   const t = useTranslations('deliver');
+  const areaNames = useTranslations('areas');
+  const locale = useLocale();
   const router = useRouter();
   const {
     deliverOpen: open,
@@ -71,6 +74,32 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
         : sampleLookup(source),
     [source],
   );
+  /** The real outline of the areas open for delivery (API on), read when the modal first opens. */
+  const [outline, setOutline] = useState<AreaOutline | null>(null);
+  useEffect(() => {
+    if (!open || !source.outlineFromApi || outline !== null) return;
+    let current = true;
+    void fetchAreaOutline().then((answer) => {
+      if (current && answer !== null) setOutline(answer);
+    });
+    return () => {
+      current = false;
+    };
+  }, [open, source.outlineFromApi, outline]);
+  const boundary = source.outlineFromApi
+    ? outline === null
+      ? []
+      : joinedShape(outline)
+    : source.area.boundary;
+  const bounds = outline?.bounds ? paddedBounds(outline.bounds) : source.bounds;
+  const only = outline?.areas.length === 1 ? outline.areas[0] : undefined;
+  /** The open area's name: its translation, else its configured name, else the source's. */
+  const areaName =
+    only === undefined
+      ? source.area.name
+      : areaNames.has(only.code)
+        ? areaNames(only.code)
+        : (only.names[locale] ?? only.names['en'] ?? source.area.name);
   /** The API's answer for the last postcode asked (live lookup only). */
   const [areaAnswer, setAreaAnswer] = useState<{
     readonly postcode: string;
@@ -161,13 +190,12 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
   }, [source.live, open, postcode, lookup]);
   const answered = areaAnswer?.postcode === postcode ? areaAnswer?.delivers : undefined;
   // The API's yes or no wins; with no answer the area's boundary is the preview.
-  const inside =
-    typeof answered === 'boolean' ? answered : insideArea(pick.point, source.area.boundary);
+  const inside = typeof answered === 'boolean' ? answered : insideArea(pick.point, boundary);
   const checking = source.live === true && postcode !== undefined && answered === undefined;
   /** The API did not answer for this postcode: the boundary preview stands, unconfirmed. */
   const unconfirmed = source.live === true && answered === null;
   const ready = inside && pick.place !== null && !pick.pending && !checking;
-  const area = source.area.name;
+  const area = areaName;
 
   const close = () => setDeliverOpen(false);
   const choose = (place: Place, savedId?: string) => {
@@ -578,8 +606,9 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
           <DeliveryMap
             map={source.map}
             areaName={area}
-            boundary={source.area.boundary}
-            bounds={source.bounds}
+            boundary={boundary}
+            credit={outline?.credit}
+            bounds={bounds}
             labels={source.suburbs}
             point={pick.point}
             outside={!inside}

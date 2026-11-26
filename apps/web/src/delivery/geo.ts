@@ -1,4 +1,4 @@
-import type { GeoPoint, MapBounds, Place } from '../storefront/types.ts';
+import type { AreaShape, GeoPoint, MapBounds, Place } from '../storefront/types.ts';
 
 /** "Kedron QLD 4031": the suburb line of a place. */
 export function locality(place: Place): string {
@@ -11,19 +11,24 @@ export function addressLine(place: Place): string {
 }
 
 /**
- * Whether a point lies inside an area's boundary (ray casting). A preview for the modal only:
- * the order still checks the address against the service area on the server.
+ * Whether a point lies inside an area's outline (ray casting over every ring, so a hole counts as
+ * outside). A preview for the modal only: the order still checks the address's postcode against
+ * the service area on the server.
  */
-export function insideArea(point: GeoPoint, boundary: readonly GeoPoint[]): boolean {
+export function insideArea(point: GeoPoint, shape: AreaShape): boolean {
   let inside = false;
-  for (let i = 0, j = boundary.length - 1; i < boundary.length; j = i++) {
-    const a = boundary[i]!;
-    const b = boundary[j]!;
-    if (
-      a.lat > point.lat !== b.lat > point.lat &&
-      point.lng < ((b.lng - a.lng) * (point.lat - a.lat)) / (b.lat - a.lat) + a.lng
-    )
-      inside = !inside;
+  for (const polygon of shape) {
+    for (const ring of polygon) {
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const a = ring[i]!;
+        const b = ring[j]!;
+        if (
+          a.lat > point.lat !== b.lat > point.lat &&
+          point.lng < ((b.lng - a.lng) * (point.lat - a.lat)) / (b.lat - a.lat) + a.lng
+        )
+          inside = !inside;
+      }
+    }
   }
   return inside;
 }

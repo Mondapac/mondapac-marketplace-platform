@@ -320,6 +320,11 @@
     "reason": "The buyer site asks whether the Market delivers to a postcode before sign-in (cart, checkout, Deliver to): the answer is the public ServiceArea configuration; nothing about a person is read or stored."
   },
   {
+    "name": "shipping.delivery-area-map",
+    "rule": "anonymous",
+    "reason": "The buyer site's Deliver to map draws the outline of the areas the Market delivers to, before sign-in: area code, names and a shape built from public postal-area data (config/service-area-boundaries), only for areas open for delivery; nothing about a seller, an address or the caller is read or stored."
+  },
+  {
     "name": "shipping.receive-carrier-webhook",
     "rule": "anonymous",
     "reason": "Mondapac Drive's status webhook: the caller is the carrier, which holds no session. The use case refuses anything without a valid HMAC-SHA256 signature of the timestamp and the raw body under the Market's webhook secret, within a 300-second replay window; each event is taken once by its id, and it only moves a seller order's carrier delivery forward."

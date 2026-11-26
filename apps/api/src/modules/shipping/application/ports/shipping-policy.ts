@@ -1,5 +1,25 @@
 import type { MarketContext } from '@mondapac/shared-kernel';
 
+/** A GeoJSON MultiPolygon in WGS 84 degrees: polygons of rings of [longitude, latitude]. */
+export interface AreaOutline {
+  readonly type: 'MultiPolygon';
+  readonly coordinates: readonly (readonly (readonly (readonly [number, number])[])[])[];
+}
+
+/** The outlines of the areas open for delivery and their credit (public configuration). */
+export interface DeliveryAreaOutlines {
+  readonly areas: readonly {
+    readonly code: string;
+    readonly names: Readonly<Record<string, string>>;
+    readonly boundary: AreaOutline;
+  }[];
+  readonly source: {
+    readonly name: string;
+    readonly licence: string;
+    readonly attribution: string;
+  } | null;
+}
+
 /** The Market settings shipping reads. */
 export interface ShippingPolicy {
   /** The currency of every delivery price of the Market. */
@@ -14,6 +34,12 @@ export interface ShippingPolicy {
    * open for delivery, is false (fail closed).
    */
   deliversTo(market: MarketContext, postcode: string): boolean;
+
+  /**
+   * The outlines of the ServiceAreas open for delivery (config/service-area-boundaries), for the
+   * storefront map. An area closed for delivery or without an outline is left out.
+   */
+  deliveryAreaOutlines(market: MarketContext): DeliveryAreaOutlines;
 
   /**
    * The most the platform absorbs, in minor units, when a booking goes to a dearer fleet than the

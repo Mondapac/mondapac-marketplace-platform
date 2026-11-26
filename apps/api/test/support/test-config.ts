@@ -18,6 +18,12 @@ export const TEST_SERVICE_AREA_CONFIG_DIRS = [
   path.join(REPO_ROOT, 'test/fixtures/service-areas'),
 ] as const;
 
+/** The real area outlines plus the synthetic market's (ZZ). */
+export const TEST_SERVICE_AREA_BOUNDARY_DIRS = [
+  path.join(REPO_ROOT, 'config/service-area-boundaries'),
+  path.join(REPO_ROOT, 'test/fixtures/service-area-boundaries'),
+] as const;
+
 /** The real translation catalogues plus the synthetic market's locale (ZZ: ja-JP). */
 export const TEST_LOCALE_CONFIG_DIRS = [
   path.join(REPO_ROOT, 'config/locales'),
@@ -128,6 +134,7 @@ export function testAppConfig(overrides: Record<string, string> = {}): AppConfig
     }),
     marketConfigDirs: TEST_MARKET_CONFIG_DIRS,
     serviceAreaConfigDirs: TEST_SERVICE_AREA_CONFIG_DIRS,
+    serviceAreaBoundaryDirs: TEST_SERVICE_AREA_BOUNDARY_DIRS,
     localeConfigDirs: TEST_LOCALE_CONFIG_DIRS,
   };
 }

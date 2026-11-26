@@ -1,0 +1,28 @@
+{
+  "market": "ZZ",
+  "source": {
+    "name": "Synthetic test shapes",
+    "licence": "CC0",
+    "attribution": "Test data"
+  },
+  "areas": [
+    {
+      "code": "zz-central",
+      "postcodes": ["1000001-1000002", "ZZ1 9AA"],
+      "boundary": {
+        "type": "MultiPolygon",
+        "coordinates": [
+          [
+            [
+              [10, 10],
+              [11, 10],
+              [11, 11],
+              [10, 11],
+              [10, 10]
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

@@ -8,14 +8,14 @@
 // drawn stub map takes its place.
 
 import 'mapbox-gl/dist/mapbox-gl.css';
-import type { Feature, Point, Polygon } from 'geojson';
+import type { Feature, MultiPolygon, Point } from 'geojson';
 import type mapboxgl from 'mapbox-gl';
 import type { GeoJSONSource, Map as GlMap, Marker as GlMarker } from 'mapbox-gl';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../icons/icon.tsx';
-import type { GeoPoint } from '../storefront/types.ts';
-import { StubMap, type DeliveryMapProps } from './stub-map.tsx';
+import type { AreaShape, GeoPoint } from '../storefront/types.ts';
+import { MapLegend, StubMap, type DeliveryMapProps } from './stub-map.tsx';
 
 type Gl = typeof mapboxgl & { workerUrl: string };
 
@@ -63,10 +63,18 @@ function token(name: string, fallback: string): string {
   return value || fallback;
 }
 
-function areaShape(boundary: readonly GeoPoint[]): Feature<Polygon> {
-  const ring = boundary.map(lngLat);
-  if (ring.length > 0) ring.push(ring[0]!);
-  return { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [ring] } };
+/** The outline as GeoJSON; every ring is closed, as the format asks. */
+function areaShape(boundary: AreaShape): Feature<MultiPolygon> {
+  const coordinates = boundary.map((polygon) =>
+    polygon.map((points) => {
+      const ring = points.map(lngLat);
+      const first = ring[0];
+      const last = ring[ring.length - 1];
+      if (first && last && (first[0] !== last[0] || first[1] !== last[1])) ring.push(first);
+      return ring;
+    }),
+  );
+  return { type: 'Feature', properties: {}, geometry: { type: 'MultiPolygon', coordinates } };
 }
 
 function pointShape(point: GeoPoint): Feature<Point> {
@@ -77,6 +85,39 @@ function pointShape(point: GeoPoint): Feature<Point> {
   };
 }
 
+/**
+ * The area's fill and dashed line, under the accuracy ring when it exists. The outline's credit
+ * goes to Mapbox's own attribution (the (i) control), where its terms already put the map's.
+ */
+function drawArea(live: GlMap, boundary: AreaShape, credit: string | null | undefined) {
+  const area = token('--sf-teal', '#0e5a57');
+  const before = live.getLayer('lm-ring') ? 'lm-ring' : undefined;
+  live.addSource('lm-area', {
+    type: 'geojson',
+    data: areaShape(boundary),
+    ...(credit ? { attribution: credit } : {}),
+  });
+  live.addLayer(
+    {
+      id: 'lm-area-fill',
+      type: 'fill',
+      source: 'lm-area',
+      paint: { 'fill-color': area, 'fill-opacity': 0.12 },
+    },
+    before,
+  );
+  live.addLayer(
+    {
+      id: 'lm-area-line',
+      type: 'line',
+      source: 'lm-area',
+      // Dashed, as on the stub map and the legend.
+      paint: { 'line-color': area, 'line-width': 2, 'line-dasharray': [3, 2.5] },
+    },
+    before,
+  );
+}
+
 /** Runs `then` once the style is ready (now, or on its load). */
 function whenStyled(map: GlMap, then: () => void) {
   if (map.isStyleLoaded()) then();
@@ -84,17 +125,29 @@ function whenStyled(map: GlMap, then: () => void) {
 }
 
 export function MapboxMap(props: MapboxMapProps) {
-  const { token: accessToken, style, areaName, boundary, point, outside, accuracy, onMove } = props;
+  const {
+    token: accessToken,
+    style,
+    areaName,
+    boundary,
+    credit,
+    point,
+    outside,
+    accuracy,
+    onMove,
+  } = props;
   const t = useTranslations('deliver');
   const canvas = useRef<HTMLDivElement>(null);
   const map = useRef<GlMap | null>(null);
   const marker = useRef<GlMarker | null>(null);
   const pin = useRef<HTMLButtonElement | null>(null);
   // The latest props for the map's own event handlers, which are bound once.
-  const latest = useRef({ point, onMove, boundary, accuracy });
+  const latest = useRef({ point, onMove, boundary, credit, accuracy });
   useEffect(() => {
-    latest.current = { point, onMove, boundary, accuracy };
+    latest.current = { point, onMove, boundary, credit, accuracy };
   });
+  /** The credit the drawn area's source carries (a source's attribution is set when it is added). */
+  const drawnCredit = useRef<string | null>(null);
   const latestLabel = useRef(t('pin'));
   const [failed, setFailed] = useState(false);
   const [zoom, setZoom] = useState(START_ZOOM);
@@ -177,21 +230,8 @@ export function MapboxMap(props: MapboxMapProps) {
         });
         live.on('load', () => {
           started = true;
-          const area = token('--sf-teal', '#0e5a57');
-          live.addSource('lm-area', { type: 'geojson', data: areaShape(latest.current.boundary) });
-          live.addLayer({
-            id: 'lm-area-fill',
-            type: 'fill',
-            source: 'lm-area',
-            paint: { 'fill-color': area, 'fill-opacity': 0.12 },
-          });
-          live.addLayer({
-            id: 'lm-area-line',
-            type: 'line',
-            source: 'lm-area',
-            // Dashed, as on the stub map and the legend.
-            paint: { 'line-color': area, 'line-width': 2, 'line-dasharray': [3, 2.5] },
-          });
+          drawArea(live, latest.current.boundary, latest.current.credit);
+          drawnCredit.current = latest.current.credit ?? null;
           live.addSource('lm-ring', { type: 'geojson', data: pointShape(latest.current.point) });
           live.addLayer({
             id: 'lm-ring',
@@ -258,9 +298,20 @@ export function MapboxMap(props: MapboxMapProps) {
     const live = map.current;
     if (!live) return;
     whenStyled(live, () => {
-      live.getSource<GeoJSONSource>('lm-area')?.setData(areaShape(boundary));
+      const source = live.getSource<GeoJSONSource>('lm-area');
+      if (source === undefined) return;
+      if (drawnCredit.current === (credit ?? null)) {
+        source.setData(areaShape(boundary));
+        return;
+      }
+      // A new credit needs a new source: Mapbox reads a source's attribution when it is added.
+      live.removeLayer('lm-area-line');
+      live.removeLayer('lm-area-fill');
+      live.removeSource('lm-area');
+      drawArea(live, boundary, credit);
+      drawnCredit.current = credit ?? null;
     });
-  }, [boundary]);
+  }, [boundary, credit]);
 
   if (failed) return <StubMap {...props} />;
 
@@ -287,10 +338,7 @@ export function MapboxMap(props: MapboxMapProps) {
           <Icon name="minus" />
         </button>
       </div>
-      <div className="lmlegend">
-        <i aria-hidden="true" />
-        {t('legend')}
-      </div>
+      <MapLegend />
     </div>
   );
 }

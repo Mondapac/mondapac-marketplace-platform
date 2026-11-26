@@ -168,6 +168,7 @@ describe.each([
         fleetFallbackCapMinor: () => 1000,
         quoteBounds: () => null,
         regionOfPostcode: () => null,
+        deliveryAreaOutlines: () => ({ areas: [], source: null }),
       },
       sellers: undefined as never,
       audit: undefined as never,

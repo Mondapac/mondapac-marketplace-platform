@@ -1105,6 +1105,7 @@
   },
   { "name": "shipping.charge-delivery", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "shipping.delivery-area", "rule": "anonymous" },
+  { "name": "shipping.delivery-area-map", "rule": "anonymous" },
   { "name": "shipping.delivery-availability", "rule": "anonymous" },
   { "name": "shipping.delivery-choice", "rule": "anonymous" },
   { "name": "shipping.delivery-regions", "rule": "system" },

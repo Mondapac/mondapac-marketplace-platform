@@ -40,6 +40,15 @@ The `greater-brisbane` postcode set is a **draft** (Brisbane, Logan, Ipswich, Mo
 Redland) for the product owner to confirm, and both flags are `false` until the owner opens
 the area. Until then every AU address is outside the open areas (fail-closed).
 
+## Outlines on the map (FE-098)
+
+The storefront's Deliver to map draws each area open for delivery from
+`config/service-area-boundaries/<MARKET>.json`, built from the official postal-area shapes of
+exactly the postcodes listed here (see that folder's README). **After changing an area's
+`postcodes`, rebuild it** with `node scripts/service-areas/build-boundaries.mjs <MARKET>`: the API
+refuses to start while the outline was built from another postcode list. The outline is a guide;
+the postcode decides delivery.
+
 ## Cross-area selling (seller city, package 8)
 
 Selling across areas is OFF at launch. A seller serves buyers in its own area only. The

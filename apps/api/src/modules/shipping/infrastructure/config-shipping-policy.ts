@@ -2,7 +2,7 @@ import type { MarketContext } from '@mondapac/shared-kernel';
 import type { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { regionOfPostcode } from '../../../platform/market-config/postcode-regions';
 import type { ServiceAreaDirectory } from '../../../platform/market-config/service-area-directory';
-import type { ShippingPolicy } from '../application/ports/shipping-policy';
+import type { DeliveryAreaOutlines, ShippingPolicy } from '../application/ports/shipping-policy';
 
 /**
  * The Market's settings for shipping: delivery prices are in the Market's default currency, the
@@ -25,6 +25,10 @@ export class ConfigShippingPolicy implements ShippingPolicy {
 
   deliversTo(market: MarketContext, postcode: string): boolean {
     return this.areas.areaFor(market.marketId, postcode)?.deliveryEnabled === true;
+  }
+
+  deliveryAreaOutlines(market: MarketContext): DeliveryAreaOutlines {
+    return this.areas.deliveryMap(market.marketId);
   }
 
   fleetFallbackCapMinor(market: MarketContext): number {

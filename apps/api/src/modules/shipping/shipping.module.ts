@@ -79,6 +79,7 @@ import { CarrierProgressOf } from './application/use-cases/carrier-progress-of.u
 import { DeliveryRegionsQuery } from './application/use-cases/delivery-regions.use-case';
 import { CarrierShipmentQuery } from './application/use-cases/carrier-shipment.use-case';
 import { DeliveryArea } from './application/use-cases/delivery-area.use-case';
+import { DeliveryAreaMap } from './application/use-cases/delivery-area-map.use-case';
 import { PickupAvailability } from './application/use-cases/pickup-availability.use-case';
 import { PollFleetStatus } from './application/use-cases/poll-fleet-status.use-case';
 import { ReceiveUberWebhook } from './application/use-cases/receive-uber-webhook.use-case';
@@ -94,6 +95,7 @@ import { CarrierWebhookController } from './presentation/carrier-webhook.control
 import { DeliverySettingsController } from './presentation/delivery-settings.controller';
 import { FleetSelectionController } from './presentation/fleet-selection.controller';
 import { DeliveryAreaController } from './presentation/delivery-area.controller';
+import { DeliveryAreaMapController } from './presentation/delivery-area-map.controller';
 import { ShippingFacadeImplementation } from './presentation/shipping.facade';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: ShippingDependencies) => U;
@@ -190,6 +192,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   imports: [SellersModule, IdentityModule],
   controllers: [
     DeliveryAreaController,
+    DeliveryAreaMapController,
     CarrierWebhookController,
     UberWebhookController,
     FleetSelectionController,
@@ -246,6 +249,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ]),
     ...[
       DeliveryArea,
+      DeliveryAreaMap,
       PickupAvailability,
       BookCarrierDelivery,
       CarrierShipmentQuery,

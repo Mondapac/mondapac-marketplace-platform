@@ -14,6 +14,8 @@ import {
   type LaneEnd,
   type ServiceAreaDefinition,
 } from './service-area-directory';
+import { loadServiceAreaBoundaries, type AreaPostcodes } from './service-area-boundaries';
+import { InvalidServiceAreaConfigError } from './service-area-errors';
 
 /** Codes from configuration are text, never a closed list (sellers data design S8). */
 const AREA_CODE = /^[a-z0-9][a-z0-9-]{0,63}$/u;
@@ -80,12 +82,7 @@ const fileSchema = z.strictObject({
   crossAreaSelling: crossAreaSellingSchema.optional(),
 });
 
-export class InvalidServiceAreaConfigError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'InvalidServiceAreaConfigError';
-  }
-}
+export { InvalidServiceAreaConfigError };
 
 function parsePostcodes(entries: readonly string[], where: string): ParsedPostcodes {
   try {
@@ -101,11 +98,13 @@ function parsePostcodes(entries: readonly string[], where: string): ParsedPostco
 /**
  * Reads `<MARKET>.json` for each hosted market from the given directories and builds the
  * directory. Throws on a missing or invalid file, a duplicate code, or a postcode that two
- * areas both claim, so a Region Stack never starts with an ambiguous map.
+ * areas both claim, so a Region Stack never starts with an ambiguous map. The area outlines
+ * come from `boundaryDirectories` (optional per Market, see `loadServiceAreaBoundaries`).
  */
 export function loadServiceAreas(
   directories: readonly string[],
   hostedMarkets: readonly MarketId[],
+  boundaryDirectories: readonly string[] = [],
 ): ServiceAreaDirectory {
   const files = new Map<string, string>();
   for (const directory of directories) {
@@ -127,6 +126,7 @@ export function loadServiceAreas(
 
   const byMarket = new Map<MarketId, readonly ServiceAreaDefinition[]>();
   const crossArea = new Map<MarketId, CrossAreaSelling>();
+  const postcodesByMarket = new Map<MarketId, readonly AreaPostcodes[]>();
   for (const marketId of hostedMarkets) {
     const file = files.get(marketId);
     if (file === undefined) {
@@ -186,6 +186,10 @@ export function loadServiceAreas(
       );
     }
     byMarket.set(marketId, Object.freeze(areas));
+    postcodesByMarket.set(
+      marketId,
+      parsed.data.areas.map(({ code, postcodes }) => ({ code, postcodes })),
+    );
     const rules = parsed.data.crossAreaSelling;
     if (rules !== undefined) {
       const known = (end: LaneEnd): boolean =>
@@ -207,5 +211,6 @@ export function loadServiceAreas(
       );
     }
   }
-  return new ServiceAreaDirectory(byMarket, crossArea);
+  const boundaries = loadServiceAreaBoundaries(boundaryDirectories, postcodesByMarket);
+  return new ServiceAreaDirectory(byMarket, crossArea, boundaries);
 }

@@ -50,20 +50,24 @@ export const SAMPLE_DELIVERY_LOCATOR: DeliveryLocatorSource = {
   area: {
     name: 'Greater Brisbane',
     regionCode: 'QLD',
-    boundary: (
+    boundary: [
       [
-        [95, 120],
-        [150, 70],
-        [250, 60],
-        [320, 100],
-        [345, 190],
-        [330, 280],
-        [270, 340],
-        [190, 350],
-        [120, 320],
-        [85, 240],
-      ] as const
-    ).map(([x, y]) => at(x, y)),
+        (
+          [
+            [95, 120],
+            [150, 70],
+            [250, 60],
+            [320, 100],
+            [345, 190],
+            [330, 280],
+            [270, 340],
+            [190, 350],
+            [120, 320],
+            [85, 240],
+          ] as const
+        ).map(([x, y]) => at(x, y)),
+      ],
+    ],
   },
   bounds: BOUNDS,
   start: SUBURBS[1]!,
