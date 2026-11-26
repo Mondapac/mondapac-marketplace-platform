@@ -13,6 +13,7 @@ import type {
 import { Slider } from '../slider/slider.tsx';
 import { HomeSearch } from './home-search.tsx';
 import { ProductCard } from './product-card.tsx';
+import { SectionFailed } from './section-failed.tsx';
 
 /** The home page middle, in the order the content layout gives (admin-editable later). */
 export function HomeSections({
@@ -36,6 +37,8 @@ export function HomeSections({
         return <CategoryStrip key={index} categories={categories} />;
       case 'sellers':
         return <Sellers key={index} title={section.title} href={section.href} sellers={sellers} />;
+      case 'failed':
+        return <SectionFailed key={index} title={section.title} href={section.href} />;
       case 'products':
         return (
           <Products

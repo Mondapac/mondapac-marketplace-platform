@@ -15,6 +15,13 @@ import { RATE_LIMIT_CLASS, type RateLimitClass } from './rate-limit.decorator';
 
 export { RATE_LIMIT_WINDOW_SECONDS } from './rate-limit-counters';
 
+/**
+ * The step at which the limiter could not decide, logged with `rate-limit.unavailable`:
+ * `market` (no Market on the request, or none configured), `origin` (no resolved client
+ * address) or `counter` (the counter store refused, timed out or was cancelled).
+ */
+export type UnavailableStage = 'market' | 'origin' | 'counter';
+
 /** The answer to a throttled request (identity design 5.2): 429, a code, never library text. */
 export const THROTTLED_CODE = 'request.throttled';
 /** The answer when the limiter cannot be evaluated: fail closed (identity design 5.2). */
@@ -72,6 +79,7 @@ export class RateLimitGuard implements CanActivate {
       ]) ?? 'default';
 
     let retryAfterSeconds: number | null;
+    let stage: UnavailableStage = 'market';
     try {
       const market = marketContextOf(request);
       const limits = this.markets.get(market.marketId).requestLimits;
@@ -83,14 +91,25 @@ export class RateLimitGuard implements CanActivate {
             : limitClass === 'public-search'
               ? limits.publicSearchPerMinute
               : limits.defaultPerMinute;
+      stage = 'origin';
       const origin = clientOriginOf(clientAddressFrom(request));
       if (origin === null) throw new Error('no client origin');
+      stage = 'counter';
       const counted = await this.counters.consume(limitClass, this.#originKeys.keyOf(origin));
       retryAfterSeconds =
         counted.count > limit ? Math.max(1, Math.ceil(counted.msBeforeNext / 1000)) : null;
-    } catch {
-      // Fail closed: nothing behind the limiter runs when it cannot decide.
-      this.log('rate-limit.unavailable', request, limitClass);
+    } catch (error) {
+      // Fail closed: nothing behind the limiter runs when it cannot decide. The line says which
+      // step failed and why (the error goes through the log serializer, which keeps its name,
+      // code and SQLSTATE only, never its message or query values), so a lock wait cancelled by
+      // `lock_timeout` (55P03) can be told from a database that is down or a missing origin.
+      this.#logger.warn({
+        msg: 'rate-limit.unavailable',
+        limitClass,
+        stage,
+        correlationId: request.id ?? null,
+        err: error,
+      });
       throw new HttpException({ statusCode: 503, code: UNAVAILABLE_CODE }, 503);
     }
 

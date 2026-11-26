@@ -47,6 +47,37 @@ or a bootstrap error about objects "not owned by mondapac_migrator" means the vo
 the roles: run the four commands above. The API exiting with "The database role was refused
 by the start-up self-check" means `DATABASE_URL` names a role other than the application login.
 
+### Buyer site and panels locally: the signed client address (ADR-0037)
+
+The buyer site (`pnpm dev:web`, http://storefront.localhost:3003) and the panels read the API
+from their own server. Without a signing key (`BFF_CLIENT_ADDRESS_KEY_ID` and
+`BFF_CLIENT_ADDRESS_SECRET` both empty, the default in each app's `.env.example`) they send no
+`x-client-address`, and the API rate-limits by the socket, which is the app's server: every page
+read shares one per-origin counter. This is accepted only on `*.localhost` hosts; a real host
+refuses to start without a key.
+
+On one machine the default is what you want. Signing does not spread the load there, because the
+browser is `127.0.0.1` too, so every read still counts against one origin. Turn it on only to try
+the production path:
+
+1. Make one secret per app (`openssl rand -base64 32`). Never commit one.
+2. API `.env` (root): `TRUSTED_BFF_CIDRS=127.0.0.1/32,::1/128` and
+   `CLIENT_ADDRESS_KEYS=storefront:127.0.0.1/32,::1/128:<web secret>;panel:127.0.0.1/32,::1/128:<panel secret>`.
+3. `apps/web/.env`: `BFF_CLIENT_ADDRESS_KEY_ID=storefront`, `BFF_CLIENT_ADDRESS_SECRET=<web secret>`.
+   The buyer site's key id must be `storefront` or `storefront-<suffix>`.
+4. `apps/seller/.env` and `apps/admin/.env`: `BFF_CLIENT_ADDRESS_KEY_ID=panel` and
+   `BFF_CLIENT_ADDRESS_SECRET=<panel secret>`.
+5. Restart the API and every app.
+
+Once the API trusts `127.0.0.1`, every request from this machine must be signed, apart from
+`/health` and `/health/ready`. An app or a `curl` without the key gets `400 client-address.untrusted`. To go back, empty
+both API variables and every app's key, then restart.
+
+When a page section shows "This section didn't load", look for `rate-limit.unavailable` in the
+API log. Its `stage` (`market`, `origin` or `counter`) and `err` (the error type, Prisma code and
+SQLSTATE, for example `55P03` when a counter lock wait ran past `lock_timeout`) say why the
+limiter answered `503 access.unavailable`.
+
 ## Repository layout
 
 ```
