@@ -9,7 +9,11 @@ import { loadActiveShelves } from '../../../../src/server/category-proposals-pag
 import { isUuid, loadCatalogPage } from '../../../../src/server/catalog-page.ts';
 import { loadOfferSizes } from '../../../../src/server/offer-sizes.ts';
 import { canEstimateReceive } from '../../../../src/price/receive-permissions.ts';
-import { COST_VIEW_PERMISSION, PRICE_EDIT_PERMISSION } from '../../../../src/price/types.ts';
+import {
+  COST_VIEW_PERMISSION,
+  PRICE_EDIT_PERMISSION,
+  PRICE_VIEW_PERMISSION,
+} from '../../../../src/price/types.ts';
 import { SellerShell } from '../../../../src/server/seller-shell.tsx';
 import { STOCK_EDIT_PERMISSION } from '../../../../src/stock/levels-types.ts';
 
@@ -82,6 +86,7 @@ export default async function OfferPage({
               fileModel={sizes.fileModel}
               canEstimate={canEstimateReceive(keys)}
               canViewCost={keys.includes(COST_VIEW_PERMISSION)}
+              canViewTypical={keys.includes(PRICE_VIEW_PERMISSION)}
               focusPrice={isNew}
             />
           )

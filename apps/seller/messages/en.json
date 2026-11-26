@@ -2122,6 +2122,10 @@
       "select": "Select {variant}",
       "select-all": "Select all variants",
       "price-for": "Price for {variant}",
+      "unusual": {
+        "below": "Below typical",
+        "above": "Above typical"
+      },
       "held": "Waiting for review: {amount}",
       "bulk": "Bulk actions",
       "selected": "{count, plural, one {# variant selected} other {# variants selected}}",
@@ -3093,6 +3097,15 @@
         "held": "Waiting for review",
         "held-help": "This new price goes on sale after our check.",
         "retired": "This size is no longer sold on the platform."
+      },
+      "typical": {
+        "label": "Typical price",
+        "range": "{low} to {high}",
+        "help": "Other businesses usually sell this size in this range.",
+        "unusual": {
+          "below": "Your price is lower than the typical price. You can still save it.",
+          "above": "Your price is higher than the typical price. You can still save it."
+        }
       },
       "stock": {
         "caption": "Stock of {size} by location",

@@ -44,6 +44,9 @@ const all = [
   'cost',
   'cost-loss',
   'cost-error',
+  'typical',
+  'typical-high',
+  'typical-low',
 ];
 const plan = (only ?? all).flatMap((s) => [1280, 768, 375].map((w) => [s, w]));
 for (const scheme of ['light', 'dark']) {
@@ -90,6 +93,9 @@ for (const scheme of ['light', 'dark']) {
         await page.getByRole('button', { name: 'Save 1 change' }).click();
       }
     }
+    // "Typical price" (Offer page PR 9-UI): 500 g in its range, then a price above and below it.
+    if (scenario === 'typical-high') await page.getByLabel('Price for 500 g').fill('24.00');
+    if (scenario === 'typical-low') await page.getByLabel('Price for 500 g').fill('9.00');
     // "You receive (est.)" is read after a short pause (Offer page PR 4).
     await page.waitForTimeout(900);
     const over = await page.evaluate(

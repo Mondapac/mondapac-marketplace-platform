@@ -286,6 +286,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'pricing/seller/offers/:id/receive-estimates',
     // The private Cost of every size of an offer, read on "Show costs" only (Offer page PR 7-UI).
     'pricing/seller/offers/:id/costs',
+    // The range other businesses sell each size of one own Offer in (Offer page PR 9); no query.
+    'pricing/seller/offers/:id/typical-prices',
     // The size names of an Offer whose sizes are opened in the Offer list (Offer page PR 8).
     'catalog/seller/offers/:id/sell-units',
   ],
