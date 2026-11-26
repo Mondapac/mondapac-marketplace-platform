@@ -5680,7 +5680,15 @@ describe('relay of the Offer review queue (risk-based Offer approval slice 5)', 
     );
     expect(file.upstream.mock.calls[0]?.[0]).toBe(
       `http://api.test/catalog/admin/offer-post-reviews/export?format=xlsx&status=all&reasons=sample&openedTo=${encodeURIComponent(from)}`,
-    );
+    ); // The preview mark's reason, alone and with all four others (slice 7b).
+    const all =
+      'sample,price-no-reference,price-reference-unavailable,price-recheck-outside,preview-contact-text';
+    for (const reasons of ['preview-contact-text', all]) {
+      const marked = await sendOffer('GET', `catalog/admin/offer-post-reviews?reasons=${reasons}`);
+      expect(marked.upstream.mock.calls[0]?.[0]).toBe(
+        `http://api.test/catalog/admin/offer-post-reviews?reasons=${encodeURIComponent(reasons)}`,
+      );
+    }
   });
 
   it.each(['catalog/admin/review-queue', 'catalog/admin/review-queue/export'])(
