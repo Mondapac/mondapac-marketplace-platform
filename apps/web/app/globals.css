@@ -10824,6 +10824,20 @@ button.login {
   min-width: 0;
   scroll-margin-block-start: calc(var(--sf-header-height) + 16px);
 }
+.offers {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.offers h1 {
+  font-size: calc(26px * var(--fs));
+  line-height: calc(32px * var(--fs));
+  font-weight: 800;
+}
+.offers-count {
+  margin-block-end: 12px;
+  color: var(--sf-slate);
+}
 .br-sech {
   display: flex;
   flex-wrap: wrap;

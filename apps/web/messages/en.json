@@ -1257,6 +1257,18 @@
     "next-page": "Next page",
     "page-number": "Page {page}"
   },
+  "offers": {
+    "title": "Offers",
+    "home": "Home",
+    "count": "{count, plural, one {# product on special} other {# products on special}}",
+    "none": "No special prices right now",
+    "none-body": "Sellers' special prices appear here while they last. Check back soon.",
+    "browse-products": "Browse products",
+    "failed": "We could not load the offers",
+    "failed-body": "Check your connection and try again. Nothing was changed.",
+    "try-again": "Try again",
+    "loading": "Loading offers"
+  },
   "search-results": {
     "title": "Search",
     "heading": "Results for <q>{query}</q>",
@@ -1580,7 +1592,6 @@
     "browse": "Browse products",
     "pages": {
       "browse": "Browse products",
-      "offers": "Offers",
       "best-sellers": "Best sellers",
       "new": "New this week",
       "express": "Express, same day",
@@ -1626,6 +1637,7 @@
       "account-delete": "Delete your {store} account: what is removed, what stays and how to cancel.",
       "personalization": "Choose the colours and text size of {store} on this device.",
       "coming-soon": "{name}: coming soon to {store}.",
+      "offers": "Products on special right now from local sellers on {store}. Every price includes GST.",
       "cookies": "The cookies {store} uses and the optional ones you can switch on or off.",
       "sell": "Sell your food to local buyers on {store}. Sign up as a seller.",
       "offline": "You are offline. Pages you opened on {store} before still work.",

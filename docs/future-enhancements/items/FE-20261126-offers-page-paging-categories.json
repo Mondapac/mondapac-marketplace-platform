@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261126-offers-page-paging-categories",
+  "area": "storefront",
+  "title": "صفحهٔ Offers: صفحه‌بندی، فیلتر دسته و مرتب‌سازی",
+  "desc": "search/specials فقط تا ۲۴ مورد و بدون total، صفحه‌بندی و مرتب‌سازی می‌دهد؛ صفحهٔ Offers فعلاً همان ۲۴ مورد را نشان می‌دهد. با افزودن این‌ها به API، چیپ دستهٔ فروشگاه (category) و صفحه‌بندی اضافه شود.",
+  "src": "apps/web/src/offers/offers-page.tsx؛ apps/api/src/modules/search/presentation/shelf.controller.ts",
+  "date": "2026-11-26",
+  "trig": "برش H گزارش نواقص حالت زنده؛ نیاز به تغییر API (بستهٔ B4)",
+  "prio": "متوسط",
+  "status": "موکول"
+}
