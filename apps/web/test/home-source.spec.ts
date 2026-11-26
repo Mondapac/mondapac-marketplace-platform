@@ -86,7 +86,7 @@ const SPECIAL = {
   specialEndsAt: '2026-10-30T00:00:00Z',
 };
 
-/** Bestsellers carry ids and text only: no price yet. */
+/** A best seller as the API sends it before a price is known (older answers): text only. */
 const BESTSELLER = { ...SPECIAL, offerId: 'o2', price: undefined, regularPrice: undefined };
 
 type Answers = Readonly<Record<string, unknown>>;
@@ -318,6 +318,26 @@ describe('home source: checks on each answer', () => {
     expect(card?.onSpecial).toBe(true);
     // A best seller (no special end) is never marked on special.
     expect(cardOf(BESTSELLER, new Map([[MEAT, 'meat']]))?.onSpecial).toBeUndefined();
+  });
+
+  it('gives a best seller its lowest price, "From" when units differ, and the unit to cart', () => {
+    const slugs = new Map([[MEAT, 'meat']]);
+    const OFFER = '0b5e1c3a-0000-4000-8000-0000000000a1';
+    const VARIANT = '0b5e1c3a-0000-4000-8000-0000000000d1';
+    const priced = {
+      ...BESTSELLER,
+      offerId: OFFER,
+      price: { amount: '2290', currency: 'AUD' },
+      priceFrom: false,
+      cartVariantId: VARIANT,
+    };
+    const one = cardOf(priced, slugs);
+    expect(one?.price).toEqual({ amount: 2290, currency: 'AUD' });
+    expect(one?.priceFrom).toBeUndefined();
+    expect(one?.unit).toEqual({ offerId: OFFER, variantId: VARIANT });
+    const many = cardOf({ ...priced, priceFrom: true, cartVariantId: null }, slugs);
+    expect(many?.priceFrom).toBe(true);
+    expect(many?.unit).toBeUndefined();
   });
 
   it('shows no card for a price without tax, and no regular price in another currency', () => {

@@ -197,6 +197,7 @@ export function cardOf(
     ...(unit === undefined ? {} : { unit }),
     category: (typeof firstCategory === 'string' ? slugs.get(firstCategory) : undefined) ?? '',
     ...(price === undefined ? {} : { price }),
+    ...(price !== undefined && item.priceFrom === true ? { priceFrom: true } : {}),
     ...(wasPrice === undefined ? {} : { wasPrice }),
     // An item of the specials shelf (it carries the special's end) is on special even when the
     // was-price rule withholds the regular price: the pill says so, no saving is shown.

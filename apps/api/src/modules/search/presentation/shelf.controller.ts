@@ -19,7 +19,7 @@ import {
   type ShelfFailure,
 } from '../application/use-cases/list-bestsellers.use-case';
 import { ListSpecials } from '../application/use-cases/list-specials.use-case';
-import { ShelfPageBody, SpecialsPageBody } from './search.dto';
+import { BestsellersPageBody, SpecialsPageBody } from './search.dto';
 import { fail, shelfRequestOf } from './shelf-request';
 
 const money = (value: Money) => ({ amount: value.amount.toString(), currency: value.currency });
@@ -52,20 +52,33 @@ export class ShelfController {
       'No session needed. Offers with the most paid order lines over the last 30 days, most ' +
       'first; a short shelf is filled in browse order (by name). `category` limits it to one ' +
       'platform category; `limit` is 1 to 24 (default 12). Only Offers that are sellable now ' +
-      'and whose seller may sell are returned.',
+      'and whose seller may sell are returned, each with its lowest in-stock price (tax included).',
   })
   @ApiQuery({ name: 'category', required: false, description: 'A platform category id.' })
   @ApiQuery({ name: 'limit', required: false, description: '1 to 24, default 12.' })
-  @ApiOkResponse({ type: ShelfPageBody })
+  @ApiOkResponse({ type: BestsellersPageBody })
   @ApiBadRequestResponse({ description: 'validation.failed (details.fields)' })
   @ApiTooManyRequestsResponse({ description: 'request.throttled' })
   @ApiServiceUnavailableResponse({ description: 'search.unavailable' })
   async listBestsellers(
     @Call() context: CallContext,
     @Query() query: Record<string, unknown>,
-  ): Promise<ShelfPageBody> {
-    const result = await this.bestsellers.execute(context, requestOf(query));
-    return JSON.parse(JSON.stringify(this.answer(context, result))) as ShelfPageBody;
+  ): Promise<BestsellersPageBody> {
+    const page = this.answer(context, await this.bestsellers.execute(context, requestOf(query)));
+    return {
+      items: page.items.map((item) => ({
+        offerId: item.offerId,
+        productId: item.productId,
+        sellerId: item.sellerId,
+        name: item.name,
+        shortText: item.shortText,
+        categoryIds: [...item.categoryIds],
+        primaryImage: item.primaryImage,
+        price: item.price === null ? null : money(item.price.from),
+        priceFrom: item.price?.varies === true,
+        cartVariantId: item.cartVariantId,
+      })),
+    };
   }
 
   /**

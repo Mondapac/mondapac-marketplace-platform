@@ -181,6 +181,11 @@ describe.each([['AU'], ['ZZ']] as const)('personal shelves in market %s', (code)
       visibility,
       policy: new ConfigSearchPolicy(markets),
       variants: new StubVariants(),
+      sellUnits: {
+        sellUnitsOf: () => Promise.resolve(new Map()),
+        unitsWithGtin: () => Promise.resolve([]),
+        hitsOf: () => Promise.resolve([]),
+      },
       images,
       categories: { subtreeOf: (_context, categoryId) => Promise.resolve([categoryId]) },
       signals,
