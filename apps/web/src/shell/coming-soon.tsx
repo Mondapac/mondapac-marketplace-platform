@@ -11,7 +11,6 @@ import { pageMetadata, seoDescription } from '../seo/metadata.ts';
  */
 export const COMING_SOON = {
   '/browse': 'browse',
-  '/offers': 'offers',
   '/express': 'express',
   '/certified': 'certified',
   '/recipes': 'recipes',

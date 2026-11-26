@@ -31,6 +31,7 @@ export const DESCRIPTION_KEYS = {
   sellers: 'sellers',
   brand: 'brand',
   brands: 'brands',
+  offers: 'offers',
   search: 'search',
   'search-results': 'search-results',
   cart: 'cart',

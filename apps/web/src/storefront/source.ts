@@ -16,6 +16,8 @@ import { validChatUrl, validSupportEmail, type AssistantBase } from '../assistan
 import { liveCartOf, type LiveCart } from '../cart/live-cart.ts';
 import { categoriesOf, loadHome, type HomeContent } from './home-source.ts';
 import { photoUrls } from './photo-source.ts';
+import { OFFERS_PATH, offersOf, type OffersPage } from './offers.ts';
+import { sampleOffers } from './sample-offers.ts';
 import { sampleSuggestions } from './sample-suggest.ts';
 import { suggestOf } from './suggest-source.ts';
 import type { SuggestAnswer } from '../search/suggest-types.ts';
@@ -401,6 +403,23 @@ export async function loadBrand(
   const brand = brandOf(answer.body, NO_BRAND_IMAGES);
   if (brand === null) throw new BrandReadFailed('brand');
   return brandPageOf(brand, products, all);
+}
+
+/**
+ * The Offers page's read (`GET search/specials`). Sample specials while the API is off. Any failure
+ * is `failed`, never an exception and never an empty page that says nothing is on special.
+ */
+export async function loadOffers(): Promise<OffersPage> {
+  const [answer, tree, photo] = await Promise.all([
+    apiGet<unknown>(OFFERS_PATH),
+    // Only for the illustration of a card without a photo; a failed tree gives plain cards.
+    apiGet<unknown>('catalog/categories'),
+    photoUrls(),
+  ]);
+  if (answer.kind === 'off') return sampleOffers();
+  if (answer.kind !== 'ok') return { kind: 'failed' };
+  const slugs = categoriesOf(tree.kind === 'ok' ? tree.body : null).slugs;
+  return offersOf(answer.body, slugs, photo);
 }
 
 /** One page of a brand's products; any failure is `failed`, never an exception. */
