@@ -922,7 +922,14 @@ module's rate-counter key, fixed window, `count >= 0`, reserve before the work, 
 `draft-save.account.day`, `claim-text-check.account.minute`, `claim-text-check.account.day` (30 and
 1,000, Hassan L6; D 17.1 item 8), `submit.seller.hour`, `photo-upload.seller.day`,
 `search.account.minute`, `import-start.seller.day`, `ai-suggest.seller.day`,
-`reviewer-mail.market.hour`, `platform-import-check.account.hour`, `platform-import-check.account.day`, `platform-import-start.account.day` (domain 14a), `seller-import-check.seller.hour`, `seller-import-check.seller.day`, `import-photo.seller.minute`, `import-photo.seller.day` (domain 14c, 3.31). The bulk-approve cap of 50 (D 17.1 item 11) and the facade batch
+`reviewer-mail.market.hour`, `platform-import-check.account.hour`, `platform-import-check.account.day`, `platform-import-start.account.day` (domain 14a), `seller-import-check.seller.hour`, `seller-import-check.seller.day`, `import-photo.seller.minute`, `import-photo.seller.day` (domain 14c, 3.31), `add-sizes.account.hour`,
+`category-propose.seller.day`, `ai-suggest.account.day`, `ai-suggest.account.minute`,
+`ai-suggest.market.day`, `submit-preview.seller.minute`, `submit-preview.seller.day` (Offer approval
+slice 7b) and `submit-preview-contact.seller.month`. The last is a mark, not a limit: a submit
+preview that told the seller `contact-text` counts it, each use restarts its 30-day window, the
+submit and the live edit only read whether it is open (`isOpen`, one primary-key read), and the purge
+keeps it until 30 days after its window closed. The list in code is `RATE_COUNTER_KINDS`, checked
+against the CHECK by a db spec. The bulk-approve cap of 50 (D 17.1 item 11) and the facade batch
 limits are request validation: **no storage**.
 
 ### 3.27 `offer_owner_notices` (certification slice 15; request C-6; Hassan M1, Mojtaba N2)
@@ -1845,7 +1852,7 @@ delete and the sweep both fail.
 
 | Rows | Rule |
 |---|---|
-| `rate_counters` | Hourly: windows older than 48 h |
+| `rate_counters` | Hourly: windows older than 48 h (a preview contact mark: 30 days after its window closed) |
 | `tag_reevaluation_requests` | Settled or superseded after 30 days |
 | `inbox` | Platform prune job |
 | Revisions, decisions, histories | Kept (ADR-0009 d7: published revisions kept; VER-06 references them) |

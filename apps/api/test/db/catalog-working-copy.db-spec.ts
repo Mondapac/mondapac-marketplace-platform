@@ -253,30 +253,34 @@ describe.each(TEST_MARKETS)(
         expect(first[0]!.count).toBe(1);
       });
 
-      it("reads a mark's open window without counting, and never purges a mark (slice 7b)", async () => {
+      it("reads a mark's open window without counting, from its latest use, purged only once closed (slice 7b)", async () => {
         const subject = uuid7();
         const mark = {
           limit: PREVIEW_CONTACT_MARK,
           keyHash: keys.keyOf(market, PREVIEW_CONTACT_MARK.kind, subject),
         };
+        const day = (n: number) => T0.add({ hours: 24 * n });
         expect(await inUnit(() => counters.isOpen(market, mark, T0))).toBe(false);
         await inUnit(() => counters.reserve(market, [mark], T0));
         expect(
-          await inUnit(() => counters.isOpen(market, mark, T0.add({ hours: 24 * 30 - 1 }))),
+          await inUnit(() => counters.isOpen(market, mark, day(30).subtract({ hours: 1 }))),
         ).toBe(true);
-        expect(await inUnit(() => counters.isOpen(market, mark, T0.add({ hours: 24 * 30 })))).toBe(
-          false,
-        );
-        // Another Market never sees it.
-        const elsewhere = {
-          ...mark,
-          keyHash: keys.keyOf(other, PREVIEW_CONTACT_MARK.kind, subject),
-        };
-        expect(await inUnit(() => counters.isOpen(other, elsewhere, T0), other)).toBe(false);
-        await inUnit(() => counters.purgeStartedBefore(market, T0.add({ hours: 48 })));
-        expect(await inUnit(() => counters.isOpen(market, mark, T0.add({ hours: 72 })))).toBe(true);
-        const again = await inUnit(() => counters.reserve(market, [mark], T0.add({ hours: 72 })));
+        expect(await inUnit(() => counters.isOpen(market, mark, day(30)))).toBe(false);
+        // The same row read under another Market is never seen (Mojtaba L4).
+        expect(await inUnit(() => counters.isOpen(other, mark, T0), other)).toBe(false);
+        // A second use on day 29 restarts the window: still open on day 31 (Mojtaba M1).
+        const again = await inUnit(() => counters.reserve(market, [mark], day(29)));
         expect(again[0]!.count).toBe(2);
+        expect(await inUnit(() => counters.isOpen(market, mark, day(31)))).toBe(true);
+        // The 48-hour purge keeps an open mark, and takes it once 30 days have also passed.
+        await inUnit(() => counters.purgeStartedBefore(market, day(31)));
+        expect(await inUnit(() => counters.isOpen(market, mark, day(31)))).toBe(true);
+        await inUnit(() => counters.purgeStartedBefore(market, day(29 + 30 + 2)));
+        const { rows } = await owner.query(
+          'SELECT count(*)::int AS n FROM catalog.rate_counters WHERE market_id = $1 AND kind = $2 AND key_hash = $3',
+          [market.marketId, PREVIEW_CONTACT_MARK.kind, Buffer.from(mark.keyHash)],
+        );
+        expect((rows[0] as { n: number }).n).toBe(0);
       });
 
       it('lists exactly the kinds its CHECK accepts', async () => {

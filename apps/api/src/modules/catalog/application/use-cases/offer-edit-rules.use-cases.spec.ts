@@ -297,7 +297,21 @@ describe.each([
     const requestChanges = new AdminOfferChangeRequestChanges(gate, decisionDeps);
     const reject = new AdminOfferChangeReject(gate, decisionDeps);
     return {
-      edit: new OwnOfferEdit(gate, { ...deps, check, policy, editReview: memory.review }),
+      edit: new OwnOfferEdit(gate, {
+        // No preview mark in these tests (slice 7b): never read past isOpen.
+        counterWindows: { isOpen: () => Promise.resolve(false) },
+        counterKeys: { keyOf: () => new Uint8Array(32) },
+        postReviews: {} as never,
+        ids: {
+          next: () => {
+            throw new Error('ids: not reached');
+          },
+        } as never,
+        ...deps,
+        check,
+        policy,
+        editReview: memory.review,
+      }),
       setHandling: new OwnOfferSetHandling(gate, { ...deps, editReview: memory.review }),
       addTag: new OwnOfferAddTag(gate, { ...deps, ids, editReview: memory.review }),
       remove: new OwnOfferDelete(gate, {

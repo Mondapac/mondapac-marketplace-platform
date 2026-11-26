@@ -39,6 +39,8 @@ export interface RateLimit {
   readonly kind: RateCounterKind;
   readonly limit: number;
   readonly windowMinutes: number;
+  /** Each reservation restarts the window (a mark whose 30 days run from its latest use). */
+  readonly restartsOnUse?: true;
 }
 
 const DAY = 24 * 60;
@@ -67,13 +69,15 @@ export const SUBMIT_PREVIEW_LIMITS: readonly RateLimit[] = Object.freeze([
 /**
  * Not a limit: the mark that a seller's submit preview found contact text (slice 7b, security M1 of
  * PR 1376). The preview counts it; the submit only reads whether a window is open, and an Offer the
- * seller then publishes at once goes on the post-publication review list. 30 days from the first
- * such preview in the window; never refused, so the limit is unreachable.
+ * seller then publishes at once goes on the post-publication review list. 30 days from the latest
+ * such preview (each one restarts the window, Mojtaba M1); never refused, so the limit is
+ * unreachable.
  */
 export const PREVIEW_CONTACT_MARK: RateLimit = Object.freeze({
   kind: 'submit-preview-contact.seller.month',
   limit: Number.MAX_SAFE_INTEGER,
   windowMinutes: 30 * DAY,
+  restartsOnUse: true,
 });
 
 /** Add sizes per account (D 8.4; variants V9): 20 an hour, a structural change rarely repeated. */

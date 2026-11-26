@@ -2,6 +2,7 @@
 -- lost, and it fails while a post-publication review carries `preview-contact-text` (those rows
 -- are never deleted).
 SET lock_timeout = '5s';
+SET statement_timeout = '60s';
 
 ALTER TABLE "catalog"."offer_post_review_reasons"
   DROP CONSTRAINT "offer_post_review_reasons_reason_check",

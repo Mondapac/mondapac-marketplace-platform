@@ -30,7 +30,14 @@ import { ClaimQueryBuilder } from '../src/modules/catalog/application/tags/claim
 import { Offer, type OfferState } from '../src/modules/catalog/domain/offer';
 import { sellerReviewReasonsOf } from '../src/modules/catalog/domain/offer-review-policy';
 import { Product, type ProductState } from '../src/modules/catalog/domain/product';
-import type { RateReservation } from '../src/modules/catalog/domain/rate-limits';
+import {
+  PREVIEW_CONTACT_MARK,
+  type RateReservation,
+} from '../src/modules/catalog/domain/rate-limits';
+import {
+  RATE_COUNTER_KEYS,
+  type RateCounterKeys,
+} from '../src/modules/catalog/application/ports/rate-counter-keys';
 import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
 import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
@@ -107,7 +114,12 @@ class MemoryRateCounters {
         const ended =
           held === undefined ||
           Temporal.Instant.compare(held.startedAt.add({ minutes: limit.windowMinutes }), now) <= 0;
-        const next = ended ? { count: 1, startedAt: now } : { ...held, count: held.count + 1 };
+        const next = ended
+          ? { count: 1, startedAt: now }
+          : {
+              count: held.count + 1,
+              startedAt: limit.restartsOnUse === true ? now : held.startedAt,
+            };
         this.counts.set(key, next);
         return { kind: limit.kind, count: next.count, windowStartedAt: next.startedAt };
       }),
@@ -617,6 +629,31 @@ describe('seller submit preview over HTTP (integration, slice 7b)', () => {
       const rows = [...postReviews.rows.values()];
       expect(rows.map((row) => row.reasons)).toEqual([['preview-contact-text']]);
       expect(published.text).not.toMatch(/preview|contact|review/i);
+    });
+
+    it('marks the seller, not the account: a second account sees it, a held submit opens no row', async () => {
+      reviewSettings = { ...RISK_BASED, samplingPercent: 0 };
+      offer = Offer.restore(offerState(code, { description: { 'en-AU': 'call 0412 345 678' } }));
+      expect((await preview(code)).body).toEqual({ outcome: 'review', reasons: ['contact-text'] });
+      // A held submit (handling) is reviewed before sale anyway: no post-publication row.
+      offer = Offer.restore(offerState(code, { handling: 'REPACKED' }));
+      expect((await post(code, '/submit')).body).toMatchObject({ published: false });
+      expect(postReviews.rows.size).toBe(0);
+      // Another account of the same seller publishes at once: checked after.
+      session = sessionOf(code, PEOPLE[1]);
+      offer = Offer.restore(offerState(code));
+      expect((await post(code, '/submit')).body).toMatchObject({ published: true });
+      expect([...postReviews.rows.values()].map((row) => row.reasons)).toEqual([
+        ['preview-contact-text'],
+      ]);
+      // The mark is the seller's alone: another seller's key is not marked.
+      const counterKeys = app.get<RateCounterKeys>(RATE_COUNTER_KEYS);
+      const markOf = (seller: string) =>
+        `${PREVIEW_CONTACT_MARK.kind}:${Buffer.from(
+          counterKeys.keyOf(marketOf(code), PREVIEW_CONTACT_MARK.kind, seller),
+        ).toString('hex')}`;
+      expect(counters.counts.has(markOf(PEOPLE[0].seller))).toBe(true);
+      expect(counters.counts.has(markOf(PEOPLE[2].seller))).toBe(false);
     });
 
     it('lets the mark lapse after 30 days, and counts an unreadable mark as set (fail closed)', async () => {

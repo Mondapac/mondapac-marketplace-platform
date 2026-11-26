@@ -100,6 +100,8 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
   let claimFacts: FixedFactsClaimQueryBuilder;
   let pendingChanges: InMemoryOfferPendingChanges;
   let postReviews: InMemoryOfferPostReviews;
+  /** The seller's submit-preview contact-text mark (slice 7b). */
+  let previewMarked = false;
   let reviewSettings: OfferReviewSettings;
   let audits: { action: string }[];
   const http = () => request(app.getHttpServer());
@@ -234,7 +236,7 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
           .useValue(pendingChanges)
           // No preview ran here, so the seller carries no contact-text mark (slice 7b).
           .overrideProvider(RATE_COUNTER_WINDOWS)
-          .useValue({ isOpen: () => Promise.resolve(false) })
+          .useValue({ isOpen: () => Promise.resolve(previewMarked) })
           .overrideProvider(OFFER_POST_REVIEW_REPOSITORY)
           .useValue(postReviews)
           .overrideProvider(AUDIT_WRITER)
@@ -387,6 +389,7 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
     claimFacts = new FixedFactsClaimQueryBuilder(null);
     pendingChanges = new InMemoryOfferPendingChanges();
     postReviews = new InMemoryOfferPostReviews();
+    previewMarked = false;
     reviewSettings = REVIEW_OFF;
     audits = [];
   });
@@ -955,6 +958,50 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
         marketId: code,
         correlationId: edited.headers['x-correlation-id'] as string,
       });
+    });
+
+    it('checks after publication a live description applied at once while the preview mark is open (security N1)', async () => {
+      await boot();
+      await seeded(code);
+      const locale = app
+        .get<CatalogMarketPolicy>(CATALOG_MARKET_POLICY)
+        .locales(marketOf(code)).default;
+      const live = () =>
+        Offer.restore(
+          offerState({
+            status: 'published',
+            listed: true,
+            firstPublishedAt: START,
+            handling: 'FRESH',
+          }),
+        );
+      // No mark: the new text goes live, no row.
+      offer = live();
+      const unmarked = await put(
+        url,
+        editBody({ description: { [locale]: 'Sweet dates' } }),
+        sessionOf(code),
+      );
+      expect(unmarked.body).toEqual({ changedFields: ['sellerSku', 'description'], applied: true });
+      expect(postReviews.rows.size).toBe(0);
+
+      // Marked: the same answer byte for byte, and a reviewer looks after publication.
+      previewMarked = true;
+      offer = live();
+      const marked = await put(
+        url,
+        editBody({ description: { [locale]: 'Sweet dates' } }),
+        sessionOf(code),
+      );
+      expect(marked.text).toBe(unmarked.text);
+      expect([...postReviews.rows.values()].map((row) => row.reasons)).toEqual([
+        ['preview-contact-text'],
+      ]);
+
+      // An edit that changes no description reads no mark and adds nothing.
+      offer = live();
+      await put(url, editBody(), sessionOf(code));
+      expect(postReviews.receipts.size).toBe(1);
     });
 
     it('refuses without the CSRF token and without a session, and PATCH and POST are not routes', async () => {

@@ -73,7 +73,10 @@ export class PrismaRateCounterRepository implements RateCounterRepository, RateC
           windowStartedAt: toDate(now),
           count: 1,
         },
-        update: { count: { increment: 1 } },
+        update: {
+          count: { increment: 1 },
+          ...(counter.limit.restartsOnUse === true ? { windowStartedAt: toDate(now) } : {}),
+        },
         select: { count: true, windowStartedAt: true },
       });
       reserved.set(counter, {
@@ -109,7 +112,10 @@ export class PrismaRateCounterRepository implements RateCounterRepository, RateC
     return row !== null;
   }
 
-  /** A mark's window outlives the purge's 48 hours, so marks are never purged here. */
+  /**
+   * A mark's window outlives the purge's 48 hours: a mark goes only once its 30 days have also
+   * passed since `startedBefore` (Mojtaba L3), so an open mark is never purged.
+   */
   async purgeStartedBefore(
     market: MarketContext,
     startedBefore: Temporal.Instant,
@@ -117,8 +123,18 @@ export class PrismaRateCounterRepository implements RateCounterRepository, RateC
     const { count } = await this.prisma.tx(market).catalogRateCounter.deleteMany({
       where: {
         marketId: market.marketId,
-        kind: { not: PREVIEW_CONTACT_MARK.kind },
-        windowStartedAt: { lt: toDate(startedBefore) },
+        OR: [
+          {
+            kind: { not: PREVIEW_CONTACT_MARK.kind },
+            windowStartedAt: { lt: toDate(startedBefore) },
+          },
+          {
+            kind: PREVIEW_CONTACT_MARK.kind,
+            windowStartedAt: {
+              lt: toDate(windowRestartBefore(PREVIEW_CONTACT_MARK, startedBefore)),
+            },
+          },
+        ],
       },
     });
     return count;

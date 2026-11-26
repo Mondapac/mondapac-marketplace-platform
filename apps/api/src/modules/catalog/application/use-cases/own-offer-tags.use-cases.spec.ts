@@ -669,6 +669,15 @@ describe.each([
       // 2. The seller edits it: back to draft.
       const policy = new ConfigCatalogMarketPolicy(markets);
       const edit = new OwnOfferEdit(gate, {
+        // No preview mark in these tests (slice 7b): never read past isOpen.
+        counterWindows: { isOpen: () => Promise.resolve(false) },
+        counterKeys: { keyOf: () => new Uint8Array(32) },
+        postReviews: {} as never,
+        ids: {
+          next: () => {
+            throw new Error('ids: not reached');
+          },
+        } as never,
         unitOfWork: r.unitOfWork,
         offers: r.offers,
         eligibility: { isEligible: () => Promise.resolve(true) },

@@ -419,6 +419,17 @@ describe.each(TEST_MARKETS)(
       expect(await receive(mark, 'preview-contact-text', uuid7())).toBe(
         'offer_post_review_reasons_source_kind_check',
       );
+      // A sample and a mark of the same published version both go on one row (Mojtaba N1).
+      const both = await liveOffer();
+      const drawn = opened(both.offerId, both.productId, 'sample');
+      await unit(() => reviews.insert(market, drawn));
+      expect(await receive(drawn, 'sample', 'offer-version:2')).toBeNull();
+      const plus = (await read(() => reviews.findById(market, drawn.state.id)))!;
+      expect(
+        plus.addReason({ reason: 'preview-contact-text', sample: null, now: nowInstant() }).ok,
+      ).toBe(true);
+      expect(await read(() => reviews.save(market, plus))).toBe(true);
+      expect(await receive(plus, 'preview-contact-text', 'offer-version:2')).toBeNull();
       // Only onto the open row of that Offer that carries the reason (Mojtaba L3).
       expect(await receive(sample, 'price-no-reference', uuid7())).toContain(
         'the row is not open with this reason',

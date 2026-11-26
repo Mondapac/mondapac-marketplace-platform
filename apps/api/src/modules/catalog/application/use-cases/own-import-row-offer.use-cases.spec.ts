@@ -258,6 +258,15 @@ describe.each(['AU', 'ZZ'] as const)('seller import Offer rows in market %s', (c
       const inner = new OwnOfferEdit(
         gate,
         {
+          // No preview mark in these tests (slice 7b): never read past isOpen.
+          counterWindows: { isOpen: () => Promise.resolve(false) },
+          counterKeys: { keyOf: () => new Uint8Array(32) },
+          postReviews: {} as never,
+          ids: {
+            next: () => {
+              throw new Error('ids: not reached');
+            },
+          } as never,
           editReview: memoryOfferEditReview({ ids }).review,
           unitOfWork,
           offers: {
