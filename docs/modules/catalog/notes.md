@@ -497,7 +497,51 @@ Built from `/mnt/project-files/handoffs/offer-approval-6-spec.md`.
   probation. It says "N of M offers checked" and that new offers may wait for review, never why.
 - **What a seller never sees:** sampling (a sampled submit looks like any other), the admin
   take-down note, probation or R6/R7 as a reason (they stay `held-for-review`).
-- **Not in this slice:** the pre-submit preview (dry run of the server rules; Hassan reviews it
-  for R4 median and R7 list leaks, FE "r4-median-probing") goes in its own PR.
+- **Not in this slice:** the pre-submit preview went in its own PR (slice 7b, next section).
 - **Deferred:** the notice is gone once the seller edits and the Offer returns to draft:
   FE-20261126-taken-down-notice-after-edit.
+
+## Pre-submit preview (risk-based Offer approval slice 7b)
+
+Built from `/mnt/project-files/handoffs/offer-approval-7b-preview-handoff.md` (design 9.5 a).
+
+- **Route.** `POST catalog/seller/offers/:id/submit-preview` (`catalog.own-offer-submit-preview`,
+  key `catalog.own-product.edit`, seller population, a seller who may sell). The same optional
+  closed body as submit (`requestedTags`). No-store. Answer `{ outcome: 'publish' | 'review',
+  reasons }`, reasons empty for `publish`.
+- **Same rules, one function.** Submit and preview both judge through
+  `application/first-publication-review.ts` (`judgeFirstPublication`): the same settings and facts
+  readers, the same safe-settings rule for degraded facts, then `offerReviewReasons`. The guards are
+  the submit's, in its order (byte-identical `offer.not-found`, `offer.not-submittable`,
+  `offer.handling-missing`, `offer.product-not-published`, `type.not-allowed`, `tag.type-unknown`).
+- **Writes nothing.** The use case has no referral store, audit, outbox, sampler, post-review,
+  probation or Offer save among its dependencies. The only write is the seller's preview counters.
+- **Budget.** `submit-preview.seller.minute` 10 and `submit-preview.seller.day` 200, keyed on the
+  seller (every account shares them), taken before the Offer is read
+  (migration `20261126040000_catalog_submit_preview_rate_counters` widens the kind CHECK). 429 with
+  `Retry-After`; a counter store that fails is 503.
+- **What it never says.**
+  - Sampling: the sampler is not called, so a sampled and an unsampled Offer answer byte for byte
+    the same.
+  - R0, R1, R6, R7 and mode `all`: one `held-for-review`. `sellerReviewReasonsOf` now answers in the
+    fixed seller order (told reasons, then `held-for-review` last), so the position of
+    `held-for-review` no longer tells a stop or probation (before `handling` in the policy) from R6
+    or R7 (after it). This also changes the order in the edit answers and the seller's read of a held
+    change.
+  - Contact text: the rule name only, never the matched text. The log line holds only the outcome.
+  - R4: never measured here. Pricing holds a first price outside the band when it is written, and
+    the price row already shows it held. The panel adds "A price on this offer is waiting for our
+    check" from that row, with no number. A price inside the band and a price with no reference
+    give the same `publish`.
+- **Fail closed.** A settings read that failed (`OfferReviewSettings.degraded`, set only on the safe
+  answer) or degraded facts answer `access.unavailable` (503), never a guess.
+- **Not repeated.** The claim-text control and the badge checks (submit runs them, with their own
+  refusals), so the preview spends no claim-text budget and asks certification nothing.
+- **Panel.** English LTR, on a draft's page above Submit: one dry run when the page opens. "Goes on
+  sale when you submit", or "We'll check this offer first" with a line only for a badge, handling or
+  contact text. Always "This is a guide, not a promise". A failure or an unknown answer reads "We
+  couldn't check this offer right now. You can still submit it."
+- **Deferred:** the preview for watched edits of a live Offer
+  (FE-20261126-offer-preview-watched-edits), the claim-text and badge checks in the preview
+  (FE-20261126-offer-preview-claim-checks), and watching for R7 probing through previews
+  (FE-20261126-offer-preview-r7-inference). R4 probing stays FE-20261125-r4-median-probing.

@@ -47,6 +47,7 @@ import {
 } from '../../../platform/call-context/route-population.decorator';
 import { OwnOfferDelete } from '../application/use-cases/own-offer-delete.use-case';
 import { OwnOfferSubmit } from '../application/use-cases/own-offer-submit.use-case';
+import { OwnOfferSubmitPreview } from '../application/use-cases/own-offer-submit-preview.use-case';
 import { OwnOfferSetHandling } from '../application/use-cases/own-offer-set-handling.use-case';
 import { OwnOfferRecordAttestation } from '../application/use-cases/own-offer-record-attestation.use-case';
 import { OwnOfferSetSellUnits } from '../application/use-cases/own-offer-set-sell-units.use-case';
@@ -82,6 +83,7 @@ import {
   OwnOfferSellUnitsSet,
   OwnOfferSellUnitsView,
   OwnOfferSetSellUnitsRequest,
+  OwnOfferSubmitPreviewed,
   OwnOfferSubmitRequest,
   OwnOfferSubmitted,
   OwnOfferAddTagRequest,
@@ -210,6 +212,7 @@ export class OwnOfferController {
     private readonly setSellUnits: OwnOfferSetSellUnits,
     private readonly recordOfferAttestation: OwnOfferRecordAttestation,
     private readonly submitOffer: OwnOfferSubmit,
+    private readonly previewSubmit: OwnOfferSubmitPreview,
     private readonly deleteOffer: OwnOfferDelete,
     private readonly listOffers: OwnOffersList,
     private readonly exportOffers: OwnOffersExport,
@@ -958,6 +961,75 @@ export class OwnOfferController {
         : refusalWith(OWN_OFFER_STATUS, result.error, response, context);
     }
     return this.settleRead('catalog.own-offer-submit', context, outcome);
+  }
+
+  @Post(':offerId/submit-preview')
+  @HttpCode(200)
+  @ReadsSession()
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary: 'Preview whether submitting a draft Offer publishes it at once',
+    description:
+      'Needs catalog.own-product.edit and a seller who may sell. The same body and guards as ' +
+      'submit, then the same review rules as a dry run: nothing is written (no referral, audit, ' +
+      'event, sample or post-publication row) except the preview counters, 10 a minute and 200 ' +
+      'a day per seller. outcome `publish` or `review`; reasons only `certificate-badge`, ' +
+      '`handling`, `contact-text` or the one `held-for-review` for every other reason. Not a ' +
+      'promise: submit decides again. A settings or fact read that fails is access.unavailable, ' +
+      'never a guess. The claim-text control and badge checks are not repeated (submit runs ' +
+      'them), and no price is measured (pricing holds a first price when it is written).',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam({ name: 'offerId', format: 'uuid' })
+  @ApiBody({ type: OwnOfferSubmitRequest, required: false })
+  @ApiOkResponse({ type: OwnOfferSubmitPreviewed })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorBody,
+    description: 'session.invalid (the cookie is cleared) or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({
+    type: ApiErrorBody,
+    description: 'access.denied, request.csrf or seller.not-eligible',
+  })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'offer.not-found' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'offer.not-submittable or offer.product-not-published',
+  })
+  @ApiUnprocessableEntityResponse({
+    type: ApiErrorBody,
+    description: 'offer.handling-missing, type.not-allowed or tag.type-unknown',
+  })
+  @ApiTooManyRequestsResponse({
+    type: ApiErrorBody,
+    description: 'request.throttled (details.retryAfterSeconds, Retry-After)',
+  })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'A body that is not JSON' })
+  @ApiServiceUnavailableResponse({
+    type: ApiErrorBody,
+    description: 'access.unavailable (we could not check now) or claim.check-unavailable',
+  })
+  async submitPreview(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('offerId') offerId: string,
+    @Body() body: unknown,
+  ): Promise<OwnOfferSubmitPreviewed> {
+    const input = optionalClosedBody(request, body, ['requestedTags']);
+    let outcome: OwnOfferSubmitPreviewed | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.previewSubmit.execute(context, {
+        offerId,
+        ...(Object.hasOwn(input, 'requestedTags') ? { requestedTags: input.requestedTags } : {}),
+      });
+      outcome = result.ok
+        ? { outcome: result.value.outcome, reasons: [...result.value.reasons] }
+        : refusalWith(OWN_OFFER_STATUS, result.error, response, context);
+    }
+    return this.settleRead('catalog.own-offer-submit-preview', context, outcome);
   }
 
   @Post(':offerId/pending-change/withdraw')

@@ -154,6 +154,7 @@ import { OwnOfferEdit } from './application/use-cases/own-offer-edit.use-case';
 import { OwnOfferSetHandling } from './application/use-cases/own-offer-set-handling.use-case';
 import { OwnOfferRecordAttestation } from './application/use-cases/own-offer-record-attestation.use-case';
 import { OwnOfferSubmit } from './application/use-cases/own-offer-submit.use-case';
+import { OwnOfferSubmitPreview } from './application/use-cases/own-offer-submit-preview.use-case';
 import { ReviewQueueList } from './application/use-cases/review-queue-list.use-case';
 import { ReviewQueueExport } from './application/use-cases/review-queue-export.use-case';
 import { ClaimTermsImpactCount } from './application/use-cases/claim-terms-impact-count.use-case';
@@ -2447,6 +2448,19 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       probation: true,
       sampler: true,
       postReviews: true,
+    }),
+    // The submit's rules as a dry run (slice 7b): reads and the preview counters only.
+    useCaseProvider(OwnOfferSubmitPreview, {
+      unitOfWork: true,
+      offers: true,
+      products: true,
+      eligibility: true,
+      allowedTypes: true,
+      evaluator: true,
+      reviewInputs: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
     }),
     useCaseProvider(OwnOfferAddTag, {
       unitOfWork: true,

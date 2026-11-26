@@ -27,6 +27,8 @@ export const RATE_COUNTER_KINDS = [
   'search.account.minute',
   'seller-import-check.seller.day',
   'seller-import-check.seller.hour',
+  'submit-preview.seller.day',
+  'submit-preview.seller.minute',
   'submit.seller.hour',
 ] as const;
 export type RateCounterKind = (typeof RATE_COUNTER_KINDS)[number];
@@ -49,6 +51,16 @@ export const DRAFT_SAVE_LIMITS: readonly RateLimit[] = Object.freeze([
 /** Submits per seller (D 8.4): 30 per hour. */
 export const SUBMIT_LIMITS: readonly RateLimit[] = Object.freeze([
   { kind: 'submit.seller.hour', limit: 30, windowMinutes: 60 },
+]);
+
+/**
+ * Submit previews per seller (risk-based Offer approval slice 7b): 10 a minute and 200 a day, on the
+ * seller (every account of it shares them), so the dry run cannot be used to probe the review rules
+ * Offer by Offer. A page view runs one; far more than a seller needs, far less than a probe needs.
+ */
+export const SUBMIT_PREVIEW_LIMITS: readonly RateLimit[] = Object.freeze([
+  { kind: 'submit-preview.seller.minute', limit: 10, windowMinutes: 1 },
+  { kind: 'submit-preview.seller.day', limit: 200, windowMinutes: DAY },
 ]);
 
 /** Add sizes per account (D 8.4; variants V9): 20 an hour, a structural change rarely repeated. */

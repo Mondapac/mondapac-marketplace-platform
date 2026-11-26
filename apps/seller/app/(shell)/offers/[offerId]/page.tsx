@@ -61,6 +61,9 @@ export default async function OfferPage({
         csrfToken={page.session.csrfToken}
         shelves={shelves}
         standing={standing}
+        heldPrice={
+          sizes !== 'unavailable' && sizes.rows.some((row) => (row.price?.held ?? null) !== null)
+        }
         sizes={
           sizes === 'unavailable' ? (
             <div id="sizes" className="scroll-mt-4">

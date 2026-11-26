@@ -467,7 +467,7 @@ describe.each([
       const held = await r.edit.execute(sellerContext(), form(r, 'Call 0412 345 678'));
       expect(held.ok && held.value).toMatchObject({
         applied: false,
-        reasons: ['held-for-review', 'contact-text'],
+        reasons: ['contact-text', 'held-for-review'],
       });
       expect(JSON.stringify(held)).not.toMatch(/emergency-stop|sensitive-category/);
       expect(r.changes()[0]?.reasons).toEqual([
@@ -485,8 +485,8 @@ describe.each([
       // carries no review flag or standing (Sajad G2).
       const read = await r.read.execute(sellerContext(), { offerId: r.offerId });
       expect(read.ok && read.value.pendingChange?.reasons).toEqual([
-        'held-for-review',
         'contact-text',
+        'held-for-review',
       ]);
       expect(JSON.stringify(read)).not.toMatch(
         /emergency-stop|sensitive-category|fullReview|trustedFromStart|reviewStop|probation|standing|trustedAt|epoch/,
@@ -672,7 +672,7 @@ describe.each([
       });
       expect(outcome.ok && outcome.value).toMatchObject({
         applied: false,
-        reasons: ['held-for-review', 'handling'],
+        reasons: ['handling', 'held-for-review'],
       });
       expect(r.changes()[0]?.reasons).toEqual(['emergency-stop', 'handling']);
     });

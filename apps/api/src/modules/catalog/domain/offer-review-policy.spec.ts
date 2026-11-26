@@ -302,7 +302,7 @@ describe('sellerReviewReasonsOf (what a seller is told; Hadi (b) on Hassan S1)',
         'sensitive-category',
         'review-all',
       ]),
-    ).toEqual(['held-for-review', 'certificate-badge', 'handling', 'contact-text']);
+    ).toEqual(['certificate-badge', 'handling', 'contact-text', 'held-for-review']);
     for (const hidden of OFFER_REVIEW_REASONS.filter(
       (r) => !['certificate-badge', 'handling', 'contact-text'].includes(r),
     )) {
@@ -312,5 +312,18 @@ describe('sellerReviewReasonsOf (what a seller is told; Hadi (b) on Hassan S1)',
     for (const told of sellerReviewReasonsOf([...OFFER_REVIEW_REASONS])) {
       expect(SELLER_REVIEW_REASONS).toContain(told);
     }
+  });
+
+  it('puts held-for-review last whichever hidden reason it stands for (slice 7b)', () => {
+    // R0 and R1 come before handling in the policy's order, R6 and R7 after it: the seller's list
+    // must not tell them apart by position.
+    const answers = new Set(
+      (
+        ['emergency-stop', 'probation', 'full-review', 'sensitive-category', 'review-all'] as const
+      ).map((hidden) =>
+        JSON.stringify(sellerReviewReasonsOf([hidden, 'handling', 'contact-text'])),
+      ),
+    );
+    expect([...answers]).toEqual(['["handling","contact-text","held-for-review"]']);
   });
 });

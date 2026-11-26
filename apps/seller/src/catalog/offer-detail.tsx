@@ -37,6 +37,7 @@ export async function OfferDetail({
   shelves = [],
   sizes = null,
   standing = null,
+  heldPrice = false,
 }: {
   readonly offer: OfferView;
   readonly canEdit?: boolean;
@@ -47,6 +48,8 @@ export async function OfferDetail({
   readonly sizes?: ReactNode;
   /** The seller's probation progress; null shows no bar. */
   readonly standing?: ReviewStanding | null;
+  /** A price of this offer waits for our check (pricing's state on the size rows). */
+  readonly heldPrice?: boolean;
 }) {
   const t = await getTranslations();
   const marketLocale = await getLocale();
@@ -89,7 +92,13 @@ export async function OfferDetail({
         <Banner tone="info">{t('catalog.offer-actions.waiting')}</Banner>
       ) : null}
       {canEdit ? (
-        <OfferActions offerId={offer.offerId} status={status} csrfToken={csrfToken} />
+        <OfferActions
+          offerId={offer.offerId}
+          status={status}
+          csrfToken={csrfToken}
+          preview
+          heldPrice={heldPrice}
+        />
       ) : null}
       {probation}
       <Card title={t('catalog.offer.your-offer')}>

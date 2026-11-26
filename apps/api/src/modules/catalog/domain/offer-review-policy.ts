@@ -59,7 +59,12 @@ const TOLD_TO_SELLER: ReadonlySet<OfferReviewReason> = new Set([
   'contact-text',
 ]);
 
-/** The reasons as a seller sees them: in order, with every other reason once as `held-for-review`. */
+/**
+ * The reasons as a seller sees them, in the fixed order of {@link SELLER_REVIEW_REASONS}: the told
+ * ones, then every other reason once as `held-for-review`, always last. Never in the policy's
+ * order: there a hidden reason before `handling` (R0, R1) and one after it (R6, R7) would sit on
+ * different sides of it, and the position alone would tell them apart (slice 7b).
+ */
 export function sellerReviewReasonsOf(
   reasons: readonly OfferReviewReason[],
 ): readonly SellerReviewReason[] {
@@ -67,7 +72,7 @@ export function sellerReviewReasonsOf(
   for (const reason of reasons) {
     told.add(TOLD_TO_SELLER.has(reason) ? (reason as SellerReviewReason) : 'held-for-review');
   }
-  return [...told];
+  return SELLER_REVIEW_REASONS.filter((reason) => told.has(reason));
 }
 
 /** The Market's review mode (settings `catalog.offer-review.mode`). */

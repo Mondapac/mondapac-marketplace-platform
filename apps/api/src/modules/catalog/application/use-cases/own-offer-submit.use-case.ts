@@ -18,12 +18,9 @@ import type { CheckClaimText } from '../claim-text/check-claim-text.service';
 import type { AllowedProductTypesReader } from '../ports/allowed-product-types.reader';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import { OfferReviewReferredAudit } from '../../domain/audit';
-import { OFFER_REVIEW_POLICY_VERSION, offerReviewReasons } from '../../domain/offer-review-policy';
-import {
-  SAFE_OFFER_REVIEW_SETTINGS,
-  type OfferReviewInputs,
-  type OfferReviewReferralStore,
-} from '../ports/offer-review';
+import { OFFER_REVIEW_POLICY_VERSION } from '../../domain/offer-review-policy';
+import { judgeFirstPublication } from '../first-publication-review';
+import type { OfferReviewInputs, OfferReviewReferralStore } from '../ports/offer-review';
 import type { SellerReviewProbation } from '../seller-review-probation';
 import {
   effectiveSamplingPercent,
@@ -323,25 +320,18 @@ export class OwnOfferSubmit extends UseCase<
     if (!asked.ok) return err(asked.error);
     const hash = hashesOf(prepared);
 
-    // The review policy's inputs, outside any unit; each answers "review" on a failure.
+    // The review policy, outside any unit; each read answers "review" on a failure. The preview
+    // (slice 7b) judges through the same function.
     const productId = guard.value.productId;
-    const [reviewSettings, reviewFacts] = await Promise.all([
-      deps.reviewInputs.settings(context),
-      deps.reviewInputs.facts(context, { sellerId, productId, offerId }),
-    ]);
-    // Facts read with a failure (degraded) are judged in the safe settings, as edits are: mode
-    // `all` and badges reviewed, so a stop that could not be read never lets an Offer go live
-    // in mode `off` (Hassan M1 on PR #1358). No stop is invented.
-    const safe = reviewFacts.degraded === true;
-    const reasons = offerReviewReasons({
-      mode: safe ? SAFE_OFFER_REVIEW_SETTINGS.mode : reviewSettings.mode,
-      certificateBadges: safe
-        ? SAFE_OFFER_REVIEW_SETTINGS.certificateBadges
-        : reviewSettings.certificateBadges,
-      facts: {
-        ...reviewFacts,
-        emergencyStop: reviewFacts.emergencyStop || reviewSettings.emergencyStop,
-      },
+    const {
+      reasons,
+      settings: reviewSettings,
+      facts: reviewFacts,
+      safe,
+    } = await judgeFirstPublication(deps.reviewInputs, context, {
+      sellerId,
+      productId,
+      offerId,
       handling,
       badgeTypes,
       description,
