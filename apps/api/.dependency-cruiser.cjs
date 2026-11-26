@@ -409,6 +409,9 @@ module.exports = {
           // The External models tab's server checks (G4b); rule ai-model-choices-only-from-settings
           // limits it.
           '^src/platform/ai/model-choices\\.ts$',
+          // The AI Models page's usage read (G5e): numbers only, no model call. Rule
+          // ai-model-usage-only-from-settings limits it.
+          '^src/platform/ai/usage/ai-model-usage\\.ts$',
           // The usage store's port; rule ai-usage-store-only-in-persistence limits who imports it.
           '^src/platform/ai/usage/ai-usage-store\\.ts$',
           // A module's read of its own capability's usage (G7); no model call. Rule
@@ -584,6 +587,21 @@ module.exports = {
         ],
       },
       to: { path: '^src/platform/ai/model-choices\\.ts$' },
+    },
+    {
+      name: 'ai-model-usage-only-from-settings',
+      comment:
+        'Only settings reads the AI usage per model family and task type (G5e; docs/design/domain/' +
+        'platform-ai.md section 8, Scorecard and Change preview): its module file and its usage use case.',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '^src/platform/ai/',
+          '^src/modules/settings/settings\\.module\\.ts$',
+          '^src/modules/settings/application/use-cases/view-ai-model-usage\\.use-case\\.ts$',
+        ],
+      },
+      to: { path: '^src/platform/ai/usage/ai-model-usage\\.ts$' },
     },
     {
       name: 'no-ai-in-identity-payments-or-payouts',

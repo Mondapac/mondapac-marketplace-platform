@@ -110,6 +110,8 @@
     "shop-links": {
       "browse": "Browse products",
       "offers": "Offers",
+      "best-sellers": "Best sellers",
+      "new": "New this week",
       "express": "Express, same day",
       "sellers": "Sellers",
       "brands": "Brands",
@@ -1580,6 +1582,8 @@
     "pages": {
       "browse": "Browse products",
       "offers": "Offers",
+      "best-sellers": "Best sellers",
+      "new": "New this week",
       "express": "Express, same day",
       "certified": "Halal products",
       "recipes": "Recipes",

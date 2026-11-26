@@ -5053,6 +5053,9 @@ svg {
   font-weight: 800;
   text-align: end;
 }
+.dn .qs output {
+  text-align: center;
+}
 .dn .qs {
   grid-column: 1;
   justify-self: start;
@@ -7130,6 +7133,13 @@ button.login {
   line-height: 1.25;
   color: var(--sf-ink);
   font-weight: 800;
+}
+.rail h3.rah .rname {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .rau {
   position: relative;

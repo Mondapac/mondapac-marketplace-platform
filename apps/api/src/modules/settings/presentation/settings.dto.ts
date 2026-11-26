@@ -5,6 +5,7 @@ import type { PlaygroundAnswer } from '../application/use-cases/run-ai-playgroun
 import type { EvaluationRunDetail } from '../application/use-cases/view-ai-evaluation.use-case';
 import type { EvaluationRunList } from '../application/use-cases/view-ai-evaluations.use-case';
 import type { PlaygroundSuite } from '../application/use-cases/view-ai-playground-samples.use-case';
+import type { ModelUsageView } from '../application/use-cases/view-ai-model-usage.use-case';
 
 type EvaluationRunRecord = EvaluationRunList['runs'][number];
 import type { OfferReviewEmergencyStopView } from '../application/use-cases/view-offer-review-emergency-stop.use-case';
@@ -412,6 +413,49 @@ export class AiPlaygroundSamplesBody {
   @ApiProperty({ type: [AiPlaygroundSuiteBody] }) suites!: AiPlaygroundSuiteBody[];
 }
 
+export class AiLatencyBucketBody {
+  @ApiProperty({ description: 'The upper bound of the bucket, milliseconds.' }) bound!: number;
+  @ApiProperty({ description: 'True: slower than the last bound.' }) above!: boolean;
+}
+
+export class AiFamilyEvaluationBody {
+  @ApiProperty() passed!: number;
+  @ApiProperty() of!: number;
+}
+
+export class AiFamilyUsageBody {
+  @ApiProperty() family!: string;
+  @ApiProperty() provider!: string;
+  @ApiProperty() calls!: number;
+  @ApiProperty() failures!: number;
+  @ApiProperty({ description: 'Calls sent to this model as a later attempt (it stood in).' })
+  stoodIn!: number;
+  @ApiProperty() costMicroUsd!: number;
+  @ApiProperty({ type: AiLatencyBucketBody, nullable: true }) p95!: AiLatencyBucketBody | null;
+  @ApiProperty({ type: AiFamilyEvaluationBody }) evaluation!: AiFamilyEvaluationBody;
+}
+
+export class AiFamilyCostBody {
+  @ApiProperty() family!: string;
+  @ApiProperty({ type: Number, nullable: true }) costMicroUsd!: number | null;
+}
+
+export class AiTaskUsageBody {
+  @ApiProperty() task!: string;
+  @ApiProperty() calls!: number;
+  @ApiProperty() inputTokens!: number;
+  @ApiProperty() outputTokens!: number;
+  @ApiProperty({ type: [AiFamilyCostBody] }) costByFamily!: AiFamilyCostBody[];
+}
+
+export class AiModelUsageBody {
+  @ApiProperty({ description: 'First Market day of the window, YYYY-MM-DD.' }) from!: string;
+  @ApiProperty({ description: 'Last Market day of the window (today), YYYY-MM-DD.' }) to!: string;
+  @ApiProperty() days!: number;
+  @ApiProperty({ type: [AiFamilyUsageBody] }) families!: AiFamilyUsageBody[];
+  @ApiProperty({ type: [AiTaskUsageBody] }) tasks!: AiTaskUsageBody[];
+}
+
 export class RunAiPlaygroundRequest {
   @ApiProperty() capability!: string;
   @ApiProperty() sampleId!: string;
@@ -514,6 +558,29 @@ export const aiPlaygroundSamplesBody = (
     capability: suite.capability,
     setVersion: suite.setVersion,
     samples: suite.samples.map(({ id, label }) => ({ id, label })),
+  })),
+});
+
+export const aiModelUsageBody = (view: ModelUsageView): AiModelUsageBody => ({
+  from: view.from,
+  to: view.to,
+  days: view.days,
+  families: view.families.map((item) => ({
+    family: item.family,
+    provider: item.provider,
+    calls: item.calls,
+    failures: item.failures,
+    stoodIn: item.stoodIn,
+    costMicroUsd: item.costMicroUsd,
+    p95: item.p95 === null ? null : { bound: item.p95.bound, above: item.p95.above },
+    evaluation: { passed: item.evaluation.passed, of: item.evaluation.of },
+  })),
+  tasks: view.tasks.map((item) => ({
+    task: item.task,
+    calls: item.calls,
+    inputTokens: item.inputTokens,
+    outputTokens: item.outputTokens,
+    costByFamily: item.costByFamily.map(({ family, costMicroUsd }) => ({ family, costMicroUsd })),
   })),
 });
 

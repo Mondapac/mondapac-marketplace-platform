@@ -22,7 +22,14 @@ import {
   type ModelRequest,
 } from '../../src/platform/ai/model-provider';
 import { AiUsage, type SettledCall, type UsageScope } from '../../src/platform/ai/usage/ai-usage';
-import { CALL_OUTCOMES } from '../../src/platform/ai/usage/ai-usage-store';
+import {
+  AI_USAGE_STORE,
+  CALL_OUTCOMES,
+  type AiUsageStore,
+} from '../../src/platform/ai/usage/ai-usage-store';
+import { AI_EVALUATION_USAGE } from '../../src/platform/ai/usage/ai-usage';
+import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
+import { ok } from '@mondapac/shared-kernel';
 import { CLOCK } from '../../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../../src/platform/market-context/tenant';
 import { testAppConfig, TEST_MARKETS } from '../support/test-config';
@@ -381,6 +388,108 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
         capability,
       ]);
       expect(rows.map((row: { id: string }) => row.id)).toEqual([young]);
+    });
+
+    it('reads 30 days of calls per model and day-row tokens per capability, leaving evaluation and older rows out (G5e)', async () => {
+      const store = app.get<AiUsageStore>(AI_USAGE_STORE, { strict: false });
+      const unit = app.get<UnitOfWork>(UNIT_OF_WORK, { strict: false });
+      // A model and capability of this case only: parallel cases write calls of their own.
+      const model = `m-${randomBytes(4).toString('hex')}`;
+      const capability = scopeOf().capability;
+      const insertCall = (
+        at: Date,
+        values: {
+          capability?: string;
+          attempt?: number;
+          latency?: number;
+          outcome?: string;
+          cost?: number;
+        },
+      ) =>
+        owner.query(
+          `INSERT INTO platform.ai_calls (id, market_id, tenant_id, occurred_at, day, capability,
+             seller_id, guest, provider, model, attempt, input_tokens, output_tokens,
+             input_pico_usd, output_pico_usd, cost_micro_usd, latency_ms, outcome)
+           VALUES ($1, $2, $3, $4, $5, $6, NULL, false, 'anthropic', $7, $8, 1, 1, 1, 1, $9, $10, $11)`,
+          [
+            uuid(),
+            market.marketId,
+            market.tenantId,
+            at,
+            at.toISOString().slice(0, 10),
+            values.capability ?? capability,
+            model,
+            values.attempt ?? 1,
+            values.cost ?? 100,
+            values.latency ?? 400,
+            values.outcome ?? 'ok',
+          ],
+        );
+      const recent = new Date(NOW.epochMilliseconds - 3_600_000);
+      await insertCall(recent, {});
+      await insertCall(recent, { attempt: 2, latency: 1500, outcome: 'timeout', cost: 50 });
+      await insertCall(recent, { latency: 40_000 });
+      await insertCall(recent, { capability: AI_EVALUATION_USAGE, cost: 99_999 });
+      await insertCall(new Date(NOW.epochMilliseconds - 31 * 86_400_000), { cost: 99_999 });
+
+      const day = NOW.toZonedDateTimeISO('UTC').toPlainDate();
+      for (const [rowDay, rowCapability, tokens] of [
+        [day, capability, 1000],
+        [day.subtract({ days: 29 }), capability, 500],
+        [day.subtract({ days: 30 }), capability, 99_999],
+      ] as const) {
+        await owner.query(
+          `INSERT INTO platform.ai_usage_days (id, market_id, tenant_id, day, capability, seller_id,
+             calls, input_tokens, output_tokens)
+           VALUES ($1, $2, $3, $4, $5, NULL, 2, $6, $7)`,
+          [
+            uuid(),
+            market.marketId,
+            market.tenantId,
+            rowDay.toString(),
+            rowCapability,
+            tokens,
+            tokens * 2,
+          ],
+        );
+      }
+
+      const read = await unit.run(
+        market,
+        async () =>
+          ok({
+            calls: await store.callTotalsByModel(
+              market,
+              Temporal.Instant.fromEpochMilliseconds(NOW.epochMilliseconds - 30 * 86_400_000),
+              NOW,
+              AI_EVALUATION_USAGE,
+            ),
+            tokens: await store.tokenTotalsByCapability(
+              market,
+              day.subtract({ days: 29 }),
+              day,
+              AI_EVALUATION_USAGE,
+            ),
+          }),
+        { readOnly: true },
+      );
+      if (!read.ok) throw new Error('read failed');
+      expect(read.value.calls.filter((row) => row.model === model)).toEqual([
+        {
+          provider: 'anthropic',
+          model,
+          calls: 3,
+          failures: 1,
+          laterAttempts: 1,
+          costMicroUsd: 250,
+          // At most 500, 1000, 2000, ... 32000 ms: the 40 s call is above every bound.
+          atMostMs: [1, 1, 2, 2, 2, 2, 2],
+        },
+      ]);
+      expect(read.value.tokens.filter((row) => row.capability === capability)).toEqual([
+        { capability, calls: 4, inputTokens: 1500, outputTokens: 3000 },
+      ]);
+      expect(read.value.tokens.some((row) => row.capability === AI_EVALUATION_USAGE)).toBe(false);
     });
 
     it('runs the gateway end to end: counts the call with no text, then refuses at a full cap without calling', async () => {

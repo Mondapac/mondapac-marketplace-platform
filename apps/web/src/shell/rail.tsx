@@ -83,14 +83,15 @@ export function Rail() {
 
 /**
  * The account part of the rail, the only account navigation on the desktop layout. Signed out:
- * one "My Account" row that opens the log-in dialog. Signed in: the "My Account" heading with
- * the ringed avatar, the account pages and Log out.
+ * one "My Account" row that opens the log-in dialog. Signed in: the customer's name as the heading ("My Account" when
+ * the name is empty) with the ringed avatar, the account pages and Log out.
  */
 function RailAccount() {
   const t = useTranslations('account');
   const { customer, setLoginOpen } = useStore();
   const current = useAccountCurrent();
   const logOut = useLogOut();
+  const name = customer?.fullName.trim() ?? '';
   if (!customer)
     return (
       <button type="button" aria-haspopup="dialog" onClick={() => setLoginOpen(true)}>
@@ -104,9 +105,9 @@ function RailAccount() {
         <span className="rau in" aria-hidden="true">
           <Icon name="user" />
         </span>
-        <span>
-          {t('my-account')}
-          <span className="sr-only"> ({t('signed-in-as', { name: customer.fullName })})</span>
+        <span className="rname" title={name || undefined}>
+          {name || t('my-account')}
+          {name ? <span className="sr-only"> ({t('my-account')})</span> : null}
         </span>
       </h3>
       {ACCOUNT_NAV.map((link) => (

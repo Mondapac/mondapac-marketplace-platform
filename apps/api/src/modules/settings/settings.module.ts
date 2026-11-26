@@ -33,6 +33,7 @@ import { ViewAiModelsHistory } from './application/use-cases/view-ai-models-hist
 import { ViewAiModels } from './application/use-cases/view-ai-models.use-case';
 import { AiModelChoices } from '../../platform/ai/model-choices';
 import { AiEvaluationControl } from '../../platform/ai/evaluations/evaluation-control';
+import { AiModelUsage } from '../../platform/ai/usage/ai-model-usage';
 import { CancelAiEvaluation } from './application/use-cases/cancel-ai-evaluation.use-case';
 import { EstimateAiEvaluation } from './application/use-cases/estimate-ai-evaluation.use-case';
 import { RunAiEvaluation } from './application/use-cases/run-ai-evaluation.use-case';
@@ -40,6 +41,7 @@ import { RunAiPlayground } from './application/use-cases/run-ai-playground.use-c
 import { ViewAiEvaluation } from './application/use-cases/view-ai-evaluation.use-case';
 import { ViewAiEvaluations } from './application/use-cases/view-ai-evaluations.use-case';
 import { ViewAiPlaygroundSamples } from './application/use-cases/view-ai-playground-samples.use-case';
+import { ViewAiModelUsage } from './application/use-cases/view-ai-model-usage.use-case';
 import { ChangeAiGatewayLimits } from './application/use-cases/change-ai-gateway-limits.use-case';
 import { ViewAiGatewaySettings } from './application/use-cases/view-ai-gateway-settings.use-case';
 import { SettingsAiGatewayControls } from './application/ai-gateway-controls-reader';
@@ -182,6 +184,12 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         useFactory: (gate: UseCaseGate, control: AiEvaluationControl) => new type(gate, control),
       }),
     ),
+    // The scorecard's usage and the change preview's estimate (G5e): a read of platform/ai.
+    {
+      provide: ViewAiModelUsage,
+      inject: [USE_CASE_GATE, AiModelUsage],
+      useFactory: (gate: UseCaseGate, usage: AiModelUsage) => new ViewAiModelUsage(gate, usage),
+    },
     // The cancel and the playground write an audit row (Hassan, PR 1367 L2).
     ...[CancelAiEvaluation, RunAiPlayground].map((type): FactoryProvider => ({
       provide: type,

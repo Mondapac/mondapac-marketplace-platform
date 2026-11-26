@@ -10,8 +10,11 @@ import {
   type BudgetLine,
   type BudgetPeriod,
   type CallRecord,
+  type CapabilityTokenTotals,
   type CapReached,
   type DayCost,
+  LATENCY_BUCKETS_MS,
+  type ModelCallTotals,
   type ReservationRecord,
   type UsageDelta,
 } from '../../src/platform/ai/usage/ai-usage-store';
@@ -206,6 +209,71 @@ export class InMemoryAiUsageStore implements AiUsageStore {
       if (last === null || Temporal.Instant.compare(record.at, last.at) > 0) last = record;
     }
     return Promise.resolve(last);
+  }
+
+  /** Calls and day rows are kept without their Market here, as `addCall` and `addUsage` do. */
+  callTotalsByModel(
+    _market: MarketContext,
+    since: Temporal.Instant,
+    until: Temporal.Instant,
+    leaveOut: string,
+  ): Promise<readonly ModelCallTotals[]> {
+    this.#check();
+    const totals = new Map<string, ModelCallTotals & { atMostMs: number[] }>();
+    for (const call of this.calls) {
+      if (call.capability === leaveOut) continue;
+      if (Temporal.Instant.compare(call.occurredAt, since) < 0) continue;
+      if (Temporal.Instant.compare(call.occurredAt, until) >= 0) continue;
+      const key = `${call.provider}|${call.model}`;
+      const total = totals.get(key) ?? {
+        provider: call.provider,
+        model: call.model,
+        calls: 0,
+        failures: 0,
+        laterAttempts: 0,
+        costMicroUsd: 0,
+        atMostMs: LATENCY_BUCKETS_MS.map(() => 0),
+      };
+      totals.set(key, {
+        ...total,
+        calls: total.calls + 1,
+        failures: total.failures + (call.outcome === 'ok' ? 0 : 1),
+        laterAttempts: total.laterAttempts + (call.attempt > 1 ? 1 : 0),
+        costMicroUsd: total.costMicroUsd + call.costMicroUsd,
+        atMostMs: total.atMostMs.map(
+          (count, index) => count + (call.latencyMs <= LATENCY_BUCKETS_MS[index]! ? 1 : 0),
+        ),
+      });
+    }
+    return Promise.resolve([...totals.values()]);
+  }
+
+  tokenTotalsByCapability(
+    _market: MarketContext,
+    from: Temporal.PlainDate,
+    to: Temporal.PlainDate,
+    leaveOut: string,
+  ): Promise<readonly CapabilityTokenTotals[]> {
+    this.#check();
+    const totals = new Map<string, CapabilityTokenTotals>();
+    for (const row of this.usage) {
+      if (row.capability === leaveOut) continue;
+      if (Temporal.PlainDate.compare(row.day, from) < 0) continue;
+      if (Temporal.PlainDate.compare(row.day, to) > 0) continue;
+      const total = totals.get(row.capability) ?? {
+        capability: row.capability,
+        calls: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+      };
+      totals.set(row.capability, {
+        capability: row.capability,
+        calls: total.calls + row.calls,
+        inputTokens: total.inputTokens + row.inputTokens,
+        outputTokens: total.outputTokens + row.outputTokens,
+      });
+    }
+    return Promise.resolve([...totals.values()]);
   }
 
   purgeCalls(): Promise<number> {

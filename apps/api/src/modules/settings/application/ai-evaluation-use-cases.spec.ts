@@ -31,6 +31,7 @@ import { RunAiPlayground } from './use-cases/run-ai-playground.use-case';
 import { ViewAiEvaluation } from './use-cases/view-ai-evaluation.use-case';
 import { ViewAiEvaluations } from './use-cases/view-ai-evaluations.use-case';
 import { ViewAiPlaygroundSamples } from './use-cases/view-ai-playground-samples.use-case';
+import { ViewAiModelUsage, type ModelUsageView } from './use-cases/view-ai-model-usage.use-case';
 
 // The evaluation and playground use cases of settings (AI Gateway G4c) on the real control and
 // evaluation gateway, in memory, on both Market fixtures: the permission each one declares, the
@@ -139,6 +140,46 @@ describe.each([['AU'], ['ZZ']] as const)('AI evaluation use cases in market %s',
     for (const change of [all.run, all.cancel, all.playground]) {
       expect(keyOf(change)).toEqual([SETTINGS_AI_MODELS_MANAGE.key]);
     }
+  });
+
+  describe('the usage of the last 30 days (G5e)', () => {
+    const view: ModelUsageView = {
+      from: '2026-10-28',
+      to: '2026-11-26',
+      days: 30,
+      families: [],
+      tasks: [],
+    };
+    const asked: MarketContext[] = [];
+    const usage = () =>
+      new ViewAiModelUsage(gate, {
+        read: (wanted: MarketContext) => {
+          asked.push(wanted);
+          return Promise.resolve(view);
+        },
+      });
+
+    it('answers a viewer with the view key, for its own Market only', async () => {
+      asked.length = 0;
+      granted.delete(SETTINGS_AI_MODELS_MANAGE.key);
+      expect(await usage().execute(admin(), {})).toEqual({ ok: true, value: view });
+      expect(asked.map((item) => item.marketId)).toEqual([market.marketId]);
+      expect((ViewAiModelUsage as unknown as { access: AccessDeclaration }).access.rule).toEqual({
+        kind: 'permissions',
+        allOf: [SETTINGS_AI_GATEWAY_VIEW.key],
+      });
+    });
+
+    it('is refused without the view key, and reads nothing', async () => {
+      asked.length = 0;
+      granted.clear();
+      expect(await usage().execute(admin(), {})).toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      expect(declarations).toContain('settings.view-ai-model-usage');
+      expect(asked).toEqual([]);
+    });
   });
 
   it('refuses a run without the manage key (view only), queueing nothing', async () => {

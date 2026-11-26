@@ -8,8 +8,10 @@ import {
   type BudgetLine,
   type BudgetPeriod,
   type CallRecord,
+  type CapabilityTokenTotals,
   type CapReached,
   type DayCost,
+  type ModelCallTotals,
   type ReservationRecord,
   type UsageDelta,
 } from '../../ai/usage/ai-usage-store';
@@ -256,6 +258,100 @@ export class PrismaAiUsageStore implements AiUsageStore {
           : { [latencyColumnOf(usage.latencyMs)]: { increment: 1 } }),
       },
     });
+  }
+
+  async callTotalsByModel(
+    market: MarketContext,
+    since: Temporal.Instant,
+    until: Temporal.Instant,
+    leaveOut: string,
+  ): Promise<readonly ModelCallTotals[]> {
+    const tx = this.prisma.tx(market);
+    // A range on the index (market_id, occurred_at, id); at most 30 days of one Market's calls
+    // (design section 10 keeps 90). One grouping for the counts and the cost, then one count per
+    // latency bound, so p95 is read from the same fixed buckets as the day rows (no raw SQL).
+    const where = {
+      marketId: market.marketId,
+      tenantId: market.tenantId,
+      occurredAt: { gte: timestampOf(since), lt: timestampOf(until) },
+      capability: { not: leaveOut },
+    };
+    const groups = await tx.aiCall.groupBy({
+      by: ['provider', 'model', 'outcome', 'attempt'],
+      where,
+      _count: { _all: true },
+      _sum: { costMicroUsd: true },
+    });
+    const totals = new Map<
+      string,
+      { calls: number; failures: number; later: number; cost: number }
+    >();
+    const keyOf = (provider: string, model: string): string => `${provider}\u0000${model}`;
+    for (const group of groups) {
+      const key = keyOf(group.provider, group.model);
+      const total = totals.get(key) ?? { calls: 0, failures: 0, later: 0, cost: 0 };
+      const count = group._count._all;
+      total.calls += count;
+      if (group.outcome !== 'ok') total.failures += count;
+      if (group.attempt > 1) total.later += count;
+      total.cost += Number(group._sum.costMicroUsd ?? 0n);
+      totals.set(key, total);
+    }
+    if (totals.size === 0) return [];
+    const atMost = new Map<string, number[]>();
+    for (const [index, bound] of LATENCY_BUCKETS_MS.entries()) {
+      const counted = await tx.aiCall.groupBy({
+        by: ['provider', 'model'],
+        where: { ...where, latencyMs: { lte: bound } },
+        _count: { _all: true },
+      });
+      for (const group of counted) {
+        const key = keyOf(group.provider, group.model);
+        const counts = atMost.get(key) ?? LATENCY_BUCKETS_MS.map(() => 0);
+        counts[index] = group._count._all;
+        atMost.set(key, counts);
+      }
+    }
+    return [...totals.entries()]
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([key, total]) => {
+        const [provider = '', model = ''] = key.split('\u0000');
+        return {
+          provider,
+          model,
+          calls: total.calls,
+          failures: total.failures,
+          laterAttempts: total.later,
+          costMicroUsd: total.cost,
+          atMostMs: atMost.get(key) ?? LATENCY_BUCKETS_MS.map(() => 0),
+        };
+      });
+  }
+
+  async tokenTotalsByCapability(
+    market: MarketContext,
+    from: Temporal.PlainDate,
+    to: Temporal.PlainDate,
+    leaveOut: string,
+  ): Promise<readonly CapabilityTokenTotals[]> {
+    // A range on the unique index (market_id, day, capability, seller_id).
+    const groups = await this.prisma.tx(market).aiUsageDay.groupBy({
+      by: ['capability'],
+      where: {
+        marketId: market.marketId,
+        tenantId: market.tenantId,
+        day: { gte: dateOf(from), lte: dateOf(to) },
+        capability: { not: leaveOut },
+      },
+      _sum: { calls: true, inputTokens: true, outputTokens: true },
+      orderBy: { capability: 'asc' },
+    });
+    return groups.map((group) => ({
+      capability: group.capability,
+      calls: group._sum.calls ?? 0,
+      inputTokens: Number(group._sum.inputTokens ?? 0n),
+      outputTokens: Number(group._sum.outputTokens ?? 0n),
+    }));
   }
 
   async purgeCalls(

@@ -1062,6 +1062,8 @@ describe('relay allowlist for seller decisions', () => {
     expect((await read(models)).status).toBe(200);
     expect((await read(`${models}/history`)).status).toBe(200);
     expect((await read(`${models}/playground/samples`)).status).toBe(200);
+    expect((await read(`${models}/usage`)).status).toBe(200);
+    expect((await call('POST', `${models}/usage`)).status).toBe(404);
     expect((await call('POST', `${models}/playground`)).status).toBe(200);
     expect((await call('PUT', `${models}/playground`)).status).toBe(404);
     expect((await call('PUT', models)).status).toBe(200);

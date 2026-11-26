@@ -53,6 +53,6 @@ export function sampleClosedStore(slug: string): ClosedStore | undefined {
     id: slug,
     ...store,
     location,
-    others: items.filter((s) => s.deliversHere).slice(0, OTHER_STORES),
+    others: items.filter((s) => s.deliversHere !== false).slice(0, OTHER_STORES),
   };
 }

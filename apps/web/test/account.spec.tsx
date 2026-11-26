@@ -93,9 +93,9 @@ describe('global account menu', () => {
     nav.path = '/account/orders/MP-20481';
     renderStore(<AccountOverview />);
     const r = rail();
-    expect(within(r).getByRole('heading', { name: /My Account/ }).textContent).toContain(
-      'Signed in as Alex Nguyen',
-    );
+    const heading = within(r).getByRole('heading', { name: /Alex Nguyen/ });
+    expect(heading.textContent).toContain('Alex Nguyen');
+    expect(heading.textContent).toContain('(My Account)');
     const links = within(r)
       .getAllByRole('link')
       .filter((a) => a.getAttribute('href')?.startsWith('/account'))

@@ -128,6 +128,55 @@ describe('product detail mapping', () => {
   });
 });
 
+describe('special price on the product page', () => {
+  const withSpecial = (special: { endsAt: string } | null) =>
+    body([
+      {
+        offerId: '01990000-0000-7000-8000-000000001001',
+        sellerId: '01990000-0000-7000-8000-000000005001',
+        seller: { storeName: 'Kedron Butchers', minimumOrder: null },
+        units: [{ ...unit('1890'), special }],
+      },
+    ]);
+
+  it('marks an offer whose unit has a special, with no regular price made up', () => {
+    const detail = productDetailOf(
+      withSpecial({ endsAt: '2026-12-01T00:00:00.000Z' }),
+      'en',
+      labels,
+    )!;
+    expect(detail.offers[0]?.onSpecial).toBe(true);
+    expect(detail.offers[0]?.wasPrice).toBeUndefined();
+    expect(productDetailOf(withSpecial(null), 'en', labels)!.offers[0]?.onSpecial).toBeUndefined();
+  });
+
+  it('shows the Special price label beside the price, and none without a special', () => {
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes('min-width: 1000px'),
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    })) as unknown as typeof window.matchMedia;
+    const show = (special: { endsAt: string } | null) =>
+      render(
+        <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+          <StoreProvider>
+            <ProductPage
+              product={productDetailOf(withSpecial(special), 'en', labels)!}
+              category={undefined}
+            />
+          </StoreProvider>
+        </NextIntlClientProvider>,
+      );
+    show({ endsAt: '2026-12-01T00:00:00.000Z' });
+    const box = screen.getByRole('complementary', { name: 'Buy options' });
+    expect(within(box).getByText('Special price')).toBeTruthy();
+    expect(within(box).queryByText('Regular price')).toBeNull();
+    cleanup();
+    show(null);
+    expect(screen.queryByText('Special price')).toBeNull();
+  });
+});
+
 describe('product page on API data', () => {
   it('shows the price, stock and minimum order, without delivery, city or photos', () => {
     window.matchMedia = ((query: string) => ({

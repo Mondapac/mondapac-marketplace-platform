@@ -142,6 +142,36 @@ export class AiRouter {
   }
 
   /**
+   * The price per token, per side, of a family's routes that meet every condition but the
+   * evaluation in the Market for the task type, at the dearest route as `planPrice` takes it; null
+   * with none (G5e, the change preview's monthly estimate).
+   */
+  familyPrice(marketId: MarketId, task: CapabilityTask, family: string): ModelTokenPrice | null {
+    return planPrice(
+      this.catalogue
+        .routesOf(family)
+        .filter((row) => this.#rowProblem(marketId, task, row) === null)
+        .map((row) => ({ row, price: priceOf(row) })),
+    );
+  }
+
+  /** The family of a catalogue model id of the provider, or null when no row names it (G5e). */
+  familyOfModel(provider: string, model: string): string | null {
+    return (
+      this.catalogue.rows().find((row) => row.provider === provider && row.model === model)
+        ?.family ?? null
+    );
+  }
+
+  /**
+   * Whether a pass of the family is recorded for the capability at its prompt version (G5e, the
+   * scorecard's evaluation column). A read only: `plan` still checks each route itself.
+   */
+  familyPassed(spec: CapabilitySpec, family: string): boolean {
+    return this.catalogue.routesOf(family).some((row) => this.#evaluationPassed(spec, row));
+  }
+
+  /**
    * The routes of an evaluation or playground call (G4c; ADR-0052 decision 3, the one exception):
    * only `family` of `provider`, every row that meets every condition but the evaluation pass
    * (Hassan's check, the Market's region, a key, not retired; no vision), provider route first, at
