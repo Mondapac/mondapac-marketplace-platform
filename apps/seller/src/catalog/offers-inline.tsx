@@ -442,6 +442,7 @@ export function useOffersInline({
       <TextField
         name={`price-${size.variantId}`}
         prefix={currencySign(currency, locale)}
+        framedPrefix
         label={t('price.field', { currency })}
         aria-label={label}
         inputMode="decimal"

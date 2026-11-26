@@ -656,6 +656,7 @@ function GroupRows({
                     <TextField
                       name={`price-${row.variantId}`}
                       prefix={currencySign(currency, locale)}
+                      framedPrefix
                       label={t('price.field', { currency })}
                       aria-label={t('catalog.quick-entry.price-for', {
                         product: group.name,
