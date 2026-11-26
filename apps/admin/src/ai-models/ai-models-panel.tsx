@@ -14,7 +14,7 @@ import {
   toast,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { gatewayProblemOf } from '../ai-gateway/errors.ts';
 import { find, historyOf, type GatewaySetting, type HistoryEntry } from '../ai-gateway/types.ts';
@@ -24,6 +24,14 @@ import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { EvaluationPanel } from './evaluation-panel.tsx';
 import { familiesOfOptions } from './evaluation-types.ts';
 import { AiPlayground } from './playground.tsx';
+import { Scorecard } from './scorecard.tsx';
+import {
+  USAGE_PATH,
+  monthlyChangeOf,
+  roundDollars,
+  usageOf,
+  type ModelUsage,
+} from './usage-types.ts';
 import {
   DEFAULT_SAVER_PERCENT,
   MAX_FAMILIES,
@@ -135,13 +143,44 @@ export function AiModelsPanel({
   const [history, setHistory] = useState<readonly HistoryEntry[] | null>(null);
   const [historyFailed, setHistoryFailed] = useState(false);
   const historyWanted = useRef<string>(MODEL_CODES[0] ?? '');
+  // The last 30 days per model and task type (G5e): the scorecard and the preview's estimate.
+  const [usage, setUsage] = useState<ModelUsage | null>(null);
+  const [usageFailed, setUsageFailed] = useState(false);
+  const [usageLoading, setUsageLoading] = useState(false);
+  const usageWanted = useRef(0);
+
+  async function loadUsage() {
+    const ticket = ++usageWanted.current;
+    setUsageLoading(true);
+    const result = await callApi<unknown>('GET', USAGE_PATH);
+    if (!result.ok && result.failure.status === 401) {
+      setUsageLoading(false);
+      window.location.assign('/session-ended');
+      return;
+    }
+    // Only the last read asked counts; an older slow answer says nothing.
+    if (usageWanted.current !== ticket) return;
+    const read = result.ok ? usageOf(result.body) : null;
+    setUsageLoading(false);
+    // A failed refresh never leaves older numbers looking current.
+    setUsage(read);
+    setUsageFailed(read === null);
+  }
+
+  useEffect(() => {
+    void loadUsage();
+    // Read once when the page opens; the Refresh button reads again.
+  }, []);
 
   const rows = answer.settings;
   const changes = changesOf(rows, draft);
   const reviewed = rows.some((row) => row.review?.reviewed === true);
   const optionsOf = (task: Task) => answer.options[task] ?? [];
-  const problemOf = (task: Task, family: string): string | null =>
-    optionsOf(task).find((option) => option.family === family)?.problem ?? 'unknown-model';
+  // A family the server does not list is unknown; a listed one has its own problem (null: usable).
+  const problemOf = (task: Task, family: string): string | null => {
+    const option = optionsOf(task).find((item) => item.family === family);
+    return option === undefined ? 'unknown-model' : option.problem;
+  };
 
   // A saved model that can no longer be used (retired, key gone, not evaluated): the admin sees
   // it before the gateway skips it.
@@ -283,8 +322,51 @@ export function AiModelsPanel({
   const disabled = !canManage || busy || stale;
   const dirty = changes.length > 0;
   const taskLabel = (task: Task) => t(`task.${task}.label`);
+  // A list reads "a, b" (the API value is "a,b"), so it wraps between models on a phone.
   const shown = (value: string | null) =>
-    value === null ? t('history.default') : value === 'none' ? t('none') : value;
+    value === null
+      ? t('history.default')
+      : value === 'none'
+        ? t('none')
+        : value.split(',').join(', ');
+
+  // The preview's estimate (G5e): for each task type whose first model changes, the last 30 days'
+  // tokens priced on the old and the new first model. Saver models and the threshold are not in it.
+  const firstOf = (list: readonly string[]): string | null => list[0] ?? null;
+  const costLines = TASKS.flatMap((task) => {
+    const before = firstOf(familiesOf(find(rows, listCode(task)).value));
+    const after = firstOf(draft.lists[task]);
+    if (before === after) return [];
+    return [
+      {
+        task,
+        change:
+          usage === null
+            ? ({ kind: 'unknown' } as const)
+            : monthlyChangeOf(usage, task, before, after),
+      },
+    ];
+  });
+  const known = costLines.flatMap((line) =>
+    line.change.kind === 'estimate' ? [line.change.afterMicroUsd - line.change.beforeMicroUsd] : [],
+  );
+  const totalDelta = known.reduce((sum, delta) => sum + delta, 0);
+  const signed = (delta: number) =>
+    delta === 0
+      ? t('preview.cost.same')
+      : t(delta > 0 ? 'preview.cost.more' : 'preview.cost.less', {
+          amount: roundDollars(Math.abs(delta)),
+        });
+  const costText = (change: (typeof costLines)[number]['change']) =>
+    change.kind === 'no-usage'
+      ? t('preview.cost.no-usage')
+      : change.kind === 'unknown'
+        ? t('preview.cost.unknown')
+        : t('preview.cost.line', {
+            change: signed(change.afterMicroUsd - change.beforeMicroUsd),
+            before: roundDollars(change.beforeMicroUsd),
+            after: roundDollars(change.afterMicroUsd),
+          });
 
   const banners = [
     alerts.length === 0 ? null : (
@@ -347,6 +429,14 @@ export function AiModelsPanel({
           families={familiesOfOptions(answer.options)}
           canManage={canManage}
           csrfToken={csrfToken}
+          scorecard={
+            <Scorecard
+              usage={usage}
+              failed={usageFailed}
+              loading={usageLoading}
+              onRefresh={() => void loadUsage()}
+            />
+          }
         />
       ) : tab === 'playground' ? (
         <div id="ai-models-panel" role="tabpanel" aria-labelledby="ai-models-panel-tab-playground">
@@ -648,6 +738,45 @@ export function AiModelsPanel({
             </li>
           ))}
         </ul>
+        <section
+          aria-labelledby="ai-models-cost-heading"
+          aria-live="polite"
+          className="mt-4 flex flex-col gap-2 border-t border-line pt-4"
+        >
+          <h3 id="ai-models-cost-heading" className="text-base font-semibold">
+            {t('preview.cost.title')}
+          </h3>
+          {costLines.length === 0 ? (
+            <p className="text-sm">{t('preview.cost.none')}</p>
+          ) : usage === null ? (
+            <p className="text-sm">
+              {usageFailed ? t('preview.cost.failed') : t('preview.cost.loading')}
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-1 text-sm">
+              {costLines.map((line) => (
+                <li key={line.task}>
+                  <span className="font-medium">{taskLabel(line.task)}</span>
+                  {': '}
+                  {costText(line.change)}
+                </li>
+              ))}
+            </ul>
+          )}
+          {costLines.length > 0 && usage !== null && known.length > 1 ? (
+            <p className="border-t border-line pt-2 text-sm font-medium">
+              {t(
+                costLines.every((line) => line.change.kind !== 'unknown')
+                  ? 'preview.cost.total'
+                  : 'preview.cost.total-partial',
+                { change: signed(totalDelta) },
+              )}
+            </p>
+          ) : null}
+          <p className="text-xs text-fg-muted">
+            {t('preview.cost.note', { days: usage?.days ?? 30 })}
+          </p>
+        </section>
       </Dialog>
     </SettingsPage>
   );

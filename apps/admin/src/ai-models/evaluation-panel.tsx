@@ -2,7 +2,7 @@
 
 import { Badge, Banner, Button, Select, SettingsSection, type BadgeTone } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { callApi, type ApiFailure } from '../api/client.ts';
 import { gatewayProblemOf } from '../ai-gateway/errors.ts';
 import { formatInstant } from '../shared/format.ts';
@@ -72,10 +72,13 @@ export function EvaluationPanel({
   families,
   canManage,
   csrfToken,
+  scorecard,
 }: {
   readonly families: readonly string[];
   readonly canManage: boolean;
   readonly csrfToken: string;
+  /** The usage scorecard of the last 30 days (G5e), shown first. */
+  readonly scorecard?: ReactNode;
 }) {
   const t = useTranslations('ai-models.evaluation');
   const locale = useLocale();
@@ -422,6 +425,7 @@ export function EvaluationPanel({
         </Banner>
       )}
       {started ? <Banner tone="success">{t('started')}</Banner> : null}
+      {scorecard}
 
       <SettingsSection title={t('estimate.section')} description={t('estimate.intro')}>
         <div className="flex flex-col gap-4 px-5 py-4">

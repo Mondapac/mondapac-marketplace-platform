@@ -93,6 +93,30 @@ export interface AiUsageStore {
   /** The capability's newest "cap reached" record in the Market, or null. Read-only unit. */
   lastCapReached(market: MarketContext, capability: string): Promise<CapReached | null>;
 
+  /**
+   * The Market's calls from `since` (included) to `until` (excluded) per provider and model, the
+   * calls under `leaveOut` (the evaluation usage id) left out: their count, failures, later
+   * attempts, cost and latency counts at each bound of {@link LATENCY_BUCKETS_MS} (AI Gateway G5e,
+   * the scorecard; design section 8). Numbers only. Read-only unit is enough.
+   */
+  callTotalsByModel(
+    market: MarketContext,
+    since: Temporal.Instant,
+    until: Temporal.Instant,
+    leaveOut: string,
+  ): Promise<readonly ModelCallTotals[]>;
+
+  /**
+   * The Market's day rows from `from` to `to` (both included) per capability, `leaveOut` left
+   * out: calls and tokens (G5e, the change preview's monthly estimate). Read-only unit is enough.
+   */
+  tokenTotalsByCapability(
+    market: MarketContext,
+    from: Temporal.PlainDate,
+    to: Temporal.PlainDate,
+    leaveOut: string,
+  ): Promise<readonly CapabilityTokenTotals[]>;
+
   /** Deletes up to `limit` calls that occurred before `before`, oldest first; answers how many. */
   purgeCalls(market: MarketContext, before: Temporal.Instant, limit: number): Promise<number>;
 
@@ -203,4 +227,26 @@ export interface DayCost {
 export interface CapReached {
   readonly at: Temporal.Instant;
   readonly period: BudgetPeriod;
+}
+
+/** One model's calls over a window (G5e): numbers only, no text or caller. */
+export interface ModelCallTotals {
+  readonly provider: string;
+  readonly model: string;
+  readonly calls: number;
+  /** Calls whose outcome is not `ok`. */
+  readonly failures: number;
+  /** Calls sent as a later attempt of their run (attempt above 1): the model stood in. */
+  readonly laterAttempts: number;
+  readonly costMicroUsd: number;
+  /** Per bound of {@link LATENCY_BUCKETS_MS}, the calls that took at most that long. */
+  readonly atMostMs: readonly number[];
+}
+
+/** One capability's calls and tokens over a window of day rows (G5e). */
+export interface CapabilityTokenTotals {
+  readonly capability: string;
+  readonly calls: number;
+  readonly inputTokens: number;
+  readonly outputTokens: number;
 }

@@ -40,6 +40,7 @@ import { RunAiEvaluation } from '../src/modules/settings/application/use-cases/r
 import { CancelAiEvaluation } from '../src/modules/settings/application/use-cases/cancel-ai-evaluation.use-case';
 import { ViewAiPlaygroundSamples } from '../src/modules/settings/application/use-cases/view-ai-playground-samples.use-case';
 import { RunAiPlayground } from '../src/modules/settings/application/use-cases/run-ai-playground.use-case';
+import { ViewAiModelUsage } from '../src/modules/settings/application/use-cases/view-ai-model-usage.use-case';
 
 // The settings routes over HTTP: the real guards and controllers; the use cases are stubs, so this
 // proves the session, the panel population, Origin and CSRF, the closed body, the status of each
@@ -161,7 +162,9 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
           .overrideProvider(ViewAiPlaygroundSamples)
           .useValue(stub('view-playground-samples'))
           .overrideProvider(RunAiPlayground)
-          .useValue(stub('run-playground')),
+          .useValue(stub('run-playground'))
+          .overrideProvider(ViewAiModelUsage)
+          .useValue(stub('view-model-usage')),
     }));
     await app.get(SeedRoles).execute(testCallContext(marketOf(), 'system', 'settings-seed-01'), {});
     const ownerRole = [...fakes.roles.values()].find(
@@ -859,6 +862,49 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
     expect(cancelled.status).toBe(200);
     expect(cancelled.body).toEqual({ runId });
 
+    // G5e: the usage of the last 30 days, numbers only.
+    const usage = {
+      from: '2026-10-05',
+      to: '2026-11-03',
+      days: 30,
+      families: [
+        {
+          family: 'model-fast',
+          provider: 'anthropic',
+          calls: 1000,
+          failures: 20,
+          stoodIn: 3,
+          costMicroUsd: 4_000_000,
+          p95: { bound: 2000, above: false },
+          evaluation: { passed: 1, of: 2 },
+        },
+      ],
+      tasks: [
+        {
+          task: 'write',
+          calls: 1000,
+          inputTokens: 500_000,
+          outputTokens: 200_000,
+          costByFamily: [
+            { family: 'model-fast', costMicroUsd: 1_500_000 },
+            { family: 'model-balanced', costMicroUsd: null },
+          ],
+        },
+      ],
+    };
+    next = ok(usage);
+    const used = await call('get', `${base}/usage`, 'admin', session);
+    expect(used.status).toBe(200);
+    expect(used.headers['cache-control']).toBe('no-store');
+    expect(used.body).toEqual(usage);
+    // A seller session on the admin host is an anonymous actor to the usage read (Hassan L-3);
+    // the real access rule refuses it (the stub only records the actor).
+    const kindsBefore = actorKinds.length;
+    await http()
+      .get(`${base}/usage`)
+      .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...sessionOf('seller', 40) });
+    expect(actorKinds.slice(kindsBefore)).toEqual(['anonymous']);
+
     next = ok([{ capability: 'catalog.description-writer.admin', setVersion: 'p-1', samples: [] }]);
     expect((await call('get', `${base}/playground/samples`, 'admin', session)).status).toBe(200);
 
@@ -901,6 +947,8 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
       'view-evaluation',
       'run-evaluation',
       'cancel-evaluation',
+      'view-model-usage',
+      'view-model-usage',
       'view-playground-samples',
       'run-playground',
       'run-playground',
@@ -908,6 +956,6 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
     expect(calls[0]?.input).toEqual({ family: 'model-fast', cursor: undefined });
     expect(calls[4]?.input).toEqual(body);
     expect(calls[5]?.input).toEqual({ runId });
-    expect(calls[7]?.input).toEqual(play);
+    expect(calls[9]?.input).toEqual(play);
   });
 });
