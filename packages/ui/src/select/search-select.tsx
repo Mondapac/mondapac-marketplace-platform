@@ -149,6 +149,9 @@ export function SearchSelect(props: SearchSelectProps) {
   const trigger = useRef<HTMLButtonElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const popup = useRef<HTMLDivElement>(null);
+  // Inside a modal `<dialog>` (top layer, rest of the page inert) the list must be a child of
+  // that dialog, or it opens behind it where it cannot be seen or clicked.
+  const [host, setHost] = useState<HTMLElement | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const server = onSearch !== undefined;
 
@@ -195,6 +198,7 @@ export function SearchSelect(props: SearchSelectProps) {
       setPlace(null);
       return undefined;
     }
+    setHost(trigger.current?.closest('dialog') ?? null);
     const place = () => {
       const phone = window.matchMedia(SHEET_QUERY).matches;
       setSheet(phone);
@@ -495,7 +499,7 @@ export function SearchSelect(props: SearchSelectProps) {
                 {body}
               </div>
             </>,
-            document.body,
+            host ?? document.body,
           )
         : null}
     </div>
