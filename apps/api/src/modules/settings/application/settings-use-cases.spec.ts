@@ -1483,6 +1483,25 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         expect(await chat()).toEqual({ day: 900_000_000, month: null });
       });
 
+      it('lets a revert leave the day cap above the month cap: advisory, never blocking a rejected review (Hassan L3)', async () => {
+        proofLeft = true;
+        expect((await limits({ changes: [cap(DAY, '4000000'), cap(MONTH, '4000000')] })).ok).toBe(
+          true,
+        );
+        expect((await limits({ changes: [cap(MONTH, '10000000', 1)] })).ok).toBe(true);
+        expect((await limits({ changes: [cap(DAY, '8000000', 1)] })).ok).toBe(true);
+        // The reviewer rejects the month raise: the month goes back to 4 000 000 below the day.
+        const reverted = await new SettingsReverter(deps).revert(adminCtx(), {
+          requestId: id<'SystemRequest'>(0x5e4),
+          subjectRef: MONTH,
+          before: { value: '4000000' },
+          after: { value: '10000000' },
+        });
+        expect(reverted).toBe('reverted');
+        // Both caps reach the gateway, each enforced on its own line (ai-usage.spec).
+        expect(await chat()).toEqual({ day: 8_000_000, month: 4_000_000 });
+      });
+
       it('reads an invalid stored value as 0 (nothing allowed)', async () => {
         store.rows.set(`${market.marketId}/${MONTH}`, {
           code: MONTH,

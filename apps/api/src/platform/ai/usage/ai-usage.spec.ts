@@ -185,6 +185,16 @@ describe.each([
     expect(store.counterOf(market, monthKey)).toBeUndefined();
   });
 
+  it('enforces each line on its own when a revert left the day cap above the month cap (Hassan L3)', async () => {
+    const { usage } = setUp();
+    const caps = chatCaps(1000, 400);
+    expect(await usage.reserve(market, SCOPE, caps, 500, TTL)).toBe('over-budget');
+    expect(await usage.capabilityCapFull(market, CHAT, caps, 500)).toBe('month');
+    const fits = await usage.reserve(market, SCOPE, caps, 400, TTL);
+    expect(fits).not.toBe('over-budget');
+    expect(await usage.reserve(market, SCOPE, caps, 1, TTL)).toBe('over-budget');
+  });
+
   it('answers no full cap when the capability has none of its own', async () => {
     const { usage } = setUp();
     expect(

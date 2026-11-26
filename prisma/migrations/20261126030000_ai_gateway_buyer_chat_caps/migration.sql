@@ -3,16 +3,11 @@
 -- `ai-cap-buyer-chat-day` and `ai-cap-buyer-chat-month` (US micro-dollars), and every capability
 -- gets a month counter. Every step can run again after a failure part way through and adds
 -- nothing twice. The assistant's cap columns stay (FE-20261126-ai-gateway-drop-assistant-cap-columns).
-SET lock_timeout = '5s';
+-- A blocked statement fails fast (as USAGE_LOCK_TIMEOUT_MS, 1 s) instead of queueing behind the
+-- reservation traffic; a retry runs every step again.
+SET lock_timeout = '1s';
 
--- 1. A reservation says whether it held its capability's month counter. New reservations always
---    do; the ones made by a release before G4d2 (still running during the rollout) did not, and
---    their settle and sweep must leave that counter alone. Adding a column with a constant
---    default rewrites nothing.
-ALTER TABLE "platform"."ai_budget_reservations"
-  ADD COLUMN IF NOT EXISTS "capability_month" BOOLEAN NOT NULL DEFAULT false;
-
--- 2. Each Market's assistant caps, as the gateway's settings, where they differ from the
+-- 1. Each Market's assistant caps, as the gateway's settings, where they differ from the
 --    settings' defaults (10000000 and 200000000 micro-dollars, the assistant's former defaults of
 --    1000 and 20000 cents): a Market that kept the defaults gets no row and is capped by the
 --    definition's default. The value is the latest assistant settings version's, cents x 10000.
@@ -62,18 +57,29 @@ SELECT "market_id", "tenant_id", "code", 1, NULL, "value", "changed_at", "change
   FROM "copied"
 ON CONFLICT ("market_id", "code", "version") DO NOTHING;
 
--- 3. The capability month counters, from the capability day counters of each month (a day row's
+-- 2. The capability month counters, from the capability day counters of each month (a day row's
 --    period_start is already the Market's day, so its month is the Market's month: no time zone
 --    is needed here, ADR-0005). Every capability, as every new reservation holds its month line.
---    `held` includes what in-flight reservations of the old release hold; their settle leaves the
---    month row, so a few estimates stay held there this month (over-counts, never under-counts).
+--    During the rollout the month counter is not exact, both ways (accepted, rollout window only;
+--    no reconcile job): `held` includes what in-flight reservations of the old release hold, and
+--    their settle leaves the month row, so those estimates stay held there this month (over-count);
+--    reservations old pods make after this backfill land on the day rows only, so the month row
+--    misses their cost (under-count) until the old pods are gone.
 --    ON CONFLICT DO NOTHING: a re-run, or a month the new release already counted, is kept.
 INSERT INTO "platform"."ai_budget_counters"
        ("market_id", "tenant_id", "period", "period_start", "scope", "scope_key",
         "held_micro_usd", "spent_micro_usd")
-SELECT "market_id", "tenant_id", 'month', date_trunc('month', "period_start")::date,
+SELECT "market_id", "tenant_id", 'month', date_trunc('month', "period_start"::timestamp)::date,
        'capability', "scope_key", SUM("held_micro_usd"), SUM("spent_micro_usd")
   FROM "platform"."ai_budget_counters"
  WHERE "scope" = 'capability' AND "period" = 'day'
- GROUP BY "market_id", "tenant_id", date_trunc('month', "period_start"), "scope_key"
+ GROUP BY "market_id", "tenant_id", date_trunc('month', "period_start"::timestamp), "scope_key"
 ON CONFLICT ("market_id", "period_start", "period", "scope", "scope_key") DO NOTHING;
+
+-- 3. A reservation says whether it held its capability's month counter. New reservations always
+--    do; the ones made by a release before G4d2 (still running during the rollout) did not, and
+--    their settle and sweep must leave that counter alone. Adding a column with a constant
+--    default rewrites nothing. Last, so its exclusive lock on the busy
+--    reservations table is held only for this statement; nothing above needs the column.
+ALTER TABLE "platform"."ai_budget_reservations"
+  ADD COLUMN IF NOT EXISTS "capability_month" BOOLEAN NOT NULL DEFAULT false;

@@ -280,9 +280,21 @@ number so the partner team can work in parallel (G6).
   version, no note) only where they differ from the defaults, and fills the capability month
   counters from the day counters (`ON CONFLICT DO NOTHING`, rerunnable); its `down.sql` removes
   the two settings' rows and history, the capability month counters and the column. During the
-  rollout, reservations of old pods are not on the month counter, and the few in flight when the
-  migration ran stay held there for that month (over-counts, never under-counts). The assistant's
-  cap columns stay (FE-20261126-ai-gateway-drop-assistant-cap-columns).
+  rollout the month counter is not exact both ways (accepted, rollout window only, no reconcile
+  job; Mojtaba, PR 1374): the few reservations in flight when the backfill ran stay held there
+  for that month (over-count), and reservations old pods make after the backfill land on the day
+  rows only, so the month counter misses their cost (under-count) until the old pods are gone.
+  The column is added last in the migration (its lock is held briefly; `lock_timeout` 1 s). The
+  `down.sql` runs in one transaction and never loosens a cap silently (Hassan, PR 1374 L1): a
+  gateway cap stricter than the assistant's latest value is first carried back as a new assistant
+  settings version (floor of micro-dollars / 10000 cents; below the column's 100-cent minimum it
+  is carried as 100, the strictest the CHECK allows); a looser cap saved on the gateway page after
+  the migration is lost on rollback. **Advisory day-not-above-month** (Hassan L3): the Limits tab
+  refuses a day cap above the month cap, but a revert of a rejected review is never blocked and
+  can leave that pair; the gateway enforces the day line and the month line independently on every
+  call, so the stricter one holds. The settings side of the data move is in
+  docs/modules/settings/notes.md. The assistant's cap columns stay
+  (FE-20261126-ai-gateway-drop-assistant-cap-columns).
 
 ## 8. Admin panel: «AI Models» and gateway settings
 

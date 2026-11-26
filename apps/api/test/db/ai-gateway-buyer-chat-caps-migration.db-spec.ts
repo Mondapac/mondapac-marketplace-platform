@@ -267,4 +267,55 @@ describe('AI Gateway buyer chat caps migration (database integration, G4d2)', ()
       code: '23001',
     });
   });
+
+  it('carries a stricter gateway cap back to the assistant before deleting it (down, Hassan L1)', async () => {
+    // After the migration an admin lowered the first Market's day cap below US$1 and its month cap
+    // on the AI Gateway page, and lifted the second Market's month cap (none: looser, not carried).
+    await owner.query(
+      `UPDATE settings.market_settings SET value = $3, version = version + 1,
+              updated_by_account_id = $4, updated_at = now()
+        WHERE market_id = $1 AND code = $2`,
+      [first, 'ai-cap-buyer-chat-day', '30000', ADMIN],
+    );
+    await owner.query(
+      `UPDATE settings.market_settings SET value = '50000000', version = version + 1
+        WHERE market_id = $1 AND code = 'ai-cap-buyer-chat-month'`,
+      [first],
+    );
+    await owner.query(
+      `INSERT INTO settings.market_settings
+         (market_id, tenant_id, code, value, version, updated_at, updated_by_account_id)
+       VALUES ($1, 'mondapac', 'ai-cap-buyer-chat-month', 'none', 1, now(), $2)`,
+      [second, ADMIN],
+    );
+    const versions = async (market: string) =>
+      (
+        await owner.query<Record<string, unknown>>(
+          `SELECT version, daily_spend_cap_usd_cents AS day, monthly_spend_cap_usd_cents AS month,
+                  enabled, audience, users, retention, changed_by::text AS by
+             FROM assistant.settings WHERE market_id = $1 ORDER BY version`,
+          [market],
+        )
+      ).rows;
+    await down();
+    // 3 cents is below the column's CHECK minimum: carried as 100 cents, the strictest it allows.
+    expect((await versions(first)).at(-1)).toEqual({
+      version: 3,
+      day: 100,
+      month: 5000,
+      enabled: true,
+      audience: 'all',
+      users: 'guests-and-customers',
+      retention: '30-days',
+      by: ADMIN,
+    });
+    expect(await versions(second)).toHaveLength(1);
+    expect(await settingRows()).toEqual([]);
+    // Up again copies the carried values.
+    await up();
+    expect((await settingRows()).map((row) => [row.market_id, row.code, row.value])).toEqual([
+      [first, 'ai-cap-buyer-chat-day', '1000000'],
+      [first, 'ai-cap-buyer-chat-month', '50000000'],
+    ]);
+  });
 });
