@@ -979,6 +979,16 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', `${writer}/drafts`)).status).toBe(404);
     expect((await call('PUT', `${writer}/model-setup`)).status).toBe(404);
     expect((await call('POST', `${writer}/model-setup`)).status).toBe(404);
+    const gateway = 'settings/admin/ai-gateway';
+    expect((await read(gateway)).status).toBe(200);
+    expect((await read(`${gateway}/history`)).status).toBe(200);
+    for (const part of ['limits', 'emergency-stop', 'capabilities']) {
+      expect((await call('PUT', `${gateway}/${part}`)).status).toBe(200);
+      expect((await call('POST', `${gateway}/${part}`)).status).toBe(404);
+    }
+    expect((await call('POST', `${gateway}/revert`)).status).toBe(200);
+    expect((await call('PUT', `${gateway}/revert`)).status).toBe(404);
+    expect((await call('PUT', gateway)).status).toBe(404);
     expect((await read('settings/admin/ai')).status).toBe(200);
     expect((await call('PUT', 'settings/admin/ai')).status).toBe(200);
     expect((await call('POST', 'settings/admin/ai')).status).toBe(404);

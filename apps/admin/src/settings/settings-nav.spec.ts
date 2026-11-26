@@ -17,7 +17,7 @@ describe('settings map', () => {
         ['catalogue', ['/settings/offer-review', '/settings/emergency-stop']],
         ['money', ['/settings/tax', '/settings/wallet', '/settings/refund-limits']],
         ['marketing', ['/settings/promotions']],
-        ['ai', ['/settings/assistant', '/settings/ai']],
+        ['ai', ['/settings/assistant', '/settings/ai', '/settings/ai-gateway']],
         ['privacy', ['/settings/account-deletion', '/settings/ship-to-retention']],
         ['people', ['/settings/admins', '/settings/roles', '/settings/review-policy']],
       ],
@@ -35,6 +35,7 @@ describe('settings map', () => {
       'refund-limits',
       'lists',
       'ai',
+      'ai-gateway',
       'promotions',
     ];
     for (const id of [...renamed, 'review-policy']) {
@@ -83,6 +84,7 @@ describe('settings map', () => {
     expect(keys('ship-to-retention')).toEqual(['ordering.ship-to-retention.view']);
     expect(keys('lists')).toEqual(['settings.list-paging.view']);
     expect(keys('ai')).toEqual(['settings.ai.view']);
+    expect(keys('ai-gateway')).toEqual(['settings.ai-gateway.view']);
     expect(keys('wallet')).toEqual(['wallet.settings.view']);
     expect(keys('tax')).toEqual(['tax.strategy.view']);
     expect(keys('refund-limits')).toEqual(['ordering.refund-limits.view']);
@@ -95,7 +97,7 @@ describe('settings map', () => {
       'settings.offer-review.view',
       'settings.offer-review.emergency-stop',
     ]);
-    expect(settingsViewKeys).toHaveLength(19);
+    expect(settingsViewKeys).toHaveLength(20);
   });
 
   it('finds a link with its group, and nothing for an unknown id', () => {
@@ -115,7 +117,7 @@ describe('visibleSettings', () => {
       ['catalogue', ['offer-review', 'emergency-stop']],
       ['money', ['tax', 'wallet', 'refund-limits']],
       ['marketing', ['promotions']],
-      ['ai', ['assistant', 'ai']],
+      ['ai', ['assistant', 'ai', 'ai-gateway']],
       ['privacy', ['account-deletion', 'ship-to-retention']],
       ['people', ['admins', 'roles', 'review-policy']],
     ]);

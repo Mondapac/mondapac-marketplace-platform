@@ -538,6 +538,15 @@ settings/admin/ai-gateway/emergency-stop` (protected key `settings.ai-gateway.ma
   (FE-20261126-ai-gateway-panel-switches-history); the list is capped at 50 rows by the server and
   is not a super list. No migration in G4d3: step-up actions are declared in code.
 
+- **Built in G5a (admin page Settings > AI Gateway, `/settings/ai-gateway`).** Emergency stop (a
+  note is always sent), the three capability switches, the eight caps (typed in US dollars, saved
+  as micro-dollars; `none` allowed except for evaluations) and the history of one setting at a
+  time with a restore. The step-up dialog asks in place; the page never decides what needs a code.
+  The history is a plain list of at most 50 rows (the server cap), not a super list: this is
+  stated on the page; whether it must become one is the owner's open question. The history of the
+  model lists (`ai-models/history`) comes with G5b. Files: `apps/admin/src/ai-gateway/`,
+  `apps/admin/app/(shell)/settings/ai-gateway/`, BFF allow-list, settings navigation, help, i18n.
+
 ## 9. Security (Hassan)
 
 - **Keys** live in the environment's secret manager, one per provider and Market, plus separate keys
