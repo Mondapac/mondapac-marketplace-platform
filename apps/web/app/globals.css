@@ -5682,6 +5682,20 @@ svg {
   align-content: start;
   min-width: 0;
 }
+/* The whole right column (summary and help) sticks as one, so the summary never slides over
+   the help card; it scrolls on its own when the viewport is shorter than the column. */
+@media (min-width: 1000px) {
+  .ckside {
+    position: sticky;
+    top: calc(var(--sf-header-height) + 16px);
+    align-self: start;
+    max-height: calc(100vh - var(--sf-header-height) - 32px);
+    overflow-y: auto;
+  }
+  .ckside > .cs.stick {
+    position: static;
+  }
+}
 .cks2 {
   display: flex;
   justify-content: space-between;
