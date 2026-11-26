@@ -725,6 +725,27 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
       );
     });
 
+    it('answers a sampled and an unsampled submit byte for byte the same (Hassan L1)', async () => {
+      await boot();
+      await seeded(code);
+      const answers: { status: number; type: unknown; store: unknown; text: string }[] = [];
+      for (const samplingPercent of [100, 0]) {
+        reviewSettings = { ...REVIEW_OFF, samplingPercent };
+        offer = Offer.restore(offerState());
+        const response = await route('post', '/submit', sessionOf(code)).send();
+        answers.push({
+          status: response.status,
+          type: response.headers['content-type'],
+          store: response.headers['cache-control'],
+          text: response.text,
+        });
+      }
+      // The first was drawn (a row opened), the second not; the seller sees no difference.
+      expect(postReviews.ofOffer(OFFER).map((row) => row.reasons)).toEqual([['sample']]);
+      expect(answers[0]).toEqual(answers[1]);
+      expect(answers[0]!.text).toBe('{"published":true}');
+    });
+
     it('answers 422 without handling and 409 for an Offer that is not a draft, storing nothing', async () => {
       await boot();
       await seeded(code);

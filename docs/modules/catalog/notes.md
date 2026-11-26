@@ -447,5 +447,30 @@ Built from `/mnt/project-files/handoffs/offer-approval-6-spec.md`.
   `sellerId`, `categoryId`, `q`).
 - **Audit actions:** `catalog.offer.post-review-approved`, `catalog.offer.taken-down`,
   `catalog.seller-review.trust-revoked`. The note is never audited or logged.
+- **Indexes and guards (review fixes).**
+  - The list has `(market, opened_at, id)`, `(market, seller, opened_at, id)` and
+    `(market, status, seller)`. The decided sort uses a partial index on
+    `(market, status, decided_at, opened_at, id) WHERE status <> 'open'`, so `nulls last` is
+    sent only when no status filter is set.
+  - A CHECK ties the source to the reason: `sample` takes `offer-version:N`, a price reason a
+    record id.
+  - The reasons guard accepts a row only for an open review of the same Offer that carries
+    that reason.
+  - `product_id` is not bound to the Offer's product by a key. An Offer's product can change
+    (offer-moved), so the row keeps the product at the time it opened.
+- **Approve and bulk approve** refuse any Login-as-Seller session (`access.denied`), as the
+  take-down does. The bulk name read is one query.
+- **Misconduct revocation** stamps the instant after the standing lock. If a racing take-down
+  already stamped a later or equal `trustLostAt`, it uses that plus 1 ms, so the second
+  take-down never fails.
+- **Sample timing (Hassan L1).** The sample stays in the submit unit; a sampled and an
+  unsampled submit answer byte for byte the same (e2e). The residual risk: the sample write
+  adds a few queries, and its rare failure (guard window, three lost races) fails the whole
+  submit. A seller could, with statistics, tell a sampled submit by its time or by a retry.
+  Moving the open to a catalog outbox event would remove this; it is not done now.
+- **Carry (Hassan L3).** The own-submission rule reads only the Offer's submit history, not
+  the admin behind a pricing record. With SEL-08 an admin acting as the seller could set a
+  price and approve its price row. It must close before SEL-08:
+  FE-20261126-post-review-price-author-own-submission.
 - **Deferred:** the price and median column on the list (catalog stores codes only; pricing's
   read would need a facade for it), FE-20261125-post-review-price-column.

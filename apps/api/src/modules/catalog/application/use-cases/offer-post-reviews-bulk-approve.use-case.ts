@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import { isActingAsSession } from '../acting-as';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_PRODUCT_APPROVE } from '../../contracts/permissions';
@@ -40,7 +41,7 @@ const SKIPPED = new Set(['post-review.own-submission']);
 /**
  * `catalog.offer-post-reviews-bulk-approve` (risk-based Offer approval slice 6): an admin approves
  * up to 50 open rows of the post-publication list at once. Rule: `catalog.product.approve` and the
- * admin population. Body `{ items: [{ id, version }] }` (closed; 1 to 50, no id twice). Each row
+ * admin population; refused whole in any Login-as-Seller session (`access.denied`). Body `{ items: [{ id, version }] }` (closed; 1 to 50, no id twice). Each row
  * runs the single approve use case in its own unit (its gate, version check and no-self-decision
  * rule), one after the other; a row that is not decidable now (`post-review.not-open`,
  * `post-review.not-found`, `conflict.stale`, `post-review.own-submission`) is `skipped` with its
@@ -76,6 +77,8 @@ export class AdminOfferPostReviewsBulkApprove extends UseCase<
     if (actor.kind !== 'authenticated' || actor.population !== 'admin') {
       return err({ code: 'access.denied' });
     }
+    // Never from a Login-as-Seller session (Hassan N2): refused whole, before any row.
+    if (isActingAsSession(actor)) return err({ code: 'access.denied' });
     const items = parseBulkItems(input?.items);
     if (!items.ok) return items;
     const done = await runBulkDecide(items.value, (item) =>
@@ -120,14 +123,10 @@ export class AdminOfferPostReviewsBulkApprove extends UseCase<
         market,
         async () => {
           const names = new Map<string, string>();
-          const reviews = [];
-          for (const id of ids) {
-            const review = await deps.postReviews.findById(
-              market,
-              id.toLowerCase() as Id<'OfferPostReview'>,
-            );
-            if (review !== null) reviews.push(review);
-          }
+          // One statement for the batch (Mojtaba L5).
+          const reviews = await deps.postReviews.findManyByIds(market, [
+            ...new Set(ids.map((id) => id.toLowerCase())),
+          ] as Id<'OfferPostReview'>[]);
           const offers = await deps.offers.findManyByIds(
             market,
             reviews.map((review) => review.state.offerId),

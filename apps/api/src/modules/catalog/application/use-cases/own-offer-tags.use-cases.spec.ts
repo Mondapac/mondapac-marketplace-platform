@@ -1,4 +1,7 @@
-import { memoryOfferEditReview } from '../../../../../test/support/catalog-offer-edit-review-fakes';
+import {
+  InMemoryOfferPendingChanges,
+  memoryOfferEditReview,
+} from '../../../../../test/support/catalog-offer-edit-review-fakes';
 import {
   fixedSampler,
   InMemoryOfferPostReviews,
@@ -37,6 +40,7 @@ import type { CheckClaimText } from '../claim-text/check-claim-text.service';
 import type { AuditEntry } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type {
+  OfferReviewInputs,
   OfferReviewFactsRead,
   OfferReviewReferral,
   OfferReviewSettings,
@@ -47,6 +51,13 @@ import { OwnOfferAddTag } from './own-offer-add-tag.use-case';
 import { OwnOfferRemoveTag } from './own-offer-remove-tag.use-case';
 import { OwnOfferRemoveSuspendedTag } from './own-offer-remove-suspended-tag.use-case';
 import { OwnOfferSubmit } from './own-offer-submit.use-case';
+import { OwnOfferEdit } from './own-offer-edit.use-case';
+import { AdminOfferPostReviewTakeDown } from './offer-post-review-take-down.use-case';
+import { OfferPostReview } from '../../domain/offer-post-review';
+import { FacadeOfferReviewInputs } from '../../infrastructure/facade-offer-review-inputs';
+import { ConfigCatalogMarketPolicy } from '../../infrastructure/config-catalog-market-policy';
+import type { SettingsFacade } from '../../../settings';
+import { FLAGS_OFF } from '../../../../../test/support/catalog-seller-review-fakes';
 
 // Certification tags on a seller's own Offer (catalog design 5.1 to 5.3, 5.1a point 6; CERT-21;
 // AC 7 to 9, 14, 15): `own-offer.add-tag`, `own-offer.remove-tag` and the `requestedTags` of
@@ -142,6 +153,10 @@ describe.each([
       referralFails?: boolean;
       /** The sampler's fixed bucket (default 9999, never drawn under 100%), or a throw. */
       bucket?: number | 'throw';
+      /** The post-publication rows (shared with a take-down in the same test). */
+      postReviews?: InMemoryOfferPostReviews;
+      /** The review inputs in place of the fixed fake (the real facade adapter). */
+      reviewInputs?: OfferReviewInputs;
     } = {},
   ) {
     let current: { state: OfferState; tags: readonly OfferTagState[] } | null =
@@ -252,7 +267,7 @@ describe.each([
     } as unknown as CheckClaimText;
     const probationStandings = new InMemorySellerReviewStandings();
     const sampler = fixedSampler(options.bucket ?? 9999);
-    const postReviews = new InMemoryOfferPostReviews();
+    const postReviews = options.postReviews ?? new InMemoryOfferPostReviews();
     const submit = new OwnOfferSubmit(gate, {
       unitOfWork,
       offers,
@@ -260,7 +275,7 @@ describe.each([
       eligibility,
       allowedTypes: { allowedFor: () => Promise.resolve('all' as const) },
       check,
-      reviewInputs: {
+      reviewInputs: options.reviewInputs ?? {
         settings: () =>
           options.reviewInputsFail === true
             ? Promise.reject(new Error('settings down'))
@@ -318,6 +333,9 @@ describe.each([
       probationStandings,
       sampler,
       postReviews,
+      unitOfWork,
+      offers,
+      check,
     };
   }
 
@@ -576,6 +594,109 @@ describe.each([
           after: expect.objectContaining({ outcome: 'published', reasons: [] }) as unknown,
         }),
       ]);
+    });
+
+    it('sends an Offer taken down after publication to full review when it is resubmitted (R6, chained)', async () => {
+      // One store of post-publication rows behind the take-down and the real review inputs.
+      const postReviews = new InMemoryOfferPostReviews();
+      const directUnit = {
+        run: (_m: MarketContext, body: () => Promise<unknown>) => body(),
+      } as unknown as UnitOfWork;
+      const reviewInputs = new FacadeOfferReviewInputs({
+        settings: {
+          offerReviewPolicy: () =>
+            Promise.resolve({
+              mode: 'risk-based',
+              probationOffers: 10,
+              referenceSellers: 3,
+              priceBandPercent: 50,
+              samplingPercent: 0,
+              certificateBadges: 'automatic',
+              emergencyStop: false,
+            }),
+        } as unknown as SettingsFacade,
+        sellerFlags: {
+          flagsOf: () => Promise.resolve({ ...FLAGS_OFF, trustedFromStart: { on: true, at: T0 } }),
+        },
+        unitOfWork: directUnit,
+        standings: new InMemorySellerReviewStandings(),
+        categoryFlags: {
+          listFlagged: () => Promise.resolve([]),
+          publishedCategoryIds: () => Promise.resolve([]),
+        } as never,
+        categoryPaths: { livePaths: () => Promise.resolve([]) } as never,
+        postReviews,
+      });
+      const r = rig({ offer: offerState(), postReviews, reviewInputs });
+      // An open post-publication row of the live Offer.
+      const opened = OfferPostReview.open({
+        id: ids.next<'OfferPostReview'>(),
+        marketId: code as MarketId,
+        offerId: r.offerId,
+        sellerId,
+        productId: r.current()!.state.productId,
+        reason: 'price-no-reference',
+        now: T0,
+      });
+      if (!opened.ok) throw new Error(opened.error.code);
+      postReviews.rows.set(opened.value.state.id, opened.value.state);
+
+      // 1. An admin takes it down: changes needed.
+      const takeDown = new AdminOfferPostReviewTakeDown(gate, {
+        unitOfWork: r.unitOfWork,
+        postReviews,
+        offers: r.offers,
+        pendingChanges: new InMemoryOfferPendingChanges(),
+        editReview: memoryOfferEditReview({ ids }).review,
+        probation: memoryProbation().probation,
+        audit: { record: () => Promise.resolve() },
+        outbox: r.outbox,
+        clock,
+      });
+      expect(
+        await takeDown.execute(contextOf('admin'), {
+          id: opened.value.state.id,
+          version: 1,
+          reasonCode: 'description-claim',
+          misconduct: false,
+          note: 'Claims a certificate',
+        }),
+      ).toMatchObject({ ok: true, value: { status: 'taken-down' } });
+      expect(r.current()!.state.status).toBe('changes-needed');
+
+      // 2. The seller edits it: back to draft.
+      const policy = new ConfigCatalogMarketPolicy(markets);
+      const edit = new OwnOfferEdit(gate, {
+        unitOfWork: r.unitOfWork,
+        offers: r.offers,
+        eligibility: { isEligible: () => Promise.resolve(true) },
+        check: r.check,
+        save: { reserveSaves: () => Promise.resolve(null) },
+        policy,
+        claims: r.claims,
+        evaluator: new FakeClaimEvaluator(
+          (query) => allowedDecision(query, certificate),
+          [typeCode],
+        ),
+        outbox: r.outbox,
+        clock,
+        editReview: memoryOfferEditReview({ ids }).review,
+      });
+      const edited = await edit.execute(contextOf('seller'), {
+        offerId: r.offerId,
+        sellerSku: 'SKU-1',
+        conditionCode: 'new',
+        description: { [policy.locales(market).default]: 'Fresh dates, no claims' },
+      });
+      expect(edited.ok).toBe(true);
+      expect(r.current()!.state.status).toBe('draft');
+
+      // 3. The resubmit reads the take-down: full review (R6), queued, never published at once,
+      // although the seller is Trusted from start and nothing else asks for review.
+      const outcome = await r.submit.execute(contextOf('seller'), { offerId: r.offerId });
+      expect(outcome).toEqual({ ok: true, value: { published: false } });
+      expect(r.current()!.state.status).toBe('pending-first-publish');
+      expect(r.referrals.at(-1)?.reasons).toEqual(['full-review']);
     });
 
     describe('the post-publication sample (risk-based Offer approval slice 6)', () => {

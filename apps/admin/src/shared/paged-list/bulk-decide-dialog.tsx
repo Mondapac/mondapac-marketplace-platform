@@ -53,6 +53,7 @@ export function BulkDecideDialog({
   ready = true,
   confirmVariant = 'destructive-solid',
   sendAction = true,
+  doneTitle,
   csrfToken,
   onClose,
   onFinished,
@@ -88,6 +89,8 @@ export function BulkDecideDialog({
    * post-publication bulk approve) takes closed bodies without it: pass false.
    */
   readonly sendAction?: boolean;
+  /** The answer's title from its counts ("2 approved, 1 skipped"); default "Decision made". */
+  readonly doneTitle?: (counts: BulkCounts) => string;
   readonly csrfToken: string;
   /** Closed without a decision, or after the answer was read. */
   readonly onClose: () => void;
@@ -164,7 +167,9 @@ export function BulkDecideDialog({
     <Dialog
       open
       size="form"
-      title={counts === null ? title : t('done.title')}
+      title={
+        counts === null ? title : doneTitle === undefined ? t('done.title') : doneTitle(counts)
+      }
       onClose={() => {
         if (!pending) onClose();
       }}

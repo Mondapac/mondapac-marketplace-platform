@@ -169,6 +169,17 @@ export class PrismaOfferPostReviewRepository implements OfferPostReviewRepositor
     return row === null ? null : reviewOf(row);
   }
 
+  async findManyByIds(
+    market: MarketContext,
+    ids: readonly Id<'OfferPostReview'>[],
+  ): Promise<readonly OfferPostReview[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.tx(market).catalogOfferPostReview.findMany({
+      where: { marketId: market.marketId, id: { in: [...ids] } },
+    });
+    return rows.map(reviewOf);
+  }
+
   async everTakenDown(market: MarketContext, offerId: Id<'Offer'>): Promise<boolean> {
     const row = await this.prisma.tx(market).catalogOfferPostReview.findFirst({
       where: { marketId: market.marketId, offerId, status: 'taken-down' },
@@ -187,7 +198,12 @@ export class PrismaOfferPostReviewRepository implements OfferPostReviewRepositor
       orderBy:
         page.sort === 'decided'
           ? [
-              { decidedAt: { sort: page.direction, nulls: 'last' } },
+              // In a status tab decided_at is never null (or always null, open), so the plain
+              // order lets `offer_post_reviews_decided_idx` serve it; only "All" mixes open rows
+              // in and puts them last (Mojtaba M1).
+              filter.status === undefined
+                ? { decidedAt: { sort: page.direction, nulls: 'last' as const } }
+                : { decidedAt: page.direction },
               { openedAt: page.direction },
               { id: page.direction },
             ]

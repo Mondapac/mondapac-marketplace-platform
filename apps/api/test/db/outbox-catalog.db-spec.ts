@@ -122,6 +122,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   'catalog.offer_pending_changes_open_offer_key':
     "CREATE UNIQUE INDEX offer_pending_changes_open_offer_key ON catalog.offer_pending_changes USING btree (market_id, offer_id) WHERE (status = 'pending'::text)",
   // Slice 6: one open post-publication review row per Offer.
+  'catalog.offer_post_reviews_decided_idx':
+    "CREATE INDEX offer_post_reviews_decided_idx ON catalog.offer_post_reviews USING btree (market_id, status, decided_at, opened_at, id) WHERE (status <> 'open'::text)",
   'catalog.offer_post_reviews_open_offer_key':
     "CREATE UNIQUE INDEX offer_post_reviews_open_offer_key ON catalog.offer_post_reviews USING btree (market_id, offer_id) WHERE (status = 'open'::text)",
   'catalog.offer_review_referrals_pending_change_id_key':

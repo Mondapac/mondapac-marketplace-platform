@@ -3,8 +3,9 @@
 -- (catalog.offer_post_review_reasons, the idempotency key of the referrals from pricing and of a
 -- sample). New tables are empty; no backfill. A held edit may be superseded by a take-down
 -- (`taken-down`); offer_pending_changes is small, so its CHECK is replaced valid in one short lock.
--- Lock order of the units: the Offer row, then the post-review row, then the held change, then
--- the seller's standing.
+-- Lock order of the units: the Offer row first (the take-down and the submit both lock it before
+-- anything else); after it the order of the rest does not matter, because the Offer lock
+-- serializes them (the refer and the approve lock one post-review row only).
 SET lock_timeout = '5s';
 SET statement_timeout = '60s';
 
@@ -47,6 +48,15 @@ CREATE TABLE "catalog"."offer_post_review_reasons" (
 
 -- CreateIndex
 CREATE INDEX "offer_post_reviews_market_id_status_opened_at_id_idx" ON "catalog"."offer_post_reviews"("market_id", "status", "opened_at", "id");
+
+-- CreateIndex
+CREATE INDEX "offer_post_reviews_market_id_opened_at_id_idx" ON "catalog"."offer_post_reviews"("market_id", "opened_at", "id");
+
+-- CreateIndex
+CREATE INDEX "offer_post_reviews_market_id_seller_id_opened_at_id_idx" ON "catalog"."offer_post_reviews"("market_id", "seller_id", "opened_at", "id");
+
+-- CreateIndex
+CREATE INDEX "offer_post_reviews_market_id_status_seller_id_idx" ON "catalog"."offer_post_reviews"("market_id", "status", "seller_id");
 
 -- CreateIndex
 CREATE INDEX "offer_post_reviews_market_id_offer_id_idx" ON "catalog"."offer_post_reviews"("market_id", "offer_id");
@@ -104,6 +114,10 @@ ALTER TABLE "catalog"."offer_post_reviews"
 -- At most one open row per Offer.
 CREATE UNIQUE INDEX "offer_post_reviews_open_offer_key"
   ON "catalog"."offer_post_reviews"("market_id", "offer_id") WHERE "status" = 'open';
+-- The decided tabs sorted by the decision (decided_at is never null there).
+CREATE INDEX "offer_post_reviews_decided_idx"
+  ON "catalog"."offer_post_reviews"("market_id", "status", "decided_at", "opened_at", "id")
+  WHERE "status" <> 'open';
 
 -- Born open at version 1; while open only reasons are added (the old ones kept, each once) and
 -- the sample columns set with `sample`; decided once (open -> approved | taken-down); version +1
@@ -175,7 +189,10 @@ ALTER TABLE "catalog"."offer_post_review_reasons"
     ('sample', 'price-no-reference', 'price-reference-unavailable', 'price-recheck-outside')),
   -- A price record id, or `offer-version:<n>` for a sample.
   ADD CONSTRAINT "offer_post_review_reasons_source_ref_check" CHECK (
-    "source_ref" ~ '^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|offer-version:[1-9][0-9]{0,9})$');
+    "source_ref" ~ '^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|offer-version:[1-9][0-9]{0,9})$'),
+  -- A sample is keyed on the Offer version drawn; a price reason on its pricing record.
+  ADD CONSTRAINT "offer_post_review_reasons_source_kind_check" CHECK (
+    ("reason" = 'sample') = ("source_ref" LIKE 'offer-version:%'));
 
 CREATE FUNCTION "catalog"."offer_post_review_reasons_guard"() RETURNS trigger LANGUAGE plpgsql
   SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
@@ -183,6 +200,13 @@ BEGIN
   IF NEW.received_at < statement_timestamp() - interval '5 minutes'
      OR NEW.received_at > statement_timestamp() + interval '5 minutes' THEN
     RAISE EXCEPTION 'catalog.offer_post_review_reasons: received_at outside tolerance' USING ERRCODE = 'check_violation';
+  END IF;
+  -- A reason is received onto the open row that carries it (the unit writes the row first).
+  IF NOT EXISTS (
+    SELECT 1 FROM "catalog"."offer_post_reviews" r
+    WHERE r.market_id = NEW.market_id AND r.id = NEW.post_review_id AND r.offer_id = NEW.offer_id
+      AND r.status = 'open' AND NEW.reason = ANY (r.reasons)) THEN
+    RAISE EXCEPTION 'catalog.offer_post_review_reasons: the row is not open with this reason' USING ERRCODE = 'check_violation';
   END IF;
   RETURN NEW;
 END; $$;

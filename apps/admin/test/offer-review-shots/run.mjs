@@ -210,14 +210,14 @@ const views = {
         await dialog.getByRole('textbox').fill('Claims halal on the label without a certificate.');
       },
       filters: async (page) => {
-        await filterBy(page, [['Reason', 'Price: no reference']]);
+        await filterBy(page, [['Reason', 'Price: no comparison yet']]);
         await page.waitForTimeout(300);
       },
       'bulk-results': async (page) => {
         for (const name of ['Medjool dates 500 g', 'Lamb shoulder, halal', 'Tahini 450 g']) {
           await page.getByRole('checkbox', { name: `Select ${name}` }).click();
         }
-        await page.getByRole('button', { name: 'Bulk action' }).click();
+        await page.getByRole('button', { name: 'Actions', exact: true }).click();
         await page.getByRole('menuitem', { name: 'Approve ticked…' }).click();
         const dialog = page.getByRole('dialog', { name: 'Approve 3 offers?' });
         await dialog.getByRole('button', { name: 'Approve 3 offers' }).click();
@@ -226,10 +226,47 @@ const views = {
     },
   },
 };
+// The other states of the After publication tab, each a view of its own (`ONLY=after` takes them all).
+views['after-empty'] = {
+  url: '?view=after&state=empty',
+  ready: 'Nothing to check after publication.',
+  steps: { list: async () => undefined },
+};
+views['after-error'] = {
+  url: '?view=after&state=error',
+  ready: 'The offers could not be loaded. Check your connection and try again.',
+  steps: { list: async () => undefined },
+};
+views['after-loading'] = {
+  url: '?view=after&state=loading',
+  ready: 'Offer reviews',
+  steps: { list: async (page) => page.waitForTimeout(1500) },
+};
+views['after-many'] = {
+  url: '?view=after&state=many',
+  ready: 'Medjool dates 500 g',
+  steps: {
+    selection: async (page) => {
+      for (const name of ['Medjool dates 500 g', 'Tahini 450 g']) {
+        await page.getByRole('checkbox', { name: `Select ${name}` }).click();
+      }
+    },
+    'select-all': async (page) => {
+      await page
+        .getByRole('checkbox', { name: /Select all .*on this page/ })
+        .first()
+        .click();
+      await page.getByRole('button', { name: 'Select all 60 matching' }).click();
+      await page.getByText('All 60 matching offers are selected').first().waitFor();
+    },
+  },
+};
 const widths = (process.env.WIDTHS ?? '1280,375').split(',').map(Number);
 const scale = Number(process.env.SCALE ?? '2');
-for (const [view, { ready, steps }] of Object.entries(views)) {
-  if (process.env.ONLY && process.env.ONLY !== view) continue;
+for (const [view, { ready, steps, url }] of Object.entries(views)) {
+  if (process.env.ONLY && process.env.ONLY !== view && !view.startsWith(`${process.env.ONLY}-`)) {
+    continue;
+  }
   for (const scheme of ['light', 'dark']) {
     for (const width of widths) {
       for (const [step, act] of Object.entries(steps)) {
@@ -239,7 +276,7 @@ for (const [view, { ready, steps }] of Object.entries(views)) {
           deviceScaleFactor: scale,
         });
         const page = await ctx.newPage();
-        await page.goto(`http://localhost:${port}/?view=${view}`);
+        await page.goto(`http://localhost:${port}/${url ?? `?view=${view}`}`);
         await page.evaluate(
           (s) => globalThis.document.documentElement.setAttribute('data-theme', s),
           scheme,
@@ -256,7 +293,16 @@ for (const [view, { ready, steps }] of Object.entries(views)) {
           ...(step === 'header'
             ? { clip: { x: 0, y: 0, width, height: 160 } }
             : {
-                fullPage: ['list', 'card', 'table', 'filters', 'banner', 'all-view'].includes(step),
+                fullPage: [
+                  'list',
+                  'card',
+                  'table',
+                  'filters',
+                  'banner',
+                  'all-view',
+                  'selection',
+                  'select-all',
+                ].includes(step),
               }),
         });
         await ctx.close();

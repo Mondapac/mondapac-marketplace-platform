@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261126-super-list-phone-views-and-bulk-label",
+  "area": "admin",
+  "title": "نوار نماها، آیکون Manage filters و برچسب دکمهٔ Actions در super list",
+  "desc": "در عرض ۳۷۵ نوار نماهای super list آخرین نما (All) را محو نشان می‌دهد، آیکون Manage filters با دکمهٔ فیلتر یکی است، و دکمهٔ سرصفحه با انتخاب ردیف به «Bulk action» تغییر نمی‌کند. هر سه در packages/ui و برای همهٔ super listها یکجا درست شوند؛ چیدمان کارتی در ۷۶۸ و رنگ checkbox و scrim در حالت تیره هم از همان کتابخانه است.",
+  "src": "بازبینی برش ۶ تأیید Offer (رضا، UI/UX، موارد ۲ و ۴ و کم‌اهمیت)",
+  "date": "2026-11-26",
+  "trig": "همراه بازسازی بعدی اجزای لیست در packages/ui",
+  "prio": "پایین",
+  "status": "موکول"
+}

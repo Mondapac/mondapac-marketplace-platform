@@ -47,7 +47,7 @@ export function PostReviewDetail({
   readonly onDirtyChange?: (dirty: boolean) => void;
 }) {
   const t = useTranslations('offer-review.post.detail');
-  const te = useTranslations('offer-review.post.error');
+  const te = useTranslations('offer-review.post.decide-error');
   const tr = useTranslations('catalog.review');
   const locale = useLocale();
   const busy = useRef(false);
@@ -120,6 +120,17 @@ export function PostReviewDetail({
           <SafeText text={postReviewName(row)} />
         </h3>
         <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+          {/* The admin panel has no page of one Offer: the link opens its product, as Open does on
+              the Products list. */}
+          <dt className="text-fg-muted">{t('offer')}</dt>
+          <dd className="m-0 min-w-0 break-words">
+            <a
+              className="font-medium text-link underline focus-visible:outline-2 focus-visible:outline-focus"
+              href={`/catalog/products/${encodeURIComponent(row.product.id)}/edit`}
+            >
+              {t('offer-link')}
+            </a>
+          </dd>
           <dt className="text-fg-muted">{t('seller')}</dt>
           <dd className="m-0 min-w-0 break-words">
             <a

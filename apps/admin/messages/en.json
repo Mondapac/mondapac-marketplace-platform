@@ -18605,7 +18605,10 @@
       "count-live": "{count, plural, one {# row waits for review} other {# rows wait for review}}",
       "no-access": "You don't have access to the offer review queue. It needs the {permission} permission.",
       "back": "Back to edits",
-      "count-live-after": "{count, plural, one {# offer on sale waits for a check} other {# offers on sale wait for a check}}"
+      "count-live-after": "{count, plural, one {# offer on sale waits for a check} other {# offers on sale wait for a check}}",
+      "tab-short": {
+        "after": "Published"
+      }
     },
     "reason": {
       "label": "Why it waits",
@@ -19193,20 +19196,8 @@
       "too-many": "More than {limit} offers match. Add a filter to see the rest.",
       "no-access": "Your role cannot see the post-publication review.",
       "error": {
-        "stale": "Changed since you opened it. Reload to see the latest version.",
-        "gone": "This check is already decided or no longer in the list.",
-        "not-live": "This offer is no longer on sale, so it cannot be taken down. You can still approve to close the check.",
-        "own": "You cannot decide an offer that your own account submitted. Another admin must decide it.",
-        "denied": "You do not have access to this decision (Approve needs catalog.product.approve; Take down also needs catalog.product.delete).",
-        "claim": "Something went wrong. Try again.",
-        "tag": "Something went wrong. Try again.",
-        "seller": "Something went wrong. Try again.",
-        "invalid": "Check the reason and the note and try again.",
-        "throttled": "Too many requests. Wait a moment and try again.",
-        "csrf": "Your session could not be checked. Reload the page and try again.",
-        "unavailable": "The decision could not be sent. Nothing changed. Try again.",
-        "unknown": "Something went wrong. Try again.",
-        "reload": "Reload"
+        "unavailable": "The offers could not be loaded. Check your connection and try again.",
+        "refused": "The filters cannot be used. Change them and try again."
       },
       "empty": {
         "title": "Nothing to check after publication.",
@@ -19234,7 +19225,7 @@
         "seller": "Open the seller"
       },
       "bulk": {
-        "button": "Bulk action",
+        "button": "Actions",
         "selected": "{count, plural, one {# offer selected} other {# offers selected}}",
         "all-open": "All matching offers selected",
         "export": "Export…",
@@ -19248,7 +19239,8 @@
           "not-found": "{name}: no longer in the list.",
           "own": "{name}: your own account submitted this offer. Another admin must decide it.",
           "other": "{name}: could not be approved. Open it to decide."
-        }
+        },
+        "done-title": "{done} approved, {skipped} skipped"
       },
       "export": {
         "title": "Export offers after publication",
@@ -19275,19 +19267,19 @@
       },
       "reason": {
         "label": "Why it is checked",
-        "sample": "Sample",
-        "sample-doubled": "Sample ×2",
-        "price-no-reference": "Price: no reference",
-        "price-reference-unavailable": "Price: reference unavailable",
-        "price-recheck-outside": "Price: outside band on re-check"
+        "sample": "Random check",
+        "sample-doubled": "Random check (new Trusted, 2×)",
+        "price-no-reference": "Price: no comparison yet",
+        "price-reference-unavailable": "Price: comparison unavailable",
+        "price-recheck-outside": "Price: outside range on re-check"
       },
       "detail": {
-        "seller": "Store",
+        "seller": "Seller",
         "seller-unnamed": "Unnamed store",
         "why": "Why it is checked",
-        "sample-rate": "Sampled at",
-        "sample-rate-value": "{percent}%",
-        "sample-rate-doubled": "{percent}% (doubled: Trusted less than 30 days)",
+        "sample-rate": "Check rate",
+        "sample-rate-value": "Checked at a {percent}% rate",
+        "sample-rate-doubled": "Checked at a {percent}% rate (2×: Trusted less than 30 days)",
         "opened": "Opened",
         "sku": "SKU",
         "offer-status-label": "Offer now",
@@ -19317,11 +19309,13 @@
         "approve": "Approve",
         "take-down": "Take down…",
         "done-approve": "Approved. The check is closed.",
-        "view-only": "You can view this check but not decide. Deciding needs catalog.product.approve; taking down also needs catalog.product.delete."
+        "view-only": "You can view this check but not decide it. Ask an admin who can approve offers.",
+        "offer": "Offer",
+        "offer-link": "Open product"
       },
       "take-down": {
         "title": "Take this offer down?",
-        "body": "The offer goes off sale and becomes Changes needed. Removed from open carts; orders already placed still ship. The seller is told to fix and submit again.",
+        "body": "The offer goes off sale now and becomes Changes needed. It is removed from open carts; orders already placed still ship.",
         "reason": "Reason the seller sees",
         "misconduct": "This is misconduct (seller loses Trusted)",
         "misconduct-help": "Only for a deliberate breach. The seller goes back to a short probation.",
@@ -19333,7 +19327,25 @@
         "cancel": "Cancel",
         "confirm": "Take down",
         "done": "Taken down. The seller is told.",
-        "done-misconduct": "Taken down. The seller is told and is no longer Trusted."
+        "done-misconduct": "Taken down. The seller is told and is no longer Trusted.",
+        "subject": "{name} · {sku} · {seller}",
+        "body-seller": "The seller is told to fix it and submit again."
+      },
+      "decide-error": {
+        "stale": "Changed since you opened it. Reload to see the latest version.",
+        "gone": "This check is already decided or no longer in the list.",
+        "not-live": "This offer is no longer on sale, so it cannot be taken down. You can still approve to close the check.",
+        "own": "You cannot decide an offer that your own account submitted. Another admin must decide it.",
+        "denied": "You do not have the rights for this decision. Ask an admin who can approve or take down offers.",
+        "claim": "Something went wrong. Try again.",
+        "tag": "Something went wrong. Try again.",
+        "seller": "Something went wrong. Try again.",
+        "invalid": "Check the reason and the note and try again.",
+        "throttled": "Too many requests. Wait a moment and try again.",
+        "csrf": "Your session could not be checked. Reload the page and try again.",
+        "unavailable": "The decision could not be sent. Nothing changed. Try again.",
+        "unknown": "Something went wrong. Try again.",
+        "reload": "Reload"
       }
     }
   }

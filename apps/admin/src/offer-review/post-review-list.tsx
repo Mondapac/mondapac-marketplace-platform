@@ -112,10 +112,20 @@ export function AfterPublicationList({
           return {
             id,
             header,
+            // A decided row says when under its status, so the Decided column can stay hidden (it
+            // is always empty in the Open view).
             cell: (row) => (
-              <Badge tone={STATUS_TONE[row.status] ?? 'neutral'}>
-                {t.has(`status.${row.status}`) ? t(`status.${row.status}`) : row.status}
-              </Badge>
+              <span className="flex flex-col items-start gap-0.5">
+                <Badge tone={STATUS_TONE[row.status] ?? 'neutral'}>
+                  {t.has(`status.${row.status}`) ? t(`status.${row.status}`) : row.status}
+                </Badge>
+                {row.decidedAt === null ? null : (
+                  <span className="text-sm text-fg-muted">
+                    {shortInstantInZone(row.decidedAt, locale, zone, true)}
+                    {row.decision?.misconduct ? ` · ${t('misconduct-short')}` : ''}
+                  </span>
+                )}
+              </span>
             ),
           };
         case 'decided':
@@ -172,7 +182,7 @@ export function AfterPublicationList({
       defaultSort: 'opened',
       fixedColumns: ['offer'],
       optionalColumns: ['seller', 'reasons', 'status', 'opened', 'decided'],
-      defaultColumns: ['seller', 'reasons', 'status', 'opened', 'decided'],
+      defaultColumns: ['seller', 'reasons', 'status', 'opened'],
       columnDefs,
       rowActions,
       ...(canDecide

@@ -13,6 +13,9 @@ import { standingOf } from '../../src/offer-review/standing.ts';
 const id = (n: number) => `0190a000-0000-7000-8000-${String(n).padStart(12, '0')}`;
 const q = new URLSearchParams(location.search);
 const view = q.get('view') ?? 'first';
+// The After publication tab's other states: empty, error (503), loading (never answers) and many
+// (60 matching rows, for the selection bar and "Select all matching").
+const state = q.get('state');
 
 const first = (n: number, name: string, reasons: string[], over: object = {}) => ({
   kind: 'offer-first-publication',
@@ -188,6 +191,16 @@ window.fetch = ((input: string) => {
     body = paged(firstRows, {
       totals: { 'product-revision': 4, 'offer-first-publication': firstRows.length },
     });
+  } else if (path === 'catalog/admin/offer-post-reviews' && state === 'loading') {
+    return new Promise<Response>(() => undefined);
+  } else if (path === 'catalog/admin/offer-post-reviews' && state === 'error') {
+    body = { code: 'access.unavailable' };
+    status = 503;
+  } else if (path === 'catalog/admin/offer-post-reviews' && state === 'empty') {
+    body = paged([], { totalOpen: 0 });
+  } else if (path === 'catalog/admin/offer-post-reviews' && state === 'many') {
+    const open = postRows.filter((row) => row.status === 'open');
+    body = paged(open, { total: 60, hasNext: true, totalOpen: 60 });
   } else if (path === 'catalog/admin/offer-post-reviews') {
     const wanted = query.get('status') ?? 'open';
     const rows = wanted === 'all' ? postRows : postRows.filter((row) => row.status === wanted);

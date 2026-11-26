@@ -6,7 +6,7 @@ import { useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { CHANGE_REASONS } from '../catalog/types.ts';
 import { decisionProblemOf, type DecisionProblem } from './decision-errors.ts';
-import { POST_NOTE_MAX, type PostReviewRow } from './post-review-types.ts';
+import { POST_NOTE_MAX, postReviewName, type PostReviewRow } from './post-review-types.ts';
 
 const lengthOf = (text: string): number => [...text.trim()].length;
 
@@ -33,7 +33,8 @@ export function TakeDownDialog({
 }) {
   const t = useTranslations('offer-review.post.take-down');
   const tr = useTranslations('catalog.review');
-  const te = useTranslations('offer-review.post.error');
+  const te = useTranslations('offer-review.post.decide-error');
+  const tu = useTranslations('offer-review.post');
   const cancel = useRef<HTMLButtonElement>(null);
   const busy = useRef(false);
   const [reasonCode, setReasonCode] = useState('');
@@ -89,6 +90,9 @@ export function TakeDownDialog({
           </Button>
           <Button
             variant="destructive-solid"
+            // The kit's solid red takes white text at 3.6:1 in the dark theme; the critical text
+            // colour as the fill (with the surface colour as text) passes 4.5:1 in both themes.
+            className="enabled:bg-critical-fg! enabled:text-surface!"
             loading={pending}
             disabled={pending || !ready}
             onClick={() => void submit()}
@@ -99,7 +103,15 @@ export function TakeDownDialog({
       }
     >
       <div className="flex flex-col gap-3">
+        <p className="m-0 font-medium text-fg wrap-anywhere">
+          {t('subject', {
+            name: postReviewName(row),
+            sku: row.offer.sellerSku,
+            seller: row.storeName ?? tu('seller-unnamed'),
+          })}
+        </p>
         <p className="m-0 text-sm">{t('body')}</p>
+        <p className="m-0 text-sm">{t('body-seller')}</p>
         {problem === null ? null : (
           <div role="alert">
             <Banner tone="critical">

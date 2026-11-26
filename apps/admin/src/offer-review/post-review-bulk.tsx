@@ -55,6 +55,7 @@ export function PostReviewBulkDialog({
       confirm={t('confirm', { count })}
       confirmVariant="primary"
       describeSkipped={skippedLine}
+      doneTitle={(counts) => t('done-title', { done: counts.done, skipped: counts.skipped })}
       csrfToken={csrfToken}
       onClose={onClose}
       onFinished={onFinished}

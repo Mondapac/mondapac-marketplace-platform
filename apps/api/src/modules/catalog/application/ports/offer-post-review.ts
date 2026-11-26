@@ -75,6 +75,12 @@ export interface OfferPostReviewRepository {
   /** The row in this Market, or null: another Market's id is not found. */
   findById(market: MarketContext, id: Id<'OfferPostReview'>): Promise<OfferPostReview | null>;
 
+  /** The rows of these ids in this Market (one statement); unknown ids are left out. */
+  findManyByIds(
+    market: MarketContext,
+    ids: readonly Id<'OfferPostReview'>[],
+  ): Promise<readonly OfferPostReview[]>;
+
   /** Whether any row of the Offer was ever `taken-down` (the resubmit goes to R6). */
   everTakenDown(market: MarketContext, offerId: Id<'Offer'>): Promise<boolean>;
 

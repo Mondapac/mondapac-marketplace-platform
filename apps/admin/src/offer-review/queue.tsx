@@ -1,6 +1,6 @@
 'use client';
 
-import { Tabs } from '@mondapac/ui';
+import { Tabs, WIDE_QUERY, useMediaQuery } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -108,11 +108,22 @@ export function OfferReviewQueue({
     setRefresh((value) => value + 1);
   }, []);
 
+  // Below 640 px the three tabs do not fit one row: the third takes its short name there (the Help
+  // panel and the pointer hint keep the full one).
+  const wide = useMediaQuery(WIDE_QUERY);
+  const name = (id: QueueTab) =>
+    !wide && t.has(`tab-short.${id}`) ? t(`tab-short.${id}`) : t(`tab.${id}`);
   const label = (id: QueueTab) => {
     const count = counts[id];
-    return count === undefined ? t(`tab.${id}`) : t('tab-count', { tab: t(`tab.${id}`), count });
+    return count === undefined ? name(id) : t('tab-count', { tab: name(id), count });
   };
-  const items = TABS.map((id) => ({ id, label: label(id), href: tabHref(id) }));
+  const items = TABS.map((id) => ({
+    id,
+    label: label(id),
+    href: tabHref(id),
+    title: t(`tab.${id}`),
+    help: t(`tab.${id}`),
+  }));
   const shared = { paging, accountId, marketId, csrfToken, zone, canDecide, refreshKey: refresh };
   return (
     <div className="flex flex-col gap-4">

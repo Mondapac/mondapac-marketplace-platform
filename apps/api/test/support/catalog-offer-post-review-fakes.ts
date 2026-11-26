@@ -88,6 +88,20 @@ export class InMemoryOfferPostReviews implements OfferPostReviewRepository {
     );
   }
 
+  findManyByIds(
+    market: MarketContext,
+    ids: readonly Id<'OfferPostReview'>[],
+  ): Promise<readonly OfferPostReview[]> {
+    return Promise.resolve(
+      ids.flatMap((id) => {
+        const row = this.rows.get(id);
+        return row === undefined || row.marketId !== market.marketId
+          ? []
+          : [OfferPostReview.restore(row)];
+      }),
+    );
+  }
+
   everTakenDown(market: MarketContext, offerId: Id<'Offer'>): Promise<boolean> {
     if (this.failTakenDownRead) return Promise.reject(new Error('down'));
     return Promise.resolve(

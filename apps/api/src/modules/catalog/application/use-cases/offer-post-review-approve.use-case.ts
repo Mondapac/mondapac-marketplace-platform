@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
+import { isActingAsSession } from '../acting-as';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_PRODUCT_APPROVE } from '../../contracts/permissions';
@@ -31,10 +32,10 @@ export interface AdminOfferPostReviewApproveDependencies {
 /**
  * `catalog.offer-post-review-approve` (risk-based Offer approval slice 6): an admin closes an open
  * row of the post-publication review list; the Offer stays as it is (it may not be live any more:
- * Approve still closes the row). Rule: `catalog.product.approve` and the admin population. The
- * row must be open (`post-review.not-open`) at the version the admin saw (`conflict.stale`); an
- * admin behind one of the Offer's submits, or a Login-as-Seller session for its seller, is
- * `post-review.own-submission`. One unit: the conditional update on the version, then the audit
+ * Approve still closes the row). Rule: `catalog.product.approve` and the admin population;
+ * refused in any Login-as-Seller session (`access.denied`), as the take-down. The row must be
+ * open (`post-review.not-open`) at the version the admin saw (`conflict.stale`); an admin behind
+ * one of the Offer's submits is `post-review.own-submission`. One unit: the conditional update on the version, then the audit
  * row (the note is never audited or logged).
  */
 export class AdminOfferPostReviewApprove extends UseCase<
@@ -78,6 +79,8 @@ export class AdminOfferPostReviewApprove extends UseCase<
     if (actor.kind !== 'authenticated' || actor.population !== 'admin') {
       return err({ code: 'access.denied' });
     }
+    // Never from a Login-as-Seller session, whoever it acts for, as the take-down (Hassan N2).
+    if (isActingAsSession(actor)) return err({ code: 'access.denied' });
     const parsed = parsePostReviewDecision(input, 'optional');
     if (!parsed.ok) return parsed;
     const { id, version, note } = parsed.value;

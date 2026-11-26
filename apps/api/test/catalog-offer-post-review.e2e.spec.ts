@@ -283,6 +283,8 @@ describe('admin post-publication review over HTTP (integration)', () => {
     await app?.close();
   });
 
+  // The first boot of the file builds the whole OpenAPI document: about 2.5 s alone, past the
+  // local 5 s default under a parallel run (Sajad #6). CI already gives 30 s.
   it('documents the routes, their bodies and their error codes in OpenAPI', async () => {
     await boot({ API_DOCS_ENABLED: 'true' });
     const document = (await http().get('/docs-json').expect(200)).body as {
@@ -306,7 +308,7 @@ describe('admin post-publication review over HTTP (integration)', () => {
           expect.objectContaining({ [status]: expect.anything() as unknown }),
         ]);
     }
-  });
+  }, 30_000);
 
   describe.each(TEST_MARKETS)('in market %s', (code) => {
     it('lists the open rows with the shape the admin panel reads, no-store, never the note', async () => {

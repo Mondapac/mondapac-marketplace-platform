@@ -4,14 +4,20 @@ import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 
-const { inner } = vi.hoisted(() => ({
+const { inner, savedItems } = vi.hoisted(() => ({
   inner: vi.fn<(method: string, path: string, ...rest: unknown[]) => Promise<unknown>>(),
+  savedItems: [] as unknown[],
 }));
-// Saved filters and categories are served apart from the list's own calls the tests count.
+// Saved filters (read from `savedItems`) and categories are served apart from the list's own
+// calls; a saved-filter write goes to `inner`, so a test can see it.
 vi.mock('../api/client.ts', () => ({
   callApi: (method: string, path: string, ...rest: unknown[]) => {
-    if (path.startsWith('lists/admin/saved-filters')) {
-      return Promise.resolve({ ok: true, status: 200, body: { items: [], canShare: false } });
+    if (method === 'GET' && path.startsWith('lists/admin/saved-filters')) {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        body: { items: savedItems, canShare: true },
+      });
     }
     if (path === 'catalog/categories') {
       return Promise.resolve({ ok: true, status: 200, body: { categories: [] } });
@@ -124,6 +130,7 @@ function serve(rows: PostReviewRow[], posts: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  savedItems.length = 0;
   HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
     this.setAttribute('open', '');
   };
@@ -166,12 +173,12 @@ describe('After publication tab', () => {
     ]);
     mount();
     expect(await screen.findByText('Dates 1')).toBeTruthy();
-    expect(screen.getByText('Sample ×2')).toBeTruthy();
-    expect(screen.getByText('Sample')).toBeTruthy();
-    expect(screen.getByText('Price: no reference')).toBeTruthy();
-    expect(screen.getByText('Price: reference unavailable')).toBeTruthy();
-    expect(screen.getByText('Price: outside band on re-check')).toBeTruthy();
-    expect(await screen.findByRole('link', { name: 'After publication (7)' })).toBeTruthy();
+    expect(screen.getByText('Random check (new Trusted, 2×)')).toBeTruthy();
+    expect(screen.getByText('Random check')).toBeTruthy();
+    expect(screen.getByText('Price: no comparison yet')).toBeTruthy();
+    expect(screen.getByText('Price: comparison unavailable')).toBeTruthy();
+    expect(screen.getByText('Price: outside range on re-check')).toBeTruthy();
+    expect(await screen.findByRole('link', { name: 'Published (7)' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Edits' }).getAttribute('href')).toBe(
       '/offer-reviews?tab=edits',
     );
@@ -239,8 +246,8 @@ describe('After publication tab', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Review Dates 1' }));
     drawer = await openDrawer();
     expect(within(drawer).queryByRole('button', { name: 'Approve', hidden: true })).toBeNull();
-    expect(within(drawer).getByText(/You can view this check but not decide/)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Bulk action' })).toBeTruthy();
+    expect(within(drawer).getByText(/Ask an admin who can approve offers/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Actions' })).toBeTruthy();
   });
 });
 
@@ -257,8 +264,11 @@ describe('take-down dialog', () => {
   it('needs a reason and a note, explains carts and orders, and sends the closed body', async () => {
     const dialog = await openTakeDown([row(1), row(2)]);
     expect(
-      within(dialog).getByText(/Removed from open carts; orders already placed still ship/),
+      within(dialog).getByText(/removed from open carts; orders already placed still ship/),
     ).toBeTruthy();
+    // The dialog names the Offer it takes down: product, SKU and store.
+    expect(within(dialog).getByText('Dates 1 · SKU-1 · Date Palace')).toBeTruthy();
+    expect(within(dialog).getByText('The seller is told to fix it and submit again.')).toBeTruthy();
     const confirm = within(dialog).getByRole('button', { name: 'Take down', hidden: true });
     expect((confirm as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(within(dialog).getByRole('combobox', { hidden: true }), {
@@ -335,11 +345,12 @@ describe('bulk approve', () => {
     await tick('Dates 1');
     await tick('Dates 2');
     await tick('Dates 3');
-    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions' }));
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Approve ticked…' }));
     const dialog = await screen.findByRole('dialog', { name: 'Approve 3 offers?' });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Approve 3 offers' }));
     expect(await within(dialog).findByText('1 row decided, 2 skipped.')).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: '1 approved, 2 skipped' })).toBeTruthy();
     const skipped = within(dialog).getByRole('region', { name: 'Skipped rows' });
     expect(skipped.textContent).toContain('Dates 2: already decided.');
     // A row the answer names without a product name keeps the name the list showed.
@@ -352,5 +363,174 @@ describe('bulk approve', () => {
         { id: rowId(3), version: 3 },
       ],
     });
+  });
+});
+
+describe('the super list of After publication', () => {
+  const lastAsked = () => new URLSearchParams(String(reads().at(-1)?.[1]).split('?')[1]);
+
+  it('switches the view and asks for its status', async () => {
+    serve([row(1)]);
+    mount();
+    await screen.findByText('Dates 1');
+    fireEvent.click(screen.getByRole('button', { name: 'Taken down' }));
+    await waitFor(() => expect(lastAsked().get('status')).toBe('taken-down'));
+    fireEvent.click(screen.getByRole('button', { name: 'All' }));
+    await waitFor(() => expect(lastAsked().get('status')).toBe('all'));
+  });
+
+  it('filters by reason with a removable chip, and by age as an opened-before instant', async () => {
+    serve([row(1)]);
+    mount();
+    await screen.findByText('Dates 1');
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    fireEvent.change(await screen.findByLabelText('Field'), { target: { value: 'reasons' } });
+    fireEvent.change(screen.getByLabelText('Value'), {
+      target: { value: 'price-recheck-outside' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(lastAsked().get('reasons')).toBe('price-recheck-outside'));
+    expect(lastAsked().get('status')).toBe('open');
+    fireEvent.click(await screen.findByRole('button', { name: /Remove filter Reason is/ }));
+    await waitFor(() => expect(lastAsked().get('reasons')).toBeNull());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    fireEvent.change(await screen.findByLabelText('Field'), { target: { value: 'age' } });
+    fireEvent.change(screen.getByLabelText('Value'), { target: { value: 'older-48h' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(lastAsked().get('openedTo')).not.toBeNull());
+    const before = Date.parse(lastAsked().get('openedTo') ?? '');
+    expect(Date.now() - before).toBeGreaterThanOrEqual(48 * 3_600_000 - 60_000);
+    expect(lastAsked().get('openedFrom')).toBe('1970-01-01T00:00:00.000Z');
+  });
+
+  it('sorts by Opened or Decided, in either direction', async () => {
+    serve([row(1)]);
+    mount();
+    await screen.findByText('Dates 1');
+    expect(lastAsked().get('sort')).toBe('opened');
+    expect(lastAsked().get('direction')).toBe('asc');
+    fireEvent.click(screen.getByRole('button', { name: 'Sort' }));
+    const panel = await screen.findByRole('dialog', { name: 'Sort' });
+    fireEvent.click(within(panel).getByRole('radio', { name: 'Decided' }));
+    await waitFor(() => {
+      expect(lastAsked().get('sort')).toBe('decided');
+      expect(lastAsked().get('direction')).toBe('desc');
+    });
+    fireEvent.click(within(panel).getByRole('radio', { name: 'Oldest first' }));
+    await waitFor(() => expect(lastAsked().get('direction')).toBe('asc'));
+  });
+
+  it('opens a saved filter and saves the current one under its own registry list', async () => {
+    savedItems.push({
+      id: '0190a000-0000-7000-8000-000000000050',
+      listKey: 'admin.catalog.offer-post-reviews',
+      name: 'Price checks',
+      visibility: 'everyone',
+      payload: {
+        v: 1,
+        filters: { status: 'open', reasons: 'price-no-reference' },
+        sort: 'opened',
+        direction: 'asc',
+      },
+      ownedByMe: true,
+      canManage: true,
+    });
+    serve([row(1)]);
+    call.mockImplementationOnce(() => Promise.resolve(page([row(1)])));
+    mount();
+    await screen.findByText('Dates 1');
+    fireEvent.click(await screen.findByRole('button', { name: 'Price checks' }));
+    await waitFor(() => expect(lastAsked().get('reasons')).toBe('price-no-reference'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+    await waitFor(() => expect(lastAsked().get('reasons')).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    fireEvent.change(await screen.findByLabelText('Field'), { target: { value: 'reasons' } });
+    fireEvent.change(screen.getByLabelText('Value'), { target: { value: 'sample' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Save filter/ }));
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Samples' } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Save filter' }).at(-1) as HTMLElement);
+    await waitFor(() =>
+      expect(writes().some(([, path]) => path === 'lists/admin/saved-filters')).toBe(true),
+    );
+    const sent = writes().find(([, path]) => path === 'lists/admin/saved-filters');
+    const body = sent?.[2] as {
+      listKey: string;
+      name: string;
+      payload: { filters: Record<string, string> };
+    };
+    expect(body.listKey).toBe('admin.catalog.offer-post-reviews');
+    expect(body.name).toBe('Samples');
+    expect(body.payload.filters['reasons']).toBe('sample');
+    expect(sent?.[3]).toBe('csrf');
+  });
+
+  it('exports the view and filters as a file, without the sort or the page', async () => {
+    const fetched: string[] = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = ((url: string) => {
+      fetched.push(url);
+      return Promise.resolve(new Response('id\n', { status: 200 }));
+    }) as typeof fetch;
+    URL.createObjectURL = () => 'blob:x';
+    URL.revokeObjectURL = () => undefined;
+    try {
+      serve([row(1)]);
+      mount();
+      await tick('Dates 1');
+      fireEvent.click(screen.getByRole('button', { name: 'Actions' }));
+      fireEvent.click(await screen.findByRole('menuitem', { name: 'Export…' }));
+      const dialog = await screen.findByRole('dialog', { name: 'Export offers after publication' });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+      await waitFor(() => expect(fetched.length).toBe(1));
+      const url = new URL(fetched[0]!, 'http://admin.test');
+      expect(url.pathname).toBe('/api/catalog/admin/offer-post-reviews/export');
+      expect(url.searchParams.get('format')).toBe('csv');
+      expect(url.searchParams.get('status')).toBe('open');
+      for (const key of ['sort', 'direction', 'page', 'pageSize', 'paging']) {
+        expect(url.searchParams.get(key)).toBeNull();
+      }
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it('selects all matching rows, and then offers no bulk approve (it runs on ticked rows only)', async () => {
+    call.mockImplementation((method: string, path: string) =>
+      Promise.resolve(
+        path.startsWith('catalog/admin/offer-post-reviews?')
+          ? page([row(1), row(2)], { total: 60, hasNext: true })
+          : { ok: false, failure: { status: 404, code: 'x' } },
+      ),
+    );
+    mount();
+    await screen.findByText('Dates 1');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all offers on this page' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Select all 60 matching' }));
+    expect(await screen.findByText('All 60 matching offers are selected')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Actions' }));
+    const approve = await screen.findByRole('menuitem', { name: 'Approve ticked…' });
+    expect(
+      approve.getAttribute('aria-disabled') === 'true' || (approve as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(writes()).toEqual([]);
+  });
+
+  it('says the list could not be loaded on a 503', async () => {
+    call.mockResolvedValue({ ok: false, failure: { status: 503, code: 'access.unavailable' } });
+    mount();
+    expect(await screen.findByText(/The offers could not be loaded/)).toBeTruthy();
+  });
+
+  it('links the drawer to the product page and the seller', async () => {
+    serve([row(1)]);
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Review Dates 1' }));
+    const drawer = await openDrawer();
+    expect(
+      within(drawer).getByRole('link', { name: 'Open product', hidden: true }).getAttribute('href'),
+    ).toBe(`/catalog/products/${row(1).product.id}/edit`);
   });
 });

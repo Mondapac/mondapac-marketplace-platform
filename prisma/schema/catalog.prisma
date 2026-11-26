@@ -1094,8 +1094,17 @@ model CatalogOfferPostReview {
   @@unique([marketId, id, offerId])
   /// The admin list (status tab, opened order).
   @@index([marketId, status, openedAt, id])
+  /// The "All" view and its date range (Mojtaba M1).
+  @@index([marketId, openedAt, id])
+  /// The store filter (M2).
+  @@index([marketId, sellerId, openedAt, id])
+  /// The store filter's options per tab (L1).
+  @@index([marketId, status, sellerId])
   /// An Offer's rows (ever taken down, open row).
   @@index([marketId, offerId])
+  /// Also, in SQL only: the partial unique `offer_post_reviews_open_offer_key` (one open row per
+  /// Offer) and `offer_post_reviews_decided_idx` (market_id, status, decided_at, opened_at, id)
+  /// WHERE status <> 'open', for the decided tabs sorted by the decision.
   @@map("offer_post_reviews")
   @@schema("catalog")
 }

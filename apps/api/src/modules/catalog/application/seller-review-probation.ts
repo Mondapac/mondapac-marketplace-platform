@@ -1,4 +1,5 @@
-import type { CallContext, Id, Temporal } from '@mondapac/shared-kernel';
+import { Temporal } from '@mondapac/shared-kernel';
+import type { CallContext, Id } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import {
   SellerReviewRestartedAudit,
@@ -165,7 +166,15 @@ export class SellerReviewProbation {
     const { market } = context;
     const { standings } = this.deps;
     const standing = await standings.lock(market, input.sellerId, input.now);
-    standing.revokeForMisconduct({ now: input.now });
+    // The instant is read before the lock: a concurrent misconduct take-down of the same seller
+    // may have revoked at the same or a later instant while this unit waited. Revoke just after
+    // it, never before (Hassan L2): the take-down never fails on it.
+    const last = standing.state.trustLostAt;
+    const at =
+      last !== null && Temporal.Instant.compare(input.now, last) <= 0
+        ? last.add({ milliseconds: 1 })
+        : input.now;
+    standing.revokeForMisconduct({ now: at });
     await standings.save(market, standing);
     await this.deps.audit.record(
       context,

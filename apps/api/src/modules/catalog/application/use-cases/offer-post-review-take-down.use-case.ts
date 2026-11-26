@@ -51,7 +51,7 @@ export interface AdminOfferPostReviewTakeDownDependencies {
  * `catalog.product.delete`, the admin population; refused in a Login-as-Seller session
  * (`access.denied`). Closed body `{ version, reasonCode, misconduct, note }`.
  *
- * In one unit (lock order: the Offer row, the post-review row, the held change, the standing):
+ * In one unit (the Offer row is locked first; the rest are serialized by it):
  * the row must be open (`post-review.not-open`) at the version seen (`conflict.stale`); the Offer
  * must be `published` (`offer.not-live`; Approve still closes such a row); an admin behind one of
  * the Offer's submits is `post-review.own-submission`. The Offer goes `changes-needed` (no longer
@@ -124,6 +124,11 @@ export class AdminOfferPostReviewTakeDown extends UseCase<
       return await deps.unitOfWork.run<OfferPostReviewDecided, OfferPostReviewDecisionFailure>(
         market,
         async () => {
+          // The row is read first, unlocked: it names the Offer, so the Offer cannot be read
+          // before it. Nothing is locked by these reads (READ COMMITTED). The first lock is the
+          // Offer row's conditional update below; the row's own conditional update on the
+          // version read follows it, so a row decided or extended meanwhile is `conflict.stale`
+          // and the whole unit rolls back (Sajad 5).
           const review = await deps.postReviews.findById(market, id);
           if (review === null) return err({ code: 'post-review.not-found' } as const);
           if (review.state.status !== 'open') {
@@ -145,7 +150,9 @@ export class AdminOfferPostReviewTakeDown extends UseCase<
           const now = deps.clock.now();
           const down = offer.takeDown({ reasonCode: reasonCode.value, now });
           if (!down.ok) return err({ code: 'offer.not-live' } as const);
-          // Lock order: the Offer row (its version check), then the row, the change, the standing.
+          // Lock order: the Offer row first (its version check); after it the order of the rest
+          // (the row, the held change, the standing) does not matter, as the Offer lock
+          // serializes them (Mojtaba N1).
           await deps.offers.save(market, offer, { kind: 'admin', accountId: actor.accountId });
           const decided = review.takeDown({
             accountId: actor.accountId,

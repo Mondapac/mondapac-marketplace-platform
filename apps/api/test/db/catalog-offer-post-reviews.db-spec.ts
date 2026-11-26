@@ -373,20 +373,54 @@ describe.each(TEST_MARKETS)(
       expect(await insert({ market_id: 'au' })).not.toBeNull();
     });
 
-    it('keeps the reasons insert-only, with a record id or an Offer version as the source', async () => {
+    it('keeps the reasons insert-only, each source of its kind, on an open row with the reason', async () => {
       const { offerId, productId } = await liveOffer();
       const review = opened(offerId, productId);
       await unit(() => reviews.insert(market, review));
-      const receive = (sourceRef: string) =>
-        owner.query(
-          `INSERT INTO catalog.offer_post_review_reasons (market_id, tenant_id, offer_id, reason,
-             source_ref, post_review_id, received_at)
-           VALUES ($1, $2, $3, 'price-no-reference', $4, $5, now())`,
-          [code, market.tenantId, offerId, sourceRef, review.state.id],
-        );
-      await receive(uuid7());
-      await receive('offer-version:3');
-      await expect(receive('some text')).rejects.toThrow();
+      const sampled = await liveOffer();
+      const sample = opened(sampled.offerId, sampled.productId, 'sample');
+      await unit(() => reviews.insert(market, sample));
+      /** The constraint or guard that refused the insert, or null when it went in. */
+      const receive = async (
+        onto: OfferPostReview,
+        reason: string,
+        sourceRef: string,
+      ): Promise<string | null> => {
+        try {
+          await owner.query(
+            `INSERT INTO catalog.offer_post_review_reasons (market_id, tenant_id, offer_id, reason,
+               source_ref, post_review_id, received_at)
+             VALUES ($1, $2, $3, $4, $5, $6, now())`,
+            [code, market.tenantId, onto.state.offerId, reason, sourceRef, onto.state.id],
+          );
+          return null;
+        } catch (error) {
+          const failure = error as { constraint?: string; message: string };
+          return failure.constraint ?? failure.message;
+        }
+      };
+      expect(await receive(review, 'price-no-reference', uuid7())).toBeNull();
+      expect(await receive(sample, 'sample', 'offer-version:3')).toBeNull();
+      expect(await receive(review, 'price-no-reference', 'some text')).toBe(
+        'offer_post_review_reasons_source_ref_check',
+      );
+      // A sample is keyed on an Offer version, a price reason on a pricing record (Mojtaba L2).
+      expect(await receive(review, 'price-no-reference', 'offer-version:3')).toBe(
+        'offer_post_review_reasons_source_kind_check',
+      );
+      expect(await receive(sample, 'sample', uuid7())).toBe(
+        'offer_post_review_reasons_source_kind_check',
+      );
+      // Only onto the open row of that Offer that carries the reason (Mojtaba L3).
+      expect(await receive(sample, 'price-no-reference', uuid7())).toContain(
+        'the row is not open with this reason',
+      );
+      const decided = (await read(() => reviews.findById(market, review.state.id)))!;
+      decided.approve({ accountId: uuid7() as Id<'Account'>, note: null, now: nowInstant() });
+      expect(await read(() => reviews.save(market, decided))).toBe(true);
+      expect(await receive(review, 'price-no-reference', uuid7())).toContain(
+        'the row is not open with this reason',
+      );
       await expect(
         owner.query(`DELETE FROM catalog.offer_post_review_reasons WHERE offer_id = $1`, [offerId]),
       ).rejects.toThrow();

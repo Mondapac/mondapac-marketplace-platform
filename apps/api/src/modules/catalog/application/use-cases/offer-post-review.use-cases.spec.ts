@@ -281,7 +281,7 @@ describe.each(TEST_MARKET_IDS)('the post-publication review list in market %s', 
       });
     });
 
-    it('refuses an admin behind one of the submits, and a session acting for the seller', async () => {
+    it('refuses an admin behind one of the submits, and any Login-as-Seller session', async () => {
       const r = rig();
       const row = r.openRow();
       r.postReviews.submitters.set(row.offerId, new Set([adminId]));
@@ -289,14 +289,16 @@ describe.each(TEST_MARKET_IDS)('the post-publication review list in market %s', 
         ok: false,
         error: { code: 'post-review.own-submission' },
       });
-      // A Login-as-Seller session never reaches the decision (the gate's platform-admin rule);
-      // the own-submission rule refuses it too, as defence in depth.
+      // Any Login-as-Seller session is refused, whoever it acts for, as the take-down is (N2).
       const other = ids.next<'Account'>();
-      const acting = await r.approve.execute(admin(other, { adminAccountId: other, sellerId }), {
-        id: row.id,
-        version: 1,
-      });
-      expect(acting.ok).toBe(false);
+      for (const acting of [sellerId, ids.next<'Seller'>()]) {
+        expect(
+          await r.approve.execute(admin(other, { adminAccountId: other, sellerId: acting }), {
+            id: row.id,
+            version: 1,
+          }),
+        ).toEqual({ ok: false, error: { code: 'access.denied' } });
+      }
       expect(r.postReviews.rows.get(row.id)?.status).toBe('open');
     });
 
@@ -385,6 +387,22 @@ describe.each(TEST_MARKET_IDS)('the post-publication review list in market %s', 
         (await none.takeDown.execute(admin(), takeDownBody(other.id, { misconduct: true }))).ok,
       ).toBe(true);
       expect(none.probation.standings.rows.get(`${code}|${sellerId}`)).toBeDefined();
+    });
+
+    it('revokes just after a racing revocation stamped at or after the clock (Hassan L2)', async () => {
+      for (const lostAt of [clock.now(), clock.now().add({ minutes: 1 })]) {
+        const r = rig({ standing: true });
+        const key = `${code}|${sellerId}`;
+        const held = r.probation.standings.rows.get(key)!;
+        r.probation.standings.rows.set(key, { ...held, trustLostAt: lostAt });
+        const row = r.openRow();
+        expect(
+          (await r.takeDown.execute(admin(), takeDownBody(row.id, { misconduct: true }))).ok,
+        ).toBe(true);
+        expect(r.probation.standings.rows.get(key)?.trustLostAt).toEqual(
+          lostAt.add({ milliseconds: 1 }),
+        );
+      }
     });
 
     it('refuses an Offer that is not published (offer.not-live), changing nothing', async () => {
@@ -506,12 +524,23 @@ describe.each(TEST_MARKET_IDS)('the post-publication review list in market %s', 
       });
     });
 
-    it('refuses a seller', async () => {
+    it('refuses a seller, and any Login-as-Seller session', async () => {
       const r = rig();
       expect(await r.bulk.execute(seller(), { items: [] })).toEqual({
         ok: false,
         error: { code: 'access.denied' },
       });
+      const row = r.openRow();
+      const other = ids.next<'Account'>();
+      expect(
+        await r.bulk.execute(
+          admin(other, { adminAccountId: other, sellerId: ids.next<'Seller'>() }),
+          {
+            items: [{ id: row.id, version: 1 }],
+          },
+        ),
+      ).toEqual({ ok: false, error: { code: 'access.denied' } });
+      expect(r.postReviews.rows.get(row.id)?.status).toBe('open');
     });
   });
 
