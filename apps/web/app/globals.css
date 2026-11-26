@@ -5053,6 +5053,9 @@ svg {
   font-weight: 800;
   text-align: end;
 }
+.dn .qs output {
+  text-align: center;
+}
 .dn .qs {
   grid-column: 1;
   justify-self: start;
