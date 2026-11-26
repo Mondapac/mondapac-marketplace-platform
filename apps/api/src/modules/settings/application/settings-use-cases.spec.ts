@@ -2148,6 +2148,34 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       expect(spentProofs).toEqual(['settings.ai-settings.revert', 'settings.ai-settings.revert']);
     });
 
+    it('refuses a revert to the value already in force before any proof is spent (PR 1375)', async () => {
+      await limits({ changes: [set('ai-cap-market-day', '100')] });
+      await limits({ changes: [set('ai-cap-market-day', '50', 1)] });
+      await limits({ changes: [set('ai-cap-market-day', '100', 2)] });
+      spentProofs = [];
+      const written = store.written.length;
+      const same = {
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'version', code: 'same' }] },
+      };
+      // Version 1 holds 100, the value in force now; so does version 3 itself.
+      expect(
+        await revertGateway({ code: 'ai-cap-market-day', version: 1, expectedVersion: 3 }),
+      ).toEqual(same);
+      expect(
+        await revertGateway({ code: 'ai-cap-market-day', version: 3, expectedVersion: 3 }),
+      ).toEqual(same);
+      // The default while no change was made is the value in force too.
+      expect(await revertGateway({ code: BUYER_CHAT, version: 0, expectedVersion: 0 })).toEqual(
+        same,
+      );
+      expect(
+        await revertModels({ code: 'ai-models-chat', version: 0, expectedVersion: 0 }),
+      ).toEqual(same);
+      expect(spentProofs).toEqual([]);
+      expect(store.written).toHaveLength(written);
+    });
+
     it('refuses a stale version, a version not in the history, and an unknown code', async () => {
       await switches({ changes: [set(BUYER_CHAT, 'off')] });
       expect(await revertGateway({ code: BUYER_CHAT, version: 0, expectedVersion: 0 })).toEqual({

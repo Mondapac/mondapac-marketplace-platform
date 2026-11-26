@@ -1,11 +1,12 @@
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
+import type { AiModelChoices } from '../../../../platform/ai/model-choices';
 import { SETTINGS_AI_MODELS_MANAGE } from '../../contracts/permissions';
 import { AI_MODEL_CODES } from '../../domain/definitions';
 import { revertAiSetting, type RevertInput } from '../ai-settings-history';
 import type { SettingsDependencies } from '../settings-dependencies';
 import type { SettingChangeView, SettingsFailure } from '../settings-flow';
-import { aiModelIssues } from './change-ai-models.use-case';
+import { aiModelIssues } from '../ai-model-checks';
 
 /**
  * `settings.revert-ai-models-setting` (AI Gateway G4d3, design section 8): an admin holding the
@@ -27,9 +28,7 @@ export class RevertAiModelsSetting extends UseCase<
   constructor(
     gate: UseCaseGate,
     private readonly deps: SettingsDependencies,
-    // The External models tab's checks, typed through aiModelIssues: only the AI model use cases
-    // import platform/ai's AiModelChoices (rule ai-model-choices-only-from-settings).
-    private readonly choices: Parameters<typeof aiModelIssues>[0],
+    private readonly choices: Pick<AiModelChoices, 'check'>,
   ) {
     super(gate);
   }

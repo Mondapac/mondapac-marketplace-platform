@@ -519,7 +519,10 @@ export class AdminSettingsController {
       'Every revert needs a fresh two-step proof of this admin (`POST ' +
       'identity/admin/step-up/verify` for settings.ai-settings.revert; without it 403 ' +
       'second-factor.required with details.actionKey). A version not in the history is 400 ' +
-      'validation.failed on `version`. ' +
+      'validation.failed on `version`, and the value already in force is validation.failed on ' +
+      '`version` with code `same` (no proof spent). In an incident use the direct change ' +
+      'instead (switch a capability off, lower a cap, switch the emergency stop on), which needs ' +
+      'no two-step code, since every revert asks for one. ' +
       REVIEWED,
   })
   @ApiHeader(CSRF)
@@ -780,7 +783,10 @@ export class AdminSettingsController {
       'Every revert needs a fresh two-step proof of this admin (`POST ' +
       'identity/admin/step-up/verify` for settings.ai-settings.revert; without it 403 ' +
       'second-factor.required with details.actionKey). A version not in the history is 400 ' +
-      'validation.failed on `version`. ' +
+      'validation.failed on `version`, and the value already in force is validation.failed on ' +
+      '`version` with code `same` (no proof spent). In an incident use the direct change ' +
+      'instead (switch a capability off, lower a cap, switch the emergency stop on), which needs ' +
+      'no two-step code, since every revert asks for one. ' +
       REVIEWED,
   })
   @ApiHeader(CSRF)

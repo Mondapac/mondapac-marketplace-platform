@@ -570,14 +570,17 @@ module.exports = {
       name: 'ai-model-choices-only-from-settings',
       comment:
         "Only settings checks a Market's AI model lists against the route catalogue (G4b; " +
-        'docs/design/domain/platform-ai.md sections 7 and 8): its module file and the AI model ' +
-        'use cases.',
+        'docs/design/domain/platform-ai.md sections 7 and 8): its module file, the AI model ' +
+        'use cases (with the panel revert, G4d3) and their shared checks.',
       severity: 'error',
       from: {
         pathNot: [
           '^src/platform/ai/',
           '^src/modules/settings/settings\\.module\\.ts$',
           '^src/modules/settings/application/use-cases/(?:view|change)-ai-models\\.use-case\\.ts$',
+          // G4d3: the shared External models checks and the models page's panel revert.
+          '^src/modules/settings/application/ai-model-checks\\.ts$',
+          '^src/modules/settings/application/use-cases/revert-ai-models-setting\\.use-case\\.ts$',
         ],
       },
       to: { path: '^src/platform/ai/model-choices\\.ts$' },

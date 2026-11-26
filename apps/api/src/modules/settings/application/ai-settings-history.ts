@@ -126,7 +126,9 @@ const MAX_NOTE = 500;
  * checks), history, audit and review as any change. Every revert spends the admin's fresh two-step
  * code (`settings.ai-settings.revert`), whatever it restores: this is the only revert that may
  * allow more AI, while the review reverter never does (`loosensAi`). A version that is not in the
- * history, or a value its definition no longer allows, is `validation.failed` on `version`.
+ * history, or a value its definition no longer allows, is `validation.failed` on `version`; the
+ * value already in force is `validation.failed` on `version` with the code `same`, so it spends no
+ * proof.
  */
 export async function revertAiSetting(
   deps: SettingsDependencies,
@@ -160,30 +162,43 @@ export async function revertAiSetting(
   }
   if (note.length > MAX_NOTE) fields.push({ path: 'note', code: 'too-long' });
   if (definition === null || fields.length > 0) return err({ code: 'validation.failed', fields });
-  // History rows are insert-only, so the value read here cannot change before the change's unit.
-  const target = await deps.unitOfWork.run<string | null, SettingsFailure>(
+  // History rows are insert-only. The value in force may still change before the change's unit;
+  // changeSettings then answers the version conflict.
+  const target = await deps.unitOfWork.run<
+    { readonly value: string | null; readonly current: string },
+    SettingsFailure
+  >(
     context.market,
     async () => {
-      if (version === 0) return ok(definition.defaultValue);
-      const row = await deps.settings.historyVersion(
+      const row = await deps.settings.find(context.market, definition.code);
+      const current = row?.value ?? definition.defaultValue;
+      if (version === 0) return ok({ value: definition.defaultValue, current });
+      const history = await deps.settings.historyVersion(
         context.market,
         definition.code,
         version as number,
       );
-      return ok(row === null ? null : acceptedValue(definition, row.value));
+      return ok({
+        value: history === null ? null : acceptedValue(definition, history.value),
+        current,
+      });
     },
     { readOnly: true },
   );
   if (!target.ok) return target;
-  if (target.value === null) {
+  if (target.value.value === null) {
     return err({ code: 'validation.failed', fields: [{ path: 'version', code: 'value' }] });
+  }
+  // The value already in force: nothing to restore, so no proof is spent (Mohammad, PR 1375).
+  if (target.value.value === target.value.current) {
+    return err({ code: 'validation.failed', fields: [{ path: 'version', code: 'same' }] });
   }
   const changed = await changeSettings(
     deps,
     context,
     allowedCodes,
     {
-      changes: [{ code: definition.code, value: target.value, expectedVersion }],
+      changes: [{ code: definition.code, value: target.value.value, expectedVersion }],
       ...(note.length > 0 ? { note } : {}),
     },
     { action: SETTINGS_AI_SETTINGS_REVERT_STEP_UP },

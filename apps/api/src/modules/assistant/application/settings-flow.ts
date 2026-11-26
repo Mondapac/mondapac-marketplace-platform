@@ -182,7 +182,6 @@ export async function viewAssistantSettings(
   );
 }
 
-/** An admin replaces the settings from the version they saw; each change is a new version, audited. */
 /** identity's refusal of the step-up, as a settings change answers it; anything else stays closed. */
 function stepUpFailure(refusal: StepUpRefusal): AssistantSettingsFailure {
   if (
@@ -194,6 +193,7 @@ function stepUpFailure(refusal: StepUpRefusal): AssistantSettingsFailure {
   return { code: refusal.code === 'access.unavailable' ? 'access.unavailable' : 'access.denied' };
 }
 
+/** An admin replaces the settings from the version they saw; each change is a new version, audited. */
 export async function setAssistantSettings(
   deps: AssistantDependencies,
   context: CallContext,
