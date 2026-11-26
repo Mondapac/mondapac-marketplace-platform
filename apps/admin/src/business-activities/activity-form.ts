@@ -108,7 +108,9 @@ export function checkForm(
 
 /**
  * The body of create and edit. An edit replaces the whole content, so an empty description is
- * sent as null (cleared). The code is sent only while it can be set and was typed.
+ * sent as null (cleared). The code is sent only while it can be set and was typed. The status is
+ * sent only by an edit: the create route refuses any key beyond code, names, description and
+ * categoryIds (a new activity is always active).
  */
 export function bodyOf(form: ActivityFormState, codeEditable: boolean): Record<string, unknown> {
   const names: Record<string, string> = {};
@@ -122,7 +124,7 @@ export function bodyOf(form: ActivityFormState, codeEditable: boolean): Record<s
     ...(codeEditable && form.code.trim() !== '' ? { code: form.code.trim() } : {}),
     description: description === '' ? null : description,
     categoryIds: [...form.categoryIds],
-    status: form.active ? 'active' : 'inactive',
+    ...(codeEditable ? {} : { status: form.active ? 'active' : 'inactive' }),
   };
 }
 

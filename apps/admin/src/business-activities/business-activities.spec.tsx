@@ -362,7 +362,6 @@ describe('admin business activities', () => {
           names: { en: 'Butcher', ar: 'جزار' },
           description: null,
           categoryIds: [id(102)],
-          status: 'active',
         },
         'csrf-1',
       ]);
@@ -481,7 +480,13 @@ describe('admin business activities', () => {
     expect(checkForm({ ...filled, description: 'x'.repeat(301) }, 'en', true)).toEqual({
       description: 'description-long',
     });
+    // Create: no status (the API refuses unknown keys); edit: status is sent.
     expect(bodyOf({ ...filled, active: false }, true)).toEqual({
+      names: { en: 'Grocery' },
+      description: null,
+      categoryIds: [],
+    });
+    expect(bodyOf({ ...filled, active: false }, false)).toEqual({
       names: { en: 'Grocery' },
       description: null,
       categoryIds: [],
