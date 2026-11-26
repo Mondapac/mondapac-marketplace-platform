@@ -394,7 +394,7 @@ ADR-0026 decision 9 and ADR-0042 decision 7, so ADR-0053 supersedes those points
   lowering a share and tightening need none; a review revert never makes such a change
   (`loosensAi`). Server checks, on the page as it would stand and before any proof is spent
   (`AiModelChoices.checkInHouse`): the stage is one the gateway serves (`stage-not-served`:
-  `SERVED_IN_HOUSE_STAGES` is `off` only until G6c adds shadow and G6d percent and default), shadow
+  `SERVED_IN_HOUSE_STAGES` was `off` only until G6c added shadow; G6d adds percent and default), shadow
   needs the owner's written approval for the Market recorded in ADR-0052 (`shadow-not-approved`:
   `SHADOW_CUSTOMER_DATA_APPROVALS`, per Market as residency and data categories are, set by that PR
   only with the security review; every shadow call carries a real caller's request), a stage other than off needs a model (`no-model`), the model is an in-house family
@@ -409,13 +409,42 @@ ADR-0026 decision 9 and ADR-0042 decision 7, so ADR-0053 supersedes those points
   two live stages (for example default to percent) asks for the code too: conservative, since off
   is always free and is the emergency path; the panel (G6e) does not call it "loosening". A review
   revert never takes the model away from, or sets the share to 0 for, a live stage (Hassan, G6b
-  review 1). The gateway does not read these settings yet. G6c and G6d read them only through
+  review 1). The gateway reads these settings from G6c, and G6c and G6d read them only through
   `inHouseStageInForce` and `rollbackLimitsInForce` (`own-model/in-house-stage.ts`): a stage not
   served, shadow without the Market's approval, or a live stage without a model or its share is off,
   and a stored limit is clamped into the server bounds (Mohammad, G6b review 1). They check every
   route again on each call, with an acceptance test that a stored live stage whose model is retired
   or not evaluated serves no in-house call (Hassan, G6b review 2). While the catalogue has no in-house row (`catalogue/in-house.ts`)
   every stage but off is refused, so AI stays off.
+- **Built in G6c (shadow runs).** `SERVED_IN_HOUSE_STAGES` is `off` and `shadow`. The gateway reads
+  the in-house settings with its other settings (`AiMarketControls.inHouse`, settings' reader) and
+  serves them only through `inHouseStageInForce`. Before the external call of a capability, the
+  shadow runner (`own-model/in-house-shadow.ts`) decides whether the call is in the shadow sample;
+  all must hold, else nothing reaches the in-house model: the capability takes one round without
+  tools; its task type's stage in force is `shadow`; the owner approved, for the Market, every data
+  category the capability declares; its evaluation suite has its own check of a real answer
+  (`EvaluationSuite.shadow`: `valid`, `invalid` or `guard-rejected`; the description writer's uses
+  its draft guard); the call falls in the stage's share; fewer than `MAX_SHADOW_IN_FLIGHT` (8)
+  shadow calls of the process are out; and the in-house family has a usable route for the
+  capability now, checked again on this call (`AiRouter.shadowPlan`: Hassan's check, region, key,
+  not retired, a pass at the prompt version; FE-20261126-ai-gateway-in-house-call-time-recheck for
+  shadow). The external call then goes as always; once it was sent, the shadow call takes the same
+  masked request and budget scope, is never awaited by the caller, and its answer is dropped. Each
+  call keeps its row in `platform.ai_calls`: the shadow call with `shadow` true, and both calls of
+  the sample with the capability's check in `output_check` (only on an `ok` call, CHECK), so the two
+  models' valid-output and guard-rejection rates, tokens and latency compare on the same requests;
+  no text is kept. The shadow cost is held and spent on the same budget counters; the day rows count
+  only its cost, not a request, and the scorecard (G5e) leaves shadow rows out. The reading and
+  comparison of these numbers is G6e's (FE-20261126-ai-gateway-shadow-metrics-read).
+  **Data categories (FE-20261126-ai-gateway-shadow-approval-per-category).** Each capability
+  declares the data categories its requests carry (`dataCategories`, from ADR-0019 decision 3:
+  `seller-text`, `certificate-file`, `customer-message`, `order-status`, `order-tracking`; the
+  description writers `seller-text`, the buyer chat `customer-message`). The owner's approval in
+  `SHADOW_CUSTOMER_DATA_APPROVALS` is per Market with its approved categories: a capability with a
+  category outside it is never sent to shadow, and the panel takes `shadow` for a task type only when
+  at least one capability of it is fully approved (`shadow-not-approved`). The approvals stay empty,
+  and the catalogue has no in-house row, so no shadow call is sent: AI stays off until Hassan's
+  approval and the AWS evidence (readiness conditions 1 to 6) are recorded.
 - **In-house route readiness (before any stage other than off).** All of these must hold, else
   every stage stays off (ADR-0052 decision 3, ADR-0053 decision 3): (1) a PR adds the row:
   endpoint, region, exact model version id, the price the platform counts it at, retirement day;

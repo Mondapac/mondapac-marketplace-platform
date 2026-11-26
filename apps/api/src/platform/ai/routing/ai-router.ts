@@ -106,6 +106,19 @@ export class AiRouter {
       .slice(0, MAX_ATTEMPTS);
   }
 
+  /**
+   * The routes of a shadow call of the capability to the in-house `family` (G6c), checked again on
+   * this call (FE-20261126-ai-gateway-in-house-call-time-recheck; Hassan, G6b review 2): only rows
+   * of an in-house family, each usable now as `plan` takes a row (Hassan's check, the Market's
+   * region, a key, not retired, and a recorded pass for this capability at its prompt version), at
+   * most {@link MAX_ATTEMPTS}. A stored stage whose model went stale (retired, its pass gone, its key
+   * removed) gets no route, so no in-house call is sent.
+   */
+  shadowPlan(marketId: MarketId, spec: CapabilitySpec, family: string): PlannedRoute[] {
+    if (!this.catalogue.isInHouse(family)) return [];
+    return this.#usableRoutes(marketId, spec, family).slice(0, MAX_ATTEMPTS);
+  }
+
   /** The task's saver threshold as a share (0.8 for 80 %), or null without a saver model. */
   saverThreshold(spec: CapabilitySpec, models: AiModelLists): number | null {
     return models.savers[spec.task] === undefined ? null : models.saverAtPercent / 100;

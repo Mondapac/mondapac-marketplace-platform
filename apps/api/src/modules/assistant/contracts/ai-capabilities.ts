@@ -25,5 +25,7 @@ export const ASSISTANT_AI_CAPABILITIES: readonly CapabilitySpec[] = [
     maxToolRounds: MAX_MODEL_ROUNDS,
     timeoutMs: MODEL_TIMEOUT_MS,
     promptVersion: PROMPT_VERSION,
+    // The customer's own message; the tools read public catalogue data only (no order tool yet).
+    dataCategories: ['customer-message'],
   },
 ];

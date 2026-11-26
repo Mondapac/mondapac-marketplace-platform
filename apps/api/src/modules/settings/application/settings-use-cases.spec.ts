@@ -1271,6 +1271,13 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       capabilities: { 'assistant.buyer-chat': { day: 10_000_000, month: 200_000_000 } },
     };
     /** No row: every capability switch on (G4d3). */
+    // Every task type's in-house stage off with no model, the rollback limits at their defaults
+    // (G6b settings, read by the gateway from G6c).
+    const OFF_PAGE = { stage: 'off', family: null, shadowPercent: 0, rolloutPercent: 0 };
+    const IN_HOUSE_DEFAULTS = {
+      tasks: { chat: OFF_PAGE, extract: OFF_PAGE, write: OFF_PAGE, vision: OFF_PAGE },
+      rollback: { errorsPermille: 20, guardPermille: 10, minSample: 200 },
+    };
     const ALL_ON = {
       'assistant.buyer-chat': true,
       'catalog.description-writer.seller': true,
@@ -1300,6 +1307,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         caps: DEFAULT_CAPS,
         models: NO_MODEL_LISTS,
         capabilities: ALL_ON,
+        inHouse: IN_HOUSE_DEFAULTS,
       });
     });
 
@@ -1440,6 +1448,33 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       });
     });
 
+    it('passes the stored in-house settings to the gateway, a value not allowed at its safe value (G6c)', async () => {
+      const row = (code: string, value: string) =>
+        store.rows.set(`${market.marketId}/${code}`, {
+          code,
+          value,
+          version: 1,
+          updatedAt: T0,
+          updatedBy: ADMIN,
+        });
+      row('ai-in-house-stage-write', 'shadow');
+      row('ai-in-house-model-write', 'house-1');
+      row('ai-in-house-shadow-write', '25');
+      row('ai-in-house-stage-chat', 'everywhere');
+      row('ai-in-house-shadow-chat', '250');
+      row('ai-in-house-rollback-errors', '5');
+      row('ai-in-house-rollback-sample', 'many');
+      const { inHouse } = await controls();
+      expect(inHouse.tasks.write).toEqual({
+        stage: 'shadow',
+        family: 'house-1',
+        shadowPercent: 25,
+        rolloutPercent: 0,
+      });
+      expect(inHouse.tasks.chat).toEqual({ ...OFF_PAGE, stage: 'off', shadowPercent: 0 });
+      expect(inHouse.rollback).toEqual({ errorsPermille: 5, guardPermille: 10, minSample: 100 });
+    });
+
     it('reads a stored value the definition does not allow as the tightest (cap 0, stop on, switch off)', async () => {
       store.rows.set(`${market.marketId}/ai-cap-capability-day`, {
         code: 'ai-cap-capability-day',
@@ -1468,6 +1503,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         models: NO_MODEL_LISTS,
         // An invalid switch is off (G4d3).
         capabilities: { ...ALL_ON, 'assistant.buyer-chat': false },
+        inHouse: IN_HOUSE_DEFAULTS,
       });
     });
 

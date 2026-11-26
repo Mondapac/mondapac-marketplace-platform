@@ -1,5 +1,8 @@
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { CapabilityTask } from './capability';
+import type { InHouseTaskPage, RollbackLimits } from './own-model/in-house-settings';
+
+export type { InHouseStage, InHouseTaskPage, RollbackLimits } from './own-model/in-house-settings';
 
 /**
  * The caps of one capability of its own (G4d2): its day and its month, in US micro-dollars. Null
@@ -72,6 +75,24 @@ export const NO_MODEL_LISTS: AiModelLists = Object.freeze({
   saverAtPercent: 80,
 });
 
+/**
+ * The Market's in-house model settings (the Mondapac Intelligence tab, G6b) as stored, per task
+ * type: the stage, the model and the shares, and the auto-rollback limits. Read as stored; the
+ * gateway serves them only through `inHouseStageInForce` and `rollbackLimitsInForce`
+ * (`own-model/in-house-stage.ts`), never as they are (Mohammad, G6b review 1). A task type without
+ * an entry is off.
+ */
+export interface AiInHouseControls {
+  readonly tasks: Readonly<Partial<Record<CapabilityTask, InHouseTaskPage>>>;
+  readonly rollback: RollbackLimits;
+}
+
+/** Every task type off, the rollback limits at the tightest. */
+export const NO_IN_HOUSE: AiInHouseControls = Object.freeze({
+  tasks: Object.freeze({}),
+  rollback: Object.freeze({ errorsPermille: 1, guardPermille: 1, minSample: 100 }),
+});
+
 /** What the gateway reads of a Market's gateway settings before each `status` and `run` (G4). */
 export interface AiMarketControls {
   /** The Market's AI emergency stop (design section 8): every AI capability of the Market off. */
@@ -84,6 +105,8 @@ export interface AiMarketControls {
    * the emergency stop and before the seller switch (SEL-25, which stays owned by sellers).
    */
   readonly capabilities: Readonly<Record<string, boolean>>;
+  /** The in-house model's stages and rollback limits (G6b settings, served from G6c). */
+  readonly inHouse: AiInHouseControls;
 }
 
 /**

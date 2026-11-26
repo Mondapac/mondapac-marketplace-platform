@@ -3,8 +3,11 @@ import type { CallContext } from '@mondapac/shared-kernel';
 import type {
   AiCaps,
   AiGatewayControls,
+  AiInHouseControls,
   AiMarketControls,
   AiModelLists,
+  InHouseStage,
+  InHouseTaskPage,
 } from '../../../platform/ai/gateway-controls';
 import {
   acceptedValue,
@@ -20,7 +23,14 @@ import {
   AI_CAP_SELLER_DAY_CODE,
   AI_CAPABILITY_SWITCHES,
   AI_GATEWAY_EMERGENCY_STOP_CODE,
+  AI_IN_HOUSE_ROLLBACK_ERRORS_CODE,
+  AI_IN_HOUSE_ROLLBACK_GUARD_CODE,
+  AI_IN_HOUSE_ROLLBACK_SAMPLE_CODE,
   AI_MODEL_TASKS,
+  aiInHouseModelCode,
+  aiInHouseRolloutCode,
+  aiInHouseShadowCode,
+  aiInHouseStageCode,
   AI_SAVER_PERCENT_CODE,
   aiModelsCode,
   aiSaverCode,
@@ -33,7 +43,7 @@ import type { SettingsDependencies } from './settings-dependencies';
 
 /**
  * settings' implementation of `platform/ai`'s {@link AiGatewayControls} port (G4; ADR-0042): the
- * Market's AI emergency stop, caps and model lists (G4b) and capability switches (G4d3), read for the AI Gateway before each
+ * Market's AI emergency stop, caps and model lists (G4b), capability switches (G4d3) and in-house model settings (G6b, served from G6c), read for the AI Gateway before each
  * `status` and `run`.
  *
  * Not a use case: the gateway calls it for every actor it serves (a guest, a customer, a seller,
@@ -92,11 +102,32 @@ export class SettingsAiGatewayControls implements AiGatewayControls {
     for (const [code, capability] of Object.entries(AI_CAPABILITY_SWITCHES)) {
       capabilities[capability] = value(code) === 'on';
     }
+    // The in-house model's settings (G6b), as stored in force: the gateway serves them only
+    // through inHouseStageInForce and rollbackLimitsInForce (G6c).
+    const tasks: Partial<Record<(typeof AI_MODEL_TASKS)[number], InHouseTaskPage>> = {};
+    for (const task of AI_MODEL_TASKS) {
+      tasks[task] = {
+        // The definition allows only the stages, so the value in force is one of them.
+        stage: value(aiInHouseStageCode(task)) as InHouseStage,
+        family: familiesOf(value(aiInHouseModelCode(task)))[0] ?? null,
+        shadowPercent: Number(value(aiInHouseShadowCode(task))),
+        rolloutPercent: Number(value(aiInHouseRolloutCode(task))),
+      };
+    }
+    const inHouse: AiInHouseControls = {
+      tasks,
+      rollback: {
+        errorsPermille: Number(value(AI_IN_HOUSE_ROLLBACK_ERRORS_CODE)),
+        guardPermille: Number(value(AI_IN_HOUSE_ROLLBACK_GUARD_CODE)),
+        minSample: Number(value(AI_IN_HOUSE_ROLLBACK_SAMPLE_CODE)),
+      },
+    };
     return {
       stopped: value(AI_GATEWAY_EMERGENCY_STOP_CODE) !== 'off',
       caps,
       models,
       capabilities,
+      inHouse,
     };
   }
 }

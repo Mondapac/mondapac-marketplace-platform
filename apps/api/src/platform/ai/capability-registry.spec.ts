@@ -11,6 +11,7 @@ const SPEC: CapabilitySpec = {
   maxToolRounds: 0,
   timeoutMs: 10_000,
   promptVersion: 'alpha-writer-1',
+  dataCategories: ['seller-text'],
 };
 
 describe('CapabilityRegistry (platform-ai.md section 4)', () => {
@@ -41,6 +42,9 @@ describe('CapabilityRegistry (platform-ai.md section 4)', () => {
     ['tools under an admin (R9)', { audience: 'admin', sellerScoped: false, maxToolRounds: 1 }],
     ['a seller-scoped buyer capability', { audience: 'buyer' }],
     ['a prompt version with spaces', { promptVersion: 'v 1' }],
+    ['no data category', { dataCategories: [] }],
+    ['an unknown data category', { dataCategories: ['address'] }],
+    ['a data category twice', { dataCategories: ['seller-text', 'seller-text'] }],
   ])('refuses %s', (_name, change) => {
     const registry = new CapabilityRegistry();
     expect(() => registry.register('alpha', [{ ...SPEC, ...change } as CapabilitySpec])).toThrow(

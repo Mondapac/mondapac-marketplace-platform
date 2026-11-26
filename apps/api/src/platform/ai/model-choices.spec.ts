@@ -36,6 +36,7 @@ const base = {
   maxToolRounds: 0,
   timeoutMs: 1000,
   promptVersion: 'p-1',
+  dataCategories: ['seller-text'],
 } as const;
 const WRITER: CapabilitySpec = { id: 'alpha.writer', task: 'write', ...base };
 const SECOND_WRITER: CapabilitySpec = { id: 'alpha.second-writer', task: 'write', ...base };
@@ -273,19 +274,38 @@ describe.each(['AU', 'ZZ'] as const)(
       );
     });
 
-    it('refuses every stage but off today: none is served yet, and shadow has no approval', () => {
+    it('refuses percent and default (not served yet) and shadow without the approval', () => {
       for (const stage of ['percent', 'default'] as const) {
         expect(
           choices.checkInHouse(marketId, 'write', page({ stage, family: 'model-house' })).stage,
         ).toBe('stage-not-served');
       }
-      expect(
-        choices.checkInHouse(
-          marketId,
-          'write',
-          page({ stage: 'shadow', family: 'model-house', shadowPercent: 5 }),
-        ).stage,
-      ).toBe('stage-not-served');
+      const shadow = page({ stage: 'shadow', family: 'model-house', shadowPercent: 5 });
+      expect(choices.checkInHouse(marketId, 'write', shadow).stage).toBe('shadow-not-approved');
+      // With the owner's approval of the writer's category in the Market (G6c, FE-280).
+      const approved = new AiModelChoices(router, registry, {
+        [marketId]: {
+          recordedIn: 'ADR-0052',
+          approvedOn: '2026-11-27',
+          categories: ['seller-text'],
+        },
+      });
+      expect(approved.checkInHouse(marketId, 'write', shadow)).toEqual({
+        stage: null,
+        family: null,
+        shadowPercent: null,
+        rolloutPercent: null,
+      });
+      const otherCategory = new AiModelChoices(router, registry, {
+        [marketId]: {
+          recordedIn: 'ADR-0052',
+          approvedOn: '2026-11-27',
+          categories: ['customer-message'],
+        },
+      });
+      expect(otherCategory.checkInHouse(marketId, 'write', shadow).stage).toBe(
+        'shadow-not-approved',
+      );
     });
 
     it('checks the route of a live stage for every capability of the task type', () => {

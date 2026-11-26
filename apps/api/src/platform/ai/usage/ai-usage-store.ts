@@ -95,7 +95,7 @@ export interface AiUsageStore {
 
   /**
    * The Market's calls from `since` (included) to `until` (excluded) per provider and model, the
-   * calls under `leaveOut` (the evaluation usage id) left out: their count, failures, later
+   * calls under `leaveOut` (the evaluation usage id) and shadow calls (G6c) left out: their count, failures, later
    * attempts, cost and latency counts at each bound of {@link LATENCY_BUCKETS_MS} (AI Gateway G5e,
    * the scorecard; design section 8). Numbers only. Read-only unit is enough.
    */
@@ -195,7 +195,20 @@ export interface CallRecord {
   readonly costMicroUsd: number;
   readonly latencyMs: number;
   readonly outcome: CallOutcome;
+  /** A shadow call of the in-house model (G6c): measured only, its answer reached no one. */
+  readonly shadow: boolean;
+  /** The capability's own check of the answer, on the calls of a shadow sample (G6c); else null. */
+  readonly outputCheck: OutputCheck | null;
 }
+
+/**
+ * What the capability's own check (its evaluation suite's `shadow`, G6c) made of an answer, the only
+ * thing kept of it: `valid`, `invalid` (not usable: no text alone, nothing left after the guard) or
+ * `guard-rejected` (the guard took out a certification claim). Kept on both calls of a shadow sample
+ * (the external answer and the in-house one), so their rates compare on the same requests.
+ */
+export const OUTPUT_CHECKS = ['valid', 'invalid', 'guard-rejected'] as const;
+export type OutputCheck = (typeof OUTPUT_CHECKS)[number];
 
 /** What one call or refusal adds to its day row. */
 export interface UsageDelta {

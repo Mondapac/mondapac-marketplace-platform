@@ -1,11 +1,15 @@
 import type { CallContext } from '@mondapac/shared-kernel';
+import type { CapabilityTask } from '../../src/platform/ai/capability';
 import {
   NO_CAPS,
+  NO_IN_HOUSE,
   NO_MODEL_LISTS,
   type AiCaps,
+  type AiInHouseControls,
   type AiModelLists,
   type AiGatewayControls,
   type AiMarketControls,
+  type InHouseTaskPage,
 } from '../../src/platform/ai/gateway-controls';
 
 /** The caps the ZZ fixture had as Market configuration `aiBudget` before G4 (US micro-dollars). */
@@ -118,6 +122,21 @@ export class TestAiGatewayControls implements AiGatewayControls {
   }
 
   default: AiCaps = NO_CAPS;
+  /** The in-house model's settings per Market (G6c); a Market without an entry has every stage off. */
+  readonly inHouse = new Map<string, AiInHouseControls>();
+
+  /** Sets a task type's in-house stage in the Markets named (the Mondapac Intelligence tab, G6b). */
+  inHouseStage(
+    task: CapabilityTask,
+    page: InHouseTaskPage,
+    markets: readonly string[] = ['AU', 'ZZ'],
+  ): this {
+    for (const market of markets) {
+      const was = this.inHouse.get(market) ?? NO_IN_HOUSE;
+      this.inHouse.set(market, { ...was, tasks: { ...was.tasks, [task]: page } });
+    }
+    return this;
+  }
 
   read(context: CallContext): Promise<AiMarketControls> {
     this.reads += 1;
@@ -128,6 +147,7 @@ export class TestAiGatewayControls implements AiGatewayControls {
       caps: this.caps.get(marketId) ?? this.default,
       models: this.models.get(marketId) ?? NO_MODEL_LISTS,
       capabilities: this.switches.get(marketId) ?? switchesOnBut(this.switchedOff.get(marketId)),
+      inHouse: this.inHouse.get(marketId) ?? NO_IN_HOUSE,
     });
   }
 }

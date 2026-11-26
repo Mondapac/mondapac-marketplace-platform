@@ -43,6 +43,7 @@ const base = {
   maxToolRounds: 0,
   timeoutMs: 1000,
   promptVersion: 'p-1',
+  dataCategories: ['seller-text'],
 } as const;
 
 /** Two writers without tools (evaluated in G4c1) and a chat with tool rounds (G4c2). */

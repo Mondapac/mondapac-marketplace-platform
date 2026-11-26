@@ -1,9 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { MarketId } from '@mondapac/shared-kernel';
 import { CAPABILITY_TASKS, type CapabilitySpec, type CapabilityTask } from './capability';
 import { CapabilityRegistry } from './capability-registry';
 import {
+  AI_SHADOW_APPROVALS,
   checkInHouseTask,
+  SHADOW_CUSTOMER_DATA_APPROVALS,
+  type ShadowApprovals,
   type InHouseProblem,
   type InHouseTaskCheck,
   type InHouseTaskPage,
@@ -72,6 +75,9 @@ export class AiModelChoices {
   constructor(
     private readonly router: AiRouter,
     private readonly capabilities: CapabilityRegistry,
+    @Optional()
+    @Inject(AI_SHADOW_APPROVALS)
+    private readonly approvals: ShadowApprovals = SHADOW_CUSTOMER_DATA_APPROVALS,
   ) {}
 
   /** Every catalogue family per task type, with why it cannot be chosen in the Market now. */
@@ -131,8 +137,12 @@ export class AiModelChoices {
    */
   checkInHouse(marketId: MarketId, task: CapabilityTask, page: InHouseTaskPage): InHouseTaskCheck {
     const specs = this.#specsOf(task);
-    return checkInHouseTask(marketId, page, (family) =>
-      this.router.inHouseFamilyProblem(marketId, task, specs, family),
+    return checkInHouseTask(
+      marketId,
+      page,
+      (family) => this.router.inHouseFamilyProblem(marketId, task, specs, family),
+      specs.map((spec) => spec.dataCategories),
+      this.approvals,
     );
   }
 

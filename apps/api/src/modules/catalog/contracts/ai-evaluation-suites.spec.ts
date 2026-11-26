@@ -1,6 +1,6 @@
 import { CapabilityRegistry } from '../../../platform/ai/capability-registry';
 import { EvaluationSuiteRegistry } from '../../../platform/ai/evaluations/evaluation-suite';
-import type { ModelTurn } from '../../../platform/ai/model-provider';
+import type { ModelRequest, ModelTurn } from '../../../platform/ai/model-provider';
 import { WRITER_EVALUATION_SET } from '../domain/description-writer/evaluation-set';
 import { WRITER_MAX_OUTPUT_TOKENS } from '../domain/description-writer/writer-prompt';
 import { CATALOG_AI_CAPABILITIES } from './ai-capabilities';
@@ -77,6 +77,25 @@ describe('catalog AI evaluation suites (G4c)', () => {
           ) ?? '';
         expect(shown).not.toMatch(/<script|<a\s|href=/i);
         expect(suite.display(id, turnOf(''))).toBeNull();
+      });
+
+      // G6c: the writer's own check of a real answer in a shadow sample, against the request sent.
+      it('checks a shadow answer as the modal would use it', () => {
+        const id = WRITER_EVALUATION_SET[0]!.id;
+        const request = suite.request(id)!;
+        const shadow = (sent: ModelRequest, turn: ModelTurn) => suite.shadow!(sent, turn);
+        expect(shadow(request, turnOf(WRITER_EVALUATION_SET[0]!.draft))).toBe('valid');
+        // The guard takes a certification claim out: guard-rejected, even with other text kept.
+        expect(shadow(request, turnOf('It is kosher. It is a long grain rice.'))).toBe(
+          'guard-rejected',
+        );
+        // Nothing usable: no text alone, cut at the cap, or nothing left after the guard.
+        expect(shadow(request, { ...turnOf('x'), stop: 'tool-use' })).toBe('invalid');
+        expect(shadow(request, turnOf('Rice', 'max-tokens'))).toBe('invalid');
+        expect(shadow(request, turnOf('It is healthy.'))).toBe('invalid');
+        expect(shadow(request, turnOf(''))).toBe('invalid');
+        // A number the request does not hold is a fact the model added: left out.
+        expect(shadow(request, turnOf('It cooks in 987654 minutes.'))).toBe('invalid');
       });
     },
   );

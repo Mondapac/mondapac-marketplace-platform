@@ -316,6 +316,11 @@ model AiCall {
   latencyMs     Int      @map("latency_ms")
   /// ok | timeout | unavailable | rate-limited | rejected (CHECK; widened in G3).
   outcome       String   @db.VarChar(20)
+  /// A shadow call of the in-house model (G6c): measured only, its answer reached no one.
+  shadow        Boolean  @default(false)
+  /// valid | invalid | guard-rejected (CHECK): the capability's own check of the answer, on both
+  /// calls of a shadow sample only (G6c); null otherwise. Never on a call that is not ok.
+  outputCheck   String?  @map("output_check") @db.VarChar(20)
 
   /// The retention scan, oldest first.
   @@index([marketId, occurredAt, id], map: "ai_calls_market_id_occurred_at_id_idx")

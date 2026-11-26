@@ -1,4 +1,8 @@
 import type { Clock } from '@mondapac/shared-kernel';
+import { CapabilityRegistry } from '../../src/platform/ai/capability-registry';
+import { EvaluationSuiteRegistry } from '../../src/platform/ai/evaluations/evaluation-suite';
+import { InHouseShadow, type ShadowSampler } from '../../src/platform/ai/own-model/in-house-shadow';
+import type { ShadowApprovals } from '../../src/platform/ai/own-model/in-house-stage';
 import type { CapabilitySpec } from '../../src/platform/ai/capability';
 import {
   RouteCatalogue,
@@ -83,6 +87,30 @@ export function testRouter(
   clock: Clock,
 ): AiRouter {
   return new AiRouter(catalogue, evaluations, models, markets, clock);
+}
+
+/**
+ * The gateway's shadow runner for a unit test (G6c): by default no Market has the owner's approval
+ * and no call is sampled, so no shadow call is sent. A test of shadow passes its approvals, the
+ * suites it registered and a sampler.
+ */
+export function testShadow(
+  router: AiRouter,
+  options: {
+    readonly capabilities?: CapabilityRegistry;
+    readonly suites?: EvaluationSuiteRegistry;
+    readonly approvals?: ShadowApprovals;
+    readonly sampler?: ShadowSampler;
+  } = {},
+): InHouseShadow {
+  const suites =
+    options.suites ?? new EvaluationSuiteRegistry(options.capabilities ?? new CapabilityRegistry());
+  return new InHouseShadow(
+    router,
+    suites,
+    options.approvals ?? {},
+    options.sampler ?? { take: () => false },
+  );
 }
 
 /** A usable in-house test row (G6a): the `mondapac` provider on `in-house-http`, in Sydney. */

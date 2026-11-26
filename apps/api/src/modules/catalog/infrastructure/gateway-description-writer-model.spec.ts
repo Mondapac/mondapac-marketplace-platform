@@ -12,7 +12,12 @@ import {
   type InMemoryAiUsageStore,
 } from '../../../../test/support/in-memory-ai-usage';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
-import { passesFor, testRouteCatalogue, testRouter } from '../../../../test/support/ai-routes';
+import {
+  passesFor,
+  testRouteCatalogue,
+  testRouter,
+  testShadow,
+} from '../../../../test/support/ai-routes';
 import type { AppConfig } from '../../../platform/config/app-config';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
@@ -93,14 +98,22 @@ describe('GatewayDescriptionWriterModel on the real AiGateway (AIS-03; ADR-0019 
     const models = new ModelGateway(configOf(), provider);
     // Both Markets choose `model-fast` for every task type (the AI Models page, G4b).
     controls = new TestAiGatewayControls().routed('model-fast', ['AU', 'ZZ']);
+    const router = testRouter(
+      testRouteCatalogue(),
+      passesFor(CATALOG_AI_CAPABILITIES),
+      models,
+      markets,
+      clock,
+    );
     const gateway = new AiGateway(
       models,
       registry,
       { isOn: () => Promise.resolve(sellerOn) },
       usage,
       clock,
-      testRouter(testRouteCatalogue(), passesFor(CATALOG_AI_CAPABILITIES), models, markets, clock),
+      router,
       controls,
+      testShadow(router),
     );
     return new GatewayDescriptionWriterModel(gateway);
   };

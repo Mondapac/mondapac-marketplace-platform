@@ -23,6 +23,7 @@ import {
   testRoute,
   testRouteCatalogue,
   testRouter,
+  testShadow,
 } from '../../../test/support/ai-routes';
 import type { AppConfig } from '../config/app-config';
 import { loadMarketConfigs } from '../market-config/market-config';
@@ -71,6 +72,7 @@ const base = {
   maxToolRounds: 0,
   timeoutMs: 1000,
   promptVersion: 'p-1',
+  dataCategories: ['seller-text'],
 } as const;
 const SPECS: CapabilitySpec[] = [
   { id: 'alpha.seller-writer', audience: 'seller', sellerScoped: true, ...base },
@@ -171,7 +173,16 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
     ({ store, usage, unitOfWork } = inMemoryAiUsage(markets, clock));
     const models = new ModelGateway(configOf(killed, codes), provider);
     router = testRouter(testRouteCatalogue(), passesFor(SPECS), models, markets, clock);
-    return new AiGateway(models, registry, sellerSwitch, usage, clock, router, controls);
+    return new AiGateway(
+      models,
+      registry,
+      sellerSwitch,
+      usage,
+      clock,
+      router,
+      controls,
+      testShadow(router),
+    );
   };
 
   beforeEach(() => {
@@ -766,6 +777,8 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
         costMicroUsd: 300,
         latencyMs: 10,
         outcome: 'ok',
+        shadow: false,
+        outputCheck: null,
       });
       expect(store.counterOf(AU, dayLine('market'))).toEqual({ held: 900, spent: 900 });
       expect(store.calls).toHaveLength(1);
@@ -788,6 +801,8 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
         costMicroUsd: 300,
         latencyMs: 10,
         outcome: 'ok' as const,
+        shadow: false,
+        outputCheck: null,
       };
       const first = await usage.reserve(
         AU,
@@ -889,6 +904,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
         clock,
         router,
         controls,
+        testShadow(router),
       );
     };
 
