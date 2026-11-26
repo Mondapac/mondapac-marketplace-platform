@@ -80,7 +80,7 @@ describe('catalog AI evaluation suites (G4c)', () => {
       });
 
       // G6c: the writer's own check of a real answer in a shadow sample, against the request sent.
-      it('checks a shadow answer as the modal would use it', () => {
+      it('checks a shadow answer as the model would use it', () => {
         const id = WRITER_EVALUATION_SET[0]!.id;
         const request = suite.request(id)!;
         const shadow = (sent: ModelRequest, turn: ModelTurn) => suite.shadow!(sent, turn);

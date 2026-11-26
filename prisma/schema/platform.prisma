@@ -318,6 +318,9 @@ model AiCall {
   outcome       String   @db.VarChar(20)
   /// A shadow call of the in-house model (G6c): measured only, its answer reached no one.
   shadow        Boolean  @default(false)
+  /// The shadow sample the call belongs to (G6c): the same id on the external call and its shadow
+  /// call; null outside a sample (CHECK: a shadow call or a checked call has one).
+  shadowSample  String?  @map("shadow_sample") @db.Uuid
   /// valid | invalid | guard-rejected (CHECK): the capability's own check of the answer, on both
   /// calls of a shadow sample only (G6c); null otherwise. Never on a call that is not ok.
   outputCheck   String?  @map("output_check") @db.VarChar(20)

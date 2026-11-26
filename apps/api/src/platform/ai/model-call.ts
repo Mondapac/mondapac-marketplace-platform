@@ -94,6 +94,8 @@ export interface PlannedCall {
    * of a shadow call drops the run.
    */
   readonly shadow?: boolean;
+  /** The shadow sample both calls of it belong to (G6c), kept on their rows; else none. */
+  readonly sample?: string;
   /**
    * The capability's own check of an answer, on the calls of a shadow sample (G6c): only its result
    * is kept, on the call's row. A check that throws is recorded as no check.
@@ -155,7 +157,8 @@ export async function callThroughPlan(
     reason: 'off' | 'over-budget',
   ): Promise<PlannedCallResult> => {
     logger.warn({ msg: 'ai.run.failed', capability: label, marketId, failure });
-    if (reason === 'over-budget') await usage.refused(market, scope);
+    // A refused shadow call is no refusal a caller saw: the day row counts none (G6c review).
+    if (reason === 'over-budget' && !shadow) await usage.refused(market, scope);
     return nothing({ ok: false, reason, costMicroUsd: 0 }, reason === 'over-budget');
   };
 
@@ -250,6 +253,7 @@ export async function callThroughPlan(
       latencyMs,
       outcome,
       shadow,
+      shadowSample: call.sample ?? null,
       outputCheck: result.ok ? checkOf(result.turn) : null,
     });
     const route: GatewayRoute = {

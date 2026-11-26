@@ -10,12 +10,17 @@ import {
   type AiGatewayControls,
   type AiMarketControls,
 } from './gateway-controls';
-import { callThroughPlan, costMicroUsd, type GatewayRun } from './model-call';
+import {
+  callThroughPlan,
+  costMicroUsd,
+  type GatewayRun,
+  type ModelCallDependencies,
+} from './model-call';
 import { ModelGateway } from './model-gateway';
 import { AiRouter, planPrice } from './routing/ai-router';
 import type { ModelRequest } from './model-provider';
 import type { ModelTokenPrice } from './catalogue/route-catalogue';
-import { InHouseShadow } from './own-model/in-house-shadow';
+import { InHouseShadow, type ShadowSample } from './own-model/in-house-shadow';
 import { maskRequest } from './personal-data-masker';
 import { SELLER_AI_SWITCH, type SellerAiSwitch } from './seller-ai-switch';
 import { AiUsage, type UsageScope } from './usage/ai-usage';
@@ -320,7 +325,7 @@ export class AiGateway {
     // Shadow (G6c): decided before the external call, so both calls of the sample carry the
     // capability's own check of their answer.
     const shadow = this.shadow.sample(marketId, spec, sent, controls.inHouse);
-    const deps = {
+    const deps: ModelCallDependencies = {
       models: this.models,
       usage: this.usage,
       clock: this.clock,
@@ -328,34 +333,66 @@ export class AiGateway {
       logger: this.#logger,
     };
     // The one model call path (shared with the evaluation gateway, G4c): reserve, call, settle.
-    const { run, last } = await callThroughPlan(deps, {
-      label: capability,
+    let started = false;
+    try {
+      const { run, last } = await callThroughPlan(deps, {
+        label: capability,
+        market,
+        scope,
+        caps,
+        plan,
+        sent,
+        timeoutMs,
+        ...(shadow === null ? {} : { sample: shadow.id, check: shadow.check }),
+      });
+      // Only once the external call was sent (not refused, not over budget): the same masked
+      // request, never awaited, its answer dropped (design section 6, "Shadow mode").
+      if (shadow !== null && last !== null) {
+        started = true;
+        this.shadow.start(shadow, capability, marketId, () =>
+          this.#shadowCall(capability, spec, context, options, sent, timeoutMs, shadow, deps),
+        );
+      }
+      return run;
+    } finally {
+      if (shadow !== null && !started) this.shadow.drop();
+    }
+  }
+
+  /**
+   * A sample's shadow call, right after the external answer. The switches (emergency stop, the
+   * capability's and the seller's switch, acting-as) and the in-house stage and approval are
+   * evaluated again, so a stop set while the external call was out sends nothing more (Hassan, G6c
+   * review 2). Counted on the Market's and the capability's budget only, never on a seller's or
+   * the guest pool's: the experiment is the platform's cost (owner decision pending, recommended).
+   */
+  async #shadowCall(
+    capability: string,
+    spec: CapabilitySpec,
+    context: CallContext,
+    options: GatewayOptions,
+    sent: ModelRequest,
+    timeoutMs: number,
+    sample: ShadowSample,
+    deps: ModelCallDependencies,
+  ): Promise<void> {
+    const { market } = context;
+    const again = await this.#evaluate(capability, context, options);
+    if (!again.status.on) return;
+    const plan = this.shadow.stillSampled(market.marketId, spec, again.controls.inHouse);
+    if (plan === null) return;
+    await callThroughPlan(deps, {
+      label: `${capability} (shadow)`,
       market,
-      scope,
-      caps,
+      scope: { capability: spec.id, sellerId: null, guest: false },
+      caps: again.controls.caps,
       plan,
       sent,
       timeoutMs,
-      ...(shadow === null ? {} : { check: shadow.check }),
+      shadow: true,
+      sample: sample.id,
+      check: sample.check,
     });
-    // Only once the external call was sent (not refused, not over budget): the same masked request
-    // and budget scope, never awaited, its answer dropped (design section 6, "Shadow mode").
-    if (shadow !== null && last !== null) {
-      this.shadow.start(capability, marketId, () =>
-        callThroughPlan(deps, {
-          label: `${capability} (shadow)`,
-          market,
-          scope,
-          caps,
-          plan: shadow.plan,
-          sent,
-          timeoutMs,
-          shadow: true,
-          check: shadow.check,
-        }),
-      );
-    }
-    return run;
   }
 
   /** What the admin AI settings cards show (kill switch, key set or not). */

@@ -778,6 +778,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
         latencyMs: 10,
         outcome: 'ok',
         shadow: false,
+        shadowSample: null,
         outputCheck: null,
       });
       expect(store.counterOf(AU, dayLine('market'))).toEqual({ held: 900, spent: 900 });
@@ -802,6 +803,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
         latencyMs: 10,
         outcome: 'ok' as const,
         shadow: false,
+        shadowSample: null,
         outputCheck: null,
       };
       const first = await usage.reserve(

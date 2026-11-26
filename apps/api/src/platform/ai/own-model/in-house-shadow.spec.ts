@@ -132,9 +132,10 @@ const suiteOf = (capability: string, withShadow = true): EvaluationSuite => ({
 class RouteProvider implements ModelProvider {
   readonly sent: { route: string; request: ModelRequest }[] = [];
   inHouse: () => Promise<ModelTurn> = () => Promise.resolve(IN_HOUSE);
+  external: () => Promise<ModelTurn> = () => Promise.resolve(EXTERNAL);
   call(credentials: ModelCredentials, request: ModelRequest) {
     this.sent.push({ route: credentials.route, request });
-    return credentials.route === 'in-house-http' ? this.inHouse() : Promise.resolve(EXTERNAL);
+    return credentials.route === 'in-house-http' ? this.inHouse() : this.external();
   }
 }
 
@@ -181,6 +182,7 @@ describe.each(['AU', 'ZZ'])('in-house shadow runs (G6c) in %s', (code) => {
   let store: InMemoryAiUsageStore;
   let shadow: InHouseShadow;
   let sampled: number[];
+  let controls: TestAiGatewayControls;
 
   const gatewayOf = (
     setup: {
@@ -252,15 +254,16 @@ describe.each(['AU', 'ZZ'])('in-house shadow runs (G6c) in %s', (code) => {
     );
     const catalogue = testRouteCatalogue([testInHouseRoute('model-house', setup.houseRow)]);
     const router = testRouter(catalogue, passes, models, MARKETS, clock);
-    const controls = (
+    controls = (
       setup.budget === undefined
         ? new TestAiGatewayControls()
         : TestAiGatewayControls.everywhere({ marketDayMicroUsd: setup.budget })
-    ).routed('model-fast', [code]);
+    ).routed('model-fast', ['AU', 'ZZ']);
     const page = setup.page === undefined ? SHADOW_PAGE : setup.page;
+    // Both Markets hold the stage (the cross-Market canary: only the approval tells them apart).
     if (page !== null) {
-      controls.inHouseStage('write', page, [code]);
-      controls.inHouseStage('chat', page, [code]);
+      controls.inHouseStage('write', page, ['AU', 'ZZ']);
+      controls.inHouseStage('chat', page, ['AU', 'ZZ']);
     }
     shadow = testShadow(router, {
       suites,
@@ -410,15 +413,22 @@ describe.each(['AU', 'ZZ'])('in-house shadow runs (G6c) in %s', (code) => {
     expect(sampled).toEqual([]);
   });
 
-  it('runs a seller capability in shadow with the same seller scope', async () => {
+  it("counts a seller capability's shadow call on the Market and capability, never the seller", async () => {
     const gateway = gatewayOf();
     await gateway.run(SELLER_WRITER.id, sellerContext(market), REQUEST, { sellerId: SELLER });
     await shadow.settled();
     expect(routes()).toEqual(['anthropic-api', 'in-house-http']);
     expect(store.calls.map((call) => [call.sellerId, call.shadow])).toEqual([
       [SELLER, false],
-      [SELLER, true],
+      [null, true],
     ]);
+    const sellerDay = store.counterOf(market, {
+      period: 'day',
+      periodStart: Temporal.PlainDate.from('2026-11-25'),
+      scope: 'seller',
+      scopeKey: SELLER,
+    });
+    expect(sellerDay?.spent).toBe(store.calls[0]!.costMicroUsd);
   });
 
   it('sends no shadow when the external call was refused over budget', async () => {
@@ -453,24 +463,91 @@ describe.each(['AU', 'ZZ'])('in-house shadow runs (G6c) in %s', (code) => {
     expect(store.calls).toHaveLength(2);
   });
 
-  it('samples no call while the most shadow calls a process may have out are out', async () => {
+  it('takes the in-flight slot at sampling, so a burst cannot pass the cap (Hassan 1)', async () => {
     const gateway = gatewayOf();
-    const releases: (() => void)[] = [];
-    for (let call = 0; call < MAX_SHADOW_IN_FLIGHT; call += 1) {
-      shadow.start(
-        WRITER.id,
-        marketId,
-        () => new Promise<void>((resolve) => releases.push(resolve)),
-      );
-    }
-    expect(shadow.sample(marketId, WRITER, REQUEST, inHouseOf())).toBeNull();
+    // A burst: every sample is taken before any external call comes back.
+    const burst = Array.from({ length: MAX_SHADOW_IN_FLIGHT + 3 }, () =>
+      shadow.sample(marketId, WRITER, REQUEST, inHouseOf()),
+    );
+    expect(burst.filter((sample) => sample !== null)).toHaveLength(MAX_SHADOW_IN_FLIGHT);
     await gateway.run(WRITER.id, adminContext(market), REQUEST, {});
+    await shadow.settled();
     expect(routes()).toEqual(['anthropic-api']);
     expect(store.calls).toEqual([expect.objectContaining({ shadow: false, outputCheck: null })]);
-    for (const release of releases) release();
-    await shadow.settled();
-    // Once they are back, a call is sampled again.
+    // A sample whose external call was not sent gives its slot back.
+    for (const sample of burst) if (sample !== null) shadow.drop();
     expect(shadow.sample(marketId, WRITER, REQUEST, inHouseOf())).not.toBeNull();
+  });
+
+  it('gives the slot back when the external call is refused', async () => {
+    const gateway = gatewayOf({ budget: 0 });
+    for (let call = 0; call < MAX_SHADOW_IN_FLIGHT + 1; call += 1) {
+      await gateway.run(WRITER.id, adminContext(market), REQUEST, {});
+    }
+    expect(sampled).toHaveLength(MAX_SHADOW_IN_FLIGHT + 1);
+  });
+
+  it('puts the same sample id on both calls of a sample, and none outside one', async () => {
+    const gateway = gatewayOf();
+    await runWriter(gateway);
+    const [external, house] = store.calls;
+    expect(external!.shadowSample).toMatch(/^[0-9a-f-]{36}$/u);
+    expect(house!.shadowSample).toBe(external!.shadowSample);
+    await runWriter(gatewayOf({ sample: false }));
+    expect(store.calls.map((call) => call.shadowSample)).toEqual([null]);
+  });
+
+  it('sends no shadow call when a stop is set while the external call is out (Hassan 2)', async () => {
+    const gateway = gatewayOf();
+    provider.external = () => {
+      controls.stopped.add(code);
+      return Promise.resolve(EXTERNAL);
+    };
+    const run = await runWriter(gateway);
+    expect(run).toMatchObject({ ok: true, turn: EXTERNAL });
+    expect(routes()).toEqual(['anthropic-api']);
+  });
+
+  it('sends no shadow call when the stage is switched off while the external call is out', async () => {
+    const gateway = gatewayOf();
+    provider.external = () => {
+      controls.inHouseStage('write', { ...SHADOW_PAGE, stage: 'off' }, [code]);
+      return Promise.resolve(EXTERNAL);
+    };
+    await runWriter(gateway);
+    expect(routes()).toEqual(['anthropic-api']);
+  });
+
+  it('counts no refusal on the day row when the shadow call is over budget', async () => {
+    // Room for the external call only: the dear in-house row's reservation does not fit.
+    const gateway = gatewayOf({
+      budget: 10_000,
+      houseRow: { inputUsdPerMTok: 100, outputUsdPerMTok: 500 },
+    });
+    const run = await runWriter(gateway);
+    expect(run).toMatchObject({ ok: true });
+    expect(routes()).toEqual(['anthropic-api']);
+    expect(store.usage.every((row) => row.refusals === 0)).toBe(true);
+  });
+
+  it('stops sampling on close and settles the shadow calls still out first', async () => {
+    const gateway = gatewayOf();
+    let release: (turn: ModelTurn) => void = () => undefined;
+    provider.inHouse = () =>
+      new Promise<ModelTurn>((resolve) => {
+        release = resolve;
+      });
+    await gateway.run(WRITER.id, adminContext(market), REQUEST, {});
+    // The shadow call reaches the in-house model, then the application closes.
+    for (let tick = 0; tick < 50 && routes().length < 2; tick += 1) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    expect(routes()).toEqual(['anthropic-api', 'in-house-http']);
+    const closing = shadow.beforeApplicationShutdown();
+    expect(shadow.sample(marketId, WRITER, REQUEST, inHouseOf())).toBeNull();
+    release(IN_HOUSE);
+    await closing;
+    expect(store.calls.filter((call) => call.shadow)).toHaveLength(1);
   });
 
   it('records no check when the capability check throws, and the call still stands', async () => {

@@ -197,6 +197,12 @@ export interface CallRecord {
   readonly outcome: CallOutcome;
   /** A shadow call of the in-house model (G6c): measured only, its answer reached no one. */
   readonly shadow: boolean;
+  /**
+   * The shadow sample the call belongs to (G6c): the same id on the external call and its shadow
+   * call, so G6e compares the two models on the same requests (a sampled external call that failed
+   * is still known). Null outside a sample.
+   */
+  readonly shadowSample: string | null;
   /** The capability's own check of the answer, on the calls of a shadow sample (G6c); else null. */
   readonly outputCheck: OutputCheck | null;
 }

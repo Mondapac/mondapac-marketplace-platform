@@ -418,28 +418,41 @@ ADR-0026 decision 9 and ADR-0042 decision 7, so ADR-0053 supersedes those points
   every stage but off is refused, so AI stays off.
 - **Built in G6c (shadow runs).** `SERVED_IN_HOUSE_STAGES` is `off` and `shadow`. The gateway reads
   the in-house settings with its other settings (`AiMarketControls.inHouse`, settings' reader) and
-  serves them only through `inHouseStageInForce`. Before the external call of a capability, the
-  shadow runner (`own-model/in-house-shadow.ts`) decides whether the call is in the shadow sample;
-  all must hold, else nothing reaches the in-house model: the capability takes one round without
-  tools; its task type's stage in force is `shadow`; the owner approved, for the Market, every data
-  category the capability declares; its evaluation suite has its own check of a real answer
+  serves them only through `inHouseStageInForce` (`inHouse.rollback` is carried for G6d, which reads
+  it only through `rollbackLimitsInForce`). Before the external call of a capability, the shadow
+  runner (`own-model/in-house-shadow.ts`) decides whether the call is in the shadow sample; all must
+  hold, else nothing reaches the in-house model: the capability takes one round without tools; its
+  task type's stage in force is `shadow`; the owner approved, for the Market, every data category
+  the capability declares; its evaluation suite has its own check of a real answer
   (`EvaluationSuite.shadow`: `valid`, `invalid` or `guard-rejected`; the description writer's uses
-  its draft guard); the call falls in the stage's share; fewer than `MAX_SHADOW_IN_FLIGHT` (8)
-  shadow calls of the process are out; and the in-house family has a usable route for the
-  capability now, checked again on this call (`AiRouter.shadowPlan`: Hassan's check, region, key,
-  not retired, a pass at the prompt version; FE-20261126-ai-gateway-in-house-call-time-recheck for
-  shadow). The external call then goes as always; once it was sent, the shadow call takes the same
-  masked request and budget scope, is never awaited by the caller, and its answer is dropped. Each
-  call keeps its row in `platform.ai_calls`: the shadow call with `shadow` true, and both calls of
-  the sample with the capability's check in `output_check` (only on an `ok` call, CHECK), so the two
-  models' valid-output and guard-rejection rates, tokens and latency compare on the same requests;
-  no text is kept. The shadow cost is held and spent on the same budget counters; the day rows count
-  only its cost, not a request, and the scorecard (G5e) leaves shadow rows out. The reading and
-  comparison of these numbers is G6e's (FE-20261126-ai-gateway-shadow-metrics-read).
+  its draft guard); the call falls in the stage's share; the in-house family has a usable route for
+  the capability now, checked again on this call (`AiRouter.shadowPlan`: Hassan's check, region,
+  key, not retired, a pass at the prompt version; FE-20261126-ai-gateway-in-house-call-time-recheck
+  for shadow); fewer than `MAX_SHADOW_IN_FLIGHT` (8) samples of the process are out (the slot is
+  taken at sampling, so a burst cannot pass it, and given back when the external call is not sent
+  or the shadow call ends); and the application is not closing. The external call then goes as
+  always. Once it was sent, the switches (emergency stop, capability and seller switch, acting-as),
+  the stage and the approval are evaluated again, and the shadow call takes the same masked
+  request, never awaited by the caller; its answer is dropped. It is counted on the Market's and the
+  capability's budget only, never on a seller's or the guest pool's (the experiment is the
+  platform's cost; recommended to the owner, decision card of 26 Nov); a shadow call refused for
+  budget counts no refusal. On close, sampling stops and the shadow calls still out settle before
+  the database pool closes (`beforeApplicationShutdown`; the pool closes in
+  `onApplicationShutdown`). Each call keeps its row in `platform.ai_calls`: the shadow call with
+  `shadow` true, both calls of a sample with its `shadow_sample` id (so a sampled external call that
+  failed is still known), and each `ok` call of a sample with the capability's check in
+  `output_check`; so the two models' valid-output and guard-rejection rates, failures, tokens and
+  latency compare on the same requests; no text is kept. The day rows count only the shadow cost,
+  not a request, and the scorecard (G5e) leaves shadow rows out, so the Overview's cost per request
+  includes shadow cost until G6e labels it. The reading and comparison of these numbers is G6e's
+  (FE-20261126-ai-gateway-shadow-metrics-read). Shadow calls share the circuit breaker of the
+  in-house row: in G6d a failing endpoint sets the route aside for live calls too, and the
+  auto-rollback counts served calls only, so a failure is not counted twice.
   **Data categories (FE-20261126-ai-gateway-shadow-approval-per-category).** Each capability
   declares the data categories its requests carry (`dataCategories`, from ADR-0019 decision 3:
   `seller-text`, `certificate-file`, `customer-message`, `order-status`, `order-tracking`; the
-  description writers `seller-text`, the buyer chat `customer-message`). The owner's approval in
+  description writers `seller-text`, the buyer chat `customer-message`; a contract spec per module
+  pins them, so a change meets the security review). The owner's approval in
   `SHADOW_CUSTOMER_DATA_APPROVALS` is per Market with its approved categories: a capability with a
   category outside it is never sent to shadow, and the panel takes `shadow` for a task type only when
   at least one capability of it is fully approved (`shadow-not-approved`). The approvals stay empty,
@@ -739,8 +752,8 @@ the guarded `prisma.tx(market)` client. Each table has an explicit GRANT and `do
 
 | Table                             | Content                                                                                                                                                                                                                                                                                                                                                                                                                    | Retention                                                                                            |
 | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `platform.ai_calls`               | One row per call: Market, capability, seller (if any), provider, model, attempt, input and output tokens, unit price used, cost, latency and outcome. No text, customer id, IP or personal key.                                                                                                                                                                                                                            | 90 days. A scheduled job deletes old rows in batches, like the security-events table. No partitions. |
-| `platform.ai_usage_days`          | Daily totals per Market, capability and seller: settled cost, calls, errors, refusals and fallbacks, and latency counts in fixed buckets from which p95 is computed.                                                                                                                                                                                                                                                       | 25 months                                                                                            |
+| `platform.ai_calls`               | One row per call: Market, capability, seller (if any), provider, model, attempt, input and output tokens, unit price used, cost, latency and outcome; from G6c whether it is a shadow call, its shadow sample id and the capability's check of the answer (`valid`, `invalid`, `guard-rejected`). No text, customer id, IP or personal key.                                                                                | 90 days. A scheduled job deletes old rows in batches, like the security-events table. No partitions. |
+| `platform.ai_usage_days`          | Daily totals per Market, capability and seller: settled cost, calls, errors, refusals and fallbacks, and latency counts in fixed buckets from which p95 is computed. The cost includes shadow calls (G6c); the counts do not.                                                                                                                                                                                             | 25 months                                                                                            |
 | `platform.ai_budget_counters`     | One row per Market, period (day or month, in the Market's zone) and cap scope (Market, capability, seller, guest pool): `held` (settled plus reserved; the reserved cost lives here, not in the day rows) and `spent`. Added in G2 (Mojtaba): a month cap cannot be one conditional UPDATE over day rows. Key `(market_id, period_start, period, scope, scope_key)`, so the retention's `period_start <` is a range on it. | 25 months                                                                                            |
 | `platform.ai_budget_reservations` | Temporary reservation with an expiry; deleted on settle or expiry.                                                                                                                                                                                                                                                                                                                                                         | Minutes                                                                                              |
 | Settings                          | Priority lists, saver model and threshold, caps, guest share, in-house stage, shadow share and rollback limits in the existing store (`settings.market_settings`), versioned with history. Routes are code (ADR-0052).                                                                                                                                                                                                     | Versioned                                                                                            |

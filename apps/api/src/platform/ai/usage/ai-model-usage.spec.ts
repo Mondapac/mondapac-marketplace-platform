@@ -102,6 +102,7 @@ function call(overrides: Partial<CallRecord>): CallRecord {
     latencyMs: 300,
     outcome: 'ok',
     shadow: false,
+    shadowSample: null,
     outputCheck: null,
     ...overrides,
   };

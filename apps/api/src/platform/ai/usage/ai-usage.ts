@@ -58,6 +58,7 @@ export interface SettledCall {
    * capability, so calls, failures, tokens and latency stay those of the answers callers got.
    */
   readonly shadow: boolean;
+  readonly shadowSample: string | null;
   readonly outputCheck: OutputCheck | null;
 }
 

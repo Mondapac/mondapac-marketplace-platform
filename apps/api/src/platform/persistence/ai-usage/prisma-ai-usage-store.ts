@@ -223,6 +223,7 @@ export class PrismaAiUsageStore implements AiUsageStore {
           latencyMs: call.latencyMs,
           outcome: call.outcome,
           shadow: call.shadow,
+          shadowSample: call.shadowSample,
           outputCheck: call.outputCheck,
         },
       ],
