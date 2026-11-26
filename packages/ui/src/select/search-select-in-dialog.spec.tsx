@@ -86,4 +86,41 @@ describe('SearchSelect inside a modal dialog', () => {
     fireEvent.click(screen.getByRole('option', { name: /grocery/i }));
     expect(picked).toEqual(['g']);
   });
+
+  it('keeps the option row inside the dialog and opens inside it again after closing', () => {
+    render(
+      <Dialog
+        open
+        title="New activity"
+        onClose={noop}
+        actions={<button type="button">Save</button>}
+      >
+        {select}
+      </Dialog>,
+    );
+    const trigger = screen.getByRole('combobox', { name: /categories/i });
+    fireEvent.click(trigger);
+    expect(screen.getByRole('option', { name: /grocery/i }).closest('dialog')).not.toBeNull();
+    fireEvent.click(trigger);
+    expect(screen.queryByRole('listbox')).toBeNull();
+    fireEvent.click(trigger);
+    expect(screen.getByRole('listbox').closest('dialog')).not.toBeNull();
+  });
+
+  it('closes only the list on Escape and leaves the dialog open', () => {
+    render(
+      <Dialog
+        open
+        title="New activity"
+        onClose={noop}
+        actions={<button type="button">Save</button>}
+      >
+        {select}
+      </Dialog>,
+    );
+    fireEvent.click(screen.getByRole('combobox', { name: /categories/i }));
+    fireEvent.keyDown(screen.getByRole('combobox', { name: /categories/i }), { key: 'Escape' });
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(document.querySelector('dialog')?.hasAttribute('open')).toBe(true);
+  });
 });
