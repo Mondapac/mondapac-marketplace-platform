@@ -748,6 +748,38 @@ describe('relay allowlist for seller decisions', () => {
     expect(upstream()).not.toContain('secret');
   });
 
+  it('relays the evaluation queries with their own keys only, and drops anything else', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+    const upstream = () => {
+      const target = fetchImpl.mock.calls.at(-1)?.[0];
+      return target instanceof Request ? target.url : String(target);
+    };
+    const ask = (path: string, query: string) =>
+      relay(
+        config,
+        new Request(`http://admin.localhost:3002/api/${path}${query}`, { headers: sameOrigin }),
+        path.split('/'),
+        fetchImpl,
+      );
+    const list = 'settings/admin/ai-models/evaluations';
+    const cursor = '1790000000000.0190a000-0000-7000-8000-0000000000a1';
+    expect((await ask(list, `?family=claude-haiku-5-5&cursor=${cursor}&x=1`)).status).toBe(200);
+    expect(upstream()).toContain(`family=claude-haiku-5-5&cursor=${cursor}`);
+    expect(upstream()).not.toContain('x=1');
+    expect((await ask(list, '?family=../x&cursor=nope')).status).toBe(200);
+    expect(upstream()).not.toContain('family=');
+    expect(upstream()).not.toContain('cursor=');
+    const estimate = `${list}/estimate`;
+    expect((await ask(estimate, '?provider=anthropic&family=claude-opus-5-5&q=1')).status).toBe(
+      200,
+    );
+    expect(upstream()).toContain('provider=anthropic&family=claude-opus-5-5');
+    expect(upstream()).not.toContain('q=1');
+    expect((await ask(estimate, '?provider=A B&cursor=1')).status).toBe(200);
+    expect(upstream()).not.toContain('provider=');
+    expect(upstream()).not.toContain('cursor');
+  });
+
   it('relays the own display name (PUT) and password change (POST) on their exact paths only', async () => {
     const name = 'identity/admin/profile/display-name';
     expect((await call('PUT', name)).status).toBe(200);
@@ -1033,6 +1065,20 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('POST', models)).status).toBe(404);
     expect((await call('POST', `${models}/revert`)).status).toBe(200);
     expect((await call('PUT', `${models}/revert`)).status).toBe(404);
+    // The evaluation runs: list and estimate by exact path, one run and its cancel by UUID only.
+    const evaluations = `${models}/evaluations`;
+    expect((await read(evaluations)).status).toBe(200);
+    expect((await read(`${evaluations}/estimate`)).status).toBe(200);
+    expect((await read(`${evaluations}/${ID}`)).status).toBe(200);
+    expect((await read(`${evaluations}/nope`)).status).toBe(404);
+    expect((await read(`${evaluations}/${ID}/cancel`)).status).toBe(404);
+    expect((await call('POST', evaluations)).status).toBe(200);
+    expect((await call('PUT', evaluations)).status).toBe(404);
+    expect((await call('POST', `${evaluations}/${ID}/cancel`)).status).toBe(200);
+    expect((await call('POST', `${evaluations}/nope/cancel`)).status).toBe(404);
+    expect((await call('PUT', `${evaluations}/${ID}/cancel`)).status).toBe(404);
+    expect((await call('POST', `${evaluations}/${ID}`)).status).toBe(404);
+    expect((await call('POST', `${evaluations}/estimate`)).status).toBe(404);
     expect((await read('settings/admin/ai')).status).toBe(200);
     expect((await call('PUT', 'settings/admin/ai')).status).toBe(200);
     expect((await call('POST', 'settings/admin/ai')).status).toBe(404);

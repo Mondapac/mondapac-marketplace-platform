@@ -9649,6 +9649,9 @@
         },
         "ai-settings": {
           "revert": "restore an earlier AI setting"
+        },
+        "ai-evaluation": {
+          "run": "start an AI evaluation run"
         }
       },
       "assistant": {
@@ -14724,7 +14727,137 @@
     "tabs": {
       "label": "AI model groups",
       "external": "External models",
+      "evaluation": "Evaluation",
       "own": "Mondapac Intelligence"
+    },
+    "evaluation": {
+      "candidate-note": "A result here is only a pass candidate. A model counts as passed once a pull request records the result. No model text is stored.",
+      "read-only": "You can see runs and costs but not start or cancel one.",
+      "money": "US${amount}",
+      "ms": "{ms} ms",
+      "versions": "Prompt {prompt}, samples {set}",
+      "started": "The evaluation run is queued. It runs in the background; refresh the list to follow it.",
+      "estimate": {
+        "section": "Run an evaluation",
+        "intro": "Each capability's synthetic samples run on the real model, paid from the evaluation budget. See the cost first.",
+        "model": "Model",
+        "choose": "Choose a model",
+        "loading": "Working out the cost...",
+        "failed": "Couldn't work out the cost. Try again.",
+        "blocked": "A run can't start now",
+        "none": "No capability has an evaluation set this model can serve.",
+        "table": "Estimated cost of an evaluation of {family}",
+        "total": "Estimated cost:",
+        "budget-left": "US${amount} left of the evaluation budget this month.",
+        "run": "Run evaluation",
+        "run-help": "Starting a run asks for your two-step code and spends up to the estimate."
+      },
+      "blocker": {
+        "unknown-model": "Unknown model",
+        "task-unsupported": "Not for this task",
+        "not-checked": "Not checked yet",
+        "region": "Not allowed in this region",
+        "no-key": "No key set",
+        "retired": "Retired",
+        "no-suite": "No evaluation set to run",
+        "run-open": "This model already has a run in progress",
+        "saver-closed": "Evaluations are closed: spending reached the saver threshold"
+      },
+      "col": {
+        "capability": "Capability",
+        "samples": "Samples",
+        "estimate": "Estimated cost",
+        "verdict": "Result",
+        "sample": "Sample",
+        "outcome": "Outcome",
+        "checks": "Failed checks",
+        "tokens": "Tokens",
+        "cost": "Cost",
+        "latency": "Time"
+      },
+      "runs": {
+        "section": "Runs",
+        "intro": "The Market's evaluation runs, newest first.",
+        "filter": "Show runs of",
+        "all": "All models",
+        "refresh": "Refresh",
+        "open-hint": "A run is in progress. Refresh to see its state.",
+        "failed": "Couldn't load the runs.",
+        "empty": "No runs yet.",
+        "list": "Evaluation runs",
+        "when": "Asked {when}. Estimated cost US${amount}.",
+        "details": "Details",
+        "details-of": "Details of the {family} run",
+        "cancel": "Cancel",
+        "cancel-of": "Cancel the {family} run",
+        "more": "Show older runs"
+      },
+      "status": {
+        "queued": "Queued",
+        "running": "Running",
+        "completed": "Finished",
+        "cancelled": "Cancelled",
+        "closed-budget": "Closed: budget used",
+        "closed-saver": "Closed: saver threshold",
+        "closed-off": "Closed: AI is off"
+      },
+      "verdict": {
+        "pending": "Waiting",
+        "pass-candidate": "Pass candidate",
+        "failed": "Failed",
+        "incomplete": "Incomplete",
+        "superseded": "Replaced by a newer run"
+      },
+      "outcome": {
+        "ok": "Answered",
+        "timeout": "Timed out",
+        "unavailable": "Unavailable",
+        "rate-limited": "Rate limited",
+        "rejected": "Rejected",
+        "refused": "Refused"
+      },
+      "check": {
+        "none": "None",
+        "leak": "Leak",
+        "empty": "Empty answer",
+        "incomplete": "Incomplete",
+        "too-long": "Too long",
+        "missing-fact": "Missing fact"
+      },
+      "detail": {
+        "section": "Run details",
+        "intro": "Each capability's result and each sample's outcome. Numbers only: no model text is kept.",
+        "loading": "Loading the run...",
+        "failed": "Couldn't load this run.",
+        "spent": "Spent so far: US${amount}",
+        "overall": "Overall: {verdict}",
+        "verdicts": "Result per capability",
+        "samples": "Samples",
+        "no-samples": "No sample has run yet.",
+        "closed": {
+          "closed-budget": "The run stopped because the evaluation budget was used up.",
+          "closed-saver": "The run stopped because spending reached the saver threshold.",
+          "closed-off": "The run stopped because AI was switched off."
+        }
+      },
+      "error": {
+        "stale": "The estimate changed. It was worked out again; check it, then run.",
+        "blocked": "The run can't start now.",
+        "gone": "That run has already ended. The list was read again.",
+        "refresh": "The page couldn't refresh after the last change. Reload it before doing anything else.",
+        "invalid": "The request isn't allowed.",
+        "conflict": "Something changed. Try again.",
+        "denied": "You don't have permission to do this.",
+        "acting-as": "Evaluations can't be run while you are acting as a seller.",
+        "second-factor": "Starting a run needs your two-step code. Try again and enter the code.",
+        "csrf": "Your session expired. Reload the page.",
+        "throttled": "Too many attempts. Wait a moment and try again.",
+        "unavailable": "The service isn't available right now. Try again.",
+        "unknown": "Something went wrong. Try again.",
+        "same": "Something went wrong. Try again.",
+        "version": "Something went wrong. Try again.",
+        "chat-pair": "Something went wrong. Try again."
+      }
     },
     "own": {
       "section": "Mondapac Intelligence",
@@ -18136,7 +18269,8 @@
         "good": [
           "You only pick from models the server lists as usable here. A model that is retired or not yet evaluated cannot be chosen.",
           "Saving shows what will change first, then asks for your two-step code.",
-          "Restoring an earlier choice also asks for your code."
+          "Restoring an earlier choice also asks for your code.",
+          "The Evaluation tab shows what a run of a model would cost before you start it. Starting one asks for your code. A result is only a pass candidate until a pull request records it."
         ],
         "related": [
           {
