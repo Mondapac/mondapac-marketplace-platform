@@ -2513,3 +2513,36 @@ describe('relay of the dashboard report download', () => {
     expect((await get('?period=7d&format=csv', 'POST')).response.status).toBe(404);
   });
 });
+
+describe('relay Add offer create settings', () => {
+  const get = (path: string, method = 'GET') =>
+    new Request(`http://seller.localhost:3001/api/${path}`, {
+      method,
+      headers: sameOrigin,
+      ...(method === 'GET' ? {} : { body: '{}' }),
+    });
+  const okJson = () =>
+    vi.fn<typeof fetch>(() =>
+      Promise.resolve(new Response('{"conditions":["new","used"]}', { status: 200 })),
+    );
+
+  it('forwards GET catalog/seller/products/options', async () => {
+    const upstream = okJson();
+    const path = 'catalog/seller/products/options';
+    const response = await relay(config, get(path), path.split('/'), upstream);
+    expect(response.status).toBe(200);
+    expect(upstream).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not forward a write to it or a sibling path', async () => {
+    const upstream = okJson();
+    for (const [method, path] of [
+      ['POST', 'catalog/seller/products/options'],
+      ['GET', 'catalog/seller/products/options/extra'],
+    ] as const) {
+      const response = await relay(config, get(path, method), path.split('/'), upstream);
+      expect(response.status).toBe(404);
+    }
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});
