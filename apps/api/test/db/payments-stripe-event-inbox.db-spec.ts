@@ -70,19 +70,19 @@ describe.each(TEST_MARKETS)('Stripe event inbox in market %s (database)', (code)
     if (!result.ok) throw new Error('unit failed');
     return result.value;
   };
-  /** Waits until a statement on this event's row waits for a lock (no fixed delay). */
-  const untilWaitingOn = async (eventId: string, timeoutMs = 10_000): Promise<void> => {
+  /** Waits until a session is blocked by `holder` (no fixed delay, no other spec's session). */
+  const untilBlockedBy = async (holder: Client, timeoutMs = 10_000): Promise<void> => {
+    const { rows: own } = await holder.query<{ pid: number }>('SELECT pg_backend_pid() AS pid');
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const { rows } = await sql.query<{ n: number }>(
-        `SELECT count(*)::int AS n FROM pg_stat_activity
-          WHERE datname = current_database() AND wait_event_type = 'Lock'
-            AND query LIKE '%"payments"."stripe_events"%'`,
+        'SELECT count(*)::int AS n FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))',
+        [own[0]!.pid],
       );
       if (rows[0]!.n > 0) return;
       await new Promise((resolve) => setTimeout(resolve, 5));
     }
-    throw new Error(`no claim of ${eventId} waited for the row lock within ${timeoutMs} ms`);
+    throw new Error(`no session waited behind the holder within ${timeoutMs} ms`);
   };
   const received = (eventId: string, at = T0) => ({
     eventId,
@@ -162,14 +162,18 @@ describe.each(TEST_MARKETS)('Stripe event inbox in market %s (database)', (code)
           WHERE market_id = $1 AND event_id = $2 AND processed_at IS NULL AND attempts = 0`,
         [code, eventId, new Date(far.add({ seconds: 60 }).epochMilliseconds)],
       );
+      // Settled either way, so a failed wait below never leaves an unhandled rejection.
       const claiming = value(market, () =>
         inbox.claim(market, eventId, 0, far.add({ seconds: 90 })),
+      ).then(
+        (taken) => ({ taken }),
+        (error: unknown) => ({ error }),
       );
-      await untilWaitingOn(eventId);
+      await untilBlockedBy(holder);
       await holder.query('COMMIT');
 
       // Re-checked after the other commit: the attempt is no longer 0, so this run takes nothing.
-      expect(await claiming).toBe(false);
+      expect(await claiming).toEqual({ taken: false });
     } finally {
       await holder.end();
     }
@@ -202,8 +206,9 @@ describe.each(TEST_MARKETS)('Stripe event inbox in market %s (database)', (code)
   });
 
   it('marks an event taken the last time and never finished failed without applying it, for the dashboard count', async () => {
-    // Received in 1998, so no row of another spec file is older within the count's window.
-    const receivedAt = Temporal.Instant.from('1998-03-01T00:00:00Z');
+    // Received in 2010: later than every row the dashboard spec counts as stuck (before 2000), and
+    // no row of another spec file falls in the week before it (they use 1999-2000 and 2026).
+    const receivedAt = Temporal.Instant.from('2010-03-01T00:00:00Z');
     const now = receivedAt.add({ hours: 1 });
     const eventId = nextEventId();
     await value(market, () => inbox.record(market, received(eventId, receivedAt)));
@@ -262,7 +267,7 @@ describe.each(TEST_MARKETS)('Stripe event inbox in market %s (database)', (code)
     const counted = await db.unitOfWork.run(
       market,
       async () =>
-        ok(await counts.failedWebhooks(market, now, Temporal.Instant.from('1998-01-01T00:00:00Z'))),
+        ok(await counts.failedWebhooks(market, now, Temporal.Instant.from('1990-01-01T00:00:00Z'))),
       { readOnly: true },
     );
     expect(counted.ok && counted.value.oldestAt).toEqual(receivedAt);

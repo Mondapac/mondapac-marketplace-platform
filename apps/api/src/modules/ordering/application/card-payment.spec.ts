@@ -514,6 +514,38 @@ describe.each([['AU'], ['ZZ']] as const)('card payment in market %s', (code) => 
       expect(inventory.calls).not.toContain('commit');
     });
 
+    // A PaymentIntent that already took the money (payments now sends a `succeeded` one with its
+    // received amount, Hassan's review of PR 1430): Stripe refuses to void it, so a payment that
+    // does not fit is tried again (and in the end marked failed for an admin), never answered
+    // voided and never cancelling the order.
+    it.each([
+      ['an amount that differs from the order total', 'amount'],
+      ['an order cancelled since', 'cancelled'],
+    ] as const)(
+      'never voids or cancels for a captured payment with %s: it is tried again',
+      async (_name, misfit) => {
+        const paid = await pay();
+        if (!paid.ok) throw new Error('pay failed');
+        const orderId = paid.value.orderId;
+        if (misfit === 'cancelled') {
+          orders.rows.set(orderId, { ...orders.rows.get(orderId)!, status: 'cancelled' });
+        }
+        const before = orders.rows.get(orderId);
+        gateway.voidFails = { code: 'payment.provider-rejected' };
+
+        const settled = await confirm(
+          orderId,
+          misfit === 'amount' ? { amount: money(TOTAL - 1n, currency) } : {},
+        );
+
+        expect(settled).toEqual(err({ code: 'ordering.try-again' }));
+        expect(gateway.voided).toEqual([]);
+        expect(gateway.captured).toEqual([]);
+        expect(inventory.calls).not.toContain('commit');
+        expect(orders.rows.get(orderId)).toEqual(before);
+      },
+    );
+
     it('does not let a session-less payment confirm an order of the hosted page', async () => {
       const hosted = await new StartCheckout(gate, deps).execute(customer, { addressId: ADDRESS });
       if (!hosted.ok) throw new Error('checkout failed');

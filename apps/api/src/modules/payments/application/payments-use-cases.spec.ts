@@ -32,7 +32,9 @@ import { loadMarketConfigs } from '../../../platform/market-config/market-config
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { LOG_SERIALIZERS } from '../../../platform/logging/log-serializers';
 import { StripeWebhookSignature } from '../infrastructure/stripe-webhook-signature';
-import { APPLY_BATCH, MAX_ATTEMPTS, retryDelaySeconds } from './apply-flow';
+import { DEFAULT_MAX_RUN_MS } from '../../../platform/scheduler/job-registry';
+import { applyStripeEventsJob } from '../presentation/jobs/apply-stripe-events.job';
+import { APPLY_BATCH, MAX_ATTEMPTS, MIN_RETRY_SECONDS, retryDelaySeconds } from './apply-flow';
 import type { PaymentsDependencies } from './payments-dependencies';
 import type { CheckoutSessionSnapshot } from './ports/stripe-session-reader';
 import { ApplyStripeEvents } from './use-cases/apply-stripe-events.use-case';
@@ -501,6 +503,13 @@ describe.each([
         }
         reader.answer = ok(session());
       };
+
+      it('never makes a taken event due again before the job lock is released (Mojtaba)', () => {
+        // The lock is held for the job's longest run; a run overlapping a slow one must not find
+        // the event that run is still applying. Raising the job's maxRunMs needs a longer wait.
+        const job = applyStripeEventsJob(apply);
+        expect(job.maxRunMs ?? DEFAULT_MAX_RUN_MS).toBeLessThanOrEqual(MIN_RETRY_SECONDS * 1000);
+      });
 
       it('applies the next events of the run when the first one throws, and moves it back', async () => {
         await storeThree();
