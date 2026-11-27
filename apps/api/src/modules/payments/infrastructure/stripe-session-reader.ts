@@ -94,7 +94,8 @@ function toIntentSnapshot(body: unknown): PaymentIntentSnapshot | null {
     return null;
   }
   const amountCapturable = minor(body.amount_capturable);
-  if (amountCapturable === null) return null;
+  const amountReceived = minor(body.amount_received);
+  if (amountCapturable === null || amountReceived === null) return null;
   const metadata = isObject(body.metadata) ? body.metadata : {};
   const method = body.payment_method;
   return {
@@ -103,6 +104,7 @@ function toIntentSnapshot(body: unknown): PaymentIntentSnapshot | null {
     status: body.status,
     currency: body.currency,
     amountCapturable,
+    amountReceived,
     metadataOrderId: text(metadata.order_id),
     metadataMarketId: text(metadata.market_id),
     metadataPaymentFlow: text(metadata.payment_flow),

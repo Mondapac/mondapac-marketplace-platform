@@ -89,9 +89,9 @@ describe.each(TEST_MARKETS)('dashboard payments queue counts in market %s (datab
           receivedAt: at,
         });
         if (outcome === null) {
-          await inbox.retryLater(market, eventId, 1, at.add({ minutes: 5 }));
+          await inbox.claim(market, eventId, 0, at.add({ minutes: 5 }));
         } else {
-          await inbox.finish(market, eventId, outcome, at.add({ minutes: 1 }));
+          await inbox.finish(market, eventId, outcome, at.add({ minutes: 1 }), 0);
         }
       });
     };

@@ -39,6 +39,8 @@ export interface PaymentIntentSnapshot {
   /** Lowercase ISO 4217, as Stripe sends it. */
   readonly currency: string;
   readonly amountCapturable: bigint;
+  /** What was captured: more than zero once a confirm took the money (status `succeeded`). */
+  readonly amountReceived: bigint;
   readonly metadataOrderId: string | null;
   readonly metadataMarketId: string | null;
   /** `card-intent` on every PaymentIntent of that flow. */

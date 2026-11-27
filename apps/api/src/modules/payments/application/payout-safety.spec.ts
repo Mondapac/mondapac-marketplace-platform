@@ -209,7 +209,7 @@ describe.each(['AU', 'ZZ'] as const)('payout account safety in market %s', (code
     it('makes the first destination initial, with no waiting period and no pause', async () => {
       await pendingAccount();
       expect(await bankEvent('created', 'evt_1')).toEqual(
-        ok({ applied: 1, retried: 0, problems: [] }),
+        ok({ applied: 1, retried: 0, threw: 0, problems: [] }),
       );
 
       expect(row()).toMatchObject({ coolingOffUntil: null, payoutsPausedUntil: null });
@@ -498,11 +498,11 @@ describe.each(['AU', 'ZZ'] as const)('payout account safety in market %s', (code
       await receive(accountEvent({ id: 'evt_3', type: EXTERNAL.updated, marketId: code }));
       const realRecord = accounts.recordChange.bind(accounts);
       accounts.recordChange = () => Promise.resolve('conflict');
-      expect(await apply()).toEqual(ok({ applied: 0, retried: 1, problems: [] }));
+      expect(await apply()).toEqual(ok({ applied: 0, retried: 1, threw: 0, problems: [] }));
       expect(inbox.get(code, 'evt_3')?.processedAt).toBeNull();
       accounts.recordChange = realRecord;
       clock.advance(Temporal.Duration.from({ minutes: 1 }));
-      expect(await apply()).toEqual(ok({ applied: 1, retried: 0, problems: [] }));
+      expect(await apply()).toEqual(ok({ applied: 1, retried: 0, threw: 0, problems: [] }));
       expect(accounts.changes).toHaveLength(3);
     });
 

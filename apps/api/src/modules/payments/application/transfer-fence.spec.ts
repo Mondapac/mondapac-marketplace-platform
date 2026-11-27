@@ -309,7 +309,7 @@ describe.each([['AU'], ['ZZ']] as const)(
         const { received, applied } = await deliverAndApply(transferEvent({ marketId: code }));
 
         expect(received).toEqual(ok('recorded'));
-        expect(applied).toEqual(ok({ applied: 1, retried: 0, problems: [] }));
+        expect(applied).toEqual(ok({ applied: 1, retried: 0, threw: 0, problems: [] }));
         expect(h.transferGateway.reads).toEqual(['tr_test_0001']);
         expect(h.row()).toMatchObject({ state: 'executed', providerTransferRef: 'tr_test_0001' });
         expect([...h.inbox.rows.values()][0]!.outcome).toBe('transfer-recorded');
@@ -334,6 +334,7 @@ describe.each([['AU'], ['ZZ']] as const)(
           ok({
             applied: 1,
             retried: 0,
+            threw: 0,
             problems: [{ eventId: 'evt_test_tr_0001', outcome: 'rejected' }],
           }),
         );
@@ -377,7 +378,7 @@ describe.each([['AU'], ['ZZ']] as const)(
 
         const { applied } = await deliverAndApply(transferEvent({ marketId: code }));
 
-        expect(applied).toEqual(ok({ applied: 0, retried: 1, problems: [] }));
+        expect(applied).toEqual(ok({ applied: 0, retried: 1, threw: 0, problems: [] }));
         expect(h.row()!.state).toBe('sending');
       });
 

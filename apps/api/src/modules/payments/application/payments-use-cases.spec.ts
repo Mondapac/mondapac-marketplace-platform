@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { err, ok, Temporal } from '@mondapac/shared-kernel';
 import {
   FixedClock,
@@ -29,8 +30,11 @@ import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/suppo
 import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
+import { LOG_SERIALIZERS } from '../../../platform/logging/log-serializers';
 import { StripeWebhookSignature } from '../infrastructure/stripe-webhook-signature';
-import { APPLY_BATCH, MAX_ATTEMPTS, retryDelaySeconds } from './apply-flow';
+import { DEFAULT_MAX_RUN_MS } from '../../../platform/scheduler/job-registry';
+import { applyStripeEventsJob } from '../presentation/jobs/apply-stripe-events.job';
+import { APPLY_BATCH, MAX_ATTEMPTS, MIN_RETRY_SECONDS, retryDelaySeconds } from './apply-flow';
 import type { PaymentsDependencies } from './payments-dependencies';
 import type { CheckoutSessionSnapshot } from './ports/stripe-session-reader';
 import { ApplyStripeEvents } from './use-cases/apply-stripe-events.use-case';
@@ -249,7 +253,7 @@ describe.each([
 
       const result = await apply.execute(system, {});
 
-      expect(result).toEqual(ok({ applied: 1, retried: 0, problems: [] }));
+      expect(result).toEqual(ok({ applied: 1, retried: 0, threw: 0, problems: [] }));
       expect(reader.reads).toEqual(['cs_test_0001']);
       expect(ordering.confirms).toHaveLength(1);
       expect(ordering.confirms[0]?.context).toBe(system);
@@ -264,7 +268,9 @@ describe.each([
         processedAt: T0,
       });
       // Done events are not taken again.
-      expect(await apply.execute(system, {})).toEqual(ok({ applied: 0, retried: 0, problems: [] }));
+      expect(await apply.execute(system, {})).toEqual(
+        ok({ applied: 0, retried: 0, threw: 0, problems: [] }),
+      );
       expect(ordering.confirms).toHaveLength(1);
     });
 
@@ -355,7 +361,7 @@ describe.each([
         reader.answer = ok(session(misfit));
         const result = await apply.execute(system, {});
         expect(result).toEqual(
-          ok({ applied: 1, retried: 0, problems: [{ eventId, outcome: 'rejected' }] }),
+          ok({ applied: 1, retried: 0, threw: 0, problems: [{ eventId, outcome: 'rejected' }] }),
         );
       }
       // An expired event for a session that is not expired, a failure for a paid one.
@@ -385,13 +391,18 @@ describe.each([
       await store('checkout.session.completed');
       reader.answer = err({ code: 'payment.provider-unavailable' });
 
-      expect(await apply.execute(system, {})).toEqual(ok({ applied: 0, retried: 1, problems: [] }));
+      expect(await apply.execute(system, {})).toEqual(
+        ok({ applied: 0, retried: 1, threw: 0, problems: [] }),
+      );
+      // Taken before it was applied: one attempt, and never due again within the job lock's minute.
       expect(inbox.get(code, 'evt_test_0001')).toMatchObject({
         attempts: 1,
-        nextAttemptAt: T0.add({ seconds: 10 }),
+        nextAttemptAt: T0.add({ seconds: 60 }),
       });
       // Not due yet: nothing is read.
-      expect(await apply.execute(system, {})).toEqual(ok({ applied: 0, retried: 0, problems: [] }));
+      expect(await apply.execute(system, {})).toEqual(
+        ok({ applied: 0, retried: 0, threw: 0, problems: [] }),
+      );
       expect(reader.reads).toHaveLength(1);
 
       // ordering's temporary fault is a retry too.
@@ -400,13 +411,18 @@ describe.each([
       for (let attempt = 2; attempt < MAX_ATTEMPTS; attempt += 1) {
         clock.set(inbox.get(code, 'evt_test_0001')!.nextAttemptAt);
         expect(await apply.execute(system, {})).toEqual(
-          ok({ applied: 0, retried: 1, problems: [] }),
+          ok({ applied: 0, retried: 1, threw: 0, problems: [] }),
         );
         expect(inbox.get(code, 'evt_test_0001')?.attempts).toBe(attempt);
       }
       clock.set(inbox.get(code, 'evt_test_0001')!.nextAttemptAt);
       expect(await apply.execute(system, {})).toEqual(
-        ok({ applied: 1, retried: 0, problems: [{ eventId: 'evt_test_0001', outcome: 'failed' }] }),
+        ok({
+          applied: 1,
+          retried: 0,
+          threw: 0,
+          problems: [{ eventId: 'evt_test_0001', outcome: 'failed' }],
+        }),
       );
       expect(inbox.get(code, 'evt_test_0001')?.outcome).toBe('failed');
       expect([1, 2, 3, 9, 12].map(retryDelaySeconds)).toEqual([10, 20, 40, 2560, 3600]);
@@ -431,7 +447,12 @@ describe.each([
       ordering.confirmAnswer = err({ code: 'access.denied' });
 
       expect(await apply.execute(system, {})).toEqual(
-        ok({ applied: 1, retried: 0, problems: [{ eventId: 'evt_test_0001', outcome: 'failed' }] }),
+        ok({
+          applied: 1,
+          retried: 0,
+          threw: 0,
+          problems: [{ eventId: 'evt_test_0001', outcome: 'failed' }],
+        }),
       );
     });
 
@@ -441,7 +462,9 @@ describe.each([
       await apply.execute(system, {});
 
       expect(await deliver(checkoutEvent({ marketId: code }))).toEqual(ok('duplicate'));
-      expect(await apply.execute(system, {})).toEqual(ok({ applied: 0, retried: 0, problems: [] }));
+      expect(await apply.execute(system, {})).toEqual(
+        ok({ applied: 0, retried: 0, threw: 0, problems: [] }),
+      );
       expect(ordering.confirms).toHaveLength(1);
     });
 
@@ -452,9 +475,238 @@ describe.each([
       reader.answer = ok(session({ status: 'expired' }));
 
       expect(await apply.execute(system, {})).toEqual(
-        ok({ applied: APPLY_BATCH, retried: 0, problems: [] }),
+        ok({ applied: APPLY_BATCH, retried: 0, threw: 0, problems: [] }),
       );
-      expect(await apply.execute(system, {})).toEqual(ok({ applied: 2, retried: 0, problems: [] }));
+      expect(await apply.execute(system, {})).toEqual(
+        ok({ applied: 2, retried: 0, threw: 0, problems: [] }),
+      );
+    });
+
+    describe('one event never holds up the others (per-event error isolation)', () => {
+      /** The error lines logged while `work` runs. */
+      const errorLines = async (work: () => Promise<unknown>) => {
+        const spy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+        try {
+          await work();
+          return spy.mock.calls.map((call) => call[0] as Record<string, unknown>);
+        } finally {
+          spy.mockRestore();
+        }
+      };
+      const thrown = () =>
+        Object.assign(new Error('duplicate key value (order_id)=(secret-value)'), {
+          code: 'P2002',
+        });
+      const storeThree = async () => {
+        for (const id of ['evt_test_0001', 'evt_test_0002', 'evt_test_0003']) {
+          await store('checkout.session.completed', id);
+        }
+        reader.answer = ok(session());
+      };
+
+      it('never makes a taken event due again before the job lock is released (Mojtaba)', () => {
+        // The lock is held for the job's longest run; a run overlapping a slow one must not find
+        // the event that run is still applying. Raising the job's maxRunMs needs a longer wait.
+        const job = applyStripeEventsJob(apply);
+        expect(job.maxRunMs ?? DEFAULT_MAX_RUN_MS).toBeLessThanOrEqual(MIN_RETRY_SECONDS * 1000);
+      });
+
+      it('applies the next events of the run when the first one throws, and moves it back', async () => {
+        await storeThree();
+        jest.spyOn(ordering, 'confirmPayment').mockRejectedValueOnce(thrown());
+
+        const lines = await errorLines(async () =>
+          expect(await apply.execute(system, {})).toEqual(
+            ok({ applied: 2, retried: 1, threw: 1, problems: [] }),
+          ),
+        );
+
+        expect(inbox.get(code, 'evt_test_0001')).toMatchObject({
+          attempts: 1,
+          nextAttemptAt: T0.add({ seconds: 60 }),
+          processedAt: null,
+          outcome: null,
+        });
+        expect(inbox.get(code, 'evt_test_0002')?.outcome).toBe('confirmed');
+        expect(inbox.get(code, 'evt_test_0003')?.outcome).toBe('confirmed');
+        expect(lines.map((line) => line.msg)).toEqual(['payments.apply-stripe-events.threw']);
+      });
+
+      it('logs ids, the type, the attempt and the error by its serializer only, never its message', async () => {
+        await store('checkout.session.completed');
+        reader.answer = ok(session());
+        const error = thrown();
+        jest.spyOn(ordering, 'confirmPayment').mockRejectedValueOnce(error);
+
+        const [line] = await errorLines(() => apply.execute(system, {}));
+
+        expect(Object.keys(line!).sort()).toEqual(
+          ['attempts', 'correlationId', 'err', 'eventId', 'marketId', 'msg', 'step', 'type'].sort(),
+        );
+        expect(line).toMatchObject({
+          msg: 'payments.apply-stripe-events.threw',
+          step: 'apply',
+          eventId: 'evt_test_0001',
+          type: 'checkout.session.completed',
+          attempts: 1,
+          marketId: code,
+          correlationId: system.correlationId,
+        });
+        expect(line!.err).toBe(error);
+        // What the line is written as: the name and code, no message and no value.
+        const written = JSON.stringify({ ...line, err: LOG_SERIALIZERS.err(line!.err) });
+        expect(written).toContain('P2002');
+        expect(written).not.toContain('secret-value');
+        expect(written).not.toContain('duplicate key');
+      });
+
+      it('marks an event that throws on every attempt failed at the last one, never rejected', async () => {
+        await store('checkout.session.completed');
+        reader.answer = ok(session());
+        jest.spyOn(ordering, 'confirmPayment').mockRejectedValue(thrown());
+
+        const lines = await errorLines(async () => {
+          for (let attempt = 1; attempt < MAX_ATTEMPTS; attempt += 1) {
+            expect(await apply.execute(system, {})).toEqual(
+              ok({ applied: 0, retried: 1, threw: 1, problems: [] }),
+            );
+            expect(inbox.get(code, 'evt_test_0001')).toMatchObject({
+              attempts: attempt,
+              outcome: null,
+            });
+            clock.set(inbox.get(code, 'evt_test_0001')!.nextAttemptAt);
+          }
+          expect(await apply.execute(system, {})).toEqual(
+            ok({
+              applied: 1,
+              retried: 0,
+              threw: 1,
+              problems: [{ eventId: 'evt_test_0001', outcome: 'failed' }],
+            }),
+          );
+        });
+
+        expect(inbox.get(code, 'evt_test_0001')).toMatchObject({
+          attempts: MAX_ATTEMPTS,
+          outcome: 'failed',
+        });
+        expect(
+          lines.filter((line) => line.msg === 'payments.apply-stripe-events.threw'),
+        ).toHaveLength(MAX_ATTEMPTS);
+        // Every wait is at least the job lock's minute, then the usual back-off.
+        expect(clock.now().since(T0).total('seconds')).toBe(
+          Array.from({ length: MAX_ATTEMPTS - 1 }, (_v, n) =>
+            Math.max(60, retryDelaySeconds(n + 1)),
+          ).reduce((a, b) => a + b, 0),
+        );
+      });
+
+      it('goes on when writing the outcome throws, and the next attempt ends the same way', async () => {
+        await store('checkout.session.completed', 'evt_test_0001');
+        await store('checkout.session.completed', 'evt_test_0002');
+        reader.answer = ok(session());
+        inbox.finishError = thrown();
+
+        const lines = await errorLines(async () =>
+          expect(await apply.execute(system, {})).toEqual(
+            ok({ applied: 1, retried: 0, threw: 1, problems: [] }),
+          ),
+        );
+        expect(lines).toMatchObject([{ step: 'finish', eventId: 'evt_test_0001', attempts: 1 }]);
+        expect(inbox.get(code, 'evt_test_0001')).toMatchObject({ attempts: 1, outcome: null });
+        expect(inbox.get(code, 'evt_test_0002')?.outcome).toBe('confirmed');
+
+        // Applied again after its delay: ordering is idempotent and answers already-confirmed.
+        clock.set(inbox.get(code, 'evt_test_0001')!.nextAttemptAt);
+        ordering.confirmAnswer = ok('already-confirmed');
+        expect(await apply.execute(system, {})).toEqual(
+          ok({ applied: 1, retried: 0, threw: 0, problems: [] }),
+        );
+        expect(inbox.get(code, 'evt_test_0001')).toMatchObject({
+          attempts: 2,
+          outcome: 'already-confirmed',
+        });
+      });
+
+      it('marks an event taken the last time and never finished failed, without applying it', async () => {
+        // It killed the process on every attempt: each was taken, none reached its end.
+        await store('checkout.session.completed');
+        const row = inbox.get(code, 'evt_test_0001')!;
+        inbox.rows.set(`${code}/evt_test_0001`, { ...row, attempts: MAX_ATTEMPTS });
+        reader.answer = ok(session());
+
+        expect(await apply.execute(system, {})).toEqual(
+          ok({
+            applied: 1,
+            retried: 0,
+            threw: 0,
+            problems: [{ eventId: 'evt_test_0001', outcome: 'failed' }],
+          }),
+        );
+        expect(reader.reads).toEqual([]);
+        expect(ordering.confirms).toEqual([]);
+        expect(inbox.get(code, 'evt_test_0001')).toMatchObject({
+          attempts: MAX_ATTEMPTS,
+          outcome: 'failed',
+        });
+      });
+
+      it('does not apply an event another run took first', async () => {
+        await store('checkout.session.completed');
+        reader.answer = ok(session());
+        jest.spyOn(inbox, 'claim').mockResolvedValueOnce(false);
+
+        expect(await apply.execute(system, {})).toEqual(
+          ok({ applied: 0, retried: 0, threw: 0, problems: [] }),
+        );
+        expect(reader.reads).toEqual([]);
+        expect(ordering.confirms).toEqual([]);
+        expect(inbox.get(code, 'evt_test_0001')).toMatchObject({ attempts: 0, outcome: null });
+      });
+
+      it('never lets a late run overwrite the outcome of a newer attempt', async () => {
+        await store('checkout.session.completed');
+        reader.answer = ok(session());
+        // A newer run takes the event while this one is applying it.
+        jest.spyOn(ordering, 'confirmPayment').mockImplementationOnce(() => {
+          const row = inbox.get(code, 'evt_test_0001')!;
+          inbox.rows.set(`${code}/evt_test_0001`, { ...row, attempts: row.attempts + 1 });
+          return Promise.resolve(ok('confirmed' as const));
+        });
+
+        expect(await apply.execute(system, {})).toEqual(
+          ok({ applied: 0, retried: 0, threw: 0, problems: [] }),
+        );
+        expect(inbox.get(code, 'evt_test_0001')).toMatchObject({ attempts: 2, outcome: null });
+      });
+
+      it('stops the run when an event cannot be taken, after logging what it found', async () => {
+        // The first event is given up at once; the second cannot be taken (no database).
+        await store('checkout.session.completed', 'evt_test_0001');
+        await store('checkout.session.completed', 'evt_test_0002');
+        const row = inbox.get(code, 'evt_test_0001')!;
+        inbox.rows.set(`${code}/evt_test_0001`, { ...row, attempts: MAX_ATTEMPTS });
+        reader.answer = ok(session());
+        const down = new Error('database unreachable');
+        inbox.claimError = down;
+
+        const lines = await errorLines(async () =>
+          expect(apply.execute(system, {})).rejects.toBe(down),
+        );
+
+        expect(reader.reads).toEqual([]);
+        expect(ordering.confirms).toEqual([]);
+        expect(inbox.get(code, 'evt_test_0002')).toMatchObject({ attempts: 0, outcome: null });
+        expect(lines).toEqual([
+          {
+            msg: 'payments.apply-stripe-events.failed',
+            marketId: code,
+            correlationId: system.correlationId,
+            eventId: 'evt_test_0001',
+            outcome: 'failed',
+          },
+        ]);
+      });
     });
 
     it('is refused to anyone but the system actor', async () => {

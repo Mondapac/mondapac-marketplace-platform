@@ -14,9 +14,10 @@ model PaymentsStripeEvent {
   /// The Checkout session (cs_...), dispute (dp_..., du_...) or connected account (acct_...).
   objectId      String    @map("object_id")
   receivedAt    DateTime  @map("received_at") @db.Timestamptz(6)
-  /// How many times the worker tried to apply it.
+  /// How many attempts the worker started (claimed before applying, so an attempt that threw or
+  /// died half-way counts too); 12 started attempts without an outcome mark it failed.
   attempts      Int
-  /// When the worker may try it next.
+  /// When the worker may try it next: set when an attempt is claimed, at least 60 s ahead.
   nextAttemptAt DateTime  @map("next_attempt_at") @db.Timestamptz(6)
   /// Set once, with the outcome, when the event is applied or given up.
   processedAt   DateTime? @map("processed_at") @db.Timestamptz(6)

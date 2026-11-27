@@ -137,6 +137,7 @@ describe.each([
     status: 'requires_capture',
     currency,
     amountCapturable: 3000n,
+    amountReceived: 0n,
     metadataOrderId: ORDER,
     metadataMarketId: code,
     metadataPaymentFlow: 'card-intent',
@@ -215,7 +216,7 @@ describe.each([
 
       const summary = await apply.execute(system, {});
 
-      expect(summary).toEqual(ok({ applied: 1, retried: 0, problems: [] }));
+      expect(summary).toEqual(ok({ applied: 1, retried: 0, threw: 0, problems: [] }));
       // The order id comes from Stripe's answer, not from the payload.
       expect(reader.intentReads).toEqual(['pi_test_0001']);
       expect(ordering.confirms).toHaveLength(1);
@@ -238,6 +239,46 @@ describe.each([
 
       expect(ordering.confirms).toEqual([]);
       expect(inbox.get(code, 'evt_pi_0001')).toMatchObject({ outcome: 'ignored' });
+    });
+
+    it('finishes the confirmation when an earlier attempt took the money and then stopped', async () => {
+      // Hassan's finding: the first attempt captured and then threw before the order was confirmed.
+      await store();
+      reader.intentAnswer = ok(intent());
+      const confirm = jest
+        .spyOn(ordering, 'confirmPayment')
+        .mockRejectedValueOnce(new Error('confirm stopped after the capture'));
+      expect(await apply.execute(system, {})).toEqual(
+        ok({ applied: 0, retried: 1, threw: 1, problems: [] }),
+      );
+      confirm.mockRestore();
+
+      // The next attempt reads a PaymentIntent that took the money: the order is confirmed with
+      // what was received, never left waiting as `ignored`.
+      clock.set(inbox.get(code, 'evt_pi_0001')!.nextAttemptAt);
+      reader.intentAnswer = ok(
+        intent({ status: 'succeeded', amountCapturable: 0n, amountReceived: 3000n }),
+      );
+      expect(await apply.execute(system, {})).toEqual(
+        ok({ applied: 1, retried: 0, threw: 0, problems: [] }),
+      );
+      expect(ordering.confirms.at(-1)!.payment).toMatchObject({
+        orderId: ORDER,
+        paymentIntentId: 'pi_test_0001',
+        sessionId: null,
+        amount: money(3000n, currency.toUpperCase()),
+      });
+      expect(inbox.get(code, 'evt_pi_0001')).toMatchObject({ outcome: 'confirmed', attempts: 2 });
+    });
+
+    it('rejects a PaymentIntent that took nothing although it says it succeeded', async () => {
+      await store();
+      reader.intentAnswer = ok(intent({ status: 'succeeded', amountCapturable: 0n }));
+
+      await apply.execute(system, {});
+
+      expect(ordering.confirms).toEqual([]);
+      expect(inbox.get(code, 'evt_pi_0001')).toMatchObject({ outcome: 'rejected' });
     });
 
     it.each(['payment_intent.payment_failed', 'payment_intent.canceled'])(
@@ -310,7 +351,9 @@ describe.each([
     it('tries again later when Stripe cannot be read, and gives up on a refusal', async () => {
       await store();
       reader.intentAnswer = err({ code: 'payment.provider-unavailable' });
-      expect(await apply.execute(system, {})).toEqual(ok({ applied: 0, retried: 1, problems: [] }));
+      expect(await apply.execute(system, {})).toEqual(
+        ok({ applied: 0, retried: 1, threw: 0, problems: [] }),
+      );
       expect(inbox.get(code, 'evt_pi_0001')).toMatchObject({ attempts: 1, processedAt: null });
 
       clock.set(T0.add({ hours: 2 }));
@@ -324,7 +367,9 @@ describe.each([
       reader.intentAnswer = ok(intent());
       ordering.confirmAnswer = err({ code: 'ordering.try-again' });
 
-      expect(await apply.execute(system, {})).toEqual(ok({ applied: 0, retried: 1, problems: [] }));
+      expect(await apply.execute(system, {})).toEqual(
+        ok({ applied: 0, retried: 1, threw: 0, problems: [] }),
+      );
     });
   });
 });

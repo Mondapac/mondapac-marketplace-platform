@@ -11,6 +11,7 @@ const body = (fields: Record<string, unknown> = {}) => ({
   status: 'requires_capture',
   currency: 'aud',
   amount_capturable: 3349,
+  amount_received: 0,
   metadata: { order_id: 'order-1', market_id: 'AU', payment_flow: 'card-intent' },
   payment_method: {
     id: 'pm_1',
@@ -50,6 +51,7 @@ describe('StripeCheckoutSessionReader.readPaymentIntent', () => {
         status: 'requires_capture',
         currency: 'aud',
         amountCapturable: 3349n,
+        amountReceived: 0n,
         metadataOrderId: 'order-1',
         metadataMarketId: 'AU',
         metadataPaymentFlow: 'card-intent',
@@ -86,6 +88,7 @@ describe('StripeCheckoutSessionReader.readPaymentIntent', () => {
     ['no livemode flag', body({ livemode: undefined })],
     ['no capturable amount', body({ amount_capturable: undefined })],
     ['a negative capturable amount', body({ amount_capturable: -1 })],
+    ['no received amount', body({ amount_received: undefined })],
   ])('does not accept %s', async (_name, answer) => {
     const read = await new StripeCheckoutSessionReader(
       KEY,
