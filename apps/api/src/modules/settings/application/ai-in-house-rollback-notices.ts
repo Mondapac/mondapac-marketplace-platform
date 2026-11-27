@@ -9,10 +9,10 @@ import { AiInHouseRolledBack } from '../domain/events';
 
 /**
  * settings' side of platform/ai's rollback-notice port (AI Gateway G6e2): appends
- * `settings.ai-in-house-rolled-back.v1` to settings' outbox in the caller's open read-write unit,
- * the one that inserts the rollback's row, so the event is written exactly when the rollback is.
- * The aggregate is the rollback (its id, version 1): the outbox's unique (market, aggregate,
- * version) holds it to one event per rollback. Codes only. Notifications turns it into the admin
+ * `settings.ai-in-house-rolled-back.v1` to settings' outbox in the caller's open read-write unit
+ * (its own, right after the one that inserts the rollback's row). The aggregate is the rollback
+ * (its id, version 1): the outbox's unique (market, aggregate, version) holds it to one event per
+ * rollback. Codes only. Notifications turns it into the admin
  * bell notice.
  */
 export class SettingsAiInHouseRollbackNotices implements AiInHouseRollbackNotices {

@@ -11,6 +11,7 @@ import {
   AI_IN_HOUSE_ROLLBACK_NOTICES,
   type AiInHouseControls,
   type AiInHouseRollbackNotices,
+  type InHouseRollbackNotice,
 } from '../gateway-controls';
 import { AiRouter } from '../routing/ai-router';
 import { AI_USAGE_STORE, type AiUsageStore, type ServedTotals } from '../usage/ai-usage-store';
@@ -59,8 +60,8 @@ interface RollbackRead {
  * instance and in the background, the task type's served (not shadow) in-house calls of the last
  * hour, since the task type's in-house settings last changed: on at least the minimum sample, an
  * error rate or a guard-rejection rate above its limit records a rollback
- * (`platform.ai_in_house_rollbacks`), tells settings in the same unit so the admins get a bell
- * notice (G6e2, {@link AI_IN_HOUSE_ROLLBACK_NOTICES}), and logs `ai.in-house.rolled-back` for the
+ * (`platform.ai_in_house_rollbacks`), then tells settings in a unit of its own so the admins get
+ * a bell notice (G6e2, {@link AI_IN_HOUSE_ROLLBACK_NOTICES}), and logs `ai.in-house.rolled-back` for the
  * operators. Only numbers are judged, never a model's text (R2: no model output feeds the rule),
  * and the notice carries codes only.
  *
@@ -163,9 +164,6 @@ export class InHouseRollback implements BeforeApplicationShutdown {
     const rollbackId = this.ids.next();
     // The notice's context (G6e2): the Market's system actor, as asynchronous AI work runs
     // (ADR-0019 R3), with a correlation id of its own.
-    const correlationId = parseCorrelationId(this.ids.next());
-    if (!correlationId.ok) return;
-    const context = createCallContext(market, systemActor(market), correlationId.value);
     const written = await this.unitOfWork.run(market, async () => {
       await this.store.addInHouseRollback(market, {
         id: rollbackId,
@@ -181,8 +179,6 @@ export class InHouseRollback implements BeforeApplicationShutdown {
         minSample: limits.minSample,
         rolledBackAt,
       });
-      // The admin notice (G6e2): settings' event, in this unit, so once per rollback.
-      await this.notices.rolledBack(context, { rollbackId, task, stage, reason, rolledBackAt });
       return ok(undefined);
     });
     if (!written.ok) return;
@@ -203,6 +199,36 @@ export class InHouseRollback implements BeforeApplicationShutdown {
       failures: totals.failures,
       guardRejected: totals.guardRejected,
     });
+    await this.#notify(market, { rollbackId, task, stage, reason, rolledBackAt });
+  }
+
+  /**
+   * The admin notice of a recorded rollback (G6e2): settings' event in a unit of its own, after the
+   * rollback's row, so the safety control never depends on the notice path (reviewers of PR 1425).
+   * A notice that cannot be written is logged for the operators (`ai.in-house.rollback-notice-
+   * failed`) and not retried: the stage is held off all the same, the operators' log above and the
+   * tab's rollback read still show it (FE-20261127-ai-gateway-in-house-rollback-notice-retry).
+   */
+  async #notify(market: MarketContext, notice: InHouseRollbackNotice): Promise<void> {
+    // The Market's system actor, as asynchronous AI work runs (ADR-0019 R3), with a correlation
+    // id of its own.
+    const correlationId = parseCorrelationId(this.ids.next());
+    try {
+      if (!correlationId.ok) throw new Error('correlation id');
+      const context = createCallContext(market, systemActor(market), correlationId.value);
+      const sent = await this.unitOfWork.run(market, async () => {
+        await this.notices.rolledBack(context, notice);
+        return ok(undefined);
+      });
+      if (!sent.ok) throw new Error('unit');
+    } catch {
+      this.#logger.warn({
+        msg: 'ai.in-house.rollback-notice-failed',
+        marketId: market.marketId,
+        task: notice.task,
+        rollbackId: notice.rollbackId,
+      });
+    }
   }
 
   async #read(market: MarketContext): Promise<RollbackRead> {

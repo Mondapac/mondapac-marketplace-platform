@@ -147,10 +147,11 @@ export interface InHouseRollbackNotice {
  * The port platform/ai tells of a recorded auto-rollback (AI Gateway G6e2; docs/design/domain/
  * platform-ai.md section 8, "Built in G6e2"), implemented by `settings` and bound, like
  * {@link AI_GATEWAY_CONTROLS}, through the module `app.module.ts` passes to `AiModule.register`.
- * Called inside the read-write unit that inserts the rollback's row, with the Market's system
- * actor (asynchronous AI work, ADR-0019 R3), so the row and the event commit or roll back together.
- * Codes only: no count, family or model text. It throws when the event cannot be written; the
- * unit then rolls back and the judge records nothing (tried again on a later call).
+ * Called in a read-write unit of its own right after the unit that inserts the rollback's row
+ * (so the rollback never depends on the notice), with the Market's system actor (asynchronous AI
+ * work, ADR-0019 R3). Codes only: no count, family or model text. It throws when the event cannot
+ * be written; platform/ai then logs `ai.in-house.rollback-notice-failed` and the stage stays held
+ * off.
  */
 export interface AiInHouseRollbackNotices {
   rolledBack(context: CallContext, notice: InHouseRollbackNotice): Promise<void>;
