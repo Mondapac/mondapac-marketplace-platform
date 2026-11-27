@@ -437,6 +437,9 @@ export function InHousePanel({
               ]),
         ];
         const savedStage = valueOf(rows, stageCode(task));
+        const rollback = answer.rollbacks.find((row) => row.task === task);
+        // A rollback holds the live stage off until an admin changes the task type's settings.
+        const heldOff = rollback?.heldOff === true && savedStage !== 'off';
         return (
           <SettingsSection
             key={task}
@@ -444,10 +447,56 @@ export function InHousePanel({
             description={tm(`task.${task}.about`)}
           >
             <div className="grid gap-4 px-5 py-4 sm:grid-cols-2">
+              {rollback === undefined ? null : (
+                <div className="sm:col-span-2">
+                  <Banner
+                    tone={rollback.heldOff ? 'critical' : 'info'}
+                    title={t(
+                      rollback.heldOff ? 'rolled-back.title-held' : 'rolled-back.title-past',
+                    )}
+                  >
+                    <div className="flex flex-col gap-1.5">
+                      <p>
+                        {t('rolled-back.what', {
+                          family: rollback.family,
+                          stage: isStage(rollback.stage)
+                            ? t(`stage.${rollback.stage}`)
+                            : rollback.stage,
+                          when: formatInstant(rollback.rolledBackAt, locale),
+                        })}
+                      </p>
+                      <p>
+                        {t(`rolled-back.reason.${rollback.reason}`, {
+                          count:
+                            rollback.reason === 'errors'
+                              ? rollback.failures
+                              : rollback.guardRejected,
+                          calls: rollback.calls,
+                          limit: percentOfPermille(
+                            String(
+                              rollback.reason === 'errors'
+                                ? rollback.errorsLimitPermille
+                                : rollback.guardLimitPermille,
+                            ),
+                          ),
+                          sample: rollback.minSample,
+                        })}
+                      </p>
+                      <p>{t(rollback.heldOff ? 'rolled-back.held' : 'rolled-back.past')}</p>
+                    </div>
+                  </Banner>
+                </div>
+              )}
               <p className="flex flex-wrap items-center gap-2 text-sm sm:col-span-2">
                 {t('in-force')}
-                <Badge tone={savedStage === 'off' ? 'neutral' : 'info'}>
-                  {isStage(savedStage) ? t(`stage.${savedStage}`) : savedStage}
+                <Badge tone={heldOff ? 'critical' : savedStage === 'off' ? 'neutral' : 'info'}>
+                  {heldOff
+                    ? t('rolled-back.badge', {
+                        stage: isStage(savedStage) ? t(`stage.${savedStage}`) : savedStage,
+                      })
+                    : isStage(savedStage)
+                      ? t(`stage.${savedStage}`)
+                      : savedStage}
                 </Badge>
               </p>
               <Select

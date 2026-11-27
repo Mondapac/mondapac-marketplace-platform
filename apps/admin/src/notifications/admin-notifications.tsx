@@ -14,6 +14,7 @@ import { useRouter } from 'next/navigation';
 import { useMemo, type MouseEvent, type ReactNode } from 'react';
 import { callApi } from '../api/client.ts';
 import {
+  AI_IN_HOUSE_ROLLED_BACK,
   ASSISTANT_SPEND_CAP_REACHED,
   CERTIFICATE_SUBMITTED,
   DELIVERY_FALLBACK_OVER_CAP,
@@ -49,6 +50,7 @@ const LOOK: Readonly<
   [SELLER_REFUND_LIMIT_REACHED]: { icon: 'wallet', tone: 'attention', category: 'refunds' },
   [ASSISTANT_SPEND_CAP_REACHED]: { icon: 'wallet', tone: 'attention', category: 'assistant' },
   [OFFER_QUEUE_BACKLOG]: { icon: 'alert-circle', tone: 'attention', category: 'offer-queue' },
+  [AI_IN_HOUSE_ROLLED_BACK]: { icon: 'alert-circle', tone: 'attention', category: 'ai-models' },
 };
 const OVERDUE_LOOK = {
   icon: 'alert-circle',
@@ -87,6 +89,7 @@ function hrefOf(notice: AdminNotice): string | null {
   }
   if (notice.kind === DELIVERY_FALLBACK_OVER_CAP) return '/settings/delivery';
   if (notice.kind === ASSISTANT_SPEND_CAP_REACHED) return '/settings/assistant';
+  if (notice.kind === AI_IN_HOUSE_ROLLED_BACK) return '/settings/ai-models';
   if (notice.kind === PLATFORM_IMPORT_FINISHED && notice.params.importId !== undefined) {
     return `/catalog/products/import?id=${notice.params.importId}`;
   }
@@ -166,6 +169,13 @@ export function AdminNotifications({ csrfToken }: { readonly csrfToken: string }
         return t.rich('kind.assistant-spend-cap-reached', {
           strong,
           cap: notice.params.cap ?? 'other',
+        });
+      case AI_IN_HOUSE_ROLLED_BACK:
+        return t.rich('kind.ai-in-house-rolled-back', {
+          strong,
+          task: notice.params.task ?? 'other',
+          stage: notice.params.stage ?? 'other',
+          reason: notice.params.reason ?? 'other',
         });
       case OFFER_QUEUE_BACKLOG:
         return t.rich('kind.offer-queue-backlog', {
