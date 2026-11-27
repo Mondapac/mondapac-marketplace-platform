@@ -322,12 +322,48 @@ model AiCall {
   /// call; null outside a sample (CHECK: a shadow call or a checked call has one).
   shadowSample  String?  @map("shadow_sample") @db.Uuid
   /// valid | invalid | guard-rejected (CHECK): the capability's own check of the answer, on both
-  /// calls of a shadow sample only (G6c); null otherwise. Never on a call that is not ok.
+  /// calls of a shadow sample (G6c) and on a served in-house call (G6d3); null otherwise. Never on
+  /// a call that is not ok.
   outputCheck   String?  @map("output_check") @db.VarChar(20)
 
   /// The retention scan, oldest first.
   @@index([marketId, occurredAt, id], map: "ai_calls_market_id_occurred_at_id_idx")
   @@map("ai_calls")
+  @@schema("platform")
+}
+
+/// An auto-rollback of the in-house model's live stage (AI Gateway G6d3; platform-ai.md section 8):
+/// the Market's error or guard-rejection rate of the task type's served in-house calls passed its
+/// limit. From `rolledBackAt` the task type's percent or default stage is served as off until an
+/// admin changes its in-house settings after it. Numbers only. Inserted once, never changed or
+/// deleted; only platform/persistence/ai-usage/ writes it. CHECKs and grants in the migration.
+model AiInHouseRollback {
+  marketId            String   @map("market_id") @db.VarChar(8)
+  /// UUIDv7.
+  id                  String   @db.Uuid
+  tenantId            String   @map("tenant_id")
+  /// chat | extract | write | vision (CHECK).
+  task                String   @db.VarChar(16)
+  /// The in-house family the stage served.
+  family              String   @db.VarChar(20)
+  /// percent | default (CHECK): the stage rolled back.
+  stage               String   @db.VarChar(8)
+  /// errors | guard (CHECK): the limit passed.
+  reason              String   @db.VarChar(8)
+  /// The served in-house calls judged, and how many failed or were guard-rejected.
+  calls               Int
+  failures            Int
+  guardRejected       Int      @map("guard_rejected")
+  /// The limits in force when judged (tenths of a percent, and calls).
+  errorsLimitPermille Int      @map("errors_limit_permille") @db.SmallInt
+  guardLimitPermille  Int      @map("guard_limit_permille") @db.SmallInt
+  minSample           Int      @map("min_sample")
+  rolledBackAt        DateTime @map("rolled_back_at") @db.Timestamptz(6)
+
+  @@id([marketId, id], map: "ai_in_house_rollbacks_pkey")
+  /// The gateway's read: the latest rollback of each task type of the Market.
+  @@index([marketId, task, rolledBackAt(sort: Desc)], map: "ai_in_house_rollbacks_market_id_task_rolled_back_at_idx")
+  @@map("ai_in_house_rollbacks")
   @@schema("platform")
 }
 

@@ -11,8 +11,10 @@ import {
   type CapabilityTokenTotals,
   type CapReached,
   type DayCost,
+  type InHouseRollbackRecord,
   type ModelCallTotals,
   type ReservationRecord,
+  type ServedTotals,
   type UsageDelta,
 } from '../../ai/usage/ai-usage-store';
 import type { PrismaService } from '../prisma.service';
@@ -261,6 +263,82 @@ export class PrismaAiUsageStore implements AiUsageStore {
           : { [latencyColumnOf(usage.latencyMs)]: { increment: 1 } }),
       },
     });
+  }
+
+  async servedTotals(
+    market: MarketContext,
+    provider: string,
+    models: readonly string[],
+    capabilities: readonly string[],
+    since: Temporal.Instant,
+  ): Promise<ServedTotals> {
+    if (models.length === 0 || capabilities.length === 0) {
+      return { calls: 0, failures: 0, guardRejected: 0 };
+    }
+    // A range on the index (market_id, occurred_at, id) of at most one hour of one Market's calls
+    // (the auto-rollback's window, G6d3); one grouping, numbers only.
+    const groups = await this.prisma.tx(market).aiCall.groupBy({
+      by: ['outcome', 'outputCheck'],
+      where: {
+        marketId: market.marketId,
+        tenantId: market.tenantId,
+        occurredAt: { gte: timestampOf(since) },
+        provider,
+        model: { in: [...models] },
+        capability: { in: [...capabilities] },
+        // Served calls only: a shadow call answered no one, and is judged in G6e.
+        shadow: false,
+      },
+      _count: { _all: true },
+    });
+    let calls = 0;
+    let failures = 0;
+    let guardRejected = 0;
+    for (const group of groups) {
+      const count = group._count._all;
+      calls += count;
+      if (group.outcome !== 'ok') failures += count;
+      else if (group.outputCheck === 'guard-rejected') guardRejected += count;
+    }
+    return { calls, failures, guardRejected };
+  }
+
+  async addInHouseRollback(market: MarketContext, rollback: InHouseRollbackRecord): Promise<void> {
+    await this.prisma.tx(market).aiInHouseRollback.create({
+      data: {
+        marketId: market.marketId,
+        tenantId: market.tenantId,
+        id: rollback.id,
+        task: rollback.task,
+        family: rollback.family,
+        stage: rollback.stage,
+        reason: rollback.reason,
+        calls: rollback.calls,
+        failures: rollback.failures,
+        guardRejected: rollback.guardRejected,
+        errorsLimitPermille: rollback.errorsLimitPermille,
+        guardLimitPermille: rollback.guardLimitPermille,
+        minSample: rollback.minSample,
+        rolledBackAt: timestampOf(rollback.rolledBackAt),
+      },
+    });
+  }
+
+  async latestInHouseRollbacks(
+    market: MarketContext,
+  ): Promise<Readonly<Partial<Record<string, Temporal.Instant>>>> {
+    // One row per task type of the Market (the index market_id, task, rolled_back_at DESC); the
+    // rows are few (a rollback is rare and needs an admin to resume).
+    const groups = await this.prisma.tx(market).aiInHouseRollback.groupBy({
+      by: ['task'],
+      where: { marketId: market.marketId, tenantId: market.tenantId },
+      _max: { rolledBackAt: true },
+    });
+    const latest: Partial<Record<string, Temporal.Instant>> = {};
+    for (const group of groups) {
+      if (group._max.rolledBackAt !== null) latest[group.task] = instantOf(group._max.rolledBackAt);
+    }
+    return latest;
   }
 
   async callTotalsByModel(

@@ -77,6 +77,8 @@ const AI_USAGE_TABLES = [
   'ai_usage_days',
   'ai_budget_counters',
   'ai_budget_reservations',
+  // The in-house model's auto-rollbacks (G6d3): judged on ai_calls, read by the gateway.
+  'ai_in_house_rollbacks',
 ];
 const AI_USAGE_FOLDER = 'platform/persistence/ai-usage/';
 /**

@@ -542,6 +542,99 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
       expect(read.value.tokens.some((row) => row.capability === AI_EVALUATION_USAGE)).toBe(false);
     });
 
+    it('counts the served in-house calls of a window and keeps the latest rollback per task type (G6d3)', async () => {
+      const store = app.get<AiUsageStore>(AI_USAGE_STORE, { strict: false });
+      const unit = app.get<UnitOfWork>(UNIT_OF_WORK, { strict: false });
+      // A model and capability of this case only: parallel cases write calls of their own.
+      const model = `house-${randomBytes(4).toString('hex')}`;
+      const capability = scopeOf().capability;
+      const insertCall = (
+        at: Date,
+        values: {
+          model?: string;
+          capability?: string;
+          outcome?: string;
+          check?: string | null;
+          shadow?: boolean;
+          provider?: string;
+        },
+      ) =>
+        owner.query(
+          `INSERT INTO platform.ai_calls (id, market_id, tenant_id, occurred_at, day, capability,
+             seller_id, guest, provider, model, attempt, input_tokens, output_tokens,
+             input_pico_usd, output_pico_usd, cost_micro_usd, latency_ms, outcome, shadow,
+             shadow_sample, output_check)
+           VALUES ($1, $2, $3, $4, $5, $6, NULL, false, $7, $8, 1, 1, 1, 1, 1, 1, 1, $9, $10, $11,
+             $12)`,
+          [
+            uuid(),
+            market.marketId,
+            market.tenantId,
+            at,
+            at.toISOString().slice(0, 10),
+            values.capability ?? capability,
+            values.provider ?? 'mondapac',
+            values.model ?? model,
+            values.outcome ?? 'ok',
+            values.shadow ?? false,
+            values.shadow === true ? uuid() : null,
+            values.check === undefined ? 'valid' : values.check,
+          ],
+        );
+      const recent = new Date(NOW.epochMilliseconds - 600_000);
+      await insertCall(recent, {});
+      await insertCall(recent, { check: 'guard-rejected' });
+      await insertCall(recent, { outcome: 'timeout', check: null });
+      await insertCall(recent, { outcome: 'unavailable', check: null });
+      // Left out: a shadow call, another model, another capability, another provider, too old.
+      await insertCall(recent, { shadow: true, outcome: 'timeout', check: null });
+      await insertCall(recent, { model: `${model}-other`, outcome: 'timeout', check: null });
+      await insertCall(recent, { capability: 'test.other', outcome: 'timeout', check: null });
+      await insertCall(recent, { provider: 'anthropic', outcome: 'timeout', check: null });
+      await insertCall(new Date(NOW.epochMilliseconds - 7_200_000), {
+        outcome: 'timeout',
+        check: null,
+      });
+
+      const since = NOW.subtract({ hours: 1 });
+      const read = await unit.run(
+        market,
+        async () => ok(await store.servedTotals(market, 'mondapac', [model], [capability], since)),
+        { readOnly: true },
+      );
+      expect(read).toEqual({ ok: true, value: { calls: 4, failures: 2, guardRejected: 1 } });
+
+      const task = code === 'AU' ? 'extract' : 'vision';
+      for (const minutes of [5, 1]) {
+        await unit.run(market, async () => {
+          await store.addInHouseRollback(market, {
+            id: uuid(),
+            task,
+            family: 'model-house',
+            stage: 'percent',
+            reason: 'guard',
+            calls: 100,
+            failures: 0,
+            guardRejected: 9,
+            errorsLimitPermille: 50,
+            guardLimitPermille: 50,
+            minSample: 100,
+            rolledBackAt: NOW.subtract({ minutes }),
+          });
+          return ok(undefined);
+        });
+      }
+      const latest = await unit.run(
+        market,
+        async () => ok(await store.latestInHouseRollbacks(market)),
+        {
+          readOnly: true,
+        },
+      );
+      if (!latest.ok) throw new Error('read failed');
+      expect(latest.value[task]).toEqual(NOW.subtract({ minutes: 1 }));
+    });
+
     it('runs the gateway end to end: counts the call with no text, then refuses at a full cap without calling', async () => {
       const context = adminContext(market);
       const run = await gateway.run('catalog.description-writer.admin', context, REQUEST, {});
@@ -832,7 +925,8 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
     expect(await sqlStateOf(sql, checked, [uuid(), ...base, 'timeout', true, sample, null])).toBe(
       'ok',
     );
-    // A check only on an ok call, only in a sample; a shadow call always in a sample.
+    // A check only on an ok call; a served in-house call carries it too (G6d3); a shadow call
+    // always in a sample.
     expect(
       await sqlStateOf(sql, checked, [uuid(), ...base, 'timeout', true, sample, 'valid']),
     ).toBe(CHECK_VIOLATION);
@@ -840,8 +934,39 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
       CHECK_VIOLATION,
     );
     expect(await sqlStateOf(sql, checked, [uuid(), ...base, 'ok', false, null, 'valid'])).toBe(
+      'ok',
+    );
+    expect(await sqlStateOf(sql, checked, [uuid(), ...base, 'timeout', false, null, 'valid'])).toBe(
       CHECK_VIOLATION,
     );
+    // G6d3: a rollback is inserted once and never changed or deleted; its values are closed.
+    expect(await sqlStateOf(sql, 'UPDATE platform.ai_in_house_rollbacks SET calls = 0')).toBe(
+      INSUFFICIENT_PRIVILEGE,
+    );
+    expect(await sqlStateOf(sql, 'DELETE FROM platform.ai_in_house_rollbacks')).toBe(
+      INSUFFICIENT_PRIVILEGE,
+    );
+    const rollback = `INSERT INTO platform.ai_in_house_rollbacks (market_id, id, tenant_id, task,
+        family, stage, reason, calls, failures, guard_rejected, errors_limit_permille,
+        guard_limit_permille, min_sample, rolled_back_at)
+      VALUES ($1, $2, $3, $4, 'model-house', $5, $6, $7, $8, 0, $9, 50, 100, now())`;
+    const good = ['write', 'default', 'errors', 100, 6, 50] as const;
+    expect(
+      await sqlStateOf(sql, rollback, [market.marketId, uuid(), market.tenantId, ...good]),
+    ).toBe('ok');
+    for (const bad of [
+      ['chess', 'default', 'errors', 100, 6, 50],
+      ['write', 'shadow', 'errors', 100, 6, 50],
+      ['write', 'default', 'slow', 100, 6, 50],
+      // Below the minimum sample, more failures than calls, a limit above the ceiling.
+      ['write', 'default', 'errors', 99, 6, 50],
+      ['write', 'default', 'errors', 100, 101, 50],
+      ['write', 'default', 'errors', 100, 6, 51],
+    ]) {
+      expect(
+        await sqlStateOf(sql, rollback, [market.marketId, uuid(), market.tenantId, ...bad]),
+      ).toBe(CHECK_VIOLATION);
+    }
     expect(await sqlStateOf(sql, checked, [uuid(), ...base, 'ok', true, null, null])).toBe(
       CHECK_VIOLATION,
     );

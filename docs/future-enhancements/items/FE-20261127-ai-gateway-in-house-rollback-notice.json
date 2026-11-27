@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261127-ai-gateway-in-house-rollback-notice",
+  "area": "assistant",
+  "title": "درگاه AI: اعلان بازگشت خودکار مدل اختصاصی به ادمین",
+  "desc": "در G6d3 بازگشت خودکار مرحلهٔ درصدی یا پیش‌فرض فقط یک ردیف در platform.ai_in_house_rollbacks و لاگ ai.in-house.rolled-back برای اپراتورها می‌سازد. طراحی می‌گوید «به ادمین خبر می‌دهد»: نمایش بنر در زبانهٔ Mondapac Intelligence (چه زمانی، چرا، شمارش‌ها) و اعلان به ادمین‌های دارای settings.ai-models.manage، و دکمهٔ «ادامه» که همان تغییر تنظیمات با کد دومرحله‌ای است.",
+  "src": "docs/design/domain/platform-ai.md (Built in G6d3)",
+  "date": "2026-11-27",
+  "trig": "با G6e (زبانهٔ پنل مدل اختصاصی)",
+  "prio": "متوسط",
+  "status": "موکول"
+}

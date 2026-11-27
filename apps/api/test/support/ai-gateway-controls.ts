@@ -138,6 +138,13 @@ export class TestAiGatewayControls implements AiGatewayControls {
     return this;
   }
 
+  /** Sets the Market's in-house settings beyond the stages: rollback limits, last changes (G6d3). */
+  inHouseOf(market: string, change: Partial<AiInHouseControls>): this {
+    const was = this.inHouse.get(market) ?? NO_IN_HOUSE;
+    this.inHouse.set(market, { ...was, ...change });
+    return this;
+  }
+
   read(context: CallContext): Promise<AiMarketControls> {
     this.reads += 1;
     if (this.failing) return Promise.reject(new Error('settings store down'));

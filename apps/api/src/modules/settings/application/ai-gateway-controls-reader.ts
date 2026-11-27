@@ -1,4 +1,4 @@
-import { ok } from '@mondapac/shared-kernel';
+import { ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext } from '@mondapac/shared-kernel';
 import type {
   AiCaps,
@@ -114,8 +114,26 @@ export class SettingsAiGatewayControls implements AiGatewayControls {
         rolloutPercent: Number(value(aiInHouseRolloutCode(task))),
       };
     }
+    // When an admin last changed each task type's stage, model or percent share (G6d3): an
+    // auto-rollback holds the live stage off until a change after it.
+    const changedAt: Partial<Record<(typeof AI_MODEL_TASKS)[number], Temporal.Instant>> = {};
+    for (const task of AI_MODEL_TASKS) {
+      const codes = [
+        aiInHouseStageCode(task),
+        aiInHouseModelCode(task),
+        aiInHouseRolloutCode(task),
+      ];
+      for (const row of rows.value) {
+        if (!codes.includes(row.code)) continue;
+        const was = changedAt[task];
+        if (was === undefined || Temporal.Instant.compare(row.updatedAt, was) > 0) {
+          changedAt[task] = row.updatedAt;
+        }
+      }
+    }
     const inHouse: AiInHouseControls = {
       tasks,
+      changedAt,
       rollback: {
         errorsPermille: Number(value(AI_IN_HOUSE_ROLLBACK_ERRORS_CODE)),
         guardPermille: Number(value(AI_IN_HOUSE_ROLLBACK_GUARD_CODE)),

@@ -13,9 +13,11 @@ import {
   type CapabilityTokenTotals,
   type CapReached,
   type DayCost,
+  type InHouseRollbackRecord,
   LATENCY_BUCKETS_MS,
   type ModelCallTotals,
   type ReservationRecord,
+  type ServedTotals,
   type UsageDelta,
 } from '../../src/platform/ai/usage/ai-usage-store';
 import type { MarketRegistry } from '../../src/platform/market-config/market-registry';
@@ -39,6 +41,8 @@ export class InMemoryAiUsageStore implements AiUsageStore {
   usage: UsageDelta[] = [];
   /** "Cap reached" records by Market, capability and day. */
   capReached = new Map<string, CapReached>();
+  /** The in-house auto-rollbacks (G6d3), with their Market. */
+  rollbacks: (InHouseRollbackRecord & { readonly marketId: string })[] = [];
   /** Set to make every method throw (the database is down). */
   failing = false;
   /** The next this many calls throw, then the store works again (a lock wait that passes). */
@@ -63,6 +67,7 @@ export class InMemoryAiUsageStore implements AiUsageStore {
       calls: [...this.calls],
       usage: [...this.usage],
       capReached: new Map(this.capReached),
+      rollbacks: [...this.rollbacks],
     };
   }
 
@@ -72,6 +77,7 @@ export class InMemoryAiUsageStore implements AiUsageStore {
     this.calls = state.calls;
     this.usage = state.usage;
     this.capReached = state.capReached;
+    this.rollbacks = state.rollbacks;
   }
 
   /** The counter's held and spent, or undefined. */
@@ -211,6 +217,50 @@ export class InMemoryAiUsageStore implements AiUsageStore {
     return Promise.resolve(last);
   }
 
+  /** Calls are kept without their Market here, as `addCall` does. */
+  servedTotals(
+    _market: MarketContext,
+    provider: string,
+    models: readonly string[],
+    capabilities: readonly string[],
+    since: Temporal.Instant,
+  ): Promise<ServedTotals> {
+    this.#check();
+    let calls = 0;
+    let failures = 0;
+    let guardRejected = 0;
+    for (const call of this.calls) {
+      if (call.shadow || call.provider !== provider) continue;
+      if (!models.includes(call.model) || !capabilities.includes(call.capability)) continue;
+      if (Temporal.Instant.compare(call.occurredAt, since) < 0) continue;
+      calls += 1;
+      if (call.outcome !== 'ok') failures += 1;
+      else if (call.outputCheck === 'guard-rejected') guardRejected += 1;
+    }
+    return Promise.resolve({ calls, failures, guardRejected });
+  }
+
+  addInHouseRollback(market: MarketContext, rollback: InHouseRollbackRecord): Promise<void> {
+    this.#check();
+    this.rollbacks.push({ ...rollback, marketId: market.marketId });
+    return Promise.resolve();
+  }
+
+  latestInHouseRollbacks(
+    market: MarketContext,
+  ): Promise<Readonly<Partial<Record<string, Temporal.Instant>>>> {
+    this.#check();
+    const latest: Partial<Record<string, Temporal.Instant>> = {};
+    for (const rollback of this.rollbacks) {
+      if (rollback.marketId !== market.marketId) continue;
+      const was = latest[rollback.task];
+      if (was === undefined || Temporal.Instant.compare(rollback.rolledBackAt, was) > 0) {
+        latest[rollback.task] = rollback.rolledBackAt;
+      }
+    }
+    return Promise.resolve(latest);
+  }
+
   /** Calls and day rows are kept without their Market here, as `addCall` and `addUsage` do. */
   callTotalsByModel(
     _market: MarketContext,
@@ -316,7 +366,7 @@ export class InMemoryAiUsageUnitOfWork implements UnitOfWork {
   }
 }
 
-const testIds: IdGenerator = {
+export const testIds: IdGenerator = {
   next: <K extends string>() => uuidV7(Date.now(), randomBytes(10)) as Id<K>,
 };
 

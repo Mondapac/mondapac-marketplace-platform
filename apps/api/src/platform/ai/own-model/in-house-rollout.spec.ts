@@ -10,6 +10,7 @@ import {
 import { TestAiGatewayControls } from '../../../../test/support/ai-gateway-controls';
 import {
   testInHouseRoute,
+  testRollback,
   testRouteCatalogue,
   testRouter,
   testRollout,
@@ -32,6 +33,19 @@ import { ModelGateway } from '../model-gateway';
 import type { ModelCredentials, ModelProvider, ModelRequest, ModelTurn } from '../model-provider';
 import { MASKED } from '../personal-data-masker';
 import { MAX_ATTEMPTS, type PlannedRoute } from '../routing/ai-router';
+import {
+  EvaluationSuiteRegistry,
+  type EvaluationSuite,
+  type OutputCheck,
+} from '../evaluations/evaluation-suite';
+import type { CallRecord } from '../usage/ai-usage-store';
+import type { InHouseRollback } from './in-house-rollback';
+import {
+  ROLLBACK_JUDGE_EVERY,
+  ROLLBACK_READ_FOR,
+  ROLLBACK_WINDOW,
+  rollbackReason,
+} from './in-house-rollback';
 import { livePlan, turnBucket } from './in-house-rollout';
 import { SERVED_IN_HOUSE_STAGES, type InHouseTaskPage } from './in-house-stage';
 
@@ -80,6 +94,21 @@ const turnOf = (text: string): ModelTurn => ({
 });
 const EXTERNAL = turnOf('External answer');
 const IN_HOUSE = turnOf('In-house answer with a halal claim');
+
+const checkOf = (_request: ModelRequest, turn: ModelTurn): OutputCheck => {
+  const text = turn.blocks.map((block) => (block.type === 'text' ? block.text : '')).join('');
+  return /halal/iu.test(text) ? 'guard-rejected' : 'valid';
+};
+const suiteOf = (capability: string): EvaluationSuite => ({
+  capability,
+  setVersion: 's-1',
+  sampleIds: () => ['one'],
+  label: () => 'one',
+  request: () => ({ ...REQUEST, tools: [] }),
+  grade: () => ({ passed: true, checks: [] }),
+  display: () => null,
+  shadow: checkOf,
+});
 
 class RouteProvider implements ModelProvider {
   readonly sent: { route: string; request: ModelRequest }[] = [];
@@ -158,6 +187,9 @@ describe.each(['AU', 'ZZ'])('in-house percent and default stages (G6d2) in %s', 
   let store: InMemoryAiUsageStore;
   let sampled: number[];
   let healthAsked: string[];
+  let clock: FixedClock;
+  let controls: TestAiGatewayControls;
+  let rollback: InHouseRollback;
 
   const gatewayOf = (
     setup: {
@@ -174,7 +206,10 @@ describe.each(['AU', 'ZZ'])('in-house percent and default stages (G6d2) in %s', 
     const registry = new CapabilityRegistry();
     registry.register('alpha', SPECS);
     registry.seal();
-    const clock = new FixedClock(NOW);
+    const suites = new EvaluationSuiteRegistry(registry);
+    suites.register('alpha', [suiteOf(WRITER.id)]);
+    suites.seal();
+    clock = new FixedClock(NOW);
     const memory = inMemoryAiUsage(MARKETS, clock);
     store = memory.store;
     const models = new ModelGateway(
@@ -216,12 +251,13 @@ describe.each(['AU', 'ZZ'])('in-house percent and default stages (G6d2) in %s', 
     );
     const catalogue = testRouteCatalogue([testInHouseRoute('model-house', setup.houseRow)]);
     const router = testRouter(catalogue, passes, models, MARKETS, clock);
-    const controls = new TestAiGatewayControls();
+    controls = new TestAiGatewayControls();
     if (setup.external !== false) controls.routed('model-fast', ['AU', 'ZZ']);
     const page = setup.page ?? PERCENT;
     controls.inHouseStage('write', page, setup.pageMarkets ?? [code]);
     controls.inHouseStage('chat', page, setup.pageMarkets ?? [code]);
     const rollout = testRollout(router, {
+      suites,
       health: {
         healthy: (asked: MarketId, row: RouteRow) => {
           healthAsked.push(`${asked}|${row.id}`);
@@ -245,6 +281,7 @@ describe.each(['AU', 'ZZ'])('in-house percent and default stages (G6d2) in %s', 
       controls,
       testShadow(router),
       rollout,
+      (rollback = testRollback(router, { store, clock, capabilities: registry })),
     );
   };
   const routes = () => provider.sent.map((call) => call.route);
@@ -269,14 +306,14 @@ describe.each(['AU', 'ZZ'])('in-house percent and default stages (G6d2) in %s', 
     expect(JSON.stringify(provider.sent[0]!.request)).not.toContain('a@b.co');
     expect(sampled).toEqual([30]);
     expect(healthAsked).toEqual([`${code}|in-house-http/model-house-v1`]);
-    // A served call: not shadow, no sample (its check joins with the auto-rollback, G6d3).
+    // A served call: not shadow, no sample, the capability's own check kept (G6d3).
     expect(store.calls).toEqual([
       expect.objectContaining({
         capability: WRITER.id,
         provider: 'mondapac',
         shadow: false,
         shadowSample: null,
-        outputCheck: null,
+        outputCheck: 'guard-rejected',
         outcome: 'ok',
         attempt: 1,
       }),
@@ -400,5 +437,190 @@ describe.each(['AU', 'ZZ'])('in-house percent and default stages (G6d2) in %s', 
       reason: 'no-route',
     });
     expect(routes()).toEqual([]);
+  });
+
+  /** Served in-house rows of the writer, as earlier calls in the window left them. */
+  const served = (count: number, row: Partial<CallRecord> = {}) => {
+    for (let i = 0; i < count; i += 1) {
+      store.calls.push({
+        id: `0193${String(i).padStart(4, '0')}-0000-7000-8000-000000000000`,
+        occurredAt: NOW.subtract({ minutes: 5 }),
+        day: Temporal.PlainDate.from('2026-11-27'),
+        capability: WRITER.id,
+        sellerId: null,
+        guest: false,
+        provider: 'mondapac',
+        model: 'model-house-v1',
+        attempt: 1,
+        inputTokens: 1,
+        outputTokens: 1,
+        inputPicoUsd: 1,
+        outputPicoUsd: 1,
+        costMicroUsd: 1,
+        latencyMs: 1,
+        outcome: 'ok',
+        shadow: false,
+        shadowSample: null,
+        outputCheck: 'valid',
+        ...row,
+      });
+    }
+  };
+  const runWriter = async (gateway: AiGateway) => {
+    const run = await gateway.run(WRITER.id, adminContext(market), REQUEST, {});
+    await rollback.settled();
+    return run;
+  };
+  const LIMITS = { errorsPermille: 50, guardPermille: 50, minSample: 100 };
+
+  describe('the auto-rollback (G6d3)', () => {
+    it('rolls the live stage back when the error rate passes its limit, then serves external', async () => {
+      const gateway = gatewayOf({ page: DEFAULT });
+      controls.inHouseOf(code, { rollback: LIMITS });
+      // 94 good and 5 failed calls in the window; this call makes 100 with 6 failed: 6 % > 5 %.
+      served(94);
+      served(5, { outcome: 'unavailable', outputCheck: null });
+      provider.inHouse = () => Promise.reject(new Error('reset'));
+      await runWriter(gateway);
+      expect(store.rollbacks).toEqual([
+        expect.objectContaining({
+          marketId: code,
+          task: 'write',
+          family: 'model-house',
+          stage: 'default',
+          reason: 'errors',
+          calls: 100,
+          failures: 6,
+          errorsLimitPermille: 50,
+          minSample: 100,
+          rolledBackAt: NOW,
+        }),
+      ]);
+      // From now on the task type's calls go to the external models only.
+      provider.sent.length = 0;
+      provider.inHouse = () => Promise.resolve(IN_HOUSE);
+      const run = await runWriter(gateway);
+      expect(run).toMatchObject({ ok: true, turn: EXTERNAL });
+      expect(routes()).toEqual(['anthropic-api']);
+    });
+
+    it('rolls back on the guard-rejection rate of the answers', async () => {
+      const gateway = gatewayOf({ page: DEFAULT });
+      controls.inHouseOf(code, { rollback: { ...LIMITS, guardPermille: 10 } });
+      served(98);
+      served(1, { outputCheck: 'guard-rejected' });
+      // This answer is guard-rejected too: 2 in 100 > 1 %.
+      await runWriter(gateway);
+      expect(store.rollbacks).toEqual([
+        expect.objectContaining({ reason: 'guard', calls: 100, guardRejected: 2, failures: 0 }),
+      ]);
+    });
+
+    it('judges nothing below the minimum sample, nor at the limit', async () => {
+      const gateway = gatewayOf({ page: DEFAULT });
+      controls.inHouseOf(code, { rollback: { ...LIMITS, minSample: 200 } });
+      served(150, { outcome: 'timeout', outputCheck: null });
+      await runWriter(gateway);
+      expect(store.rollbacks).toEqual([]);
+      expect(rollbackReason({ calls: 100, failures: 5, guardRejected: 5 }, LIMITS)).toBeNull();
+      expect(rollbackReason({ calls: 100, failures: 6, guardRejected: 0 }, LIMITS)).toBe('errors');
+      // A stored limit is taken in force: above the ceiling it is 5 %, below the floor sample 100.
+      expect(
+        rollbackReason(
+          { calls: 100, failures: 6, guardRejected: 0 },
+          { errorsPermille: 900, guardPermille: 50, minSample: 1 },
+        ),
+      ).toBe('errors');
+    });
+
+    it('counts only the window and the calls since the settings last changed', async () => {
+      const gateway = gatewayOf({ page: DEFAULT });
+      controls.inHouseOf(code, {
+        rollback: LIMITS,
+        changedAt: { write: NOW.subtract({ minutes: 10 }) },
+      });
+      // Failures before the change, or older than the window, are another stage's.
+      served(100, { outcome: 'unavailable', occurredAt: NOW.subtract({ minutes: 20 }) });
+      served(100, {
+        outcome: 'unavailable',
+        occurredAt: NOW.subtract(ROLLBACK_WINDOW).subtract({ minutes: 1 }),
+      });
+      served(99);
+      await runWriter(gateway);
+      expect(store.rollbacks).toEqual([]);
+    });
+
+    it('leaves shadow calls, other models and other task types out of the count', async () => {
+      const gateway = gatewayOf({ page: DEFAULT });
+      controls.inHouseOf(code, { rollback: LIMITS });
+      served(99);
+      served(50, { outcome: 'unavailable', shadow: true, shadowSample: 'x' });
+      served(50, { outcome: 'unavailable', model: 'model-house-v0' });
+      served(50, { outcome: 'unavailable', capability: TOOL_CHAT.id });
+      await runWriter(gateway);
+      expect(store.rollbacks).toEqual([]);
+    });
+
+    it('holds the stage off until an admin changes the task type after the rollback', async () => {
+      const gateway = gatewayOf({ page: DEFAULT });
+      await store.addInHouseRollback(market, {
+        id: '0193aaaa-0000-7000-8000-000000000000',
+        task: 'write',
+        family: 'model-house',
+        stage: 'default',
+        reason: 'errors',
+        calls: 100,
+        failures: 10,
+        guardRejected: 0,
+        errorsLimitPermille: 50,
+        guardLimitPermille: 50,
+        minSample: 100,
+        rolledBackAt: NOW.subtract({ minutes: 1 }),
+      });
+      // A change before the rollback does not lift it.
+      controls.inHouseOf(code, { changedAt: { write: NOW.subtract({ minutes: 2 }) } });
+      expect(await runWriter(gateway)).toMatchObject({ ok: true, turn: EXTERNAL });
+      // A change after it does (read again after ROLLBACK_READ_FOR).
+      controls.inHouseOf(code, { changedAt: { write: NOW } });
+      clock.advance(ROLLBACK_READ_FOR);
+      expect(await runWriter(gateway)).toMatchObject({ ok: true, turn: IN_HOUSE });
+    });
+
+    it('holds every live stage off when the rollbacks cannot be read', async () => {
+      const gateway = gatewayOf({ page: DEFAULT });
+      jest.spyOn(store, 'latestInHouseRollbacks').mockRejectedValue(new Error('down'));
+      const run = await runWriter(gateway);
+      expect(run).toMatchObject({ ok: true, turn: EXTERNAL });
+      expect(routes()).toEqual(['anthropic-api']);
+    });
+
+    it('judges at most every 30 s per task type, and never a call it did not route in-house', async () => {
+      const gateway = gatewayOf({ page: DEFAULT });
+      controls.inHouseOf(code, { rollback: LIMITS });
+      const totals = jest.spyOn(store, 'servedTotals');
+      await runWriter(gateway);
+      await runWriter(gateway);
+      expect(totals).toHaveBeenCalledTimes(1);
+      clock.advance(ROLLBACK_JUDGE_EVERY);
+      await runWriter(gateway);
+      expect(totals).toHaveBeenCalledTimes(2);
+      // Outside the share: no judge.
+      const outside = gatewayOf({ sample: false });
+      const outsideTotals = jest.spyOn(store, 'servedTotals');
+      await runWriter(outside);
+      expect(outsideTotals).not.toHaveBeenCalled();
+    });
+
+    it('rolls back only the Market it judged (cross-Market canary)', async () => {
+      const gateway = gatewayOf({ page: DEFAULT, pageMarkets: ['AU', 'ZZ'] });
+      controls.inHouseOf(code, { rollback: LIMITS });
+      served(99, { outcome: 'unavailable', outputCheck: null });
+      await runWriter(gateway);
+      const other = testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default');
+      expect(store.rollbacks.map((row) => row.marketId)).toEqual([code]);
+      expect(await rollback.heldOff(other, 'write', controls.inHouse.get(other.marketId)!)).toBe(
+        false,
+      );
+    });
   });
 });

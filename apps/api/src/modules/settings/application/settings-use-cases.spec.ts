@@ -1277,6 +1277,8 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
     const IN_HOUSE_DEFAULTS = {
       tasks: { chat: OFF_PAGE, extract: OFF_PAGE, write: OFF_PAGE, vision: OFF_PAGE },
       rollback: { errorsPermille: 20, guardPermille: 10, minSample: 200 },
+      // No in-house stage, model or rollout row: no task changed (G6d3).
+      changedAt: {},
     };
     const ALL_ON = {
       'assistant.buyer-chat': true,
@@ -1473,6 +1475,8 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       });
       expect(inHouse.tasks.chat).toEqual({ ...OFF_PAGE, stage: 'off', shadowPercent: 0 });
       expect(inHouse.rollback).toEqual({ errorsPermille: 5, guardPermille: 10, minSample: 100 });
+      // A stage, model or rollout row dates the task's last change (G6d3); a shadow row does not.
+      expect(inHouse.changedAt).toEqual({ write: T0, chat: T0 });
     });
 
     it('reads a stored value the definition does not allow as the tightest (cap 0, stop on, switch off)', async () => {
