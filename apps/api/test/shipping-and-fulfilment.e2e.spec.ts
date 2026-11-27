@@ -529,7 +529,8 @@ describe.each(TEST_MARKETS)('seller orders over HTTP in market %s', (code) => {
       expect(res.status).toBe(200);
       expect(res.headers['cache-control']).toBe('no-store');
       expect(res.body).toMatchObject({ fulfilment: 'delivered', carrier: null, pickup: null });
-      expect(JSON.stringify(res.body)).not.toContain('0427');
+      // Quoted, so a UUID or timestamp holding the digits by chance cannot match.
+      expect(JSON.stringify(res.body)).not.toMatch(/"0427"/);
       expect(calls).toEqual([
         { name: 'confirm-pickup', input: { sellerOrderId: SELLER_ORDER, code: '0427' } },
       ]);

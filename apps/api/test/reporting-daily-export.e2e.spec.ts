@@ -290,7 +290,8 @@ describe.each(TEST_MARKETS)('the daily exports over HTTP in market %s', (code) =
     expect(after.rangeEnd.toString()).toBe(
       Temporal.PlainDate.from('2026-11-02').toZonedDateTime(zone).toInstant().toString(),
     );
-    expect(JSON.stringify(audit.rows[0])).not.toContain('2200');
+    // Only the exported content is checked: ids and timestamps of the row can hold "2200" by chance.
+    expect(JSON.stringify(audit.rows[0]!.after)).not.toContain('2200');
   });
 
   it('refuses an admin without the export key, before any read or audit', async () => {
