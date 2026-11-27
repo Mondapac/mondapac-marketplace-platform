@@ -455,31 +455,35 @@ export function InHousePanel({
                       rollback.heldOff ? 'rolled-back.title-held' : 'rolled-back.title-past',
                     )}
                   >
-                    <p>
-                      {t('rolled-back.what', {
-                        family: rollback.family,
-                        stage: isStage(rollback.stage)
-                          ? t(`stage.${rollback.stage}`)
-                          : rollback.stage,
-                        when: formatInstant(rollback.rolledBackAt, locale),
-                      })}
-                    </p>
-                    <p>
-                      {t(`rolled-back.reason.${rollback.reason}`, {
-                        count:
-                          rollback.reason === 'errors' ? rollback.failures : rollback.guardRejected,
-                        calls: rollback.calls,
-                        limit: percentOfPermille(
-                          String(
+                    <div className="flex flex-col gap-1.5">
+                      <p>
+                        {t('rolled-back.what', {
+                          family: rollback.family,
+                          stage: isStage(rollback.stage)
+                            ? t(`stage.${rollback.stage}`)
+                            : rollback.stage,
+                          when: formatInstant(rollback.rolledBackAt, locale),
+                        })}
+                      </p>
+                      <p>
+                        {t(`rolled-back.reason.${rollback.reason}`, {
+                          count:
                             rollback.reason === 'errors'
-                              ? rollback.errorsLimitPermille
-                              : rollback.guardLimitPermille,
+                              ? rollback.failures
+                              : rollback.guardRejected,
+                          calls: rollback.calls,
+                          limit: percentOfPermille(
+                            String(
+                              rollback.reason === 'errors'
+                                ? rollback.errorsLimitPermille
+                                : rollback.guardLimitPermille,
+                            ),
                           ),
-                        ),
-                        sample: rollback.minSample,
-                      })}
-                    </p>
-                    <p>{t(rollback.heldOff ? 'rolled-back.held' : 'rolled-back.past')}</p>
+                          sample: rollback.minSample,
+                        })}
+                      </p>
+                      <p>{t(rollback.heldOff ? 'rolled-back.held' : 'rolled-back.past')}</p>
+                    </div>
                   </Banner>
                 </div>
               )}

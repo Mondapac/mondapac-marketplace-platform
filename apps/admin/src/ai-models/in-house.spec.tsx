@@ -75,8 +75,8 @@ const ROLLBACK = {
   calls: 400,
   failures: 120,
   guardRejected: 3,
-  errorsLimitPermille: 200,
-  guardLimitPermille: 100,
+  errorsLimitPermille: 20,
+  guardLimitPermille: 10,
   minSample: 200,
   rolledBackAt: '2026-11-27T10:00:00.000Z',
   heldOff: true,
@@ -260,9 +260,7 @@ describe('Mondapac Intelligence tab', () => {
     expect(await screen.findByText('Rolled back: the external models are answering')).toBeTruthy();
     expect(screen.getByText(/mondapac-1 was rolled back from Percent on /)).toBeTruthy();
     expect(
-      screen.getByText(
-        /Its error rate passed the limit: 120 of 400 calls .* over the 20\.0% limit/,
-      ),
+      screen.getByText(/Its error rate passed the limit: 120 of 400 calls .* over the 2\.0% limit/),
     ).toBeTruthy();
     expect(
       screen.getByText(/Calls stay on the external models until an admin changes/),
@@ -273,7 +271,7 @@ describe('Mondapac Intelligence tab', () => {
 
   it('words a guard rollback and shows the other task types without a banner', async () => {
     view({ ...WITH_MODEL, rollbacks: [{ ...ROLLBACK, reason: 'guard', stage: 'default' }] });
-    expect(await screen.findByText(/3 of 400 calls .* over the 10\.0% limit/)).toBeTruthy();
+    expect(await screen.findByText(/3 of 400 calls .* over the 1\.0% limit/)).toBeTruthy();
     expect(screen.getAllByText(/was rolled back from/)).toHaveLength(1);
   });
 

@@ -14956,8 +14956,8 @@
         "badge": "Off, rolled back from {stage}",
         "what": "{family} was rolled back from {stage} on {when}.",
         "reason": {
-          "errors": "Its error rate passed the limit: {count, number} of {calls, number} calls in the last hour failed, over the {limit}% limit (judged from {sample, number} calls).",
-          "guard": "Too many answers were rejected by the feature's own check: {count, number} of {calls, number} calls in the last hour, over the {limit}% limit (judged from {sample, number} calls)."
+          "errors": "Its error rate passed the limit: {count, number} of {calls, number} calls in the last hour failed, over the {limit}% limit (minimum sample: {sample, number} calls).",
+          "guard": "Too many answers were rejected by the feature's own check: {count, number} of {calls, number} calls in the last hour, over the {limit}% limit (minimum sample: {sample, number} calls)."
         },
         "held": "Calls stay on the external models until an admin changes this task's stage, model or share.",
         "past": "An admin has changed this task's settings since, so the rollback no longer holds."
