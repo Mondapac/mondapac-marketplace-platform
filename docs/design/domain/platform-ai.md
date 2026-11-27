@@ -492,7 +492,9 @@ ADR-0026 decision 9 and ADR-0042 decision 7, so ADR-0053 supersedes those points
   samples. `status` and the capability cap read count the in-house routes in the most
   a call can cost. Unlike shadow, no extra owner approval of data categories is asked: the call
   goes to one model, under the same readiness conditions as an external route (ADR-0052 decision
-  3). The auto-rollback (G6d3) merges before any in-house catalogue row is added; until then the
+  3). Hassan confirmed this reading in his G6d2 review: ADR-0052 decision 6 asks the owner's
+  approval only for shadow, the extra copy, and percent and default need none beyond decision 3
+  (recorded here, as an Accepted ADR is changed only by a superseding one). The auto-rollback (G6d3) merges before any in-house catalogue row is added; until then the
   catalogue has none, so every stage but off is refused and AI stays off.
 - **Built in G6d3 (auto-rollback).** After a call the in-house model was chosen to answer,
   `InHouseRollback.judge` (`own-model/in-house-rollback.ts`) counts, in the background and at most
@@ -511,7 +513,11 @@ ADR-0026 decision 9 and ADR-0042 decision 7, so ADR-0053 supersedes those points
   the external models, until an admin changes that task type's stage, model or share after the
   rollback (a raise needs the step-up, G6b). One instance reads a Market's rollbacks at most every
   10 s and holds its own rollback at once; a read that fails holds every live stage off (fail
-  closed). Only numbers feed the rule, never a model's text (R2). Telling the admin in the panel
+  closed). Only numbers feed the rule, never a model's text (R2). A capability whose evaluation
+  suite has no output check produces no guard rejections, so only its error rate can roll it back.
+  The minimum sample is at least 100 served calls in the window, so a low-traffic Market may never
+  reach a verdict; its calls still fall back to the external models on any failure
+  (FE-20261127-ai-gateway-in-house-rollback-low-traffic). Telling the admin in the panel
   and by notification is G6e's (FE-20261127-ai-gateway-in-house-rollback-notice).
 - **In-house route readiness (before any stage other than off).** All of these must hold, else
   every stage stays off (ADR-0052 decision 3, ADR-0053 decision 3): (1) a PR adds the row:
