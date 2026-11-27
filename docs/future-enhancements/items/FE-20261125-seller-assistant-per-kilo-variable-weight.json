@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-seller-assistant-per-kilo-variable-weight",
+  "area": "assistant",
+  "title": "دستیار فروشنده: قیمت هر کیلو و وزن متغیر",
+  "desc": "فهرست قیمت قصابی با قیمت هر کیلو و وزن متغیر؛ مدل Offer امروز قیمت بسته دارد.",
+  "src": "design/seller/seller-assistant/seller-assistant-design-fa.html (بخش ۱۷) (شناسهٔ قبلی در فهرست متمرکز: FE-229)",
+  "date": "2026-11-25",
+  "trig": "پس از تصمیم محصول وزن‌متغیر",
+  "prio": "متوسط",
+  "status": "موکول"
+}

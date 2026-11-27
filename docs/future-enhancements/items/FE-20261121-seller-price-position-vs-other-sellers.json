@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261121-seller-price-position-vs-other-sellers",
+  "area": "seller",
+  "title": "مقایسه با قیمت فروشنده‌های دیگر",
+  "desc": "نمایش جایگاه قیمت فروشنده نسبت به بقیه روی همان محصول.",
+  "src": "design/seller/offer-page/offer-page-design-fa.html (شناسهٔ قبلی در فهرست متمرکز: FE-208)",
+  "date": "2026-11-21",
+  "trig": "پس از انتشار چند فروشنده روی یک محصول",
+  "prio": "پایین",
+  "status": "موکول"
+}

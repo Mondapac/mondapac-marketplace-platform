@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261123-dashboards-intelligent-summary",
+  "area": "admin",
+  "title": "خلاصهٔ هوشمند داشبورد با Mondapac Intelligent",
+  "desc": "یک پاراگراف «این هفته چه شد و چرا» بالای داشبورد ادمین و فروشنده.",
+  "src": "design/admin/dashboards-v2/dashboards-v2-fa.html (هادی، مجتبی، رضا) (شناسهٔ قبلی در فهرست متمرکز: FE-184)",
+  "date": "2026-11-23",
+  "trig": "پس از فاز ۲ داشبورد ۲",
+  "prio": "متوسط",
+  "status": "موکول"
+}

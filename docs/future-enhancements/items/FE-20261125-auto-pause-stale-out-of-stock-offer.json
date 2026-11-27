@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-auto-pause-stale-out-of-stock-offer",
+  "area": "seller",
+  "title": "توقف خودکار Offer بدون موجودی و بدون تغییر",
+  "desc": "Offer با موجودی صفر که مدت طولانی (مثلاً ۶۰ روز) تغییر نکرده خودکار Paused میشود و فروشنده با یک کلیک فعالش میکند؛ بدون حذف.",
+  "src": "design/seller/offer-page/offer-page-design-fa.html (تصمیم john ۲۵ نوامبر) (شناسهٔ قبلی در فهرست متمرکز: FE-221)",
+  "date": "2026-11-25",
+  "trig": "همراه فاز ۷ صفحهٔ Offer؛ آستانهها از تنظیمات Market",
+  "prio": "متوسط",
+  "status": "موکول"
+}

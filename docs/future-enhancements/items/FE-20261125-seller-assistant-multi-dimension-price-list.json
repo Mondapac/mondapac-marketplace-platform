@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-seller-assistant-multi-dimension-price-list",
+  "area": "assistant",
+  "title": "دستیار فروشنده: تنوع چندبُعدی در فهرست قیمت",
+  "desc": "تطبیق سطرهای طعم و سایز با محصول چندبُعدی.",
+  "src": "design/seller/seller-assistant/seller-assistant-design-fa.html (بخش ۱۷) (شناسهٔ قبلی در فهرست متمرکز: FE-228)",
+  "date": "2026-11-25",
+  "trig": "پس از گسترش مدل کاتالوگ برای تنوع چندبُعدی",
+  "prio": "پایین",
+  "status": "موکول"
+}

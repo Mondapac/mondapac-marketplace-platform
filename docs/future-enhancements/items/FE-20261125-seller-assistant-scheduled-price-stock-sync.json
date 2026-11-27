@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-seller-assistant-scheduled-price-stock-sync",
+  "area": "assistant",
+  "title": "دستیار فروشنده: همگام‌سازی زمان‌بندی‌شدهٔ قیمت و موجودی",
+  "desc": "خواندن دوره‌ای فایل یا سیستم صندوق (POS) فروشنده و ساخت Change set که فروشنده تأیید و ذخیره می‌کند.",
+  "src": "design/seller/seller-assistant/seller-assistant-design-fa.html (بخش ۱۷) (شناسهٔ قبلی در فهرست متمرکز: FE-225)",
+  "date": "2026-11-25",
+  "trig": "پس از فاز ۲ دستیار فروشنده",
+  "prio": "متوسط",
+  "status": "موکول"
+}

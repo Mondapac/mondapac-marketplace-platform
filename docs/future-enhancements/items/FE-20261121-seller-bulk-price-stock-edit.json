@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261121-seller-bulk-price-stock-edit",
+  "area": "seller",
+  "title": "ویرایش گروهی قیمت و موجودی",
+  "desc": "تغییر درصدی یا مقداری قیمت و موجودی چند سایز یا چند Offer با یک عمل؛ امروز ردیف به ردیف.",
+  "src": "design/seller/offer-page/offer-page-design-fa.html (INV-06) (شناسهٔ قبلی در فهرست متمرکز: FE-203)",
+  "date": "2026-11-21",
+  "trig": "بعد از ساخت صفحه واحد Offer",
+  "prio": "متوسط",
+  "status": "موکول"
+}

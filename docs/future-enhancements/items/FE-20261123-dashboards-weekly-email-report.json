@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261123-dashboards-weekly-email-report",
+  "area": "admin",
+  "title": "گزارش هفتگی ایمیلی داشبورد",
+  "desc": "خلاصهٔ هفتگی زمان‌بندی‌شده برای ادمین و فروشنده.",
+  "src": "design/admin/dashboards-v2/dashboards-v2-fa.html (هادی، مجتبی، رضا) (شناسهٔ قبلی در فهرست متمرکز: FE-186)",
+  "date": "2026-11-23",
+  "trig": "پس از فاز ۲ داشبورد ۲",
+  "prio": "پایین",
+  "status": "موکول"
+}

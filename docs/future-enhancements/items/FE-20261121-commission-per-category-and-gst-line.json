@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261121-commission-per-category-and-gst-line",
+  "area": "orders",
+  "title": "کمیسیون جدا برای هر دسته و سطر GST کمیسیون",
+  "desc": "نرخ کمیسیون هر دسته و نمایش سطر GST کمیسیون در برآورد دریافتی و صورت‌حساب تسویه.",
+  "src": "design/seller/offer-page/offer-page-design-fa.html (شناسهٔ قبلی در فهرست متمرکز: FE-206)",
+  "date": "2026-11-21",
+  "trig": "پس از نظر مشاور مالیاتی",
+  "prio": "بالا",
+  "status": "موکول"
+}
