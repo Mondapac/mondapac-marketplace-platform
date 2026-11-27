@@ -137,8 +137,10 @@ describe('the live stages are served (G6d2)', () => {
   });
 
   it('plans the in-house routes first, leaving room for an external fallback', () => {
-    const route = (id: string): PlannedRoute =>
-      ({ row: { id } as RouteRow, price: { inputPicoUsd: 1, outputPicoUsd: 1 } });
+    const route = (id: string): PlannedRoute => ({
+      row: { id } as RouteRow,
+      price: { inputPicoUsd: 1, outputPicoUsd: 1 },
+    });
     const ids = (plan: readonly PlannedRoute[]) => plan.map((planned) => planned.row.id);
     const house = [route('h1'), route('h2'), route('h3')];
     const external = [route('e1'), route('e2')];
