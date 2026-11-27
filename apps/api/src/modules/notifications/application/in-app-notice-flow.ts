@@ -38,6 +38,7 @@ import {
 import { SHIPPING_DELIVERY_SETTINGS_VIEW } from '../../shipping';
 import { SELLERS_SELLER_FILE_REVIEW } from '../../sellers';
 import { ASSISTANT_SETTINGS_VIEW } from '../../assistant/contracts/admin-notice.contract';
+import { SETTINGS_AI_MODELS_MANAGE } from '../../settings';
 import {
   ADMIN_NOTICE_KINDS,
   ADMIN_SYSTEM_REQUEST_OVERDUE_KINDS,
@@ -47,6 +48,7 @@ import {
   ADMIN_DELIVERY_FALLBACK_OVER_CAP,
   ADMIN_SELLER_REFUND_LIMIT_REACHED,
   ADMIN_ASSISTANT_SPEND_CAP_REACHED,
+  ADMIN_AI_IN_HOUSE_ROLLED_BACK,
   ADMIN_OFFER_QUEUE_BACKLOG,
   ADMIN_PRICE_HOLD_OPENED,
   ADMIN_SELLER_REINSTATED_HOLD_REMAINS,
@@ -257,6 +259,12 @@ const ADMIN_KIND_ACCESS: Readonly<Record<AdminNoticeKind, AccessDeclaration>> = 
   [ADMIN_ASSISTANT_SPEND_CAP_REACHED]: {
     name: 'notifications.see-admin-assistant-spend-cap-notices',
     rule: { kind: 'permissions', allOf: [ASSISTANT_SETTINGS_VIEW.key] },
+  },
+  // The admins who may change the in-house model's settings, and so resume a rolled-back stage
+  // (AI Gateway G6e2; the change needs a fresh two-step code), see that a stage was rolled back.
+  [ADMIN_AI_IN_HOUSE_ROLLED_BACK]: {
+    name: 'notifications.see-admin-ai-in-house-rollback-notices',
+    rule: { kind: 'permissions', allOf: [SETTINGS_AI_MODELS_MANAGE.key] },
   },
   // The admins who work the Offer review queue see that it is past a limit (the same key as the
   // product and Offer approval: the queue admin and the manager hold it).

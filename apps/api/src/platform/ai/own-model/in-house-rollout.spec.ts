@@ -10,6 +10,7 @@ import {
 import { TestAiGatewayControls } from '../../../../test/support/ai-gateway-controls';
 import {
   testInHouseRoute,
+  RecordingRollbackNotices,
   testRollback,
   testRouteCatalogue,
   testRouter,
@@ -192,6 +193,7 @@ describe.each(['AU', 'ZZ'])('in-house percent and default stages (G6d2) in %s', 
   let clock: FixedClock;
   let controls: TestAiGatewayControls;
   let rollback: InHouseRollback;
+  let notices: RecordingRollbackNotices;
 
   const gatewayOf = (
     setup: {
@@ -283,7 +285,12 @@ describe.each(['AU', 'ZZ'])('in-house percent and default stages (G6d2) in %s', 
       controls,
       testShadow(router),
       rollout,
-      (rollback = testRollback(router, { store, clock, capabilities: registry })),
+      (rollback = testRollback(router, {
+        store,
+        clock,
+        capabilities: registry,
+        notices: (notices = new RecordingRollbackNotices()),
+      })),
     );
   };
   const routes = () => provider.sent.map((call) => call.route);
@@ -498,6 +505,22 @@ describe.each(['AU', 'ZZ'])('in-house percent and default stages (G6d2) in %s', 
           rolledBackAt: NOW,
         }),
       ]);
+      // One notice for the admins (G6e2), codes only, under the Market's system actor.
+      expect(notices.notices.map(({ notice }) => notice)).toEqual([
+        {
+          rollbackId: store.rollbacks[0]!.id,
+          task: 'write',
+          stage: 'default',
+          reason: 'errors',
+          rolledBackAt: NOW,
+        },
+      ]);
+      const sent = notices.notices[0]!.context;
+      expect([sent.market.marketId, sent.actor.kind, sent.actor.marketId]).toEqual([
+        code,
+        'system',
+        code,
+      ]);
       // From now on the task type's calls go to the external models only.
       provider.sent.length = 0;
       provider.inHouse = () => Promise.resolve(IN_HOUSE);
@@ -626,6 +649,26 @@ describe.each(['AU', 'ZZ'])('in-house percent and default stages (G6d2) in %s', 
       expect(await statusRead.status(other, {})).toEqual([]);
       jest.spyOn(store, 'latestInHouseRollbacks').mockRejectedValue(new Error('down'));
       await expect(statusRead.status(market, {})).rejects.toThrow();
+    });
+
+    it('records no rollback when the notice cannot be written, and judges again later (G6e2)', async () => {
+      const gateway = gatewayOf({ page: DEFAULT });
+      controls.inHouseOf(code, { rollback: LIMITS });
+      served(94);
+      served(5, { outcome: 'unavailable', outputCheck: null });
+      provider.inHouse = () => Promise.reject(new Error('reset'));
+      const failing = jest
+        .spyOn(notices, 'rolledBack')
+        .mockRejectedValueOnce(new Error('outbox down'));
+      await runWriter(gateway);
+      // The row and the event are one unit: neither is kept.
+      expect(store.rollbacks).toEqual([]);
+      expect(notices.notices).toEqual([]);
+      failing.mockRestore();
+      clock.advance(ROLLBACK_JUDGE_EVERY);
+      await runWriter(gateway);
+      expect(store.rollbacks).toHaveLength(1);
+      expect(notices.notices).toHaveLength(1);
     });
 
     it('holds every live stage off when the rollbacks cannot be read', async () => {

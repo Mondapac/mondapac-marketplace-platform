@@ -205,6 +205,17 @@ export const ADMIN_ASSISTANT_SPEND_CAP_REACHED = 'admin.assistant-spend-cap-reac
 /** The caps of the assistant; in-app-notice-use-cases.spec checks they match assistant's event. */
 export const ASSISTANT_SPEND_CAPS = ['daily', 'monthly'] as const;
 
+/**
+ * The in-house model's live stage of a task type was rolled back on its error or guard-rejection
+ * rate (AI Gateway G6e2): its calls go to the external models until an admin changes the task
+ * type's settings. Codes only: the task type, the stage and the limit passed.
+ */
+export const ADMIN_AI_IN_HOUSE_ROLLED_BACK = 'admin.ai-in-house-rolled-back';
+/** settings' codes; in-app-notice-use-cases.spec checks they match settings' event. */
+export const AI_IN_HOUSE_ROLLBACK_TASK_CODES = ['chat', 'extract', 'write', 'vision'] as const;
+export const AI_IN_HOUSE_ROLLBACK_STAGE_CODES = ['percent', 'default'] as const;
+export const AI_IN_HOUSE_ROLLBACK_REASON_CODES = ['errors', 'guard'] as const;
+
 /** A review waits in the held tab of the moderation queue (buyer reviews, package 4b). */
 export const ADMIN_REVIEW_HELD = 'admin.review-held';
 /** A seller reported a review; it waits in the reported tab. */
@@ -302,6 +313,7 @@ export type AdminNoticeKind =
   | typeof ADMIN_REVIEW_HELD
   | typeof ADMIN_REVIEW_REPORTED
   | typeof ADMIN_ASSISTANT_SPEND_CAP_REACHED
+  | typeof ADMIN_AI_IN_HOUSE_ROLLED_BACK
   | typeof ADMIN_OFFER_QUEUE_BACKLOG
   | AdminSystemRequestOverdueKind;
 export const ADMIN_NOTICE_KINDS: readonly AdminNoticeKind[] = [
@@ -316,6 +328,7 @@ export const ADMIN_NOTICE_KINDS: readonly AdminNoticeKind[] = [
   ADMIN_REVIEW_HELD,
   ADMIN_REVIEW_REPORTED,
   ADMIN_ASSISTANT_SPEND_CAP_REACHED,
+  ADMIN_AI_IN_HOUSE_ROLLED_BACK,
   ADMIN_OFFER_QUEUE_BACKLOG,
   ...SYSTEM_REQUEST_AREAS.map((area) => ADMIN_SYSTEM_REQUEST_OVERDUE_KINDS[area]),
 ];
@@ -425,6 +438,14 @@ const PARAM_SHAPES: Readonly<
   },
   [ADMIN_SELLER_REFUND_LIMIT_REACHED]: { ids: ['sellerId'], enums: { limit: REFUND_LIMIT_KINDS } },
   [ADMIN_ASSISTANT_SPEND_CAP_REACHED]: { ids: [], enums: { cap: ASSISTANT_SPEND_CAPS } },
+  [ADMIN_AI_IN_HOUSE_ROLLED_BACK]: {
+    ids: [],
+    enums: {
+      task: AI_IN_HOUSE_ROLLBACK_TASK_CODES,
+      stage: AI_IN_HOUSE_ROLLBACK_STAGE_CODES,
+      reason: AI_IN_HOUSE_ROLLBACK_REASON_CODES,
+    },
+  },
   [ADMIN_OFFER_QUEUE_BACKLOG]: {
     ids: [],
     enums: { reason: OFFER_QUEUE_BACKLOG_REASONS },

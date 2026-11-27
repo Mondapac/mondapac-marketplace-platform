@@ -1,5 +1,9 @@
 import { Temporal } from '@mondapac/shared-kernel';
-import type { Clock } from '@mondapac/shared-kernel';
+import type { CallContext, Clock } from '@mondapac/shared-kernel';
+import type {
+  AiInHouseRollbackNotices,
+  InHouseRollbackNotice,
+} from '../../src/platform/ai/gateway-controls';
 import { CapabilityRegistry } from '../../src/platform/ai/capability-registry';
 import { EvaluationSuiteRegistry } from '../../src/platform/ai/evaluations/evaluation-suite';
 import { InHouseRollback } from '../../src/platform/ai/own-model/in-house-rollback';
@@ -156,6 +160,7 @@ export function testRollback(
     readonly store?: InMemoryAiUsageStore;
     readonly clock?: Clock;
     readonly capabilities?: CapabilityRegistry;
+    readonly notices?: AiInHouseRollbackNotices;
   } = {},
 ): InHouseRollback {
   const store = options.store ?? new InMemoryAiUsageStore();
@@ -166,7 +171,18 @@ export function testRollback(
     testIds,
     router,
     options.capabilities ?? new CapabilityRegistry(),
+    options.notices ?? new RecordingRollbackNotices(),
   );
+}
+
+/** settings' rollback-notice port for a unit test (G6e2): keeps each notice with its context. */
+export class RecordingRollbackNotices implements AiInHouseRollbackNotices {
+  readonly notices: { readonly context: CallContext; readonly notice: InHouseRollbackNotice }[] =
+    [];
+  rolledBack(context: CallContext, notice: InHouseRollbackNotice): Promise<void> {
+    this.notices.push({ context, notice });
+    return Promise.resolve();
+  }
 }
 
 /** A usable in-house test row (G6a): the `mondapac` provider on `in-house-http`, in Sydney. */

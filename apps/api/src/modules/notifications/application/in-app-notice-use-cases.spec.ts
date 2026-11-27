@@ -16,6 +16,11 @@ import type { EventDelivery } from '../../../platform/events/event-delivery';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { SPEND_CAPS } from '../../assistant/contracts/admin-notice.contract';
+import {
+  AI_IN_HOUSE_ROLLBACK_REASONS,
+  AI_IN_HOUSE_ROLLBACK_STAGES,
+  AI_IN_HOUSE_ROLLBACK_TASKS,
+} from '../../settings';
 import type { CatalogFacade } from '../../catalog';
 import type { OrderingFacade, OrderNotice } from '../../ordering';
 import {
@@ -23,6 +28,10 @@ import {
   ADMIN_DELIVERY_FALLBACK_OVER_CAP,
   ADMIN_SELLER_REFUND_LIMIT_REACHED,
   ADMIN_ASSISTANT_SPEND_CAP_REACHED,
+  ADMIN_AI_IN_HOUSE_ROLLED_BACK,
+  AI_IN_HOUSE_ROLLBACK_REASON_CODES,
+  AI_IN_HOUSE_ROLLBACK_STAGE_CODES,
+  AI_IN_HOUSE_ROLLBACK_TASK_CODES,
   ASSISTANT_SPEND_CAPS,
   ADMIN_PRICE_HOLD_OPENED,
   ADMIN_SELLER_REINSTATED_HOLD_REMAINS,
@@ -270,8 +279,27 @@ describe('parseNoticeParams', () => {
       ADMIN_ASSISTANT_SPEND_CAP_REACHED,
       { cap: 'weekly' },
     ],
+    [
+      'an in-house rollback notice with an unknown reason',
+      ADMIN_AI_IN_HOUSE_ROLLED_BACK,
+      { task: 'write', stage: 'percent', reason: 'slow' },
+    ],
   ])('refuses %s', (_label, kind, raw) => {
     expect(parseNoticeParams(kind, raw)).toBeNull();
+  });
+});
+
+describe('the in-house rollback codes', () => {
+  it("match the codes of settings' event, both ways (G6e2)", () => {
+    expect([...AI_IN_HOUSE_ROLLBACK_TASK_CODES].sort()).toEqual(
+      [...AI_IN_HOUSE_ROLLBACK_TASKS].sort(),
+    );
+    expect([...AI_IN_HOUSE_ROLLBACK_STAGE_CODES].sort()).toEqual(
+      [...AI_IN_HOUSE_ROLLBACK_STAGES].sort(),
+    );
+    expect([...AI_IN_HOUSE_ROLLBACK_REASON_CODES].sort()).toEqual(
+      [...AI_IN_HOUSE_ROLLBACK_REASONS].sort(),
+    );
   });
 });
 
@@ -918,6 +946,40 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
         ADMIN_REVIEW_HELD,
       ]);
       expect(await list(admin(ADMIN_PRICES))).toEqual(ok({ items: [], next: null }));
+    });
+
+    it('writes the in-house rollback notice with codes only and shows it to the in-house model admins only (G6e2)', async () => {
+      expect(
+        await review({
+          kind: ADMIN_AI_IN_HOUSE_ROLLED_BACK,
+          task: 'write',
+          stage: 'percent',
+          reason: 'guard',
+        }),
+      ).toEqual(ok({ code: 'notices.recorded', notices: 1 }));
+      expect(notices.rows.map((row) => [row.audience, row.sellerId, row.kind, row.params])).toEqual(
+        [
+          [
+            'admin',
+            null,
+            ADMIN_AI_IN_HOUSE_ROLLED_BACK,
+            { task: 'write', stage: 'percent', reason: 'guard' },
+          ],
+        ],
+      );
+      adminKeys.set(ADMIN_ALL, ['settings.ai-models.manage']);
+      // The AI Gateway view key alone cannot resume a stage, so it does not see the notice.
+      adminKeys.set(ADMIN_PRICES, ['settings.ai-gateway.view']);
+      const manager = await list(admin(ADMIN_ALL));
+      expect(manager.ok && manager.value.items).toMatchObject([
+        {
+          kind: ADMIN_AI_IN_HOUSE_ROLLED_BACK,
+          params: { task: 'write', stage: 'percent', reason: 'guard' },
+        },
+      ]);
+      expect(await list(admin(ADMIN_PRICES))).toEqual(ok({ items: [], next: null }));
+      expect(await list(admin(ADMIN_NONE))).toEqual(ok({ items: [], next: null }));
+      expect(await list(admin(ADMIN_ALL, other))).toEqual(ok({ items: [], next: null }));
     });
 
     it('writes a reminder for an overdue system request and shows it to the reviewers of its area only', async () => {

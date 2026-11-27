@@ -48,7 +48,14 @@ import { ViewAiModelUsage } from './application/use-cases/view-ai-model-usage.us
 import { ChangeAiGatewayLimits } from './application/use-cases/change-ai-gateway-limits.use-case';
 import { ViewAiGatewaySettings } from './application/use-cases/view-ai-gateway-settings.use-case';
 import { SettingsAiGatewayControls } from './application/ai-gateway-controls-reader';
-import { AI_GATEWAY_CONTROLS } from '../../platform/ai/gateway-controls';
+import {
+  AI_GATEWAY_CONTROLS,
+  AI_IN_HOUSE_ROLLBACK_NOTICES,
+} from '../../platform/ai/gateway-controls';
+import { registerEvents } from '../../platform/events/event-catalogue';
+import { OUTBOX_WRITER, type OutboxWriter } from '../../platform/events/outbox-writer';
+import { SettingsAiInHouseRollbackNotices } from './application/ai-in-house-rollback-notices';
+import { SETTINGS_EVENTS } from './domain/events';
 import { ReadAiDescriptionWriter } from './application/use-cases/read-ai-description-writer.use-case';
 import { ReadCartMode } from './application/use-cases/read-cart-mode.use-case';
 import { ReadOfferQueueBacklogLimits } from './application/use-cases/read-offer-queue-backlog-limits.use-case';
@@ -255,6 +262,14 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         settings: SettingsDependencies['settings'],
       ) => new SettingsAiGatewayControls({ unitOfWork, settings }),
     },
+    // platform/ai's rollback-notice port (G6e2), bound the same way: the event in settings' outbox.
+    PersistenceModule.outboxWriterFor('settings'),
+    registerEvents('settings', SETTINGS_EVENTS),
+    {
+      provide: AI_IN_HOUSE_ROLLBACK_NOTICES,
+      inject: [OUTBOX_WRITER],
+      useFactory: (outbox: OutboxWriter) => new SettingsAiInHouseRollbackNotices(outbox),
+    },
     {
       provide: SETTINGS_FACADE,
       inject: [
@@ -273,6 +288,6 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ) => new SettingsFacadeImplementation(read, cartMode, target, offerReview, backlogLimits),
     },
   ],
-  exports: [SETTINGS_FACADE, AI_GATEWAY_CONTROLS],
+  exports: [SETTINGS_FACADE, AI_GATEWAY_CONTROLS, AI_IN_HOUSE_ROLLBACK_NOTICES],
 })
 export class SettingsModule {}

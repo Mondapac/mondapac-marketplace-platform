@@ -30,6 +30,7 @@ import { SellerAccessApproved, SellerAccessReinstated } from '../../../identity'
 import { LowStockReached } from '../../../inventory';
 import { OrderPaid, SellerRefundLimitReached } from '../../../ordering';
 import { AssistantSpendCapReached } from '../../../assistant/contracts/admin-notice.contract';
+import { AiInHouseRolledBack } from '../../../settings';
 import { PriceHoldDecided, PriceHoldOpened } from '../../../pricing';
 import { DeliveryFallbackOverCap } from '../../../shipping';
 import { BusinessFileSubmitted } from '../../../sellers';
@@ -37,6 +38,7 @@ import {
   ADMIN_DELIVERY_FALLBACK_OVER_CAP,
   ADMIN_SELLER_REFUND_LIMIT_REACHED,
   ADMIN_ASSISTANT_SPEND_CAP_REACHED,
+  ADMIN_AI_IN_HOUSE_ROLLED_BACK,
   ADMIN_PLATFORM_IMPORT_FINISHED,
   ADMIN_PRICE_HOLD_OPENED,
   ADMIN_PRODUCT_REVISION_SUBMITTED,
@@ -85,6 +87,8 @@ export const ADMIN_SELLER_REFUND_LIMIT_NOTICE_SUBSCRIBER =
   'notifications.admin-seller-refund-limit-notice';
 export const ADMIN_ASSISTANT_SPEND_CAP_NOTICE_SUBSCRIBER =
   'notifications.admin-assistant-spend-cap-notice';
+export const ADMIN_AI_IN_HOUSE_ROLLBACK_NOTICE_SUBSCRIBER =
+  'notifications.admin-ai-in-house-rollback-notice';
 
 /** The seller notice subscribers (package 4), one per event; each is an inbox handler. */
 export const SELLER_NOTICE_SUBSCRIBERS = {
@@ -137,6 +141,7 @@ export function inAppNoticeSubscriptions(
   const platformImport = review(ADMIN_PLATFORM_IMPORT_NOTICE_SUBSCRIBER);
   const refundLimit = review(ADMIN_SELLER_REFUND_LIMIT_NOTICE_SUBSCRIBER);
   const spendCap = review(ADMIN_ASSISTANT_SPEND_CAP_NOTICE_SUBSCRIBER);
+  const inHouseRollback = review(ADMIN_AI_IN_HOUSE_ROLLBACK_NOTICE_SUBSCRIBER);
   const seller =
     (name: string) =>
     async (item: SellerNoticeItem, delivery: EventDelivery, context: CallContext) => {
@@ -533,6 +538,21 @@ export function inAppNoticeSubscriptions(
       handle: (event, delivery, context) =>
         spendCap(
           { kind: ADMIN_ASSISTANT_SPEND_CAP_REACHED, cap: event.payload.cap },
+          delivery,
+          context,
+        ),
+    }),
+    subscription({
+      name: ADMIN_AI_IN_HOUSE_ROLLBACK_NOTICE_SUBSCRIBER,
+      event: AiInHouseRolledBack,
+      handle: (event, delivery, context) =>
+        inHouseRollback(
+          {
+            kind: ADMIN_AI_IN_HOUSE_ROLLED_BACK,
+            task: event.payload.task,
+            stage: event.payload.stage,
+            reason: event.payload.reason,
+          },
           delivery,
           context,
         ),

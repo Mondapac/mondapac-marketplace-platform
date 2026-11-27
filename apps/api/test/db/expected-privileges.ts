@@ -752,6 +752,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['updated_at', 'updated_by_account_id', 'value', 'version'],
     },
     'settings.market_setting_history': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // AI Gateway G6e2: settings' outbox (the in-house auto-rollback event), as every module's.
+    'settings.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'reviews.market_settings': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['status', 'updated_at', 'updated_by_account_id'],

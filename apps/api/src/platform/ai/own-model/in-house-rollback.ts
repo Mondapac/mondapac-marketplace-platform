@@ -1,12 +1,17 @@
 import { Inject, Injectable, Logger, type BeforeApplicationShutdown } from '@nestjs/common';
-import { ok, Temporal } from '@mondapac/shared-kernel';
+import { ok, parseCorrelationId, Temporal } from '@mondapac/shared-kernel';
+import { createCallContext, systemActor } from '@mondapac/shared-kernel/contexts';
 import type { Clock, IdGenerator, MarketContext } from '@mondapac/shared-kernel';
 import { CLOCK } from '../../clock/clock.module';
 import { ID_GENERATOR } from '../../ids/ids.module';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../unit-of-work/unit-of-work';
 import { CAPABILITY_TASKS, type CapabilityTask } from '../capability';
 import { CapabilityRegistry } from '../capability-registry';
-import type { AiInHouseControls } from '../gateway-controls';
+import {
+  AI_IN_HOUSE_ROLLBACK_NOTICES,
+  type AiInHouseControls,
+  type AiInHouseRollbackNotices,
+} from '../gateway-controls';
 import { AiRouter } from '../routing/ai-router';
 import { AI_USAGE_STORE, type AiUsageStore, type ServedTotals } from '../usage/ai-usage-store';
 import { heldOffBy } from './in-house-rollback-status';
@@ -54,8 +59,10 @@ interface RollbackRead {
  * instance and in the background, the task type's served (not shadow) in-house calls of the last
  * hour, since the task type's in-house settings last changed: on at least the minimum sample, an
  * error rate or a guard-rejection rate above its limit records a rollback
- * (`platform.ai_in_house_rollbacks`) and logs `ai.in-house.rolled-back` for the operators. Only
- * numbers are judged, never a model's text (R2: no model output feeds the rule).
+ * (`platform.ai_in_house_rollbacks`), tells settings in the same unit so the admins get a bell
+ * notice (G6e2, {@link AI_IN_HOUSE_ROLLBACK_NOTICES}), and logs `ai.in-house.rolled-back` for the
+ * operators. Only numbers are judged, never a model's text (R2: no model output feeds the rule),
+ * and the notice carries codes only.
  *
  * {@link heldOff} is the gateway's read before it routes a live call: a task type whose latest
  * rollback is later than its settings' last change is held off, so its calls go to the external
@@ -79,6 +86,7 @@ export class InHouseRollback implements BeforeApplicationShutdown {
     @Inject(ID_GENERATOR) private readonly ids: IdGenerator,
     private readonly router: AiRouter,
     private readonly registry: CapabilityRegistry,
+    @Inject(AI_IN_HOUSE_ROLLBACK_NOTICES) private readonly notices: AiInHouseRollbackNotices,
   ) {}
 
   /**
@@ -152,9 +160,15 @@ export class InHouseRollback implements BeforeApplicationShutdown {
     if (reason === null) return;
     const limits = rollbackLimitsInForce(inHouse.rollback);
     const rolledBackAt = this.clock.now();
+    const rollbackId = this.ids.next();
+    // The notice's context (G6e2): the Market's system actor, as asynchronous AI work runs
+    // (ADR-0019 R3), with a correlation id of its own.
+    const correlationId = parseCorrelationId(this.ids.next());
+    if (!correlationId.ok) return;
+    const context = createCallContext(market, systemActor(market), correlationId.value);
     const written = await this.unitOfWork.run(market, async () => {
       await this.store.addInHouseRollback(market, {
-        id: this.ids.next(),
+        id: rollbackId,
         task,
         family,
         stage,
@@ -167,6 +181,8 @@ export class InHouseRollback implements BeforeApplicationShutdown {
         minSample: limits.minSample,
         rolledBackAt,
       });
+      // The admin notice (G6e2): settings' event, in this unit, so once per rollback.
+      await this.notices.rolledBack(context, { rollbackId, task, stage, reason, rolledBackAt });
       return ok(undefined);
     });
     if (!written.ok) return;

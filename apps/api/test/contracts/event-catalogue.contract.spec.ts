@@ -174,6 +174,8 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'inventory.rekey-on-offer-moved',
       'inventory.retire-on-offer-deleted',
       'inventory.retire-on-variant-removed',
+      // AI Gateway G6e2: an in-house auto-rollback becomes an admin bell notice.
+      'notifications.admin-ai-in-house-rollback-notice',
       'notifications.admin-assistant-spend-cap-notice',
       'notifications.admin-certificate-notice',
       'notifications.admin-delivery-fallback-notice',

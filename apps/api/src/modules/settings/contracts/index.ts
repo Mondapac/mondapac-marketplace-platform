@@ -34,7 +34,14 @@ export {
   type SettingsFacade,
 } from './settings.facade';
 export {
+  AI_IN_HOUSE_ROLLBACK_REASONS,
+  AI_IN_HOUSE_ROLLBACK_STAGES,
+  AI_IN_HOUSE_ROLLBACK_TASKS,
+  AiInHouseRolledBack,
+} from '../domain/events';
+export {
   SETTINGS_AI_MANAGE,
+  SETTINGS_AI_MODELS_MANAGE,
   SETTINGS_AI_VIEW,
   SETTINGS_CART_MODE_MANAGE,
   SETTINGS_CART_MODE_VIEW,
