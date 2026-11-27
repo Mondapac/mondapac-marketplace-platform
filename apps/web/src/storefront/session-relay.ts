@@ -22,6 +22,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The signed-in customer's saved-for-later list (cart v4).
     'cart/saved',
     'identity/customer/session',
+    // The Market's password length rule, for the Create account form (public).
+    'identity/customer/password-rules',
     // The customer's own address book (customers package 1).
     'customers/me/addresses',
     // Whether the customer may delete the account, and their open deletion request, if any
@@ -47,6 +49,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/customer/sign-in',
     'identity/customer/sign-out',
     'identity/customer/confirm-email',
+    // Create account (email and password) and "send it again"; the same answer for every address.
+    'identity/customer/sign-up',
+    'identity/customer/verification-email',
     // The customer's own password: the current one and the new one.
     'identity/customer/change-password',
     'customers/me/addresses',

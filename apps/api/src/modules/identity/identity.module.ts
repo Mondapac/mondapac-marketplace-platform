@@ -231,6 +231,7 @@ import { EndOtherCustomerSessions } from './application/use-cases/end-other-cust
 import { EraseCustomerAccount } from './application/use-cases/erase-customer-account.use-case';
 import { PurgeUnverifiedAccounts } from './application/use-cases/purge-unverified-accounts.use-case';
 import { RegisterCustomer } from './application/use-cases/register-customer.use-case';
+import { ViewPasswordRules } from './application/use-cases/view-password-rules.use-case';
 import { RegisterSeller } from './application/use-cases/register-seller.use-case';
 import { RequestCustomerVerification } from './application/use-cases/request-customer-verification.use-case';
 import { RequestPasswordReset } from './application/use-cases/request-password-reset.use-case';
@@ -304,6 +305,7 @@ import { CustomerPasswordController } from './presentation/customer-password.con
 import { CustomerProfileController } from './presentation/customer-profile.controller';
 import { CustomerSessionController } from './presentation/customer-session.controller';
 import { CustomerSignUpController } from './presentation/customer-sign-up.controller';
+import { CustomerPasswordRulesController } from './presentation/customer-password-rules.controller';
 import { IdentityFacadeImplementation } from './presentation/identity.facade';
 import { SellerAccessContractImplementation } from './presentation/seller-access.contract';
 import { purgeExpiredJob } from './presentation/jobs/purge-expired.job';
@@ -613,6 +615,7 @@ function useCaseProvider<D, U>(
 @Module({
   controllers: [
     CustomerSignUpController,
+    CustomerPasswordRulesController,
     CustomerSessionController,
     CustomerSocialSignInController,
     CustomerEmailVerificationController,
@@ -717,6 +720,7 @@ function useCaseProvider<D, U>(
           effectiveKeys,
         }),
     },
+    useCaseProvider(ViewPasswordRules, { policy: true }),
     useCaseProvider(RegisterCustomer, {
       unitOfWork: true,
       accounts: true,

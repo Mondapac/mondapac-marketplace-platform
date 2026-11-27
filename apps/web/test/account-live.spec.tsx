@@ -6,7 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../messages/en.json';
 import { AccountArea } from '../src/account/account-area.tsx';
 import { AccountAddresses } from '../src/account/addresses.tsx';
+import { ConfirmEmail } from '../src/account/confirm-email.tsx';
 import { forgetCsrfToken } from '../src/account/customer-api.ts';
+import { forgetPasswordRules } from '../src/account/password-rules.ts';
 import { AccountLists } from '../src/account/lists.tsx';
 import { AccountSettings } from '../src/account/settings.tsx';
 import { Header } from '../src/shell/header.tsx';
@@ -86,6 +88,7 @@ beforeEach(() => {
   calls = [];
   answers = {};
   forgetCsrfToken();
+  forgetPasswordRules();
   fetchMock.mockClear();
   vi.stubGlobal('fetch', fetchMock);
   delete document.documentElement.dataset.palette;
@@ -228,7 +231,6 @@ describe('sign in', () => {
 
   it.each([
     [401, 'credentials.invalid', 'The email or password is not right'],
-    [403, 'email-verification-required', 'Confirm your email first'],
     [403, 'account.disabled', 'This account is not available'],
     [429, 'request.throttled', 'Too many attempts'],
   ])('%i %s shows its message and stays signed out', async (status, code, message) => {
@@ -237,6 +239,259 @@ describe('sign in', () => {
     await submit();
     expect((await within(main()).findByRole('alert')).textContent).toContain(message);
     expect(screen.queryByText('Account page')).toBeNull();
+  });
+});
+
+describe('sign in with an unconfirmed email', () => {
+  it('shows Check your email, and Send it again asks for a new link for that address', async () => {
+    answers = {
+      'GET identity/customer/session': { status: 401, body: { code: 'access.unauthenticated' } },
+      'POST identity/customer/sign-in': {
+        status: 403,
+        body: { code: 'email-verification-required' },
+      },
+      'POST identity/customer/verification-email': {
+        status: 202,
+        body: { code: 'verification-resend.accepted' },
+      },
+    };
+    renderLive(<p>Account page</p>);
+    await screen.findByRole('heading', { level: 1, name: 'Log in' });
+    type('Email', ' jo.citizen@example.com ');
+    type('Password', 'a-long-password');
+    fireEvent.click(
+      within(main())
+        .getAllByRole('button', { name: 'Log in' })
+        .find((b) => b.getAttribute('type') === 'submit')!,
+    );
+    expect(await screen.findByRole('heading', { level: 1, name: 'Check your email' })).toBeTruthy();
+    fireEvent.click(within(main()).getByRole('button', { name: 'Send it again' }));
+    expect(await within(main()).findByText(/a new link is on its way/)).toBeTruthy();
+    const resend = called('POST', 'identity/customer/verification-email')[0];
+    expect(resend?.body).toEqual({ email: 'jo.citizen@example.com' });
+    // Made without a session: no token is asked for or sent.
+    expect(resend?.headers['x-csrf-token']).toBeUndefined();
+    expect(screen.queryByText('Account page')).toBeNull();
+  });
+});
+
+describe('create account', () => {
+  const signedOut = {
+    'GET identity/customer/session': { status: 401, body: { code: 'access.unauthenticated' } },
+    'GET identity/customer/password-rules': {
+      status: 200,
+      body: { minLength: 16, maxLength: 100 },
+    },
+  };
+  const openCreate = async () => {
+    await screen.findByRole('heading', { level: 1, name: 'Log in' });
+    fireEvent.click(within(main()).getByRole('button', { name: 'Create account' }));
+  };
+  const submit = () =>
+    fireEvent.click(
+      within(main())
+        .getAllByRole('button', { name: 'Create account' })
+        .find((b) => b.getAttribute('type') === 'submit')!,
+    );
+
+  it("shows the Market's rule from the API, sends email and password only, then Check your email", async () => {
+    answers = {
+      ...signedOut,
+      'POST identity/customer/sign-up': { status: 202, body: { code: 'sign-up.accepted' } },
+    };
+    renderLive(<p>Account page</p>);
+    await openCreate();
+    // A Market with another rule than AU's: the form shows the API's numbers, never a constant.
+    expect(await within(main()).findByText(/^16 to 100 characters\./)).toBeTruthy();
+    expect(within(main()).getByLabelText('Password').getAttribute('minlength')).toBe('16');
+    expect(within(main()).queryByLabelText('Full name')).toBeNull();
+    type('Email', 'new.buyer@example.com');
+    type('Password', 'correct horse battery staple');
+    submit();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Check your email' })).toBeTruthy();
+    expect(within(main()).getByText(/If new\.buyer@example\.com can be used/)).toBeTruthy();
+    const sent = called('POST', 'identity/customer/sign-up')[0];
+    expect(sent?.body).toEqual({
+      email: 'new.buyer@example.com',
+      password: 'correct horse battery staple',
+    });
+    expect(sent?.headers['x-csrf-token']).toBeUndefined();
+    expect(screen.queryByText('Account page')).toBeNull();
+  });
+
+  it('shows no number until the API answers the rule, and still signs up', async () => {
+    answers = {
+      'GET identity/customer/session': { status: 401, body: { code: 'access.unauthenticated' } },
+      'GET identity/customer/password-rules': { status: 503, body: { code: 'access.unavailable' } },
+      'POST identity/customer/sign-up': { status: 202, body: { code: 'sign-up.accepted' } },
+    };
+    renderLive(<p>Account page</p>);
+    await openCreate();
+    await waitFor(() => expect(called('GET', 'identity/customer/password-rules')).toHaveLength(1));
+    expect(within(main()).queryByText(/characters\./)).toBeNull();
+    expect(within(main()).getByLabelText('Password').getAttribute('minlength')).toBeNull();
+    type('Email', 'new.buyer@example.com');
+    type('Password', 'correct horse battery staple');
+    submit();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Check your email' })).toBeTruthy();
+  });
+
+  it.each([
+    [
+      { code: 'password.rejected', details: { rule: 'length' } },
+      'Password',
+      'Use 16 to 100 characters.',
+    ],
+    [
+      { code: 'password.rejected', details: { rule: 'common' } },
+      'Password',
+      'This password is too common',
+    ],
+    [
+      { code: 'password.rejected', details: { rule: 'contains-identity' } },
+      'Password',
+      'Do not use your email address',
+    ],
+    [
+      { code: 'validation.failed', details: { fields: [{ path: 'email', code: 'format' }] } },
+      'Email',
+      'Enter an email address like',
+    ],
+  ])('a 400 %j shows its message on the %s field', async (body, field, message) => {
+    answers = {
+      ...signedOut,
+      'POST identity/customer/sign-up': { status: 400, body: { statusCode: 400, ...body } },
+    };
+    renderLive(<p>Account page</p>);
+    await openCreate();
+    await within(main()).findByText(/^16 to 100 characters\./);
+    type('Email', 'new.buyer@example.com');
+    type('Password', 'correct horse battery staple');
+    submit();
+    await waitFor(() =>
+      expect(within(main()).getByLabelText(field).getAttribute('aria-describedby') ?? '').not.toBe(
+        '',
+      ),
+    );
+    expect(await within(main()).findByText(new RegExp(message))).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Check your email' })).toBeNull();
+  });
+
+  it.each([
+    [429, 'request.throttled', 'Too many attempts'],
+    [503, 'request.busy', 'We could not create your account'],
+  ])('%i %s shows its note', async (status, code, message) => {
+    answers = { ...signedOut, 'POST identity/customer/sign-up': { status, body: { code } } };
+    renderLive(<p>Account page</p>);
+    await openCreate();
+    type('Email', 'new.buyer@example.com');
+    type('Password', 'correct horse battery staple');
+    submit();
+    expect((await within(main()).findByRole('alert')).textContent).toContain(message);
+  });
+});
+
+describe('confirm email (the mailed link)', () => {
+  const TOKEN = 'ml1_secret-token';
+  function renderConfirm() {
+    window.history.replaceState(null, '', `/account/confirm-email#${TOKEN}`);
+    return render(
+      <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+        <StoreProvider live initialCustomer={null}>
+          <Header delivery={{ label: 'Kedron 4031' }} />
+          <main>
+            <ConfirmEmail />
+          </main>
+        </StoreProvider>
+      </NextIntlClientProvider>,
+    );
+  }
+  const confirm = (password: string) => {
+    type('Password', password);
+    fireEvent.click(within(main()).getByRole('button', { name: 'Confirm email' }));
+  };
+
+  it('takes the token from the fragment, removes it from the address, confirms and signs in', async () => {
+    answers = {
+      'GET identity/customer/session': { status: 401, body: { code: 'access.unauthenticated' } },
+      'POST identity/customer/confirm-email': () => {
+        // From now on the session exists.
+        answers['GET identity/customer/session'] = session();
+        answers['GET customers/me/addresses'] = book();
+        return { status: 200, body: { code: 'signed-in', csrfToken: 'csrf-9' } };
+      },
+    };
+    renderConfirm();
+    await screen.findByRole('heading', { level: 1, name: 'Confirm your email' });
+    expect(window.location.hash).toBe('');
+    confirm('correct horse battery staple');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Email confirmed' })).toBeTruthy();
+    const sent = called('POST', 'identity/customer/confirm-email')[0];
+    expect(sent?.body).toEqual({ token: TOKEN, password: 'correct horse battery staple' });
+    expect(sent?.headers['x-csrf-token']).toBeUndefined();
+    expect(
+      await within(screen.getByRole('banner')).findByRole('button', { name: 'Log out' }),
+    ).toBeTruthy();
+  });
+
+  it('a wrong password says so and keeps the form', async () => {
+    answers = {
+      'GET identity/customer/session': { status: 401, body: { code: 'access.unauthenticated' } },
+      'POST identity/customer/confirm-email': {
+        status: 401,
+        body: { code: 'credentials.invalid' },
+      },
+    };
+    renderConfirm();
+    await screen.findByRole('heading', { level: 1, name: 'Confirm your email' });
+    confirm('not my password at all');
+    expect((await within(main()).findByRole('alert')).textContent).toContain(
+      'That password is not right',
+    );
+    expect(within(main()).getByRole('button', { name: 'Confirm email' })).toBeTruthy();
+  });
+
+  it('a link that cannot be used offers a new one for any address', async () => {
+    answers = {
+      'GET identity/customer/session': { status: 401, body: { code: 'access.unauthenticated' } },
+      'POST identity/customer/confirm-email': { status: 400, body: { code: 'link.rejected' } },
+      'POST identity/customer/verification-email': {
+        status: 202,
+        body: { code: 'verification-resend.accepted' },
+      },
+    };
+    renderConfirm();
+    await screen.findByRole('heading', { level: 1, name: 'Confirm your email' });
+    confirm('correct horse battery staple');
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'This link cannot be used' }),
+    ).toBeTruthy();
+    type('Email', 'jo.citizen@example.com');
+    fireEvent.click(within(main()).getByRole('button', { name: 'Send a new link' }));
+    expect(await within(main()).findByText(/a new link is on its way/)).toBeTruthy();
+    expect(called('POST', 'identity/customer/verification-email')[0]?.body).toEqual({
+      email: 'jo.citizen@example.com',
+    });
+  });
+
+  it('a page opened without a token says the link cannot be used', async () => {
+    answers = {
+      'GET identity/customer/session': { status: 401, body: { code: 'access.unauthenticated' } },
+    };
+    window.history.replaceState(null, '', '/account/confirm-email');
+    render(
+      <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+        <StoreProvider live initialCustomer={null}>
+          <main>
+            <ConfirmEmail />
+          </main>
+        </StoreProvider>
+      </NextIntlClientProvider>,
+    );
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'This link cannot be used' }),
+    ).toBeTruthy();
+    expect(called('POST', 'identity/customer/confirm-email')).toHaveLength(0);
   });
 });
 

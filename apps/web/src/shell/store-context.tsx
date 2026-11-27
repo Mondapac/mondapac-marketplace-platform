@@ -49,6 +49,9 @@ import { checkReachable, reachable } from './connection.ts';
 /** How a live sign-in ended; the log-in form shows a message for each refusal. */
 export type SignInOutcome = 'ok' | 'wrong' | 'unverified' | 'disabled' | 'throttled' | 'failed';
 
+/** How a live email confirmation ended (the link's page, `ux.md` A4). */
+export type ConfirmOutcome = 'ok' | 'wrong' | 'rejected' | 'disabled' | 'throttled' | 'failed';
+
 /** What the confirmation shows of the order just placed. */
 export interface PlacedOrder {
   readonly reference: string;
@@ -132,6 +135,8 @@ interface StoreState {
   readonly sessionReady: boolean;
   /** Live sign-in: signs in, reads the session and sets `customer`. */
   readonly signIn: (email: string, password: string) => Promise<SignInOutcome>;
+  /** Live email confirmation from the mailed link: confirms, signs in and sets `customer`. */
+  readonly confirmEmail: (token: string, password: string) => Promise<ConfirmOutcome>;
   /** Ends the session (live) and clears `customer`. */
   /** False when the API could not end the session: the buyer stays signed in. */
   readonly signOut: () => Promise<boolean>;
@@ -475,6 +480,17 @@ export function StoreProvider({
     };
     // Only on the first load: later reads follow the buyer's own changes.
   }, [live]);
+  // The API has just started a session (sign-in or email confirmation): read who it is.
+  const startSession = useCallback(async (): Promise<'ok' | 'failed'> => {
+    const read = await readCustomer();
+    if (!read) return 'failed';
+    customerRef.current = read;
+    setCustomer(read);
+    // The relay moved this browser's guest cart into the account: show the account's cart and
+    // list. Items saved as a guest stay in this browser's list until moved.
+    void readCart().then(readSaved);
+    return 'ok';
+  }, [readCart, readSaved]);
   const signIn = useCallback(
     async (email: string, password: string): Promise<SignInOutcome> => {
       const result = await api.signIn(email, password);
@@ -485,16 +501,23 @@ export function StoreProvider({
         return result.code === 'account.disabled' ? 'disabled' : 'failed';
       }
       if (result.kind !== 'ok') return 'failed';
-      const read = await readCustomer();
-      if (!read) return 'failed';
-      customerRef.current = read;
-      setCustomer(read);
-      // The relay moved this browser's guest cart into the account: show the account's cart and
-      // list. Items saved as a guest stay in this browser's list until moved.
-      void readCart().then(readSaved);
-      return 'ok';
+      return startSession();
     },
-    [readCart, readSaved],
+    [startSession],
+  );
+  const confirmEmail = useCallback(
+    async (token: string, password: string): Promise<ConfirmOutcome> => {
+      const result = await api.confirmEmail(token, password);
+      if (result.kind === 'signed-out') return 'wrong';
+      if (result.kind === 'throttled') return 'throttled';
+      if (result.kind === 'invalid') {
+        if (result.code === 'link.rejected') return 'rejected';
+        return result.code === 'account.disabled' ? 'disabled' : 'failed';
+      }
+      if (result.kind !== 'ok') return 'failed';
+      return startSession();
+    },
+    [startSession],
   );
   // The buyer is logged out here only once the API ended the session (or it had already ended):
   // on a shared computer a live cookie would sign them back in on the next page.
@@ -549,6 +572,7 @@ export function StoreProvider({
       live,
       sessionReady,
       signIn,
+      confirmEmail,
       signOut,
       deliveryAddress,
       setDeliveryAddress,
@@ -602,6 +626,7 @@ export function StoreProvider({
       live,
       sessionReady,
       signIn,
+      confirmEmail,
       signOut,
       deliveryAddress,
       placedOrder,

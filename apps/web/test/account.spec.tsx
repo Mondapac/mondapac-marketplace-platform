@@ -175,13 +175,14 @@ describe('log in', () => {
     );
   });
 
-  it('switches to Create account with the name field and the 10-character hint', () => {
+  it("switches to Create account: email and password only, with the sample Market's rule", () => {
     renderStore(<AccountOverview />, false);
     const page = main();
     fireEvent.click(within(page).getByRole('button', { name: 'Create account' }));
     expect(within(page).getByRole('heading', { name: 'Create your account' })).toBeTruthy();
-    expect(within(page).getByLabelText('Full name')).toBeTruthy();
-    expect(within(page).getByText('At least 10 characters.')).toBeTruthy();
+    expect(within(page).queryByLabelText('Full name')).toBeNull();
+    expect(within(page).getByText(/^15 to 128 characters\./)).toBeTruthy();
+    expect(within(page).getByLabelText('Password').getAttribute('minlength')).toBe('15');
   });
 });
 
@@ -593,7 +594,7 @@ describe('settings', () => {
     type('New password', 'short');
     type('Confirm new password', 'short');
     update();
-    expect(within(page).getByText('Use at least 10 characters.')).toBeTruthy();
+    expect(within(page).getByText('Use at least 15 characters.')).toBeTruthy();
     type('New password', 'a-longer-password');
     update();
     expect(within(page).getByText('The passwords do not match.')).toBeTruthy();

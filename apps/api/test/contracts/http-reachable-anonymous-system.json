@@ -215,6 +215,11 @@
     "reason": "The first step of signing in with a provider: the caller has no session yet; nothing is stored."
   },
   {
+    "name": "identity.view-password-rules",
+    "rule": "anonymous",
+    "reason": "The storefront's Create account form shows the Market's password length rule before the visitor has an account; the answer is the Market's configuration only."
+  },
+  {
     "name": "notifications.unsubscribe-marketing-email",
     "rule": "anonymous",
     "reason": "One-click unsubscribe of a marketing mail (RFC 8058, Spam Act): the mail client or the reader has no session; the signed token names the account and can only withdraw consent."
