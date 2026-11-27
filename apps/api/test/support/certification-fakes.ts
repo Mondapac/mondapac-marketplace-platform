@@ -21,9 +21,13 @@ import type {
   RateCounterRepository,
 } from '../../src/modules/certification/application/ports/rate-counters';
 import type {
+  CertificateViewFacts,
   NewCertificate,
   NewDocument,
+  RecordEventFacts,
   SellerCertificateRepository,
+  SubmissionDecisionFacts,
+  SubmissionFacts,
   StoredCertificate,
   StoredDocument,
   StoredDraft,
@@ -97,6 +101,72 @@ export class MemoryCertificates implements SellerCertificateRepository {
   readonly openIssuerRequests = new Set<string>();
   /** Reviewer decisions by submission id, set by a test that plays the review side. */
   readonly decisions = new Map<string, 'approved' | 'changes-requested' | 'declined'>();
+  /** The rest of a reviewer decision (reason, text, zone, time) by submission id. */
+  readonly decisionDetails = new Map<string, Partial<SubmissionDecisionFacts>>();
+  /** Issuer display names by issuer id, for the seller's own read. */
+  readonly issuerNames = new Map<string, string>();
+  /** `expired` and `revoked` changes by record id, newest last, set by a test. */
+  readonly recordEvents = new Map<string, RecordEventFacts[]>();
+
+  private submissionFacts(s: MemorySubmission): SubmissionFacts {
+    const w = s.write;
+    const outcome = s.withdrawn !== null ? 'withdrawn' : this.decisions.get(w.submissionId);
+    const details = this.decisionDetails.get(w.submissionId) ?? {};
+    const decision: SubmissionDecisionFacts | null =
+      outcome === undefined
+        ? null
+        : {
+            outcome,
+            reasonCode: details.reasonCode ?? null,
+            reasonTextCiphertext: details.reasonTextCiphertext ?? null,
+            withdrawCause: s.withdrawn?.cause ?? null,
+            approvedZone: details.approvedZone ?? null,
+            decidedAt: details.decidedAt ?? s.withdrawn?.decidedAt ?? w.submittedAt,
+          };
+    return {
+      id: w.submissionId,
+      submissionNo: w.submissionNo,
+      kind: w.kind,
+      issuerId: w.issuerId,
+      issuerName: w.issuerId === null ? null : (this.issuerNames.get(w.issuerId) ?? null),
+      certificateNumberCiphertext: w.certificateNumberCiphertext,
+      issueDate: w.issueDate,
+      expiryDate: w.expiryDate,
+      submittedAt: w.submittedAt,
+      decision,
+    };
+  }
+
+  viewFacts(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    certificates: readonly StoredCertificate[],
+    options: { readonly detail: boolean },
+  ): Promise<ReadonlyMap<string, CertificateViewFacts>> {
+    if (options.detail && certificates.length !== 1) {
+      throw new Error('viewFacts: the detail read takes exactly one record');
+    }
+    const out = new Map<string, CertificateViewFacts>();
+    for (const c of certificates) {
+      const row = this.certificates.get(c.id);
+      if (row === undefined || row.marketId !== market.marketId || row.sellerId !== sellerId) {
+        continue;
+      }
+      const own = this.submissions
+        .filter((s) => s.marketId === market.marketId && s.write.certificateId === c.id)
+        .sort((a, b) => b.write.submissionNo - a.write.submissionNo)
+        .map((s) => this.submissionFacts(s));
+      out.set(c.id, {
+        draftIssuerName:
+          row.draft.issuerId === null ? null : (this.issuerNames.get(row.draft.issuerId) ?? null),
+        approved: own.find((s) => s.id === row.approvedSubmissionId) ?? null,
+        newest: own[0] ?? null,
+        recent: options.detail ? own.slice(0, 10) : [],
+        events: options.detail ? [...(this.recordEvents.get(c.id) ?? [])].reverse() : [],
+      });
+    }
+    return Promise.resolve(out);
+  }
 
   private latestOutcome(row: MemoryCertificate) {
     const newest = this.submissions
@@ -133,6 +203,10 @@ export class MemoryCertificates implements SellerCertificateRepository {
       pendingKind: row.pendingKind,
       approvedSubmissionId: row.approvedSubmissionId,
       approvedBoundaryAt: row.approvedBoundaryAt,
+      approvedZone:
+        row.approvedSubmissionId === null
+          ? null
+          : (this.decisionDetails.get(row.approvedSubmissionId)?.approvedZone ?? null),
       approvedIssuerState: null,
       issuerRequestOpen: this.openIssuerRequests.has(`${row.sellerId}|${row.typeId}`),
       latestOutcome: this.latestOutcome(row),

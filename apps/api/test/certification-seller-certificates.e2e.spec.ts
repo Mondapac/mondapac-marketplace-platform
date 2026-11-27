@@ -280,6 +280,13 @@ describe('seller certificate routes over HTTP (integration)', () => {
       expect((options.body as { types: { code: string }[] }).types.map((t) => t.code)).toEqual(
         expect.arrayContaining(['halal', 'vegan']),
       );
+      expect((options.body as { documentLimits: unknown }).documentLimits).toEqual({
+        mediaTypes: ['image/jpeg', 'image/png', 'application/pdf'],
+        maxBytes: 10 * 1024 * 1024,
+        maxFiles: 10,
+        maxPdfPages: 20,
+        draftQuotaBytes: 200 * 1024 * 1024,
+      });
 
       const created = await http()
         .post(`${base}/certificates`)
@@ -343,9 +350,22 @@ describe('seller certificate routes over HTTP (integration)', () => {
       ]);
 
       const read = await http().get(`${base}/certificates/${certificateId}`).set(h).expect(200);
+      // The read holds decrypted text (number, reviewer's text): never cached.
+      expect(read.headers['cache-control']).toContain('no-store');
+      const listing = await http().get(`${base}/certificates`).set(h).expect(200);
+      expect(listing.headers['cache-control']).toContain('no-store');
       expect(read.body).toMatchObject({
-        certificate: { status: 'awaiting-review', editable: false, withdrawable: true },
+        certificate: {
+          status: 'awaiting-review',
+          editable: false,
+          withdrawable: true,
+          validUntil: null,
+          bannerTone: null,
+        },
         documents: [{ documentId }],
+        decision: null,
+        inForce: null,
+        history: [{ event: 'submitted', reasonLabel: null }],
       });
       // Pending: an unchanged save writes nothing; a change needs the seller's confirmation
       // (withdraw by edit); no second submit.

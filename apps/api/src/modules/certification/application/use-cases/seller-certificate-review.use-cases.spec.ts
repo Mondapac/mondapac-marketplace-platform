@@ -144,6 +144,7 @@ describe.each(['AU', 'ZZ'] as const)('admin review of a seller certificate, Mark
         pendingKind: 'initial',
         approvedSubmissionId: null,
         approvedBoundaryAt: null,
+        approvedZone: null,
         approvedIssuerState: null,
         issuerRequestOpen: false,
         latestOutcome: null,

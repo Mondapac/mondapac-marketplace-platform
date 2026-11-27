@@ -115,6 +115,7 @@ describe('admin certificate review over HTTP (integration)', () => {
         pendingKind: 'initial',
         approvedSubmissionId: null,
         approvedBoundaryAt: null,
+        approvedZone: null,
         approvedIssuerState: null,
         issuerRequestOpen: false,
         latestOutcome: null,

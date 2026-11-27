@@ -153,6 +153,30 @@ export function warningStart(boundary: JobBoundary, thresholdDays: number): Temp
 }
 
 /**
+ * Whole local days from `now` to the last valid day (the day before the boundary's day), in the
+ * zone that gave the boundary: 0 on the last day, negative once expired. Without a zone the stored
+ * instant is all there is, and whole 24-hour days are counted, as {@link warningStart} does. A
+ * display for the seller (seller pages design 5.1); the claim is `evaluateClaims`'.
+ */
+export function daysLeftAt(boundary: JobBoundary, now: Temporal.Instant): number {
+  if (boundary.zone === null) {
+    const hours = boundary.at.since(now, { largestUnit: 'hours' }).total({ unit: 'hours' });
+    return Math.ceil(hours / 24) - 1;
+  }
+  const today = now.toZonedDateTimeISO(boundary.zone).toPlainDate();
+  const boundaryDay = boundary.at.toZonedDateTimeISO(boundary.zone).toPlainDate();
+  return today.until(boundaryDay, { largestUnit: 'days' }).days - 1;
+}
+
+/** The boundary as stored at approval, in the approval zone when that zone is usable. */
+export function approvalBoundary(
+  storedBoundary: Temporal.Instant,
+  zoneAtApproval: string | null,
+): JobBoundary {
+  return { at: storedBoundary, zone: isUsableZone(zoneAtApproval) ? zoneAtApproval : null };
+}
+
+/**
  * What the job does with one record at `at` (design 8.6): only an `approved` record with an
  * expiry moves. Past the boundary it expires. Before it, the most urgent threshold whose local
  * day has started is warned once (one marker per submission and threshold, AC 9); when several

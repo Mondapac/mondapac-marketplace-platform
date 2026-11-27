@@ -108,6 +108,7 @@ describe('certificate revoke and full history over HTTP (integration)', () => {
         pendingKind: null,
         approvedSubmissionId: SUBMISSION,
         approvedBoundaryAt: Temporal.Instant.from('2028-01-01T14:00:00Z'),
+        approvedZone: null,
         approvedIssuerState: 'active',
         issuerRequestOpen: false,
         latestOutcome: 'approved',

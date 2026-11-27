@@ -28,6 +28,13 @@ export type DocumentRefusalCode =
 
 export type DocumentMediaType = 'image/jpeg' | 'image/png' | 'application/pdf';
 
+/** The types the intake accepts, read from the content (design 9.3). */
+export const DOCUMENT_MEDIA_TYPES: readonly DocumentMediaType[] = Object.freeze([
+  'image/jpeg',
+  'image/png',
+  'application/pdf',
+]);
+
 /**
  * The type from the first bytes, never from a name or a declared type. HEIC and HEIF are not
  * accepted in this release (no decoder was chosen): they are `file.unsupported-type` with the rest.

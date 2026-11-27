@@ -3,12 +3,13 @@ import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { CERTIFICATION_OWN_CERTIFICATE_VIEW } from '../../contracts/permissions';
 import { isDraftEditable } from '../../domain/seller-certificate';
+import { factsOf, listExtrasOf, type SellerCertificateListItem } from '../own/own-certificate-view';
 import {
   invalid,
   ownerOf,
   storeFailure,
+  expiringWithinDaysOf,
   summaryOf,
-  type CertificateSummary,
   type OwnCertificateDependencies,
   type ValidationFailure,
 } from '../own/own-certificate.shared';
@@ -22,7 +23,7 @@ export interface OwnCertificatesListInput {
 }
 
 export interface OwnCertificatesListOutput {
-  readonly certificates: readonly CertificateSummary[];
+  readonly certificates: readonly SellerCertificateListItem[];
   /** The id to pass as `afterId` for the next page; null on the last page. */
   readonly nextAfterId: string | null;
 }
@@ -35,7 +36,9 @@ export type OwnCertificatesListFailure =
 
 /**
  * `own-certificates.read` (certification design 7.2, 3.3): the seller's own certificates, newest
- * first, with the status code of design 3.3. Clear fields only: no number, no note, no file. Rule:
+ * first, with the status code of design 3.3, the issuer's name, the approved expiry with its
+ * renewal submit-by day, the days left and the banner tone (seller pages design 13). Clear fields
+ * only: no number, no note, no file. Rule:
  * key `certification.own-certificate.view`; another seller's certificates are never listed.
  */
 export class OwnCertificatesList extends UseCase<
@@ -84,25 +87,47 @@ export class OwnCertificatesList extends UseCase<
     const { deps } = this;
     const { market } = context;
     const now = deps.clock.now();
+    let expiry;
+    try {
+      expiry = deps.expiryPolicies.policyFor(market);
+    } catch {
+      return err({ code: 'access.unavailable' });
+    }
     const read = await deps.unitOfWork
       .run(
         market,
-        async () =>
-          ok(
-            await deps.certificates.listOwn(market, owner.sellerId, { afterId, limit: limit + 1 }),
-          ),
+        async () => {
+          const rows = await deps.certificates.listOwn(market, owner.sellerId, {
+            afterId,
+            limit: limit + 1,
+          });
+          const page = rows.slice(0, limit);
+          const facts = await deps.certificates.viewFacts(market, owner.sellerId, page, {
+            detail: false,
+          });
+          return ok({ rows, page, facts });
+        },
         { readOnly: true },
       )
       .catch((error: unknown) =>
         storeFailure(context, 'certification.own-certificates-list', error),
       );
     if (!read.ok) return read;
-    const page = read.value.slice(0, limit);
+    const { rows, page, facts } = read.value;
     return ok({
-      certificates: page.map((stored) =>
-        summaryOf(stored, isDraftEditable(stored.status, stored.pendingSubmissionId), now),
-      ),
-      nextAfterId: read.value.length > limit ? (page[page.length - 1]?.id ?? null) : null,
+      certificates: page.map((stored) => {
+        const summary = summaryOf(
+          stored,
+          isDraftEditable(stored.status, stored.pendingSubmissionId),
+          now,
+          expiringWithinDaysOf(expiry),
+        );
+        return {
+          ...summary,
+          ...listExtrasOf(stored, summary.status, factsOf(facts, stored.id), expiry, now),
+        };
+      }),
+      nextAfterId: rows.length > limit ? (page[page.length - 1]?.id ?? null) : null,
     });
   }
 }

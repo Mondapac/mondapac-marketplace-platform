@@ -24,6 +24,8 @@ export interface StoredCertificate {
   readonly approvedSubmissionId: Id<'Submission'> | null;
   /** The boundary stored at approval, for the status display only (never a claim input). */
   readonly approvedBoundaryAt: Temporal.Instant | null;
+  /** The seller's zone at approval (the approved decision row), for the status display only. */
+  readonly approvedZone: string | null;
   readonly approvedIssuerState: IssuerState | null;
   /**
    * True while the seller has an open "my issuer is not listed" request of this type (design
@@ -43,6 +45,63 @@ export interface StoredCertificate {
   readonly version: number;
   readonly draft: StoredDraft;
 }
+
+/** A decision on a submission, as the seller's own read shows it (design 3.3; ux CS5). */
+export interface SubmissionDecisionFacts {
+  readonly outcome: SubmissionOutcome;
+  readonly reasonCode: string | null;
+  /** The reviewer's text for the seller, sealed under the seller's key (`decision-reason-text`). */
+  readonly reasonTextCiphertext: string | null;
+  readonly withdrawCause: 'edited' | 'cancelled' | 'revoked' | null;
+  /** The seller's zone at approval; set exactly on an approval. */
+  readonly approvedZone: string | null;
+  readonly decidedAt: Temporal.Instant;
+}
+
+/** One submission of the seller's own certificate with its decision, for the seller's read. */
+export interface SubmissionFacts {
+  readonly id: Id<'Submission'>;
+  readonly submissionNo: number;
+  readonly kind: SubmissionKind;
+  readonly issuerId: Id<'Issuer'> | null;
+  /** The issuer's public display name; null without an issuer. */
+  readonly issuerName: string | null;
+  readonly certificateNumberCiphertext: string | null;
+  readonly issueDate: Temporal.PlainDate | null;
+  readonly expiryDate: Temporal.PlainDate | null;
+  readonly submittedAt: Temporal.Instant;
+  /** Null while the submission is pending. */
+  readonly decision: SubmissionDecisionFacts | null;
+}
+
+/** A status change of the record that no submission decision tells (`expired`, `revoked`). */
+export interface RecordEventFacts {
+  readonly toStatus: 'expired' | 'revoked';
+  readonly reasonCode: string | null;
+  readonly occurredAt: Temporal.Instant;
+}
+
+/**
+ * What the seller's own list and read show beyond the record (design 3.3; seller pages design
+ * section 13): the issuer's name, the approved submission and the newest one. With `detail`, also
+ * the newest submissions and the record's `expired` and `revoked` changes, for the short history.
+ * Never an admin's name, account or note.
+ */
+export interface CertificateViewFacts {
+  /** The display name of the draft's issuer; null without one. */
+  readonly draftIssuerName: string | null;
+  readonly approved: SubmissionFacts | null;
+  readonly newest: SubmissionFacts | null;
+  /** Detail only (empty otherwise): at most {@link VIEW_RECENT_SUBMISSIONS}, newest first. */
+  readonly recent: readonly SubmissionFacts[];
+  /** Detail only (empty otherwise): at most {@link VIEW_RECENT_EVENTS}, newest first. */
+  readonly events: readonly RecordEventFacts[];
+}
+
+/** Submissions the seller's short history reads (design CS5: minimal history). */
+export const VIEW_RECENT_SUBMISSIONS = 10;
+/** `expired` and `revoked` changes the seller's short history reads. */
+export const VIEW_RECENT_EVENTS = 10;
 
 /** One stored file with its place on a draft. The envelope and the key never leave the module. */
 export interface StoredDocument {
@@ -198,6 +257,17 @@ export interface SellerCertificateRepository {
     expectedVersion: number,
     now: Temporal.Instant,
   ): Promise<'deleted' | 'unlinked' | 'missing'>;
+  /**
+   * The view facts of the seller's own certificates, by record id, in a few bounded statements
+   * (one per kind, never one per record). `detail` takes exactly one record (it throws otherwise). Every statement is filtered by the seller id; a record
+   * of another seller has no entry.
+   */
+  viewFacts(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    certificates: readonly StoredCertificate[],
+    options: { readonly detail: boolean },
+  ): Promise<ReadonlyMap<string, CertificateViewFacts>>;
   submit(market: MarketContext, write: SubmitWrite): Promise<void>;
   withdraw(market: MarketContext, write: WithdrawWrite): Promise<void>;
   /**

@@ -280,6 +280,7 @@ describe('sellerStatusOf', () => {
     status: 'approved',
     pendingKind: null,
     approvedBoundaryAt: NOW.add({ hours: 24 * 90 }),
+    approvedZone: null,
     hasApproval: true,
     approvedIssuerState: 'active',
     issuerRequestOpen: false,
@@ -294,20 +295,25 @@ describe('sellerStatusOf', () => {
     ['revoked', 'revoked'],
   ] as const)('shows %s as %s', (status, code) => {
     expect(
-      sellerStatusOf({ ...approved(), status, hasApproval: false, approvedBoundaryAt: null }, NOW)
-        .code,
+      sellerStatusOf(
+        { ...approved(), status, hasApproval: false, approvedBoundaryAt: null },
+        NOW,
+        30,
+      ).code,
     ).toBe(code);
   });
 
   it('shows a draft with an open issuer request as draft-issuer-not-listed, only while a draft', () => {
     const draft = { ...approved(), hasApproval: false, approvedBoundaryAt: null };
-    expect(sellerStatusOf({ ...draft, status: 'draft', issuerRequestOpen: true }, NOW).code).toBe(
-      'draft-issuer-not-listed',
-    );
     expect(
-      sellerStatusOf({ ...draft, status: 'changes-needed', issuerRequestOpen: true }, NOW).code,
+      sellerStatusOf({ ...draft, status: 'draft', issuerRequestOpen: true }, NOW, 30).code,
+    ).toBe('draft-issuer-not-listed');
+    expect(
+      sellerStatusOf({ ...draft, status: 'changes-needed', issuerRequestOpen: true }, NOW, 30).code,
     ).toBe('changes-needed');
-    expect(sellerStatusOf({ ...approved(), issuerRequestOpen: true }, NOW).code).toBe('approved');
+    expect(sellerStatusOf({ ...approved(), issuerRequestOpen: true }, NOW, 30).code).toBe(
+      'approved',
+    );
   });
 
   it('shows a first review as awaiting review', () => {
@@ -317,34 +323,50 @@ describe('sellerStatusOf', () => {
           status: 'in-review',
           pendingKind: 'initial',
           approvedBoundaryAt: null,
+          approvedZone: null,
           hasApproval: false,
           approvedIssuerState: null,
           issuerRequestOpen: false,
           latestOutcome: null,
         },
         NOW,
+        30,
       ).code,
     ).toBe('awaiting-review');
   });
 
   it('shows approved, then approved-expiring in the last 30 days', () => {
-    expect(sellerStatusOf(approved(), NOW).code).toBe('approved');
+    expect(sellerStatusOf(approved(), NOW, 30).code).toBe('approved');
     const soon = approved({ approvedBoundaryAt: NOW.add({ hours: 24 * 29 }) });
-    expect(sellerStatusOf(soon, NOW)).toEqual({
+    expect(sellerStatusOf(soon, NOW, 30)).toEqual({
       code: 'approved-expiring',
       submitBy: soon.approvedBoundaryAt,
     });
   });
 
+  it('starts approved-expiring at the Market threshold, on the local day of the warning', () => {
+    // Expiry date 30 Jun 2027 in Brisbane: the boundary is 00:00 of 1 Jul, 14:00Z on 30 Jun.
+    const boundary = Temporal.Instant.from('2027-06-30T14:00:00Z');
+    const brisbane = approved({ approvedBoundaryAt: boundary, approvedZone: 'Australia/Brisbane' });
+    // The 45-day warning starts at 00:00 Brisbane on 17 May (14:00Z on 16 May).
+    const at = (iso: string, days: number) =>
+      sellerStatusOf(brisbane, Temporal.Instant.from(iso), days).code;
+    expect(at('2027-05-16T13:59:59Z', 45)).toBe('approved');
+    expect(at('2027-05-16T14:00:00Z', 45)).toBe('approved-expiring');
+    expect(at('2027-05-16T14:00:00Z', 30)).toBe('approved');
+    // A Market without thresholds never shows it.
+    expect(at('2027-06-30T13:00:00Z', 0)).toBe('approved');
+  });
+
   it('shows a pending renewal on an approved record', () => {
-    expect(sellerStatusOf(approved({ pendingKind: 'renewal' }), NOW).code).toBe(
+    expect(sellerStatusOf(approved({ pendingKind: 'renewal' }), NOW, 30).code).toBe(
       'approved-renewal-pending',
     );
   });
 
   it('shows a renewal sent back for changes while the approved one is valid, with its boundary', () => {
     const refused = approved({ latestOutcome: 'changes-requested' });
-    expect(sellerStatusOf(refused, NOW)).toEqual({
+    expect(sellerStatusOf(refused, NOW, 30)).toEqual({
       code: 'approved-renewal-changes-needed',
       submitBy: refused.approvedBoundaryAt,
     });
@@ -353,14 +375,17 @@ describe('sellerStatusOf', () => {
       latestOutcome: 'changes-requested',
       approvedBoundaryAt: NOW.add({ hours: 24 * 3 }),
     });
-    expect(sellerStatusOf(soon, NOW).code).toBe('approved-renewal-changes-needed');
+    expect(sellerStatusOf(soon, NOW, 30).code).toBe('approved-renewal-changes-needed');
     // A correction sent again is a pending renewal; a declined or withdrawn one is plain approved.
     expect(
-      sellerStatusOf(approved({ latestOutcome: 'changes-requested', pendingKind: 'renewal' }), NOW)
-        .code,
+      sellerStatusOf(
+        approved({ latestOutcome: 'changes-requested', pendingKind: 'renewal' }),
+        NOW,
+        30,
+      ).code,
     ).toBe('approved-renewal-pending');
-    expect(sellerStatusOf(approved({ latestOutcome: 'withdrawn' }), NOW).code).toBe('approved');
-    expect(sellerStatusOf(approved({ latestOutcome: 'declined' }), NOW).code).toBe('approved');
+    expect(sellerStatusOf(approved({ latestOutcome: 'withdrawn' }), NOW, 30).code).toBe('approved');
+    expect(sellerStatusOf(approved({ latestOutcome: 'declined' }), NOW, 30).code).toBe('approved');
   });
 
   it('never shows a refused renewal as valid past the boundary or with a derecognised issuer', () => {
@@ -368,26 +393,27 @@ describe('sellerStatusOf', () => {
       latestOutcome: 'changes-requested',
       approvedBoundaryAt: NOW.subtract({ hours: 1 }),
     });
-    expect(sellerStatusOf(past, NOW).code).toBe('expired');
+    expect(sellerStatusOf(past, NOW, 30).code).toBe('expired');
     expect(
       sellerStatusOf(
         approved({ latestOutcome: 'changes-requested', approvedIssuerState: 'derecognised' }),
         NOW,
+        30,
       ).code,
     ).toBe('issuer-not-recognised');
   });
 
   it('shows expired past the stored boundary whether or not the job ran', () => {
     const past = approved({ approvedBoundaryAt: NOW.subtract({ hours: 1 }) });
-    expect(sellerStatusOf(past, NOW).code).toBe('expired');
-    expect(sellerStatusOf({ ...past, pendingKind: 'renewal' }, NOW).code).toBe(
+    expect(sellerStatusOf(past, NOW, 30).code).toBe('expired');
+    expect(sellerStatusOf({ ...past, pendingKind: 'renewal' }, NOW, 30).code).toBe(
       'expired-renewal-pending',
     );
-    expect(sellerStatusOf(approved({ status: 'expired' }), NOW).code).toBe('expired');
+    expect(sellerStatusOf(approved({ status: 'expired' }), NOW, 30).code).toBe('expired');
   });
 
   it('shows a derecognised issuer', () => {
-    expect(sellerStatusOf(approved({ approvedIssuerState: 'derecognised' }), NOW).code).toBe(
+    expect(sellerStatusOf(approved({ approvedIssuerState: 'derecognised' }), NOW, 30).code).toBe(
       'issuer-not-recognised',
     );
   });
