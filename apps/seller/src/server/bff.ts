@@ -110,6 +110,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // Whether "Write with AI" is on for this seller, and the Market zone its daily limit resets in
     // (catalog, AIS-03). Never the key or the model: those are admin settings.
     'catalog/own/description-writer',
+    // The seller's own certificates (certification design 7.2): the types with their form
+    // settings and issuers, and the list (query: `afterId`, `limit`).
+    'certification/seller/certificate-options',
+    'certification/seller/certificates',
   ]),
   PUT: new Set([
     // The signed-in member's own display name (profile).
@@ -189,6 +193,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'lists/seller/saved-filters',
     // Propose a category (a shelf of the seller's shop; categories C9b).
     'catalog/seller/category-proposals',
+    // Start a certificate of one type, and "My issuer isn't listed" (a typed name and one file:
+    // the larger body cap of a certificate file, see bodyLimitFor).
+    'certification/seller/certificates',
+    'certification/seller/issuer-requests',
   ]),
 };
 
@@ -219,6 +227,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'pricing/seller/offers/:id/variants/:id/special-price',
     // The private Cost of one size (Offer page PR 7-UI); the API checks the price edit and Cost keys.
     'pricing/seller/offers/:id/variants/:id/cost',
+    // Save the whole draft of an own certificate (query: `withdrawPending`).
+    'certification/seller/certificates/:id',
   ],
   POST: [
     'identity/seller/team/invitations/:id/resend',
@@ -261,6 +271,11 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // Pause and resume one of the seller's own promotions.
     'promotions/seller/promotions/:id/pause',
     'promotions/seller/promotions/:id/resume',
+    // Submit and withdraw an own certificate; add one file to its draft (query: `withdrawPending`;
+    // the larger body cap of a certificate file).
+    'certification/seller/certificates/:id/submit',
+    'certification/seller/certificates/:id/withdraw',
+    'certification/seller/certificates/:id/documents',
   ],
   PATCH: ['reviews/seller/:id/reply', 'promotions/seller/promotions/:id'],
   DELETE: [
@@ -271,6 +286,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/seller/saved-filters/:id',
     // A saved view of the order list (ordering).
     'ordering/seller/saved-filters/:id',
+    // Delete a never-submitted draft; take one file off a draft (query: `withdrawPending`).
+    'certification/seller/certificates/:id',
+    'certification/seller/certificates/:id/documents/:id',
   ],
   // A product photo for the panel's <img> tags: the API serves a JPEG it wrote itself.
   GET: [
@@ -293,6 +311,10 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'pricing/seller/offers/:id/typical-prices',
     // The size names of an Offer whose sizes are opened in the Offer list (Offer page PR 8).
     'catalog/seller/offers/:id/sell-units',
+    // One own certificate with its draft and files; one of its files, as an attachment only
+    // (see ATTACHMENT_TEMPLATES).
+    'certification/seller/certificates/:id',
+    'certification/seller/certificates/:id/documents/:id',
   ],
 };
 
@@ -379,6 +401,8 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
   },
   'ordering/seller/saved-filters': { listKey: /^seller\.ordering\.orders$/ },
   'commission-payouts/seller/ledger': { limit: null, cursor: null },
+  // The own certificates list: the API's page request (`afterId`, a numeric `limit`).
+  'certification/seller/certificates': { afterId: UUID, limit: /^[0-9]{1,3}$/ },
   // The earnings list: page numbers with a total, or Previous/Next with the API's own cursor
   // (the sort it walks, slot or created, then epoch milliseconds of that date and the payout id).
   'commission-payouts/seller/payouts': {
@@ -511,9 +535,25 @@ const QUERY_KEYS_WITH_ID: Readonly<Record<string, Readonly<Record<string, RegExp
   // "You receive (est.)" of the offer page (Offer page PR 4): up to 20 `variantId:priceMinor`.
   'pricing/seller/offers/:id/receive-estimates': { lines: RECEIVE_LINES },
 };
+/** The seller's confirmation that a certificate change withdraws its pending submission. */
+const WITHDRAW_PENDING = /^(true|false)$/;
 /** DELETE templates whose query crosses: the list key of a generic saved filter. */
 const DELETE_QUERY_KEYS_WITH_ID: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
   'lists/seller/saved-filters/:id': { listKey: GENERIC_LIST_KEY },
+  // Taking a file off a pending certificate withdraws the submission: the seller's confirmation.
+  'certification/seller/certificates/:id/documents/:id': { withdrawPending: WITHDRAW_PENDING },
+};
+/**
+ * PUT and POST templates whose query crosses, by method. Only the certificate writes that may
+ * withdraw a pending submission take one: the seller's confirmation `withdrawPending`.
+ */
+const WRITE_QUERY_KEYS_WITH_ID: Readonly<
+  Record<string, Readonly<Record<string, Readonly<Record<string, RegExp>>>>>
+> = {
+  PUT: { 'certification/seller/certificates/:id': { withdrawPending: WITHDRAW_PENDING } },
+  POST: {
+    'certification/seller/certificates/:id/documents': { withdrawPending: WITHDRAW_PENDING },
+  },
 };
 const QUERY_VALUE_MAX = 512;
 /** A longer value for a key that carries a list: 100 ids of 36 characters and 99 commas. */
@@ -569,6 +609,10 @@ function upstreamQuery(method: string, path: readonly string[], requestUrl: stri
   let keys: Readonly<Record<string, RegExp | null>> | undefined;
   if (method === 'DELETE') {
     keys = Object.entries(DELETE_QUERY_KEYS_WITH_ID).find(([item]) =>
+      matches(item, path, null),
+    )?.[1];
+  } else if (method === 'PUT' || method === 'POST') {
+    keys = Object.entries(WRITE_QUERY_KEYS_WITH_ID[method] ?? {}).find(([item]) =>
       matches(item, path, null),
     )?.[1];
   } else if (method === 'GET') {
@@ -646,8 +690,23 @@ const STORE_IMAGE_UPLOADS: ReadonlySet<string> = new Set([
   'sellers/store-profile/banner',
 ]);
 
+/**
+ * A certificate file is a base64 JPEG, PNG or PDF of at most 10 MiB (13.4 MiB of text, the API's
+ * own limit), with a typed issuer name beside it on an issuer request. Only these two writes take
+ * it; every other certificate route stays at 16 KiB.
+ */
+const MAX_CERTIFICATE_FILE_BODY_BYTES = 13700 * 1024;
+const CERTIFICATE_FILE_UPLOAD = 'certification/seller/certificates/:id/documents';
+const ISSUER_REQUEST = 'certification/seller/issuer-requests';
+
 function bodyLimitFor(method: string, path: readonly string[]): number {
   if (method === 'PUT' && path.join('/') === STORE_PROFILE_SAVE) return MAX_PROFILE_SAVE_BODY_BYTES;
+  if (
+    method === 'POST' &&
+    (path.join('/') === ISSUER_REQUEST || matches(CERTIFICATE_FILE_UPLOAD, path, null))
+  ) {
+    return MAX_CERTIFICATE_FILE_BODY_BYTES;
+  }
   if (method === 'PUT' && STORE_IMAGE_UPLOADS.has(path.join('/'))) return MAX_PHOTO_BODY_BYTES;
   if (method === 'POST' && path.join('/') === IMPORT_UPLOAD) return MAX_IMPORT_UPLOAD_BODY_BYTES;
   if (
@@ -670,6 +729,17 @@ const isPublicImage = (path: readonly string[]): boolean =>
 const PUBLIC_IMAGE_CACHE = 'private, max-age=300';
 /** What the API sends with a photo (a sandboxing policy); kept on an image answer only. */
 const IMAGE_ANSWER_CSP = 'content-security-policy';
+
+/**
+ * Reads whose answer is a file the seller sent (a certificate scan). The browser must only ever
+ * save it, never show it on the panel's origin: the relay sets `attachment` and a sandboxing
+ * policy itself, whatever the API sent, so a file can never run as a page of the panel.
+ */
+const ATTACHMENT_TEMPLATES: readonly string[] = [
+  'certification/seller/certificates/:id/documents/:id',
+];
+const isAttachment = (method: string, path: readonly string[]): boolean =>
+  method === 'GET' && ATTACHMENT_TEMPLATES.some((template) => matches(template, path, null));
 
 /** Request headers that cross to the API. Everything else is dropped. */
 const FORWARDED_REQUEST_HEADERS = [
@@ -877,6 +947,10 @@ export async function relay(
   const imagePolicy = upstream.headers.get(IMAGE_ANSWER_CSP);
   if (contentType.startsWith('image/') && imagePolicy !== null) {
     headers.set(IMAGE_ANSWER_CSP, imagePolicy);
+  }
+  if (isAttachment(request.method, path) && upstream.ok) {
+    headers.set('content-disposition', 'attachment');
+    headers.set(IMAGE_ANSWER_CSP, 'sandbox');
   }
   for (const cookie of upstream.headers.getSetCookie()) headers.append('set-cookie', cookie);
   return new Response(upstream.status === 204 ? null : await upstream.arrayBuffer(), {

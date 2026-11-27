@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import { SellerShell } from '../../../src/server/seller-shell.tsx';
 import { loadSetupPage } from '../../../src/server/setup-page.ts';
 import { SetupHub } from '../../../src/setup/setup-hub.tsx';
+import { CERTIFICATE_VIEW_PERMISSION } from '../../../src/certificates/types.ts';
 
 export async function generateMetadata() {
   const t = await getTranslations('sellers');
@@ -17,7 +18,11 @@ export default async function AccountSetupPage() {
   }
   return (
     <SellerShell session={page.session} activeId="s_setup" title={t('sellers.account.title')}>
-      <SetupHub file={page.file} csrfToken={page.session.csrfToken} />
+      <SetupHub
+        file={page.file}
+        csrfToken={page.session.csrfToken}
+        certificates={page.session.permissionKeys.includes(CERTIFICATE_VIEW_PERMISSION)}
+      />
     </SellerShell>
   );
 }

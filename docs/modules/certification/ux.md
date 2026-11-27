@@ -110,6 +110,27 @@ Recorded so Jafar and the owners can accept or refuse them.
 3. **`Admin · Sellers` column.** The "Certificate type" column of SL-UX P1 is composed by the panel from
    `sellerCertificateOverview`; it shows `CertChip`-style text chips of **status only** (not a badge): "Halal:
    valid" or "Halal: awaiting review". It never uses the buyer badge, because a status is not a claim.
+4. **Seller pages under Settings (seller certificates design v2, Q1; john 27 Nov 2026).** CS1 to CS6 live under
+   Settings › Store › Certificates (`/settings/certificates`, settings map entry `certificates`, view key
+   `own-certificate.view`, manage key `.manage`), not as a menu item. Unlike every other settings page they open before
+   approval: there they sit in the limited shell under "Seller account", and S1 links to them ("Add a certificate").
+5. **CS2 is a dialog (design v2 section 6).** With one or a few types, the type choice is a small dialog (the
+   panel dialog at every width for now), not a page; a type with an open certificate is not a choice and the dialog
+   links to it.
+6. **CS3 is one page (Q2).** The form is one page with a "Certificate details" card and a "Documents" card, then a
+   separate review page (CS4); the four steps and `add.step` ("Step n of m") are not used. Save draft and Review sit
+   only in the bar at the end of the form (sticky below 760 px); the header holds the title, the status and Delete
+   draft (in "More" on a phone).
+7. **No HEIC.** The API takes JPEG, PNG and PDF only, so `upload.help` and `error.file.type-not-allowed` drop
+   "HEIC" and `error.file.heic-not-supported` is not used.
+8. **New text without a key in section 5** (for legal, `certification.*` in the seller panel): `error.gone`,
+   `error.stale`, `error.type.no-issuer-registry`, `error.validation`, `error.access.denied`, `error.unavailable`,
+   `seller.load-error`, `form.load-error`, `form.locked`, `form.declaration.label`, `form.declaration.text`,
+   `form.error.*`, `add.needs`, `add.needs-self`, `add.all-open`, `seller-state.*`, `setup.line`, `no-access.*`,
+   `status.unknown`. `add.exists` and the "Open it" link are split so the link is its own control.
+9. **CS1 rows.** The account's own state is a line above the list ("Your seller account: …", CERT-12); the type
+   name is the row's link and the row button is separate (the row is not a button); the actions column has a
+   header read only by screen readers. Issuer and Valid until show "—" until the seller read sends them.
 
 ## 2. Flows
 

@@ -60,7 +60,9 @@
       "store-banner": "Store banner",
       "stock-locations": "Stock locations",
       "stock-locations-words": "warehouse, pickup address, where stock is kept",
-      "team-members": "Team members"
+      "team-members": "Team members",
+      "certificates": "Certificates",
+      "certificates-words": "halal certificate, certification, renew certificate, badge"
     },
     "empty-hint": "Check the spelling or try a shorter word."
   },
@@ -5018,7 +5020,8 @@
         "stock-locations": "Stock locations",
         "team": "Members",
         "invite-customers": "Invite customers",
-        "exclusive-perks": "Exclusive perks"
+        "exclusive-perks": "Exclusive perks",
+        "certificates": "Certificates"
       }
     },
     "load-error": {
@@ -5026,7 +5029,8 @@
       "body": "Try again. If it keeps happening, check the status page."
     },
     "sub": {
-      "back": "Back to Settings"
+      "back": "Back to Settings",
+      "back-setup": "Back to Seller account"
     },
     "menu": {
       "label": "Settings menu",
@@ -6247,8 +6251,205 @@
           "If you don't recognise one, sign out of all other devices and change your password."
         ],
         "related": []
+      },
+      "settings-certificates": {
+        "title": "Certificates",
+        "about": "The certificates you send to MondaPac, and where each one stands. A certificate badge on an offer needs an approved certificate of that type.",
+        "good": ["You don't need a certificate to submit your seller application."],
+        "related": []
+      },
+      "settings-certificates-certificateId": {
+        "title": "Certificate details",
+        "about": "Fill in the details exactly as they appear on your certificate, then save your draft.",
+        "good": ["Your draft stays saved until you submit it or delete it."],
+        "related": []
       }
     },
     "tabbed": {}
+  },
+  "certification": {
+    "seller": {
+      "title": "Certificates",
+      "empty": "You haven't added a certificate yet.",
+      "load-error": "We couldn't load your certificates. Try again."
+    },
+    "empty": {
+      "hint": "Add one to use certificate badges on your offers. You don't need one to submit your seller application."
+    },
+    "seller-state": {
+      "line": "Your seller account: {status}",
+      "approved": "Seller approved",
+      "details-incomplete": "Details needed",
+      "ready": "Ready to submit",
+      "outside-area": "Not in your area yet",
+      "awaiting-review": "Application in review",
+      "changes-needed": "Application needs changes",
+      "not-approved": "Not approved"
+    },
+    "action": {
+      "add": "Add a certificate",
+      "add-short": "Add",
+      "cancel": "Cancel",
+      "continue": "Continue"
+    },
+    "add": {
+      "title": "Add a certificate",
+      "choose": {
+        "help": "Choose the type of certificate you hold."
+      },
+      "exists": "You already have a {type} certificate.",
+      "none": "No certificate types are open for new certificates.",
+      "start": "Start",
+      "open-it": "Open it",
+      "all-open": "You already have a certificate of every type that is open. Open it from the list.",
+      "needs": "{issuer, select, yes {Issuer, certificate number} other {Certificate number}}, {expiry, select, yes {issue and expiry dates} other {issue date}}{document, select, yes {, a scan or photo of the certificate} other {}}.",
+      "needs-self": "Your own statement, with an optional note."
+    },
+    "form": {
+      "title": "Certificate details",
+      "save-draft": "Save draft",
+      "saved": "Draft saved",
+      "dirty": "Unsaved changes",
+      "issuer": {
+        "label": "Issuer",
+        "help": "Choose the body named on your certificate.",
+        "empty": "No issuers are available yet. We'll email you when you can add this certificate.",
+        "placeholder": "Choose an issuer"
+      },
+      "number": {
+        "label": "Certificate number"
+      },
+      "issue-date": {
+        "label": "Issue date"
+      },
+      "expiry-date": {
+        "label": "Expiry date",
+        "help": "The last day the certificate is valid."
+      },
+      "zone-line": "We'll measure the expiry in your work time zone: {zoneName}.",
+      "claim": {
+        "banner": "This will show as a seller's claim, not a certificate."
+      },
+      "declaration": {
+        "note": "Note (optional)",
+        "label": "Your statement",
+        "text": "I state that this business meets the {type} requirements."
+      },
+      "correct": {
+        "banner": "Changes were requested. Your earlier answers are filled in."
+      },
+      "load-error": "We couldn't load this certificate. Try again.",
+      "gone-body": "Go back to your certificates to see the ones you have.",
+      "back": "Back to Certificates",
+      "page-title": "{type} certificate",
+      "more": "More actions",
+      "saving": "Saving…",
+      "locked": "This certificate can't be changed here now. Its status above says where it stands.",
+      "zone-time": "{place} time",
+      "error": {
+        "summary": "{count, plural, one {# field needs fixing} other {# fields need fixing}}",
+        "required": "Fill this in.",
+        "too-long": "This is too long. Use at most {max} characters.",
+        "invalid-character": "Remove the characters that are not allowed.",
+        "format": "Check this value.",
+        "before-issue-date": "The expiry date must be after the issue date.",
+        "invalid": "Check this value."
+      }
+    },
+    "view-only": {
+      "ask-owner": "You can view certificates but not change them. Ask your shop owner."
+    },
+    "draft": {
+      "delete": {
+        "action": "Delete draft",
+        "title": "Delete this draft?",
+        "body": "The draft and its files are removed. This can't be undone."
+      },
+      "deleted": "Draft deleted"
+    },
+    "changes": {
+      "action": "Correct and submit again"
+    },
+    "status": {
+      "draft": "Draft",
+      "draft-issuer-not-listed": "Checking your issuer",
+      "awaiting-review": "Awaiting review",
+      "changes-needed": "Changes needed",
+      "declined": "Not accepted",
+      "approved": "Certificate approved",
+      "approved-expiring": "Expires soon",
+      "approved-renewal-pending": "Renewal awaiting review",
+      "approved-renewal-changes-needed": "Renewal needs changes",
+      "expired": "Expired",
+      "expired-renewal-pending": "Expired, renewal awaiting review",
+      "revoked": "Revoked",
+      "issuer-not-recognised": "Issuer not recognised",
+      "unknown": "Unknown status"
+    },
+    "error": {
+      "type": {
+        "inactive": "{type} certificates can't be added now.",
+        "no-issuer-registry": "This type of certificate doesn't use an issuer list."
+      },
+      "certificate": {
+        "exists-for-type": "You already have a {type} certificate. Open it.",
+        "already-expired": "This certificate has already expired. Add a current one."
+      },
+      "issuer": {
+        "not-active": "That issuer isn't available. Choose another from the list."
+      },
+      "seller": {
+        "zone-missing": "We can't work out your time zone yet. Finish your address, then try again."
+      },
+      "file": {
+        "draft-quota": "You've used all your space for drafts. Remove a file to add another.",
+        "too-large": "This file is larger than {maxSize}. Try a smaller file or a lower-quality photo.",
+        "type-not-allowed": "We can't accept this type of file. Use a JPEG, PNG or PDF.",
+        "encrypted-pdf": "This PDF is locked with a password. Save an unlocked copy, or take a photo.",
+        "active-content": "This PDF has features we don't accept, such as scripts or attachments. Save a plain copy, or take a photo.",
+        "malware": "We didn't accept this file because it may be unsafe. Try a different file.",
+        "too-many-pages": "This PDF has more than {maxPages} pages. Split it into smaller files.",
+        "polyglot": "We can't accept this file. Save it again as a plain PDF or take a new photo.",
+        "scan-failed": "We couldn't check this file. Try uploading it again."
+      },
+      "upload": {
+        "limit": "You've added the most files allowed."
+      },
+      "request": {
+        "throttled": "Too many requests. Wait a moment."
+      },
+      "limit": {
+        "daily": "You've reached today's limit for this. Try again later."
+      },
+      "access": {
+        "acting-as-refused": "This can't be done while you're signed in as the seller.",
+        "denied": "Your role can't change certificates. Ask your shop owner."
+      },
+      "gone": "We couldn't find this. It may have been removed.",
+      "stale": "This certificate has changed. We've loaded its latest state.",
+      "validation": "Check the highlighted fields.",
+      "unavailable": "We couldn't reach MondaPac. Try again."
+    },
+    "issuer-request": {
+      "status": {
+        "open": "We're checking your issuer."
+      }
+    },
+    "list": {
+      "certificate": "Certificate",
+      "status": "Status",
+      "issuer": "Issuer",
+      "valid-until": "Valid until",
+      "last-changed": "Last changed",
+      "actions": "Actions",
+      "none": "—"
+    },
+    "no-access": {
+      "title": "You don't have access to certificates",
+      "body": "Your role doesn't include certificates. Ask your shop owner."
+    },
+    "setup": {
+      "line": "Certificates aren't needed to submit your application. You can add one now or later."
+    }
   }
 }

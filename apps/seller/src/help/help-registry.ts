@@ -33,6 +33,11 @@ export const HELP_REGISTRY: HelpRegistry = {
     { route: '/settings', slug: 'settings' },
     { route: '/settings/store-profile', slug: 'settings-store-profile' },
     { route: '/settings/stock-locations', slug: 'settings-stock-locations' },
+    { route: '/settings/certificates', slug: 'settings-certificates' },
+    {
+      route: '/settings/certificates/[certificateId]',
+      slug: 'settings-certificates-certificateId',
+    },
     { route: '/settings/team', slug: 'settings-team' },
     { route: '/settings/invite-customers', slug: 'settings-invite-customers' },
     { route: '/settings/exclusive-perks', slug: 'settings-exclusive-perks' },
