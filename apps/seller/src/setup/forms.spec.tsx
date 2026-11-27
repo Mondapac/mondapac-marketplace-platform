@@ -202,6 +202,17 @@ describe('AddressForm', () => {
 
 describe('SetupHub states', () => {
   const allSaved = { ...emptyFile, missing: [] as MyFile['missing'] };
+  it('leads to the certificates for a member who may see them, and says none is needed', () => {
+    render(wrap(<SetupHub file={emptyFile} csrfToken="t" certificates />));
+    expect(screen.getByRole('link', { name: 'Add a certificate' }).getAttribute('href')).toBe(
+      '/settings/certificates',
+    );
+    expect(screen.getByText(/aren't needed to submit your application/)).toBeTruthy();
+    cleanup();
+    render(wrap(<SetupHub file={emptyFile} csrfToken="t" />));
+    expect(screen.queryByRole('link', { name: 'Add a certificate' })).toBeNull();
+  });
+
   it('shows the details-needed badge and banner while steps are open', () => {
     render(wrap(<SetupHub file={emptyFile} csrfToken="t" />));
     expect(screen.getByText('Details needed')).toBeTruthy();

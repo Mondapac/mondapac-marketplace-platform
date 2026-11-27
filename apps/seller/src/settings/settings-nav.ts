@@ -1,4 +1,9 @@
 import type { IconName, PaletteSettingSpec } from '@mondapac/ui';
+import {
+  CERTIFICATE_MANAGE_PERMISSION,
+  CERTIFICATE_VIEW_PERMISSION,
+  CERTIFICATES_PATH,
+} from '../certificates/types.ts';
 import { INVITE_LINK_PERMISSION } from '../customers/types.ts';
 import { SOURCE_EDIT_PERMISSION, STOCK_VIEW_PERMISSION } from '../stock/types.ts';
 import {
@@ -28,6 +33,11 @@ export interface SettingsLink {
   readonly view: readonly string[];
   /** Holding a view key but none of these makes the page "View only". */
   readonly manage: readonly string[];
+  /**
+   * The page also opens before the seller is approved (every other settings page sends such a
+   * seller to the account setup). Certificates: a seller may send one with the application (FL1).
+   */
+  readonly beforeApproval?: boolean;
 }
 
 export interface SettingsGroup {
@@ -56,6 +66,15 @@ export const settingsGroups: readonly SettingsGroup[] = [
         href: '/settings/stock-locations',
         view: [STOCK_VIEW_PERMISSION],
         manage: [SOURCE_EDIT_PERMISSION],
+      },
+      {
+        // Set once a year, so under Settings (seller certificates design section 3, Q1).
+        id: 'certificates',
+        labelKey: 'settings.hub.link.certificates',
+        href: CERTIFICATES_PATH,
+        view: [CERTIFICATE_VIEW_PERMISSION],
+        manage: [CERTIFICATE_MANAGE_PERMISSION],
+        beforeApproval: true,
       },
     ],
   },
@@ -157,4 +176,10 @@ export const settingEntries: readonly PaletteSettingSpec[] = [
     keywordsKey: 'palette.setting.stock-locations-words',
   },
   { id: 'team-members', pageId: 'team', labelKey: 'palette.setting.team-members' },
+  {
+    id: 'certificates',
+    pageId: 'certificates',
+    labelKey: 'palette.setting.certificates',
+    keywordsKey: 'palette.setting.certificates-words',
+  },
 ];

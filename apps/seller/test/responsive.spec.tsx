@@ -485,7 +485,10 @@ describe('settings navigation', () => {
   it('has no second column: the back link shows only below the sidebar breakpoint', () => {
     expect(shell).not.toContain('min-[1180px]');
     expect(shell).not.toContain('SettingsSubNav');
-    expect(shell).toMatch(/md:hidden[^]*<BackLink href="\/settings"/);
+    // The default way back is "Back to Settings", shown only below md; a page that names its own
+    // (a certificate: back to the list) shows it at every width.
+    expect(shell).toContain("href: '/settings', label: t('settings.sub.back')");
+    expect(shell).toContain("backLink === undefined ? 'mb-2 md:hidden' : 'mb-2'");
   });
 
   it('keeps every hub link tall enough to touch', () => {

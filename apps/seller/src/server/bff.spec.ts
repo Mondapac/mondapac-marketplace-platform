@@ -2546,3 +2546,189 @@ describe('relay Add offer create settings', () => {
     expect(upstream).not.toHaveBeenCalled();
   });
 });
+
+describe('relay of the own certificate routes (seller certificates PR 2)', () => {
+  const CERT = '01990000-0000-7000-8000-00000000e001';
+  const DOC = '01990000-0000-7000-8000-00000000e101';
+  const base = 'certification/seller';
+  const send = async (
+    method: string,
+    path: string,
+    body?: string,
+    fetchImpl: typeof fetch = upstreamOk(),
+  ) => {
+    const url = `http://seller.localhost:3001/api/${path}`;
+    const request = new Request(url, {
+      method,
+      headers: method === 'GET' ? { host: 'seller.localhost:3001' } : sameOrigin,
+      ...(method === 'GET' || method === 'DELETE' ? {} : { body: body ?? '{}' }),
+    });
+    const bare = path.split('?')[0] ?? path;
+    return relay(config, request, bare.split('/'), fetchImpl);
+  };
+
+  it('relays all twelve routes on their exact paths and methods', async () => {
+    const routes: [string, string][] = [
+      ['GET', `${base}/certificate-options`],
+      ['GET', `${base}/certificates`],
+      ['POST', `${base}/certificates`],
+      ['GET', `${base}/certificates/${CERT}`],
+      ['PUT', `${base}/certificates/${CERT}`],
+      ['DELETE', `${base}/certificates/${CERT}`],
+      ['POST', `${base}/certificates/${CERT}/submit`],
+      ['POST', `${base}/certificates/${CERT}/withdraw`],
+      ['POST', `${base}/certificates/${CERT}/documents`],
+      ['GET', `${base}/certificates/${CERT}/documents/${DOC}`],
+      ['DELETE', `${base}/certificates/${CERT}/documents/${DOC}`],
+      ['POST', `${base}/issuer-requests`],
+    ];
+    for (const [method, path] of routes) {
+      const upstream = upstreamOk();
+      const response = await send(method, path, '{}', upstream);
+      expect(response.status, `${method} ${path}`).toBe(200);
+      expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+    }
+  });
+
+  it('refuses other methods, ids that are not UUIDs and paths near them', async () => {
+    const refused: [string, string][] = [
+      ['PUT', `${base}/certificates`],
+      ['DELETE', `${base}/certificates`],
+      ['PATCH', `${base}/certificates/${CERT}`],
+      ['GET', `${base}/certificates/not-a-uuid`],
+      ['PUT', `${base}/certificates/${CERT}/documents`],
+      ['GET', `${base}/certificates/${CERT}/documents`],
+      ['POST', `${base}/certificates/${CERT}/documents/${DOC}`],
+      ['GET', `${base}/certificates/${CERT}/submit`],
+      ['GET', `${base}/issuer-requests`],
+      ['GET', 'certification/admin/review-queue'],
+      ['GET', `${base}/certificates/${CERT}/history`],
+    ];
+    for (const [method, path] of refused) {
+      const upstream = upstreamOk();
+      const response = await send(method, path, '{}', upstream);
+      expect(response.status, `${method} ${path}`).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    }
+  });
+
+  it('refuses a certificate write that is not same-origin', async () => {
+    const upstream = upstreamOk();
+    const path = `${base}/certificates/${CERT}`;
+    const response = await relay(
+      config,
+      new Request(`http://seller.localhost:3001/api/${path}`, {
+        method: 'PUT',
+        headers: { ...sameOrigin, 'sec-fetch-site': 'cross-site' },
+        body: '{}',
+      }),
+      path.split('/'),
+      upstream,
+    );
+    expect(response.status).toBe(403);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('takes a 10 MiB file (as base64) on the upload and the issuer request only', async () => {
+    // The API's own limit: 10 MiB of bytes is 13.4 MiB of base64 text.
+    const file = JSON.stringify({ data: 'A'.repeat(Math.ceil((10 * 1024 * 1024 * 4) / 3)) });
+    expect((await send('POST', `${base}/certificates/${CERT}/documents`, file)).status).toBe(200);
+    const request = JSON.stringify({
+      typeCode: 'halal',
+      issuerName: 'Sample Halal Certifier',
+      data: 'A'.repeat(Math.ceil((10 * 1024 * 1024 * 4) / 3)),
+    });
+    expect((await send('POST', `${base}/issuer-requests`, request)).status).toBe(200);
+    // Every other certificate write keeps the 16 KiB cap.
+    const big = JSON.stringify({ certificateNumber: 'A'.repeat(17 * 1024) });
+    expect((await send('PUT', `${base}/certificates/${CERT}`, big)).status).toBe(413);
+    expect((await send('POST', `${base}/certificates`, big)).status).toBe(413);
+    expect((await send('POST', `${base}/certificates/${CERT}/submit`, big)).status).toBe(413);
+  });
+
+  it('refuses an upload over the certificate file cap before the API sees it', async () => {
+    const upstream = upstreamOk();
+    const response = await send(
+      'POST',
+      `${base}/certificates/${CERT}/documents`,
+      'A'.repeat(13700 * 1024 + 1),
+      upstream,
+    );
+    expect(response.status).toBe(413);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('passes the withdraw confirmation on the three writes that take it, and nothing else', async () => {
+    const cases: [string, string][] = [
+      ['PUT', `${base}/certificates/${CERT}`],
+      ['POST', `${base}/certificates/${CERT}/documents`],
+      ['DELETE', `${base}/certificates/${CERT}/documents/${DOC}`],
+    ];
+    for (const [method, path] of cases) {
+      const upstream = upstreamOk();
+      await send(method, `${path}?withdrawPending=true&other=1`, '{}', upstream);
+      expect(upstream.mock.calls[0]?.[0], method).toBe(
+        `http://api.test/${path}?withdrawPending=true`,
+      );
+      const bad = upstreamOk();
+      await send(method, `${path}?withdrawPending=yes`, '{}', bad);
+      expect(bad.mock.calls[0]?.[0], method).toBe(`http://api.test/${path}`);
+    }
+    const submit = upstreamOk();
+    await send('POST', `${base}/certificates/${CERT}/submit?withdrawPending=true`, '{}', submit);
+    expect(submit.mock.calls[0]?.[0]).toBe(`http://api.test/${base}/certificates/${CERT}/submit`);
+    const remove = upstreamOk();
+    await send('DELETE', `${base}/certificates/${CERT}?withdrawPending=true`, undefined, remove);
+    expect(remove.mock.calls[0]?.[0]).toBe(`http://api.test/${base}/certificates/${CERT}`);
+  });
+
+  it('forwards the list page request in its shape only', async () => {
+    const upstream = upstreamOk();
+    await send(
+      'GET',
+      `${base}/certificates?limit=50&afterId=${CERT}&status=approved`,
+      '',
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/${base}/certificates?afterId=${CERT}&limit=50`,
+    );
+    const odd = upstreamOk();
+    await send('GET', `${base}/certificates?limit=lots&afterId=x`, '', odd);
+    expect(odd.mock.calls[0]?.[0]).toBe(`http://api.test/${base}/certificates`);
+  });
+
+  it('serves a certificate file as an attachment in a sandbox, whatever the API sent', async () => {
+    const upstream = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response(new Uint8Array([0x25, 0x50, 0x44, 0x46]), {
+          status: 200,
+          headers: { 'content-type': 'application/pdf', 'content-disposition': 'inline' },
+        }),
+      ),
+    );
+    const response = await send(
+      'GET',
+      `${base}/certificates/${CERT}/documents/${DOC}`,
+      '',
+      upstream,
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('application/pdf');
+    expect(response.headers.get('content-disposition')).toBe('attachment');
+    expect(response.headers.get('content-security-policy')).toBe('sandbox');
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+
+    // A refusal stays a JSON answer, with no attachment header.
+    const refused = vi.fn<typeof fetch>(() =>
+      Promise.resolve(new Response('{"code":"document.not-found"}', { status: 404 })),
+    );
+    const missing = await send('GET', `${base}/certificates/${CERT}/documents/${DOC}`, '', refused);
+    expect(missing.status).toBe(404);
+    expect(missing.headers.get('content-disposition')).toBeNull();
+    // The certificate read itself is no attachment.
+    const read = await send('GET', `${base}/certificates/${CERT}`);
+    expect(read.headers.get('content-disposition')).toBeNull();
+  });
+});

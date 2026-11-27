@@ -1,6 +1,7 @@
 import { Badge, Banner, Card, PageHeader } from '@mondapac/ui';
 import { useFormatter, useTranslations } from 'next-intl';
 import Link from 'next/link';
+import { CERTIFICATES_PATH } from '../certificates/types.ts';
 import { REVIEW_HREF, SETUP_STEPS, type SetupStepKey } from './steps.ts';
 import { RefreshOnFocus } from './refresh-on-focus.tsx';
 import { WithdrawSubmission } from './withdraw-submission.tsx';
@@ -125,11 +126,18 @@ function Row({
 export function SetupHub({
   file,
   csrfToken,
+  certificates = false,
 }: {
   readonly file: MyFile;
   readonly csrfToken: string;
+  /**
+   * The member may see certificates: the hub shows their way in (ux.md 1.4 item 1). A seller may
+   * send a certificate with the application, but needs none to submit it.
+   */
+  readonly certificates?: boolean;
 }) {
   const t = useTranslations('sellers');
+  const tc = useTranslations('certification');
   const format = useFormatter();
   const zone = file.timezone?.operatingTimezone;
   const outside = file.outsideServiceArea === true;
@@ -202,6 +210,17 @@ export function SetupHub({
           <Row title={t('account.review')} state={waiting ? 'waiting' : 'todo'} />
         </ol>
       </Card>
+      {certificates ? (
+        <Card title={tc('seller.title')}>
+          <p className="text-sm text-fg-muted">{tc('setup.line')}</p>
+          <Link
+            href={CERTIFICATES_PATH}
+            className="self-start font-medium text-link underline-offset-2 hover:underline"
+          >
+            {tc('action.add')}
+          </Link>
+        </Card>
+      ) : null}
       {waiting ? <WithdrawSubmission csrfToken={csrfToken} /> : null}
     </div>
   );

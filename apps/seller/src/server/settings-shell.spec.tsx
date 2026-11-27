@@ -100,3 +100,49 @@ describe('seller SettingsShell', () => {
     );
   });
 });
+
+describe('seller SettingsShell for the certificate pages', () => {
+  const CERT_KEYS = ['certification.own-certificate.view'];
+
+  it('adds the extra crumbs after the group and a back link on every width', async () => {
+    render(
+      await SettingsShell({
+        session: session(CERT_KEYS),
+        linkId: 'certificates',
+        title: 'Sample certificate',
+        crumbs: [{ label: 'Certificates', href: '/settings/certificates' }],
+        backLink: { href: '/settings/certificates', label: 'Back to Certificates' },
+        children: <h1>Sample certificate</h1>,
+      }),
+    );
+    const crumbs = within(screen.getByRole('list', { name: 'trail' })).getAllByRole('listitem');
+    expect(crumbs.map((c) => c.textContent)).toEqual([
+      'Dashboard',
+      'Settings',
+      'Store',
+      'Certificates',
+    ]);
+    const back = screen.getByRole('link', { name: 'Back to Certificates' });
+    expect(back.getAttribute('href')).toBe('/settings/certificates');
+    expect(back.parentElement?.className).not.toContain('md:hidden');
+  });
+
+  it('sits under Seller account before approval, with the setup as the way back', async () => {
+    render(
+      await SettingsShell({
+        session: { ...session(CERT_KEYS), sellerAccessState: 'pending' },
+        linkId: 'certificates',
+        title: 'Certificates',
+        children: <h1>Certificates</h1>,
+      }),
+    );
+    expect(document.querySelector('main')?.getAttribute('data-active')).toBe('s_setup');
+    const crumbs = within(screen.getByRole('list', { name: 'trail' })).getAllByRole('listitem');
+    expect(crumbs.map((c) => [c.textContent, c.getAttribute('data-href')])).toEqual([
+      ['Seller account', '/account-setup'],
+    ]);
+    expect(screen.getByRole('link', { name: 'Back to Seller account' }).getAttribute('href')).toBe(
+      '/account-setup',
+    );
+  });
+});

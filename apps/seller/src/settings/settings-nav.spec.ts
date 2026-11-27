@@ -11,7 +11,10 @@ describe('seller settings map', () => {
   it('lists the groups and pages that exist today, in design order', () => {
     expect(settingsGroups.map((group) => [group.id, group.links.map((link) => link.href)])).toEqual(
       [
-        ['store', ['/settings/store-profile', '/settings/stock-locations']],
+        [
+          'store',
+          ['/settings/store-profile', '/settings/stock-locations', '/settings/certificates'],
+        ],
         ['team', ['/settings/team']],
         ['customers', ['/settings/invite-customers', '/settings/exclusive-perks']],
       ],
@@ -58,7 +61,16 @@ describe('seller settings map', () => {
       'promotions.promotion.manage',
       'commission-payouts.earnings.view',
     ]);
-    expect(settingsViewKeys).toHaveLength(7);
+    expect(view('certificates')).toEqual(['certification.own-certificate.view']);
+    expect(manage('certificates')).toEqual(['certification.own-certificate.manage']);
+    expect(settingsViewKeys).toHaveLength(8);
+  });
+
+  it('opens only the certificates before approval (FL1): every other page is setup-gated', () => {
+    const early = settingsGroups.flatMap((group) =>
+      group.links.filter((link) => link.beforeApproval === true).map((link) => link.id),
+    );
+    expect(early).toEqual(['certificates']);
   });
 
   it('finds a link with its group, and nothing for an unknown id', () => {

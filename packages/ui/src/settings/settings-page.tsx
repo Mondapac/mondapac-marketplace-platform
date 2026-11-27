@@ -23,6 +23,8 @@ export interface SettingsPageProps {
   };
   /** A label beside the title in a pill: "Saved version 3", "Built-in defaults in force". */
   readonly status?: string;
+  /** A ready-made badge beside the title (a record's status with its icon), instead of `status`. */
+  readonly statusBadge?: ReactNode;
   /** Buttons at the end of the header (help). The pin star is in the top bar, not here. */
   readonly actions?: ReactNode;
   /** A read-only, conflict or error-summary `Banner` above the sections. */
@@ -50,6 +52,7 @@ export interface SettingsPageProps {
 export function SettingsPage({
   title,
   status,
+  statusBadge,
   lastChanged,
   actions,
   banner,
@@ -78,7 +81,7 @@ export function SettingsPage({
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
             <SettingsTitle>{title}</SettingsTitle>
-            {status === undefined ? null : <Badge tone="neutral">{status}</Badge>}
+            {statusBadge ?? (status === undefined ? null : <Badge tone="neutral">{status}</Badge>)}
           </div>
           {lastChanged ? (
             <p className="mt-1 text-xs text-fg-muted" data-testid="last-changed">
