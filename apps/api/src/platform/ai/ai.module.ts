@@ -27,6 +27,7 @@ import {
 } from './own-model/in-house-shadow';
 import { InHouseHealth } from './own-model/in-house-health';
 import { InHouseRollback } from './own-model/in-house-rollback';
+import { InHouseRollbackStatusRead } from './own-model/in-house-rollback-status';
 import {
   AI_IN_HOUSE_HEALTH,
   AI_ROLLOUT_SAMPLER,
@@ -70,7 +71,9 @@ import { AI_USAGE_STORE, type AiUsageStore } from './usage/ai-usage-store';
  * share of a task type's calls (percent) or all of them (default), external models behind it, only
  * through healthy routes; tests bind their own health ({@link AI_IN_HOUSE_HEALTH}) and sampler.
  * G6d3: {@link InHouseRollback} judges the live stages on the usage store and holds a task type's
- * live stage off after a rollback, until an admin changes its settings.
+ * live stage off after a rollback, until an admin changes its settings. G6e2:
+ * {@link InHouseRollbackStatusRead} is settings' read of each task type's latest rollback (the
+ * Mondapac Intelligence tab); numbers only, no model call.
  *
  * `app.module.ts` passes the module that provides and exports `SELLER_AI_SWITCH` (sellers'), as it
  * does for identity's authorisation check, so `platform/` imports no module; a graph without it
@@ -144,6 +147,7 @@ export class AiModule {
         { provide: AI_ROLLOUT_SAMPLER, useValue: RANDOM_SHADOW_SAMPLER },
         InHouseRollout,
         InHouseRollback,
+        InHouseRollbackStatusRead,
         AiGateway,
         AiUsageReport,
         AiModelChoices,
@@ -155,6 +159,7 @@ export class AiModule {
         AiUsageReport,
         AiModelChoices,
         AiModelUsage,
+        InHouseRollbackStatusRead,
         EvaluationSuiteRegistry,
         AiEvaluationControl,
       ],

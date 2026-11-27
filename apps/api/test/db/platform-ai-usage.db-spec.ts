@@ -626,13 +626,26 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
       }
       const latest = await unit.run(
         market,
-        async () => ok(await store.latestInHouseRollbacks(market)),
+        async () =>
+          ok(await store.latestInHouseRollbacks(market, ['chat', 'extract', 'write', 'vision'])),
         {
           readOnly: true,
         },
       );
       if (!latest.ok) throw new Error('read failed');
-      expect(latest.value[task]).toEqual(NOW.subtract({ minutes: 1 }));
+      expect(latest.value[task]).toMatchObject({
+        task,
+        family: 'model-house',
+        stage: 'percent',
+        reason: 'guard',
+        calls: 100,
+        failures: 0,
+        guardRejected: 9,
+        errorsLimitPermille: 50,
+        guardLimitPermille: 50,
+        minSample: 100,
+        rolledBackAt: NOW.subtract({ minutes: 1 }),
+      });
     });
 
     it('runs the gateway end to end: counts the call with no text, then refuses at a full cap without calling', async () => {

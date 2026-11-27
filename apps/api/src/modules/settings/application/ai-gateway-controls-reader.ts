@@ -116,21 +116,7 @@ export class SettingsAiGatewayControls implements AiGatewayControls {
     }
     // When an admin last changed each task type's stage, model or percent share (G6d3): an
     // auto-rollback holds the live stage off until a change after it.
-    const changedAt: Partial<Record<(typeof AI_MODEL_TASKS)[number], Temporal.Instant>> = {};
-    for (const task of AI_MODEL_TASKS) {
-      const codes = [
-        aiInHouseStageCode(task),
-        aiInHouseModelCode(task),
-        aiInHouseRolloutCode(task),
-      ];
-      for (const row of rows.value) {
-        if (!codes.includes(row.code)) continue;
-        const was = changedAt[task];
-        if (was === undefined || Temporal.Instant.compare(row.updatedAt, was) > 0) {
-          changedAt[task] = row.updatedAt;
-        }
-      }
-    }
+    const changedAt = inHouseChangedAt(rows.value);
     const inHouse: AiInHouseControls = {
       tasks,
       changedAt,
@@ -156,4 +142,28 @@ function valueOf(rows: readonly MarketSettingRecord[], code: string): string {
   const row = rows.find((candidate) => candidate.code === code);
   if (row === undefined) return definition.defaultValue;
   return acceptedValue(definition, row.value) ?? definition.safeValue;
+}
+
+/**
+ * When an admin last changed each task type's in-house stage, model or percent share (G6d3), from
+ * the Market's stored settings (a setting still at its default has no time): an auto-rollback holds
+ * the task type's live stage off until a change after it. The gateway's controls and the Mondapac
+ * Intelligence tab's rollback read (G6e2) both take it from here. A task type never changed is
+ * left out.
+ */
+export function inHouseChangedAt(
+  rows: readonly { readonly code: string; readonly updatedAt: Temporal.Instant | null }[],
+): Partial<Record<(typeof AI_MODEL_TASKS)[number], Temporal.Instant>> {
+  const changedAt: Partial<Record<(typeof AI_MODEL_TASKS)[number], Temporal.Instant>> = {};
+  for (const task of AI_MODEL_TASKS) {
+    const codes = [aiInHouseStageCode(task), aiInHouseModelCode(task), aiInHouseRolloutCode(task)];
+    for (const row of rows) {
+      if (row.updatedAt === null || !codes.includes(row.code)) continue;
+      const was = changedAt[task];
+      if (was === undefined || Temporal.Instant.compare(row.updatedAt, was) > 0) {
+        changedAt[task] = row.updatedAt;
+      }
+    }
+  }
+  return changedAt;
 }

@@ -85,6 +85,36 @@ export class AiInHouseOptionBody {
   problem!: string | null;
 }
 
+/** A task type's latest auto-rollback of the in-house model (G6d3; read from G6e2). */
+export class AiInHouseRollbackBody {
+  @ApiProperty({ enum: ['chat', 'extract', 'write', 'vision'] }) task!: string;
+  @ApiProperty({ description: 'The in-house family the live stage served.' }) family!: string;
+  @ApiProperty({ enum: ['percent', 'default'], description: 'The live stage rolled back.' })
+  stage!: string;
+  @ApiProperty({
+    enum: ['errors', 'guard'],
+    description: 'The limit passed: the error rate, or the rate of guard-rejected answers.',
+  })
+  reason!: string;
+  @ApiProperty({ description: 'The served in-house calls judged (the last hour).' })
+  calls!: number;
+  @ApiProperty({ description: 'Of them, calls that did not end ok.' }) failures!: number;
+  @ApiProperty({ description: "Of them, ok answers the capability's own check rejected." })
+  guardRejected!: number;
+  @ApiProperty({ description: 'The error-rate limit in force, in tenths of a percent.' })
+  errorsLimitPermille!: number;
+  @ApiProperty({ description: 'The guard-rejection limit in force, in tenths of a percent.' })
+  guardLimitPermille!: number;
+  @ApiProperty({ description: 'The minimum sample in force, in calls.' }) minSample!: number;
+  @ApiProperty({ format: 'date-time' }) rolledBackAt!: string;
+  @ApiProperty({
+    description:
+      "Whether it holds the task type's live stage off now: true until an admin changes the " +
+      "task type's in-house stage, model or percent share after it.",
+  })
+  heldOff!: boolean;
+}
+
 @ApiExtraModels(AiInHouseOptionBody)
 export class AiInHouseBody {
   @ApiProperty({ type: [SettingBody] }) settings!: SettingBody[];
@@ -99,6 +129,13 @@ export class AiInHouseBody {
     },
   })
   options!: Record<string, AiInHouseOptionBody[]>;
+  @ApiProperty({
+    type: [AiInHouseRollbackBody],
+    description:
+      "Each task type's latest auto-rollback (G6e2), chat, extract, write, vision in order; a " +
+      'task type never rolled back is left out. Numbers and codes only.',
+  })
+  rollbacks!: AiInHouseRollbackBody[];
 }
 
 export class AiModelsBody {
@@ -315,6 +352,20 @@ export const aiInHouseBody = (view: AiInHouseView): AiInHouseBody => ({
       options.map(({ family, problem }) => ({ family, problem })),
     ]),
   ),
+  rollbacks: view.rollbacks.map((row) => ({
+    task: row.task,
+    family: row.family,
+    stage: row.stage,
+    reason: row.reason,
+    calls: row.calls,
+    failures: row.failures,
+    guardRejected: row.guardRejected,
+    errorsLimitPermille: row.errorsLimitPermille,
+    guardLimitPermille: row.guardLimitPermille,
+    minSample: row.minSample,
+    rolledBackAt: row.rolledBackAt.toString(),
+    heldOff: row.heldOff,
+  })),
 });
 
 export const listPagingBody = (value: ListPaging): ListPagingBody => ({ listPaging: value });

@@ -514,7 +514,9 @@ export class AdminSettingsController {
       '(0 to 99 %); the auto-rollback limits ai-in-house-rollback-errors and ' +
       'ai-in-house-rollback-guard (1 to 50 tenths of a percent, the server ceiling is 5 %) and ' +
       'ai-in-house-rollback-sample (100 to 10000 calls), each with its version; and per task type ' +
-      'every in-house family of the route catalogue with why it cannot be its model now.',
+      'every in-house family of the route catalogue with why it cannot be its model now; and ' +
+      "each task type's latest auto-rollback (rollbacks: family, stage, reason, the counts and " +
+      'limits it was judged on, its time, and whether it holds the live stage off now).',
   })
   @ApiOkResponse({ type: AiInHouseBody })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
