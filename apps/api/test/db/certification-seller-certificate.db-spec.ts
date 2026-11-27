@@ -955,6 +955,125 @@ describe.each(TEST_MARKETS)('certification seller certificates in market %s (dat
       ).rejects.toThrow();
     });
 
+    it("reads the seller's view facts: issuer names, the newest submission and its decision", async () => {
+      const { seller, id, write } = await readyToSubmit();
+      await inUnit(() => repository.submit(market, write));
+      const decidedAt = T1.add({ hours: 1 });
+      await insert('seller_submission_decisions', {
+        ...base(),
+        submission_id: write.submissionId,
+        outcome: 'changes-requested',
+        reason_code: 'dates-unclear',
+        reason_text_ciphertext: ENVELOPE,
+        actor_kind: 'admin',
+        actor_account_id: uuid7(),
+        decided_at: decidedAt.toString(),
+      });
+      const stored = await inUnit(() => repository.findOwn(market, seller as Id<'Seller'>, id));
+      const list = await inUnit(() =>
+        repository.viewFacts(market, seller as Id<'Seller'>, [stored!], { detail: false }),
+      );
+      const facts = list.get(id)!;
+      expect(facts.approved).toBeNull();
+      expect(facts.recent).toEqual([]);
+      expect(facts.events).toEqual([]);
+      expect(facts.newest).toMatchObject({
+        id: write.submissionId,
+        submissionNo: 1,
+        kind: 'initial',
+        issuerId: write.issuerId,
+        issuerName: 'Halal Authority',
+        certificateNumberCiphertext: ENVELOPE,
+        decision: {
+          outcome: 'changes-requested',
+          reasonCode: 'dates-unclear',
+          reasonTextCiphertext: ENVELOPE,
+          withdrawCause: null,
+          approvedZone: null,
+        },
+      });
+      expect(facts.newest!.expiryDate!.toString()).toBe('2027-12-31');
+      expect(facts.newest!.decision!.decidedAt.toString()).toBe(decidedAt.toString());
+      expect(JSON.stringify(facts)).not.toMatch(/account/iu);
+
+      const detail = await inUnit(() =>
+        repository.viewFacts(market, seller as Id<'Seller'>, [stored!], { detail: true }),
+      );
+      expect(detail.get(id)!.recent.map((s) => s.id)).toEqual([write.submissionId]);
+
+      // Another seller, or another Market, gets nothing for the same record.
+      await expect(
+        inUnit(() =>
+          repository.viewFacts(market, uuid7() as Id<'Seller'>, [stored!], { detail: true }),
+        ),
+      ).resolves.toEqual(new Map());
+      const elsewhere = await inUnit(
+        () => repository.viewFacts(other, seller as Id<'Seller'>, [stored!], { detail: true }),
+        other,
+      );
+      expect(elsewhere.get(id)).toMatchObject({ newest: null, recent: [], draftIssuerName: null });
+    });
+
+    it("names the draft's issuer and reads the approved submission and the record's revoke", async () => {
+      const { seller, id, write } = await readyToSubmit();
+      await inUnit(() => repository.submit(market, write));
+      const boundary = Temporal.Instant.from('2027-12-31T14:00:00Z');
+      await insert('seller_submission_decisions', {
+        ...base(),
+        submission_id: write.submissionId,
+        outcome: 'approved',
+        approved_zone: 'Australia/Brisbane',
+        expiry_boundary_at: boundary.toString(),
+        actor_kind: 'admin',
+        actor_account_id: uuid7(),
+        decided_at: T1.add({ hours: 1 }).toString(),
+      });
+      await sql.query(
+        `UPDATE certification.seller_certifications
+            SET status = 'approved', approved_submission_id = $1, pending_submission_id = NULL,
+                approved_boundary_at = $2, version = version + 1
+          WHERE id = $3`,
+        [write.submissionId, boundary.toString(), id],
+      );
+      await insert('seller_certification_history', {
+        id: uuid7(),
+        ...base(),
+        seller_certification_id: id,
+        from_status: 'approved',
+        to_status: 'revoked',
+        submission_id: write.submissionId,
+        actor_kind: 'admin',
+        actor_account_id: uuid7(),
+        reason_code: 'approved-in-error',
+        note_ciphertext: ENVELOPE,
+        occurred_at: T1.add({ hours: 2 }).toString(),
+      });
+      await sql.query(
+        `UPDATE certification.seller_certifications SET draft_issuer_id = $1 WHERE id = $2`,
+        [write.issuerId, id],
+      );
+      const stored = await inUnit(() => repository.findOwn(market, seller as Id<'Seller'>, id));
+      const facts = (
+        await inUnit(() =>
+          repository.viewFacts(market, seller as Id<'Seller'>, [stored!], { detail: true }),
+        )
+      ).get(id)!;
+      expect(facts.draftIssuerName).toBe('Halal Authority');
+      expect(facts.approved).toMatchObject({
+        id: write.submissionId,
+        issuerName: 'Halal Authority',
+        decision: { outcome: 'approved', approvedZone: 'Australia/Brisbane' },
+      });
+      expect(facts.newest?.id).toBe(write.submissionId);
+      expect(facts.events.map((e) => ({ ...e, occurredAt: e.occurredAt.toString() }))).toEqual([
+        {
+          toStatus: 'revoked',
+          reasonCode: 'approved-in-error',
+          occurredAt: T1.add({ hours: 2 }).toString(),
+        },
+      ]);
+    });
+
     it('deletes a record that never had a submission, with its files, and nothing else', async () => {
       const { typeId } = await type();
       const seller = uuid7();

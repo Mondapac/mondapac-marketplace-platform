@@ -34,6 +34,7 @@ import { loadMarketConfigs } from '../../../../platform/market-config/market-con
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import { ConfigCertificationMailPolicy } from '../../infrastructure/config-certification-mail-policy';
 import { CheckedInReviewPolicy } from '../../infrastructure/review-policy/checked-in-review-policy';
+import { MarketConfigExpiryPolicy } from '../../infrastructure/market-config-expiry-policy';
 import { SharpDocumentIntake } from '../../infrastructure/sharp-document-intake';
 import type { IssuerRequestDependencies } from '../issuer-requests/issuer-request.shared';
 import type { OwnCertificateDependencies } from '../own/own-certificate.shared';
@@ -188,6 +189,8 @@ describe.each(['AU', 'ZZ'] as const)('issuer requests in market %s', (code) => {
       clock,
       ids,
       draftQuotaBytes: 200 * 1024 * 1024,
+      expiryPolicies: new MarketConfigExpiryPolicy(markets),
+      reviewPolicies: policies,
     } satisfies OwnCertificateDependencies;
 
     const contextOf = (

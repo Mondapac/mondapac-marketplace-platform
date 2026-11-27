@@ -2,10 +2,17 @@ import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
+import {
+  VIEW_RECENT_EVENTS,
+  VIEW_RECENT_SUBMISSIONS,
+  type CertificateViewFacts,
+  type NewCertificate,
+  type NewDocument,
+  type RecordEventFacts,
+  type SellerCertificateRepository,
+  type SubmissionFacts,
+} from '../application/ports/seller-certificate.repository';
 import type {
-  NewCertificate,
-  NewDocument,
-  SellerCertificateRepository,
   StoredCertificate,
   StoredDocument,
   StoredDraft,
@@ -208,6 +215,76 @@ export function toDocument(row: DocumentRow, position: number): StoredDocument {
   };
 }
 
+/** The columns of a submission the seller's own read shows (never an account or an admin). */
+const SUBMISSION_VIEW_SELECT = {
+  id: true,
+  sellerCertificationId: true,
+  submissionNo: true,
+  kind: true,
+  issuerId: true,
+  certificateNumberCiphertext: true,
+  issueDate: true,
+  expiryDate: true,
+  submittedAt: true,
+  issuer: { select: { displayName: true } },
+  decision: {
+    select: {
+      outcome: true,
+      reasonCode: true,
+      reasonTextCiphertext: true,
+      withdrawCause: true,
+      approvedZone: true,
+      decidedAt: true,
+    },
+  },
+} as const;
+
+interface SubmissionViewRow {
+  id: string;
+  sellerCertificationId: string;
+  submissionNo: number;
+  kind: string;
+  issuerId: string | null;
+  certificateNumberCiphertext: string | null;
+  issueDate: Date | null;
+  expiryDate: Date | null;
+  submittedAt: Date;
+  issuer: { displayName: string } | null;
+  decision: {
+    outcome: string;
+    reasonCode: string | null;
+    reasonTextCiphertext: string | null;
+    withdrawCause: string | null;
+    approvedZone: string | null;
+    decidedAt: Date;
+  } | null;
+}
+
+function toSubmissionFacts(row: SubmissionViewRow): SubmissionFacts {
+  return {
+    id: row.id as Id<'Submission'>,
+    submissionNo: row.submissionNo,
+    kind: row.kind as SubmissionKind,
+    issuerId: row.issuerId as Id<'Issuer'> | null,
+    issuerName: row.issuer?.displayName ?? null,
+    certificateNumberCiphertext: row.certificateNumberCiphertext,
+    issueDate: fromDay(row.issueDate),
+    expiryDate: fromDay(row.expiryDate),
+    submittedAt: toInstant(row.submittedAt),
+    decision:
+      row.decision === null
+        ? null
+        : {
+            outcome: row.decision.outcome as SubmissionOutcome,
+            reasonCode: row.decision.reasonCode,
+            reasonTextCiphertext: row.decision.reasonTextCiphertext,
+            withdrawCause: row.decision.withdrawCause as 'edited' | 'cancelled' | 'revoked' | null,
+            approvedZone: row.decision.approvedZone,
+            decidedAt: toInstant(row.decision.decidedAt),
+          },
+  };
+}
+
 /**
  * {@link SellerCertificateRepository} on the certificate tables of `certification` (data design
  * 3.4 to 3.13). Every method runs in the open unit of its caller. A write to the root first moves
@@ -295,6 +372,109 @@ export class PrismaSellerCertificateRepository implements SellerCertificateRepos
     const open = await openIssuerRequestTypes(this.prisma, market, [sellerId]);
     const newest = await newestSubmissions(this.prisma, market, rows);
     return rows.map((row) => toCertificate(row, open, newest));
+  }
+
+  async viewFacts(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    certificates: readonly StoredCertificate[],
+    options: { readonly detail: boolean },
+  ): Promise<ReadonlyMap<string, CertificateViewFacts>> {
+    const own = certificates.filter((c) => c.sellerId === sellerId);
+    if (own.length === 0) return new Map();
+    const tx = this.prisma.tx(market);
+    const base = { marketId: market.marketId, sellerId };
+
+    // The approved and the newest submission of each record: one lookup each on the primary key
+    // and on the unique (market, record, number) key (numbers run 1..n without gaps).
+    const keys: Record<string, unknown>[] = [];
+    for (const c of own) {
+      if (c.approvedSubmissionId !== null) keys.push({ id: c.approvedSubmissionId });
+      if (c.submissionCount > 0) {
+        keys.push({ sellerCertificationId: c.id, submissionNo: c.submissionCount });
+      }
+    }
+    const pinned =
+      keys.length === 0
+        ? []
+        : await tx.certificationSellerCertificationSubmission.findMany({
+            where: { ...base, OR: keys },
+            select: SUBMISSION_VIEW_SELECT,
+            take: keys.length,
+          });
+    const byId = new Map<string, SubmissionFacts>();
+    const byNumber = new Map<string, SubmissionFacts>();
+    for (const row of pinned) {
+      const facts = toSubmissionFacts(row);
+      byId.set(row.id, facts);
+      byNumber.set(`${row.sellerCertificationId}|${row.submissionNo}`, facts);
+    }
+
+    const draftIssuerIds = [
+      ...new Set(own.flatMap((c) => (c.draft.issuerId === null ? [] : [c.draft.issuerId]))),
+    ];
+    const issuers =
+      draftIssuerIds.length === 0
+        ? []
+        : await tx.certificationIssuer.findMany({
+            where: { marketId: market.marketId, id: { in: draftIssuerIds } },
+            select: { id: true, displayName: true },
+            take: draftIssuerIds.length,
+          });
+    const issuerNames = new Map(issuers.map((issuer) => [issuer.id, issuer.displayName]));
+
+    const recent = new Map<string, SubmissionFacts[]>();
+    const events = new Map<string, RecordEventFacts[]>();
+    if (options.detail) {
+      for (const c of own) {
+        const rows =
+          c.submissionCount === 0
+            ? []
+            : await tx.certificationSellerCertificationSubmission.findMany({
+                where: { ...base, sellerCertificationId: c.id },
+                select: SUBMISSION_VIEW_SELECT,
+                orderBy: { submissionNo: 'desc' },
+                take: VIEW_RECENT_SUBMISSIONS,
+              });
+        recent.set(c.id, rows.map(toSubmissionFacts));
+        const changes = await tx.certificationSellerCertificationHistory.findMany({
+          where: {
+            marketId: market.marketId,
+            sellerCertificationId: c.id,
+            certificate: { sellerId },
+            toStatus: { in: ['expired', 'revoked'] },
+          },
+          select: { toStatus: true, fromStatus: true, reasonCode: true, occurredAt: true },
+          orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
+          take: VIEW_RECENT_EVENTS,
+        });
+        events.set(
+          c.id,
+          changes
+            .filter((row) => row.fromStatus !== row.toStatus)
+            .map((row) => ({
+              toStatus: row.toStatus as 'expired' | 'revoked',
+              reasonCode: row.reasonCode,
+              occurredAt: toInstant(row.occurredAt),
+            })),
+        );
+      }
+    }
+
+    return new Map(
+      own.map((c) => [
+        c.id,
+        {
+          draftIssuerName:
+            c.draft.issuerId === null ? null : (issuerNames.get(c.draft.issuerId) ?? null),
+          approved:
+            c.approvedSubmissionId === null ? null : (byId.get(c.approvedSubmissionId) ?? null),
+          newest: byNumber.get(`${c.id}|${c.submissionCount}`) ?? null,
+          recent: recent.get(c.id) ?? [],
+          events: events.get(c.id) ?? [],
+        },
+      ]),
+    );
   }
 
   async saveDraft(

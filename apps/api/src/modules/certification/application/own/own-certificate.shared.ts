@@ -25,7 +25,8 @@ import type {
   DocumentVault,
 } from '../ports/document-ports';
 import type { RateCounterKeys, RateCounterRepository } from '../ports/rate-counters';
-import type { CertificateIndexKeys } from '../ports/review.ports';
+import type { ExpiryPolicyProvider } from '../ports/expiry.repository';
+import type { CertificateIndexKeys, ReviewPolicyProvider } from '../ports/review.ports';
 import type { SellerZonesSource } from '../ports/claim-facts.ports';
 import type {
   SellerCertificateRepository,
@@ -52,6 +53,10 @@ export interface OwnCertificateDependencies {
   readonly ids: IdGenerator;
   /** Bytes of draft files one seller may hold (design 5.1: 200 MiB). */
   readonly draftQuotaBytes: number;
+  /** The Market's warning thresholds and renewal submit-by days, for the seller's own read. */
+  readonly expiryPolicies: ExpiryPolicyProvider;
+  /** The Market's review reasons (label, next step), for the seller's own read. */
+  readonly reviewPolicies: ReviewPolicyProvider;
 }
 
 export interface ValidationFailure {

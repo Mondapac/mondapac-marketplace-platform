@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261127-cert-acting-as-banner",
+  "area": "seller",
+  "title": "بنر «ورود به جای فروشنده» در صفحه‌های گواهی",
+  "desc": "وقتی ادمین به جای فروشنده وارد شده، بنر بالای صفحه؛ امروز فقط متن خطای access.acting-as-refused.",
+  "src": "طرح صفحهٔ گواهی فروشنده v2، بخش ۱۶؛ docs/design/domain/certification.md بخش 14.15",
+  "date": "2026-11-27",
+  "trig": "وقتی نشست‌ها نشانهٔ acting-as داشته باشند (SEL-08)",
+  "prio": "پایین",
+  "status": "موکول"
+}

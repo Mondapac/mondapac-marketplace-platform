@@ -52,8 +52,14 @@ import { OwnCertificateWithdraw } from '../application/use-cases/own-certificate
 import { OwnCertificatesList } from '../application/use-cases/own-certificates-list.use-case';
 import {
   CERTIFICATE_INDEX_KEYS,
+  REVIEW_POLICY_PROVIDER,
   type CertificateIndexKeys,
+  type ReviewPolicyProvider,
 } from '../application/ports/review.ports';
+import {
+  EXPIRY_POLICY_PROVIDER,
+  type ExpiryPolicyProvider,
+} from '../application/ports/expiry.repository';
 import { HmacCertificateIndexKeys } from './hmac-index-keys';
 import { HmacRateCounterKeys, localCertificationSecret } from './hmac-rate-counter-keys';
 import { ObjectStoreDocumentVault } from './object-store-document-vault';
@@ -167,6 +173,8 @@ export const sellerCertificateProviders: readonly Provider[] = [
       OUTBOX_WRITER,
       CLOCK,
       ID_GENERATOR,
+      EXPIRY_POLICY_PROVIDER,
+      REVIEW_POLICY_PROVIDER,
     ],
     useFactory: (
       unitOfWork: UnitOfWork,
@@ -182,6 +190,8 @@ export const sellerCertificateProviders: readonly Provider[] = [
       outbox: OutboxWriter,
       clock: Clock,
       ids: IdGenerator,
+      expiryPolicies: ExpiryPolicyProvider,
+      reviewPolicies: ReviewPolicyProvider,
     ): OwnCertificateDependencies => ({
       unitOfWork,
       certificates,
@@ -197,6 +207,8 @@ export const sellerCertificateProviders: readonly Provider[] = [
       clock,
       ids,
       draftQuotaBytes: DRAFT_QUOTA_BYTES,
+      expiryPolicies,
+      reviewPolicies,
     }),
   },
   ...useCaseProviders,

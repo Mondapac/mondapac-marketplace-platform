@@ -4,13 +4,19 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import { CERTIFICATION_OWN_CERTIFICATE_VIEW } from '../../contracts/permissions';
 import { isDraftEditable } from '../../domain/seller-certificate';
 import {
+  detailExtrasOf,
+  factsOf,
+  listExtrasOf,
+  type CertificateDetailExtras,
+  type SellerCertificateListItem,
+} from '../own/own-certificate-view';
+import {
   documentViewOf,
   invalid,
   ownerOf,
   parseCertificateId,
   storeFailure,
   summaryOf,
-  type CertificateSummary,
   type DocumentView,
   type OwnCertificateDependencies,
   type ValidationFailure,
@@ -21,8 +27,8 @@ export interface OwnCertificateReadInput {
   readonly certificateId: unknown;
 }
 
-export interface OwnCertificateReadOutput {
-  readonly certificate: CertificateSummary;
+export interface OwnCertificateReadOutput extends CertificateDetailExtras {
+  readonly certificate: SellerCertificateListItem;
   readonly draft: DraftView;
   readonly documents: readonly DocumentView[];
 }
@@ -37,7 +43,10 @@ export type OwnCertificateReadFailure =
 /**
  * `own-certificate.read` (certification design 7.2, 3.3): one of the seller's own certificates
  * with its draft (the number and the note decrypted under the seller's key) and the files on the
- * draft. Rule: key `certification.own-certificate.view`; another seller's certificate and an
+ * draft, and what the status page needs (seller pages design 13): the latest decision with the
+ * Market's reason label, next step and the reviewer's text to the seller, a short history (no
+ * admin, no note) and the approved values beside a renewal. Rule: key
+ * `certification.own-certificate.view`; another seller's certificate and an
  * unknown id answer one `certificate.not-found`. The answer carries personal data, so the route
  * sends `Cache-Control: no-store`.
  */
@@ -71,6 +80,14 @@ export class OwnCertificateRead extends UseCase<
 
     const { deps } = this;
     const { market } = context;
+    let expiry;
+    let review;
+    try {
+      expiry = deps.expiryPolicies.policyFor(market);
+      review = deps.reviewPolicies.policyFor(market);
+    } catch {
+      return err({ code: 'access.unavailable' });
+    }
     const read = await deps.unitOfWork
       .run(
         market,
@@ -80,6 +97,9 @@ export class OwnCertificateRead extends UseCase<
           return ok({
             stored,
             documents: await deps.certificates.listDocuments(market, certificateId),
+            facts: await deps.certificates.viewFacts(market, owner.sellerId, [stored], {
+              detail: true,
+            }),
           });
         },
         { readOnly: true },
@@ -90,6 +110,7 @@ export class OwnCertificateRead extends UseCase<
     if (!read.ok) return read;
     if (read.value === null) return err({ code: 'certificate.not-found' });
     const { stored, documents } = read.value;
+    const facts = factsOf(read.value.facts, stored.id);
 
     const number =
       stored.draft.certificateNumberCiphertext === null
@@ -113,12 +134,15 @@ export class OwnCertificateRead extends UseCase<
     if (!note.ok) return err({ code: 'access.denied' });
 
     const now = deps.clock.now();
+    const summary = summaryOf(
+      stored,
+      isDraftEditable(stored.status, stored.pendingSubmissionId),
+      now,
+    );
+    // Decrypted outside any unit, as the draft's fields are.
+    const extras = await detailExtrasOf(stored, summary.status, facts, review, deps.cipher, market);
     return ok({
-      certificate: summaryOf(
-        stored,
-        isDraftEditable(stored.status, stored.pendingSubmissionId),
-        now,
-      ),
+      certificate: { ...summary, ...listExtrasOf(stored, summary.status, facts, expiry, now) },
       draft: {
         issuerId: stored.draft.issuerId,
         certificateNumber: number.value,
@@ -128,6 +152,7 @@ export class OwnCertificateRead extends UseCase<
         selfDeclarationNote: note.value,
       },
       documents: documents.map(documentViewOf),
+      ...extras,
     });
   }
 }

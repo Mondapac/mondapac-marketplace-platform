@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261127-cert-heic-upload",
+  "area": "seller",
+  "title": "پذیرش فایل HEIC برای گواهی",
+  "desc": "عکس‌های آیفون بدون تبدیل پذیرفته شوند؛ امروز فقط JPEG، PNG و PDF.",
+  "src": "طرح صفحهٔ گواهی فروشنده v2، بخش ۱۶؛ docs/design/domain/certification.md بخش 14.15",
+  "date": "2026-11-27",
+  "trig": "پس از بررسی پشتیبانی HEIC در اسکنر و sharp (اسپایک ۲)",
+  "prio": "پایین",
+  "status": "موکول"
+}

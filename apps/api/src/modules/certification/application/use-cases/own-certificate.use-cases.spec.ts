@@ -26,6 +26,8 @@ import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
+import { MarketConfigExpiryPolicy } from '../../infrastructure/market-config-expiry-policy';
+import { CheckedInReviewPolicy } from '../../infrastructure/review-policy/checked-in-review-policy';
 import { SharpDocumentIntake } from '../../infrastructure/sharp-document-intake';
 import { ownerOf, type OwnCertificateDependencies } from '../own/own-certificate.shared';
 import { OwnCertificateCreate } from './own-certificate-create.use-case';
@@ -48,6 +50,7 @@ import { OwnCertificatesList } from './own-certificates-list.use-case';
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
 const admitAll: AuthorisationCheck = { check: () => Promise.resolve({ allowed: true }) };
 const gate = createUseCaseGate(markets, admitAll);
+const reviewPolicies = new CheckedInReviewPolicy();
 const T0 = Temporal.Instant.from('2026-10-16T00:00:00Z');
 
 const PDF = Buffer.from(
@@ -144,6 +147,8 @@ describe.each(['AU', 'ZZ'] as const)('own certificates in market %s', (code) => 
       clock,
       ids,
       draftQuotaBytes: options.draftQuotaBytes ?? 200 * 1024 * 1024,
+      expiryPolicies: new MarketConfigExpiryPolicy(markets),
+      reviewPolicies,
     };
 
     const contextOf = (
@@ -1302,6 +1307,222 @@ describe.each(['AU', 'ZZ'] as const)('own certificates in market %s', (code) => 
         expect((await r.read.execute(context, { certificateId })).ok).toBe(false);
         expect((await r.options.execute(context, {})).ok).toBe(false);
       }
+    });
+  });
+
+  describe('status page facts (seller certificate pages, PR 1)', () => {
+    const ZONE = 'Australia/Brisbane';
+    const policy = () => reviewPolicies.policyFor(market);
+    const expiryPolicy = () => new MarketConfigExpiryPolicy(markets).policyFor(market);
+    const reasonFor = (outcome: 'changes-requested' | 'declined' | 'revoked') =>
+      policy().reasons.find((reason) => reason.outcomes.includes(outcome))!;
+
+    /** A submitted halal certificate whose draft expires on `expiryDate`. */
+    async function submitted(r: Rig, expiryDate = '2027-12-31') {
+      r.certificates.issuerNames.set(r.activeIssuer.id, 'Halal Authority');
+      const certificateId = await newHalal(r);
+      await unwrap(
+        r.saveDraft.execute(r.contextOf(), { certificateId, draft: draftOf(r, { expiryDate }) }),
+      );
+      await unwrap(r.upload.execute(r.contextOf(), { certificateId, data: b64(PDF) }));
+      const sent = await unwrap(r.submit.execute(r.contextOf(), { certificateId }));
+      return { certificateId, submissionId: sent.submissionId };
+    }
+
+    /** Plays the approval: the boundary is 00:00 after the expiry date in the seller's zone. */
+    function approve(r: Rig, certificateId: string, expiryDate: string) {
+      const root = r.certificates.certificates.get(certificateId)!;
+      const submissionId = root.pendingSubmissionId!;
+      r.certificates.decisions.set(submissionId, 'approved');
+      r.certificates.decisionDetails.set(submissionId, {
+        approvedZone: ZONE,
+        decidedAt: r.clock.now(),
+      });
+      root.status = 'approved';
+      root.approvedSubmissionId = submissionId;
+      root.pendingSubmissionId = null;
+      root.pendingKind = null;
+      root.approvedBoundaryAt = Temporal.PlainDate.from(expiryDate)
+        .add({ days: 1 })
+        .toZonedDateTime(ZONE)
+        .toInstant();
+      root.version += 1;
+    }
+
+    it('names the issuer, the expiry, the renewal day, the days left and the banner tone', async () => {
+      const r = rig();
+      const certificateId = await newHalal(r);
+      r.certificates.issuerNames.set(r.activeIssuer.id, 'Halal Authority');
+      await unwrap(r.saveDraft.execute(r.contextOf(), { certificateId, draft: draftOf(r) }));
+      const draft = (await unwrap(r.list.execute(r.contextOf(), {}))).certificates[0]!;
+      expect(draft).toMatchObject({
+        issuerName: 'Halal Authority',
+        validUntil: null,
+        renewalSubmitBy: null,
+        daysLeft: null,
+        bannerTone: null,
+      });
+
+      // T0 is 10:00 on 16 Oct in Brisbane: 30 Oct is 14 local days ahead.
+      const other = rig();
+      const { certificateId: expiring } = await submitted(other, '2026-10-30');
+      approve(other, expiring, '2026-10-30');
+      const rowAt = async () =>
+        (await unwrap(other.list.execute(other.contextOf(), {}))).certificates[0]!;
+      const submitByDays = expiryPolicy().renewalSubmitByDays;
+      expect(await rowAt()).toMatchObject({
+        status: 'approved-expiring',
+        issuerName: 'Halal Authority',
+        validUntil: '2026-10-30',
+        renewalSubmitBy: Temporal.PlainDate.from('2026-10-30')
+          .subtract({ days: submitByDays })
+          .toString(),
+        daysLeft: 14,
+        bannerTone: 'info',
+      });
+      other.clock.advance(Temporal.Duration.from({ hours: 24 }));
+      expect(await rowAt()).toMatchObject({ daysLeft: 13, bannerTone: 'attention' });
+      other.clock.advance(Temporal.Duration.from({ hours: 24 * 13 }));
+      expect(await rowAt()).toMatchObject({ daysLeft: 0, bannerTone: 'critical' });
+      other.clock.advance(Temporal.Duration.from({ hours: 24 }));
+      expect(await rowAt()).toMatchObject({
+        status: 'expired',
+        validUntil: '2026-10-30',
+        daysLeft: -1,
+        bannerTone: 'critical',
+      });
+    });
+
+    it('gives no banner tone while a renewal waits, and keeps the certificate in force beside it', async () => {
+      const r = rig();
+      const { certificateId } = await submitted(r, '2026-11-05');
+      approve(r, certificateId, '2026-11-05');
+      await unwrap(
+        r.saveDraft.execute(r.contextOf(), {
+          certificateId,
+          draft: draftOf(r, { certificateNumber: 'HC-2027-002', expiryDate: '2027-11-05' }),
+        }),
+      );
+      await unwrap(r.submit.execute(r.contextOf(), { certificateId }));
+      const read = await unwrap(r.read.execute(r.contextOf(), { certificateId }));
+      expect(read.certificate).toMatchObject({
+        status: 'approved-renewal-pending',
+        validUntil: '2026-11-05',
+        bannerTone: null,
+      });
+      expect(read.inForce).toEqual({
+        issuerId: r.activeIssuer.id,
+        issuerName: 'Halal Authority',
+        certificateNumber: 'HC-2026-001',
+        issueDate: '2026-01-01',
+        expiryDate: '2026-11-05',
+        approvedAt: T0.toString(),
+      });
+      expect(read.draft.certificateNumber).toBe('HC-2027-002');
+      expect(read.history.map((entry) => entry.event)).toEqual([
+        'renewal-submitted',
+        'approved',
+        'submitted',
+      ]);
+    });
+
+    it("shows the reason, the next step and the reviewer's text of a request for changes", async () => {
+      const r = rig();
+      const { certificateId, submissionId } = await submitted(r);
+      const reason = reasonFor('changes-requested');
+      const sealed = await r.deps.cipher.seal(
+        market,
+        r.sellerId,
+        'decision-reason-text',
+        'The scan shows 30 June 2026.',
+      );
+      r.clock.advance(Temporal.Duration.from({ hours: 2 }));
+      r.certificates.decisions.set(submissionId, 'changes-requested');
+      r.certificates.decisionDetails.set(submissionId, {
+        reasonCode: reason.code,
+        reasonTextCiphertext: sealed.ok ? sealed.value : null,
+        decidedAt: r.clock.now(),
+      });
+      const root = r.certificates.certificates.get(certificateId)!;
+      root.status = 'changes-needed';
+      root.pendingSubmissionId = null;
+      root.pendingKind = null;
+
+      const read = await unwrap(r.read.execute(r.contextOf(), { certificateId }));
+      expect(read.certificate.status).toBe('changes-needed');
+      expect(read.decision).toEqual({
+        outcome: 'changes-requested',
+        reasonCode: reason.code,
+        reasonLabel: reason.label,
+        nextStep: reason.nextStep,
+        reasonText: 'The scan shows 30 June 2026.',
+        decidedAt: r.clock.now().toString(),
+      });
+      expect(read.inForce).toBeNull();
+      expect(read.history).toEqual([
+        { event: 'changes-requested', reasonLabel: reason.label, at: r.clock.now().toString() },
+        { event: 'submitted', reasonLabel: null, at: T0.toString() },
+      ]);
+      // The list carries no decision, history or decrypted text.
+      const listed = JSON.stringify(await unwrap(r.list.execute(r.contextOf(), {})));
+      expect(listed).not.toContain('The scan shows');
+      expect(listed).not.toContain('decision');
+    });
+
+    it('shows a revoke with its reason label but never the admin note, and nothing in force', async () => {
+      const r = rig();
+      const { certificateId } = await submitted(r, '2027-06-30');
+      approve(r, certificateId, '2027-06-30');
+      const reason = reasonFor('revoked');
+      r.clock.advance(Temporal.Duration.from({ hours: 5 }));
+      r.certificates.recordEvents.set(certificateId, [
+        { toStatus: 'revoked', reasonCode: reason.code, occurredAt: r.clock.now() },
+      ]);
+      r.certificates.certificates.get(certificateId)!.status = 'revoked';
+      const read = await unwrap(r.read.execute(r.contextOf(), { certificateId }));
+      expect(read.certificate).toMatchObject({
+        status: 'revoked',
+        validUntil: null,
+        bannerTone: null,
+      });
+      expect(read.decision).toMatchObject({
+        outcome: 'revoked',
+        reasonLabel: reason.label,
+        reasonText: null,
+      });
+      expect(read.inForce).toBeNull();
+      expect(read.history[0]).toMatchObject({ event: 'revoked', reasonLabel: reason.label });
+    });
+
+    it('never names who decided, nor any account', async () => {
+      const r = rig();
+      const { certificateId, submissionId } = await submitted(r);
+      r.certificates.decisions.set(submissionId, 'declined');
+      r.certificates.decisionDetails.set(submissionId, { reasonCode: reasonFor('declined').code });
+      const root = r.certificates.certificates.get(certificateId)!;
+      root.status = 'declined';
+      root.pendingSubmissionId = null;
+      root.pendingKind = null;
+      const context = r.contextOf();
+      const read = await unwrap(r.read.execute(context, { certificateId }));
+      expect(read.decision).toMatchObject({ outcome: 'declined' });
+      const text = JSON.stringify(read);
+      if (context.actor.kind === 'authenticated') {
+        expect(text).not.toContain(context.actor.accountId);
+      }
+      expect(text).not.toMatch(/accountId|actor/u);
+    });
+
+    it('gives the file limits with the options, from the intake itself', async () => {
+      const r = rig();
+      const { documentLimits } = await unwrap(r.options.execute(r.contextOf(), {}));
+      expect(documentLimits).toEqual({
+        mediaTypes: ['image/jpeg', 'image/png', 'application/pdf'],
+        maxBytes: 10 * 1024 * 1024,
+        maxFiles: 10,
+        maxPdfPages: 20,
+        draftQuotaBytes: 200 * 1024 * 1024,
+      });
     });
   });
 

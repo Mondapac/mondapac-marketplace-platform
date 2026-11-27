@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261127-cert-cant-offer-yet-card",
+  "area": "seller",
+  "title": "کارت «What you can't offer yet» در صفحهٔ گواهی‌ها",
+  "desc": "فهرست نوع‌های فعالی که فروشنده گواهی معتبرش را ندارد و پیشنهادهایی که بدون آن نمی‌شود فروخت.",
+  "src": "طرح صفحهٔ گواهی فروشنده v2، بخش ۱۶؛ docs/design/domain/certification.md بخش 14.15",
+  "date": "2026-11-27",
+  "trig": "وقتی ارزیابی برچسب برای هر نوع (evaluateClaims) به این صفحه برسد",
+  "prio": "پایین",
+  "status": "موکول"
+}

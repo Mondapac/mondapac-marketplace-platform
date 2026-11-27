@@ -54,8 +54,52 @@ export class CertificateSummaryView {
   @ApiProperty() lastChangedAt!: string;
 }
 
+/** A row of the seller's list and the head of the read (seller pages design 13). */
+export class CertificateListItemView extends CertificateSummaryView {
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      "The issuer's public name: the approved submission's, else the newest submission's, else " +
+      "the draft's (a draft always shows the draft's).",
+  })
+  issuerName!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    example: '2027-06-30',
+    description: 'The last day the approved certificate is valid (a local date); null without one.',
+  })
+  validUntil!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    example: '2027-06-23',
+    description:
+      "The day to submit a renewal by: validUntil minus the Market's renewalSubmitByDays (as the " +
+      'expiry mail). Null without validUntil.',
+  })
+  renewalSubmitBy!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description:
+      'Whole local days from today to validUntil in the zone the approval was measured in: 0 on ' +
+      'the last day, negative once expired.',
+  })
+  daysLeft!: number | null;
+  @ApiProperty({
+    nullable: true,
+    enum: ['info', 'attention', 'critical'],
+    description:
+      "The expiry banner's tone from the Market's warning thresholds, for approved-expiring and " +
+      'expired only.',
+  })
+  bannerTone!: string | null;
+}
+
 export class CertificateListView {
-  @ApiProperty({ type: [CertificateSummaryView] }) certificates!: CertificateSummaryView[];
+  @ApiProperty({ type: [CertificateListItemView] }) certificates!: CertificateListItemView[];
   @ApiProperty({ nullable: true, type: String }) nextAfterId!: string | null;
 }
 
@@ -87,10 +131,85 @@ export class CertificateDocumentUploaded extends CertificateDocumentView {
   withdrawnSubmissionId!: string | null;
 }
 
+export class CertificateDecisionView {
+  @ApiProperty({ enum: ['changes-requested', 'declined', 'revoked'] }) outcome!: string;
+  @ApiProperty({ nullable: true, type: String }) reasonCode!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: "The Market's plain label of the reason; null once the code left the list.",
+  })
+  reasonLabel!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: "A key of the seller's next step (the panel's words).",
+  })
+  nextStep!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      "The reviewer's text to the seller, plain text (render inert). Null without one, once the " +
+      "seller's key is erased, and always for a revoke.",
+  })
+  reasonText!: string | null;
+  @ApiProperty() decidedAt!: string;
+}
+
+export class CertificateHistoryEntryView {
+  @ApiProperty({
+    enum: [
+      'submitted',
+      'submitted-again',
+      'renewal-submitted',
+      'approved',
+      'changes-requested',
+      'declined',
+      'withdrawn',
+      'expired',
+      'revoked',
+    ],
+  })
+  event!: string;
+  @ApiProperty({ nullable: true, type: String }) reasonLabel!: string | null;
+  @ApiProperty() at!: string;
+}
+
+export class CertificateInForceView {
+  @ApiProperty({ nullable: true, type: String, format: 'uuid' }) issuerId!: string | null;
+  @ApiProperty({ nullable: true, type: String }) issuerName!: string | null;
+  @ApiProperty({ nullable: true, type: String }) certificateNumber!: string | null;
+  @ApiProperty({ nullable: true, type: String, example: '2026-07-01' }) issueDate!: string | null;
+  @ApiProperty({ nullable: true, type: String, example: '2027-06-30' }) expiryDate!: string | null;
+  @ApiProperty({ nullable: true, type: String }) approvedAt!: string | null;
+}
+
 export class CertificateDetailView {
-  @ApiProperty({ type: CertificateSummaryView }) certificate!: CertificateSummaryView;
+  @ApiProperty({ type: CertificateListItemView }) certificate!: CertificateListItemView;
   @ApiProperty({ type: CertificateDraftView }) draft!: CertificateDraftView;
   @ApiProperty({ type: [CertificateDocumentView] }) documents!: CertificateDocumentView[];
+  @ApiProperty({
+    nullable: true,
+    type: CertificateDecisionView,
+    description:
+      'The latest decision to act on, for changes-needed, declined, ' +
+      'approved-renewal-changes-needed and revoked; null otherwise.',
+  })
+  decision!: CertificateDecisionView | null;
+  @ApiProperty({
+    type: [CertificateHistoryEntryView],
+    description: 'A short history, newest first (at most 20): never who, never a note.',
+  })
+  history!: CertificateHistoryEntryView[];
+  @ApiProperty({
+    nullable: true,
+    type: CertificateInForceView,
+    description:
+      "The approved submission's values (beside a renewal: the certificate in force); null " +
+      'without an approval and after a revoke.',
+  })
+  inForce!: CertificateInForceView | null;
 }
 
 export class CertificateDraftSaved {
@@ -148,8 +267,20 @@ export class CertificateTypeOption {
   @ApiProperty({ type: [CertificateIssuerOption] }) issuers!: CertificateIssuerOption[];
 }
 
+export class CertificateDocumentLimitsView {
+  @ApiProperty({ enum: ['image/jpeg', 'image/png', 'application/pdf'], isArray: true })
+  mediaTypes!: string[];
+  @ApiProperty({ description: 'Bytes of one file.' }) maxBytes!: number;
+  @ApiProperty({ description: 'Files on one certificate.' }) maxFiles!: number;
+  @ApiProperty({ description: 'Pages of one PDF.' }) maxPdfPages!: number;
+  @ApiProperty({ description: 'Bytes of draft files one seller may hold.' })
+  draftQuotaBytes!: number;
+}
+
 export class CertificateOptionsView {
   @ApiProperty({ type: [CertificateTypeOption] }) types!: CertificateTypeOption[];
+  @ApiProperty({ type: CertificateDocumentLimitsView })
+  documentLimits!: CertificateDocumentLimitsView;
 }
 
 export class CertificateDeleted {
