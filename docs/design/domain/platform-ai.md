@@ -548,7 +548,22 @@ ADR-0026 decision 9 and ADR-0042 decision 7, so ADR-0053 supersedes those points
   (`own-model/in-house-rollback-status.ts`, no model call), fresh in a read-only unit (one index
   lookup per task type on `(market_id, task, rolled_back_at DESC)`), never from an instance's 10 s
   reuse; a failed read fails the request rather than showing no rollback. The panel banner is
-  G6e3's; the admin notice is a separate PR.
+  G6e3's.
+- **Built in G6e2 (rollback notice).** Right after the read-write unit that inserts the rollback's
+  row, in a unit of its own, `InHouseRollback` tells settings through the port
+  `AI_IN_HOUSE_ROLLBACK_NOTICES`
+  (`gateway-controls.ts`, bound like `AI_GATEWAY_CONTROLS` through `AiModule.register`), with the
+  Market's system actor (asynchronous AI work, R3) and a correlation id of its own. Settings
+  appends `settings.ai-in-house-rolled-back.v1` (task type, stage, reason; aggregate the rollback's
+  id, version 1) to its own outbox (`settings.outbox`, new in this PR, as every module's), at most
+  once per rollback. The rollback (the safety control) never depends on the notice path: an event
+  that cannot be written is logged as `ai.in-house.rollback-notice-failed` and not retried, while
+  the stage stays held off and the operators' log and the tab's read still show the rollback
+  (FE-20261127-ai-gateway-in-house-rollback-notice-retry). Notifications makes it the admin bell notice
+  `admin.ai-in-house-rolled-back` (codes only), shown to the admins who hold
+  `settings.ai-models.manage`, the ones who may resume the stage (a change with a fresh two-step
+  code). The event carries no count, family or model text (R2: only numbers decided the rollback,
+  and the notice is not model output). The admin panel's text for the new kind comes with G6e3.
 - **In-house route readiness (before any stage other than off).** All of these must hold, else
   every stage stays off (ADR-0052 decision 3, ADR-0053 decision 3): (1) a PR adds the row:
   endpoint, region, exact model version id, the price the platform counts it at, retirement day;

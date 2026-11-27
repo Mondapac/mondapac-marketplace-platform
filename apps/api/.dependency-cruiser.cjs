@@ -560,7 +560,8 @@ module.exports = {
       name: 'ai-gateway-controls-only-from-settings',
       comment:
         "Only settings implements the AI Gateway's settings port (emergency stop and caps, G4; " +
-        'docs/design/domain/platform-ai.md section 8): its module file and its reader.',
+        'docs/design/domain/platform-ai.md section 8) and its rollback-notice port (G6e2): its ' +
+        'module file, its reader and its notice adapter.',
       severity: 'error',
       from: {
         pathNot: [
@@ -568,6 +569,7 @@ module.exports = {
           '^src/app\\.module\\.ts$',
           '^src/modules/settings/settings\\.module\\.ts$',
           '^src/modules/settings/application/ai-gateway-controls-reader\\.ts$',
+          '^src/modules/settings/application/ai-in-house-rollback-notices\\.ts$',
         ],
       },
       to: { path: '^src/platform/ai/gateway-controls\\.ts$' },

@@ -9,6 +9,7 @@ import type {
 import type { RecordSellerOrderNotices } from '../../application/use-cases/record-seller-order-notices.use-case';
 import {
   ADMIN_ASSISTANT_SPEND_CAP_NOTICE_SUBSCRIBER,
+  ADMIN_AI_IN_HOUSE_ROLLBACK_NOTICE_SUBSCRIBER,
   inAppNoticeSubscriptions,
   SELLER_NOTICE_SUBSCRIBERS,
 } from './in-app-notice.subscriptions';
@@ -192,5 +193,31 @@ describe('the assistant spend-cap notice subscription', () => {
     expect(found).toHaveLength(1);
     await found[0]!.handle({ payload: { cap: 'monthly' } } as never, delivery, context);
     expect(items).toEqual([{ kind: 'admin.assistant-spend-cap-reached', cap: 'monthly' }]);
+  });
+});
+
+describe('the in-house rollback notice subscription (G6e2)', () => {
+  it('turns the event into one admin notice carrying the task type, stage and reason only', async () => {
+    const items: unknown[] = [];
+    const all = inAppNoticeSubscriptions(
+      {} as RecordSellerOrderNotices,
+      {
+        execute: (_context: unknown, input: { item: unknown }) => {
+          items.push(input.item);
+          return Promise.resolve(ok({ code: 'notices.recorded', notices: 1 }));
+        },
+      } as unknown as RecordAdminReviewNotice,
+      {} as RecordSellerNotice,
+    );
+    const found = all.filter((item) => item.name === ADMIN_AI_IN_HOUSE_ROLLBACK_NOTICE_SUBSCRIBER);
+    expect(found).toHaveLength(1);
+    await found[0]!.handle(
+      { payload: { task: 'chat', stage: 'default', reason: 'errors' } } as never,
+      delivery,
+      context,
+    );
+    expect(items).toEqual([
+      { kind: 'admin.ai-in-house-rolled-back', task: 'chat', stage: 'default', reason: 'errors' },
+    ]);
   });
 });

@@ -1300,5 +1300,14 @@
       "area": "enumOf(people|money|delivery|catalogue|certification|marketplace|content|review-policy)",
       "ageDays": "integer"
     }
+  },
+  {
+    "type": "settings.ai-in-house-rolled-back.v1",
+    "aggregateType": "ai-in-house-rollback",
+    "fields": {
+      "task": "enumOf(chat|extract|write|vision)",
+      "stage": "enumOf(percent|default)",
+      "reason": "enumOf(errors|guard)"
+    }
   }
 ]

@@ -11,7 +11,10 @@ import { PrismaService } from '../src/platform/persistence/prisma.service';
 import { JobRegistry } from '../src/platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../src/platform/unit-of-work/unit-of-work';
 import { createTestApp } from './support/test-app';
-import { AI_GATEWAY_CONTROLS } from '../src/platform/ai/gateway-controls';
+import {
+  AI_GATEWAY_CONTROLS,
+  AI_IN_HOUSE_ROLLBACK_NOTICES,
+} from '../src/platform/ai/gateway-controls';
 import { SELLER_AI_SWITCH } from '../src/platform/ai/seller-ai-switch';
 import { testAppConfig } from './support/test-config';
 import type { MarketId } from '@mondapac/shared-kernel';
@@ -54,8 +57,11 @@ describe('AI Gateway wiring (platform-ai.md section 4; ADR-0019 decision 7)', ()
     @Module({})
     class NoSellerSwitch {}
     @Module({
-      providers: [{ provide: AI_GATEWAY_CONTROLS, useValue: {} }],
-      exports: [AI_GATEWAY_CONTROLS],
+      providers: [
+        { provide: AI_GATEWAY_CONTROLS, useValue: {} },
+        { provide: AI_IN_HOUSE_ROLLBACK_NOTICES, useValue: {} },
+      ],
+      exports: [AI_GATEWAY_CONTROLS, AI_IN_HOUSE_ROLLBACK_NOTICES],
     })
     class GatewayControls {}
     // Everything else AiModule needs is there (as stand-ins), so only the seller switch is missing.
@@ -102,5 +108,35 @@ describe('AI Gateway wiring (platform-ai.md section 4; ADR-0019 decision 7)', ()
       ],
     }).compile();
     await expect(build).rejects.toThrow(/AI_GATEWAY_CONTROLS|dependencies of the AiGateway/u);
+  });
+  it('fails boot when no module provides the rollback notices (G6e2)', async () => {
+    @Module({
+      providers: [{ provide: SELLER_AI_SWITCH, useValue: {} }],
+      exports: [SELLER_AI_SWITCH],
+    })
+    class SellerSwitch {}
+    @Module({
+      providers: [{ provide: AI_GATEWAY_CONTROLS, useValue: {} }],
+      exports: [AI_GATEWAY_CONTROLS],
+    })
+    class ControlsWithoutNotices {}
+    const present = [UNIT_OF_WORK, CLOCK, ID_GENERATOR, MarketRegistry, PrismaService, JobRegistry];
+    @Module({
+      providers: [
+        { provide: APP_CONFIG, useValue: testAppConfig() },
+        ...present.map((token) => ({ provide: token, useValue: {} })),
+      ],
+      exports: [APP_CONFIG, ...present],
+    })
+    class Config {}
+    const build = Test.createTestingModule({
+      imports: [
+        { module: Config, global: true },
+        AiModule.register(SellerSwitch, ControlsWithoutNotices),
+      ],
+    }).compile();
+    await expect(build).rejects.toThrow(
+      /AI_IN_HOUSE_ROLLBACK_NOTICES|dependencies of the InHouseRollback/u,
+    );
   });
 });

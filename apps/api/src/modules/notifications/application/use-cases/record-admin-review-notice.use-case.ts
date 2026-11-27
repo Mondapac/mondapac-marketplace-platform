@@ -16,6 +16,10 @@ import {
   ADMIN_SELLER_REINSTATED_HOLD_REMAINS,
   ADMIN_SELLER_REFUND_LIMIT_REACHED,
   ADMIN_ASSISTANT_SPEND_CAP_REACHED,
+  ADMIN_AI_IN_HOUSE_ROLLED_BACK,
+  type AI_IN_HOUSE_ROLLBACK_REASON_CODES,
+  type AI_IN_HOUSE_ROLLBACK_STAGE_CODES,
+  type AI_IN_HOUSE_ROLLBACK_TASK_CODES,
   type ASSISTANT_SPEND_CAPS,
   type AdminSystemRequestOverdueKind,
   type CERTIFICATE_SUBMISSIONS,
@@ -75,6 +79,12 @@ export type AdminReviewItem =
       readonly cap: (typeof ASSISTANT_SPEND_CAPS)[number];
     }
   | {
+      readonly kind: typeof ADMIN_AI_IN_HOUSE_ROLLED_BACK;
+      readonly task: (typeof AI_IN_HOUSE_ROLLBACK_TASK_CODES)[number];
+      readonly stage: (typeof AI_IN_HOUSE_ROLLBACK_STAGE_CODES)[number];
+      readonly reason: (typeof AI_IN_HOUSE_ROLLBACK_REASON_CODES)[number];
+    }
+  | {
       readonly kind: typeof ADMIN_REVIEW_HELD | typeof ADMIN_REVIEW_REPORTED;
       readonly reviewId: string;
     }
@@ -122,6 +132,8 @@ function paramsOf(item: AdminReviewItem): Readonly<Record<string, string | numbe
       return { sellerId: item.sellerId, limit: item.limit };
     case ADMIN_ASSISTANT_SPEND_CAP_REACHED:
       return { cap: item.cap };
+    case ADMIN_AI_IN_HOUSE_ROLLED_BACK:
+      return { task: item.task, stage: item.stage, reason: item.reason };
     case ADMIN_REVIEW_HELD:
     case ADMIN_REVIEW_REPORTED:
       return { reviewId: item.reviewId };
@@ -137,8 +149,8 @@ function paramsOf(item: AdminReviewItem): Readonly<Record<string, string | numbe
  * permission when they read. From the subscriptions on `certification.seller-certification-
  * submitted.v1`, `catalog.product-revision-submitted.v1`, `sellers.business-file-submitted.v1` and
  * `pricing.price-hold-opened.v1`, `commission-payouts.seller-reinstated-hold-remains.v1` and
- * `shipping.delivery-fallback-over-cap.v1`, `ordering.seller-refund-limit-reached.v1` and
- * `assistant.spend-cap-reached.v1`. A product revision makes a notice only while it is still
+ * `shipping.delivery-fallback-over-cap.v1`, `ordering.seller-refund-limit-reached.v1`,
+ * `assistant.spend-cap-reached.v1` and `settings.ai-in-house-rolled-back.v1`. A product revision makes a notice only while it is still
  * pending (a seller revision may publish at once, and a platform one is the admins' own); this is
  * read through catalog before the unit. Written in the inbox unit, so a repeated delivery adds
  * nothing; the Market's oldest admin notices of the same kind beyond the cap leave in the same
