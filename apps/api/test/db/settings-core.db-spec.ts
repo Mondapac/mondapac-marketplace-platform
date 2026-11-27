@@ -337,6 +337,8 @@ describe.each(TEST_MARKETS)('settings in market %s (database)', (code) => {
         inHouse: {
           tasks: { chat: OFF_PAGE, extract: OFF_PAGE, write: OFF_PAGE, vision: OFF_PAGE },
           rollback: { errorsPermille: 20, guardPermille: 10, minSample: 200 },
+          // No stage, model or rollout row: no task changed (G6d3).
+          changedAt: {},
         },
       });
       expect(

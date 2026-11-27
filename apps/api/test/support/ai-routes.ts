@@ -1,10 +1,13 @@
+import { Temporal } from '@mondapac/shared-kernel';
 import type { Clock } from '@mondapac/shared-kernel';
 import { CapabilityRegistry } from '../../src/platform/ai/capability-registry';
 import { EvaluationSuiteRegistry } from '../../src/platform/ai/evaluations/evaluation-suite';
+import { InHouseRollback } from '../../src/platform/ai/own-model/in-house-rollback';
 import {
   InHouseRollout,
   type InHouseHealthCheck,
 } from '../../src/platform/ai/own-model/in-house-rollout';
+import { InMemoryAiUsageStore, InMemoryAiUsageUnitOfWork, testIds } from './in-memory-ai-usage';
 import { InHouseShadow, type ShadowSampler } from '../../src/platform/ai/own-model/in-house-shadow';
 import type { ShadowApprovals } from '../../src/platform/ai/own-model/in-house-stage';
 import type { CapabilitySpec } from '../../src/platform/ai/capability';
@@ -120,21 +123,49 @@ export function testShadow(
 /**
  * The gateway's percent and default stages for a unit test (G6d2): by default no in-house row is
  * healthy and no call is in the percent share, so no live call reaches the in-house model. A test
- * of the live stages passes its health and sampler.
+ * of the live stages passes its health, sampler and suites.
  */
 export function testRollout(
   router: AiRouter,
   options: {
+    readonly capabilities?: CapabilityRegistry;
+    readonly suites?: EvaluationSuiteRegistry;
     readonly approvals?: ShadowApprovals;
     readonly health?: InHouseHealthCheck;
     readonly sampler?: ShadowSampler;
   } = {},
 ): InHouseRollout {
+  const suites =
+    options.suites ?? new EvaluationSuiteRegistry(options.capabilities ?? new CapabilityRegistry());
   return new InHouseRollout(
     router,
+    suites,
     options.health ?? { healthy: () => false },
     options.approvals ?? {},
     options.sampler ?? { take: () => false },
+  );
+}
+
+/**
+ * The gateway's auto-rollback for a unit test (G6d3): on the test's in-memory usage store when
+ * given (so a test sees the rows it judges), else on a store of its own with no rollback.
+ */
+export function testRollback(
+  router: AiRouter,
+  options: {
+    readonly store?: InMemoryAiUsageStore;
+    readonly clock?: Clock;
+    readonly capabilities?: CapabilityRegistry;
+  } = {},
+): InHouseRollback {
+  const store = options.store ?? new InMemoryAiUsageStore();
+  return new InHouseRollback(
+    new InMemoryAiUsageUnitOfWork(store),
+    store,
+    options.clock ?? { now: () => Temporal.Now.instant() },
+    testIds,
+    router,
+    options.capabilities ?? new CapabilityRegistry(),
   );
 }
 

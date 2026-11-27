@@ -2,10 +2,10 @@
   "id": "FE-20261126-ai-gateway-in-house-call-time-recheck",
   "area": "assistant",
   "title": "درگاه AI: بررسی دوبارهٔ مرحلهٔ مدل اختصاصی در هر فراخوانی",
-  "desc": "در G6b بررسی‌های سرور فقط هنگام ذخیرهٔ تنظیمات اجرا می‌شوند. G6c برای shadow انجام داد: مرحله فقط از inHouseStageInForce خوانده می‌شود و مسیر مدل اختصاصی در هر فراخوانی با AiRouter.inHousePlan دوباره بررسی می‌شود (آزمون پذیرش: مدل بازنشسته، ارزیابی‌نشده، بی‌کلید، بیرون از منطقه یا بی‌بررسی حسن هیچ فراخوانی shadow نمی‌فرستد). مانده برای G6d: همین برای percent و default، و حدها فقط از rollbackLimitsInForce (حسن، بازبینی G6b، یافتهٔ ۲؛ محمد، یافتهٔ ۱). G6d2 (۲۷ نوامبر ۲۰۲۶) همین را برای percent و default ساخت: مرحله فقط از inHouseStageInForce و مسیر با AiRouter.inHousePlan در هر فراخوانی، به‌اضافهٔ سلامت ردیف (G6d1)؛ آزمون پذیرش in-house-rollout.spec.ts. خواندن حدها فقط از rollbackLimitsInForce با G6d3 می‌آید.",
+  "desc": "در G6b بررسی‌های سرور فقط هنگام ذخیرهٔ تنظیمات اجرا می‌شوند. G6c برای shadow انجام داد: مرحله فقط از inHouseStageInForce خوانده می‌شود و مسیر مدل اختصاصی در هر فراخوانی با AiRouter.inHousePlan دوباره بررسی می‌شود (آزمون پذیرش: مدل بازنشسته، ارزیابی‌نشده، بی‌کلید، بیرون از منطقه یا بی‌بررسی حسن هیچ فراخوانی shadow نمی‌فرستد). مانده برای G6d: همین برای percent و default، و حدها فقط از rollbackLimitsInForce (حسن، بازبینی G6b، یافتهٔ ۲؛ محمد، یافتهٔ ۱). G6d2 (۲۷ نوامبر ۲۰۲۶) همین را برای percent و default ساخت: مرحله فقط از inHouseStageInForce و مسیر با AiRouter.inHousePlan در هر فراخوانی، به‌اضافهٔ سلامت ردیف (G6d1)؛ آزمون پذیرش in-house-rollout.spec.ts. خواندن حدها فقط از rollbackLimitsInForce با G6d3 می‌آید. G6d3 (۲۷ نوامبر ۲۰۲۶) بخش آخر را ساخت: بازگشت خودکار حدها را فقط از rollbackLimitsInForce می‌خواند (own-model/in-house-rollback.ts).",
   "src": "docs/design/domain/platform-ai.md (Built in G6b, Built in G6c)",
   "date": "2026-11-26",
   "trig": "در G6d پیش از مسیریابی percent و default",
   "prio": "بالا",
-  "status": "موکول"
+  "status": "انجام‌شد"
 }

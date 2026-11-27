@@ -1277,6 +1277,12 @@ reserved to that folder by `scripts/check-prisma-boundaries.mjs`, `AI_USAGE_TABL
   comparison read decides on a partial index after EXPLAIN (FE-20261126-ai-gateway-shadow-metrics-read).
   Rolling back deletes the shadow rows first. A shadow call adds only its cost to `ai_usage_days`
   (no call, failure, token or latency count), so a day row's cost can include shadow cost.
+- G6d3 (migration `20261127060000_platform_ai_in_house_rollbacks`): `ai_in_house_rollbacks`
+  (PK `(market_id, id)`, index `(market_id, task, rolled_back_at DESC)`; task type, family, stage,
+  reason, counts and limits in force, numbers only) is inserted once and never changed (SELECT,
+  INSERT); a few rows per Market. The `ai_calls` CHECK now allows `output_check` on any `ok` call,
+  so a served in-house call keeps its check; `servedTotals` reads one hour of one Market on the
+  `(market_id, occurred_at, id)` range with `shadow = false`.
 - Locking: one unit takes the counter rows in the fixed order most specific first (seller or
   guest pool, capability, Market day, Market month), so two units never wait in a cycle and the
   Market rows every call shares are locked last, just before the commit. Reserve inserts its

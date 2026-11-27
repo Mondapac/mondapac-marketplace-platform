@@ -12,6 +12,7 @@ import {
   testInHouseRoute,
   testRouteCatalogue,
   testRouter,
+  testRollback,
   testRollout,
   testShadow,
 } from '../../../../test/support/ai-routes';
@@ -286,6 +287,7 @@ describe.each(['AU', 'ZZ'])('in-house shadow runs (G6c) in %s', (code) => {
       controls,
       shadow,
       testRollout(router),
+      testRollback(router),
     );
   };
 

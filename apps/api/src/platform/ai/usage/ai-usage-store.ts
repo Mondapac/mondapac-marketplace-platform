@@ -2,8 +2,8 @@ import type { MarketContext, Temporal } from '@mondapac/shared-kernel';
 
 /**
  * The storage of the AI Gateway's usage and budget (docs/design/domain/platform-ai.md section 10):
- * the tables `platform.ai_calls`, `ai_usage_days`, `ai_budget_counters` and
- * `ai_budget_reservations`. Implemented by `platform/persistence/ai-usage/` and bound only by
+ * the tables `platform.ai_calls`, `ai_usage_days`, `ai_budget_counters`,
+ * `ai_budget_reservations` and, from G6d3, `ai_in_house_rollbacks`. Implemented by `platform/persistence/ai-usage/` and bound only by
  * `AiModule` (`PersistenceModule.aiUsageStore()`); no module reaches it. Every method runs in the
  * caller's unit, for that unit's Market.
  */
@@ -117,6 +117,31 @@ export interface AiUsageStore {
     leaveOut: string,
   ): Promise<readonly CapabilityTokenTotals[]>;
 
+  /**
+   * The Market's served (not shadow) calls of `provider` on one of `models` for one of
+   * `capabilities` from `since` (included) (G6d3, the auto-rollback's window): how many, how many
+   * did not end `ok`, and how many answers the capability's own check guard-rejected. A range on
+   * the index (market_id, occurred_at, id), at most one hour. Read-only unit is enough.
+   */
+  servedTotals(
+    market: MarketContext,
+    provider: string,
+    models: readonly string[],
+    capabilities: readonly string[],
+    since: Temporal.Instant,
+  ): Promise<ServedTotals>;
+
+  /** Records an auto-rollback of a live in-house stage (G6d3). Read-write unit. */
+  addInHouseRollback(market: MarketContext, rollback: InHouseRollbackRecord): Promise<void>;
+
+  /**
+   * The latest auto-rollback of each task type of the Market (G6d3), by task type; a task type
+   * without one is left out. Read-only unit is enough.
+   */
+  latestInHouseRollbacks(
+    market: MarketContext,
+  ): Promise<Readonly<Partial<Record<string, Temporal.Instant>>>>;
+
   /** Deletes up to `limit` calls that occurred before `before`, oldest first; answers how many. */
   purgeCalls(market: MarketContext, before: Temporal.Instant, limit: number): Promise<number>;
 
@@ -203,7 +228,10 @@ export interface CallRecord {
    * is still known). Null outside a sample.
    */
   readonly shadowSample: string | null;
-  /** The capability's own check of the answer, on the calls of a shadow sample (G6c); else null. */
+  /**
+   * The capability's own check of the answer, on the calls of a shadow sample (G6c) and of a live
+   * in-house call (G6d3); else null.
+   */
   readonly outputCheck: OutputCheck | null;
 }
 
@@ -268,4 +296,30 @@ export interface CapabilityTokenTotals {
   readonly calls: number;
   readonly inputTokens: number;
   readonly outputTokens: number;
+}
+
+/** Served calls of a model in a window (G6d3): the auto-rollback's counts. */
+export interface ServedTotals {
+  readonly calls: number;
+  /** Calls whose outcome is not `ok`. */
+  readonly failures: number;
+  /** `ok` calls whose answer the capability's own check guard-rejected. */
+  readonly guardRejected: number;
+}
+
+/** One auto-rollback of a live in-house stage (G6d3; `platform.ai_in_house_rollbacks`). */
+export interface InHouseRollbackRecord {
+  /** UUIDv7. */
+  readonly id: string;
+  readonly task: string;
+  readonly family: string;
+  readonly stage: 'percent' | 'default';
+  readonly reason: 'errors' | 'guard';
+  readonly calls: number;
+  readonly failures: number;
+  readonly guardRejected: number;
+  readonly errorsLimitPermille: number;
+  readonly guardLimitPermille: number;
+  readonly minSample: number;
+  readonly rolledBackAt: Temporal.Instant;
 }

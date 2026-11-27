@@ -20,6 +20,7 @@ import { ModelGateway } from './model-gateway';
 import { AiRouter, planPrice } from './routing/ai-router';
 import type { ModelRequest } from './model-provider';
 import type { ModelTokenPrice } from './catalogue/route-catalogue';
+import { InHouseRollback } from './own-model/in-house-rollback';
 import { InHouseRollout, livePlan } from './own-model/in-house-rollout';
 import { InHouseShadow, type ShadowSample } from './own-model/in-house-shadow';
 import { maskRequest } from './personal-data-masker';
@@ -190,6 +191,7 @@ export class AiGateway {
     @Inject(AI_GATEWAY_CONTROLS) private readonly controls: AiGatewayControls,
     private readonly shadow: InHouseShadow,
     private readonly rollout: InHouseRollout,
+    private readonly rollback: InHouseRollback,
   ) {}
 
   /**
@@ -329,7 +331,16 @@ export class AiGateway {
     const external = this.router.plan(marketId, spec, saver, models);
     // Percent and default (G6d2): the in-house model answers a share of the calls, or all of them,
     // with the external list as its fallback, through healthy routes checked again now.
-    const live = this.rollout.live(marketId, spec, controls.inHouse, options.turnId);
+    let live = this.rollout.live(marketId, spec, sent, controls.inHouse, options.turnId);
+    // The auto-rollback (G6d3): a task type rolled back since its settings last changed is held
+    // off, and a read that fails holds it off too (fail closed).
+    if (live !== null) {
+      try {
+        if (await this.rollback.heldOff(market, spec.task, controls.inHouse)) live = null;
+      } catch {
+        live = null;
+      }
+    }
     const plan = live === null ? external : livePlan(live.routes, external);
     // Shadow (G6c): decided before the external call, so both calls of the sample carry the
     // capability's own check of their answer. A task type has one stage, so a live call is never
@@ -355,9 +366,14 @@ export class AiGateway {
         sent,
         timeoutMs,
         ...(shadow === null ? {} : { sample: shadow.id, check: shadow.check }),
+        ...(live?.check === undefined ? {} : { check: live.check }),
       });
       // Only once the external call was sent (not refused, not over budget): the same masked
       // request, never awaited, its answer dropped (design section 6, "Shadow mode").
+      // A live call is judged after it (in the background, at most every 30 s per task type).
+      if (live !== null && last !== null) {
+        this.rollback.judge(market, spec.task, live.stage, live.family, controls.inHouse);
+      }
       if (shadow !== null && last !== null) {
         started = true;
         this.shadow.start(shadow, capability, marketId, () =>

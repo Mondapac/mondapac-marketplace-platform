@@ -1,4 +1,4 @@
-import type { CallContext } from '@mondapac/shared-kernel';
+import type { CallContext, Temporal } from '@mondapac/shared-kernel';
 import type { CapabilityTask } from './capability';
 import type { InHouseTaskPage, RollbackLimits } from './own-model/in-house-settings';
 
@@ -85,6 +85,12 @@ export const NO_MODEL_LISTS: AiModelLists = Object.freeze({
 export interface AiInHouseControls {
   readonly tasks: Readonly<Partial<Record<CapabilityTask, InHouseTaskPage>>>;
   readonly rollback: RollbackLimits;
+  /**
+   * When an admin last changed each task type's stage, model or percent share (G6d3): an
+   * auto-rollback holds the task type's live stage off until a change after it, and the rates are
+   * counted from it. A task type never changed is left out.
+   */
+  readonly changedAt?: Readonly<Partial<Record<CapabilityTask, Temporal.Instant>>>;
 }
 
 /** Every task type off, the rollback limits at the tightest. */

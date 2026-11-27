@@ -16,6 +16,7 @@ import {
   passesFor,
   testRouteCatalogue,
   testRouter,
+  testRollback,
   testRollout,
   testShadow,
 } from '../../../../test/support/ai-routes';
@@ -116,6 +117,7 @@ describe('GatewayDescriptionWriterModel on the real AiGateway (AIS-03; ADR-0019 
       controls,
       testShadow(router),
       testRollout(router),
+      testRollback(router),
     );
     return new GatewayDescriptionWriterModel(gateway);
   };

@@ -191,6 +191,12 @@ export class AiRouter {
     return this.catalogue.externalFamilies();
   }
 
+  /** The exact model version ids of an in-house family's rows (G6d3, the auto-rollback's count). */
+  inHouseModelsOf(family: string): string[] {
+    if (!this.catalogue.isInHouse(family)) return [];
+    return [...new Set(this.catalogue.routesOf(family).map((row) => row.model))];
+  }
+
   /** The in-house model's families, sorted: reached only through its stages (G6b onwards). */
   inHouseFamilies(): string[] {
     return this.catalogue.families().filter((family) => this.catalogue.isInHouse(family));

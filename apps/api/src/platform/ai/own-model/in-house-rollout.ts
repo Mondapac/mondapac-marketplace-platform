@@ -3,8 +3,11 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { MarketId } from '@mondapac/shared-kernel';
 import type { CapabilitySpec } from '../capability';
 import type { RouteRow } from '../catalogue/route-catalogue';
+import { EvaluationSuiteRegistry } from '../evaluations/evaluation-suite';
 import type { AiInHouseControls } from '../gateway-controls';
+import type { ModelRequest, ModelTurn } from '../model-provider';
 import { AiRouter, MAX_ATTEMPTS, type PlannedRoute } from '../routing/ai-router';
+import type { OutputCheck } from '../usage/ai-usage-store';
 import type { ShadowSampler } from './in-house-shadow';
 import {
   AI_SHADOW_APPROVALS,
@@ -27,13 +30,15 @@ export const AI_ROLLOUT_SAMPLER = Symbol('AI_ROLLOUT_SAMPLER');
 const LIVE_STAGES: readonly InHouseStage[] = ['percent', 'default'];
 
 /**
- * A call the in-house model answers (G6d): its stage and its healthy in-house routes, tried first.
- * The capability's own check of the answer joins in G6d3 (with the auto-rollback, which counts it;
- * the `ai_calls` CHECK keeps `output_check` to shadow samples until then).
+ * A call the in-house model answers (G6d): its stage, family and healthy in-house routes, tried
+ * first, and the capability's own check of an answer when its evaluation suite has one (kept on
+ * each row of the call, so the auto-rollback counts guard rejections; G6d3).
  */
 export interface LiveInHouse {
   readonly stage: 'percent' | 'default';
+  readonly family: string;
   readonly routes: readonly PlannedRoute[];
+  readonly check?: (turn: ModelTurn) => OutputCheck;
 }
 
 /**
@@ -78,6 +83,7 @@ export class InHouseRollout {
 
   constructor(
     private readonly router: AiRouter,
+    private readonly suites: EvaluationSuiteRegistry,
     @Inject(AI_IN_HOUSE_HEALTH) private readonly health: InHouseHealthCheck,
     @Inject(AI_SHADOW_APPROVALS) private readonly approvals: ShadowApprovals,
     @Inject(AI_ROLLOUT_SAMPLER) private readonly sampler: ShadowSampler,
@@ -87,6 +93,7 @@ export class InHouseRollout {
   live(
     marketId: MarketId,
     spec: CapabilitySpec,
+    sent: ModelRequest,
     inHouse: AiInHouseControls,
     turnId: string | undefined,
   ): LiveInHouse | null {
@@ -107,7 +114,15 @@ export class InHouseRollout {
         .inHousePlan(marketId, spec, page.family!)
         .filter((route) => this.health.healthy(marketId, route.row));
       if (routes.length === 0) return null;
-      return { stage, routes };
+      const suite = this.suites.get(spec.id);
+      return {
+        stage,
+        family: page.family!,
+        routes,
+        ...(suite?.shadow === undefined
+          ? {}
+          : { check: (turn: ModelTurn) => suite.shadow!(sent, turn) }),
+      };
     } catch {
       this.#logger.warn({ msg: 'ai.in-house.live-failed', capability: spec.id, marketId });
       return null;

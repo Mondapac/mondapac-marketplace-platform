@@ -347,7 +347,8 @@ ADR-0026 decision 9 and ADR-0042 decision 7, so ADR-0053 supersedes those points
 - **Stage per task type:** off, shadow (metrics only), percent, or default. In default the in-house
   model is first in the priority list and external models are its fallback.
 - **Auto rollback.** In percent or default, if the error rate or guard-rejection rate passes the
-  limit the admin set, the gateway returns to external models by itself and tells the admin. The
+  limit the admin set, the gateway returns to external models by itself and tells the admin
+  (built in G6d3, below). The
   server has a ceiling for these limits (for example 5 %) and a minimum sample size. Tightening a
   limit needs no confirmation; loosening one needs TOTP.
 - **Roll back to the previous version:** one button, if that version passed its evaluation.
@@ -491,8 +492,33 @@ ADR-0026 decision 9 and ADR-0042 decision 7, so ADR-0053 supersedes those points
   samples. `status` and the capability cap read count the in-house routes in the most
   a call can cost. Unlike shadow, no extra owner approval of data categories is asked: the call
   goes to one model, under the same readiness conditions as an external route (ADR-0052 decision
-  3). The auto-rollback (G6d3) merges before any in-house catalogue row is added; until then the
+  3). Hassan confirmed this reading in his G6d2 review: ADR-0052 decision 6 asks the owner's
+  approval only for shadow, the extra copy, and percent and default need none beyond decision 3
+  (recorded here, as an Accepted ADR is changed only by a superseding one). The auto-rollback (G6d3) merges before any in-house catalogue row is added; until then the
   catalogue has none, so every stage but off is refused and AI stays off.
+- **Built in G6d3 (auto-rollback).** After a call the in-house model was chosen to answer,
+  `InHouseRollback.judge` (`own-model/in-house-rollback.ts`) counts, in the background and at most
+  every 30 s per Market and task type on one instance, the task type's served (not shadow)
+  in-house calls of the last hour, counted only from the task type's last settings change (stage,
+  model or percent share), on the family's model versions and the task type's capabilities
+  (`AiUsageStore.servedTotals`, a range on the `ai_calls` index of at most an hour). On at least
+  the minimum sample, an error rate (calls not `ok`) or a guard-rejection rate (answers the
+  capability's own check marked `guard-rejected`, now kept on served in-house calls too: the
+  `ai_calls` CHECK no longer asks for a shadow sample) strictly above its limit records a rollback
+  in `platform.ai_in_house_rollbacks` (task type, family, stage, reason, the counts and the limits
+  in force; numbers only, inserted once, never changed) and logs `ai.in-house.rolled-back` for the
+  operators. The limits are read only through `rollbackLimitsInForce`. Before routing a live call
+  the gateway asks `heldOff`: a task type whose latest rollback is later than its settings' last
+  change (`AiInHouseControls.changedAt`, from settings' rows) is served as off, so its calls go to
+  the external models, until an admin changes that task type's stage, model or share after the
+  rollback (a raise needs the step-up, G6b). One instance reads a Market's rollbacks at most every
+  10 s and holds its own rollback at once; a read that fails holds every live stage off (fail
+  closed). Only numbers feed the rule, never a model's text (R2). A capability whose evaluation
+  suite has no output check produces no guard rejections, so only its error rate can roll it back.
+  The minimum sample is at least 100 served calls in the window, so a low-traffic Market may never
+  reach a verdict; its calls still fall back to the external models on any failure
+  (FE-20261127-ai-gateway-in-house-rollback-low-traffic). Telling the admin in the panel
+  and by notification is G6e's (FE-20261127-ai-gateway-in-house-rollback-notice).
 - **In-house route readiness (before any stage other than off).** All of these must hold, else
   every stage stays off (ADR-0052 decision 3, ADR-0053 decision 3): (1) a PR adds the row:
   endpoint, region, exact model version id, the price the platform counts it at, retirement day;
