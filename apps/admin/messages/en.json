@@ -9441,6 +9441,7 @@
       "seller-refund-limit-reached": "{limit, select, count {A seller reached the <strong>refund count limit</strong>} amount {A seller reached the <strong>refund amount limit</strong>} unset {A seller tried to refund with <strong>no refund limit set</strong>} other {A seller reached a <strong>refund limit</strong>}}",
       "system-request-overdue": "<strong>SR-{number}</strong> has waited {ageDays, plural, one {# day} other {# days}} for review",
       "assistant-spend-cap-reached": "{cap, select, daily {The shopping assistant reached its <strong>daily spend cap</strong> and is switched off until tomorrow} monthly {The shopping assistant reached its <strong>monthly spend cap</strong> and is switched off until next month} other {The shopping assistant reached a <strong>spend cap</strong> and is switched off}}",
+      "ai-in-house-rolled-back": "{task, select, chat {Chat} extract {Extract} write {Write} vision {Vision} other {An AI task}}: the in-house model was <strong>rolled back</strong> from {stage, select, percent {Percent} default {Default} other {a live stage}} because {reason, select, errors {its error rate passed the limit} guard {too many of its answers were rejected} other {a limit was passed}}. Calls go to the external models until you change its settings",
       "offer-queue-backlog": "{reason, select, age {The <strong>Offer review queue</strong> is behind: the oldest Offer has waited {hours, plural, one {# business hour} other {# business hours}}} size {The <strong>Offer review queue</strong> is behind: {count, plural, one {# Offer is} other {# Offers are}} waiting} both {The <strong>Offer review queue</strong> is behind: {count, plural, one {# Offer is} other {# Offers are}} waiting, the oldest for {hours, plural, one {# business hour} other {# business hours}}} other {The <strong>Offer review queue</strong> is behind. Open the queue to check}}"
     },
     "category": {
@@ -9454,7 +9455,8 @@
       "other": "Other",
       "system-requests": "System requests",
       "assistant": "Shopping assistant",
-      "offer-queue": "Offer review queue"
+      "offer-queue": "Offer review queue",
+      "ai-models": "AI models"
     },
     "empty": {
       "unread": {
@@ -14948,6 +14950,18 @@
       "retry": "Try again",
       "invalid": "A choice isn't allowed. Check the stages, models, shares and limits.",
       "in-force": "Stage in force:",
+      "rolled-back": {
+        "title-held": "Rolled back: the external models are answering",
+        "title-past": "Rolled back earlier",
+        "badge": "Off, rolled back from {stage}",
+        "what": "{family} was rolled back from {stage} on {when}.",
+        "reason": {
+          "errors": "Its error rate passed the limit: {count, number} of {calls, number} calls in the last hour failed, over the {limit}% limit (judged from {sample, number} calls).",
+          "guard": "Too many answers were rejected by the feature's own check: {count, number} of {calls, number} calls in the last hour, over the {limit}% limit (judged from {sample, number} calls)."
+        },
+        "held": "Calls stay on the external models until an admin changes this task's stage, model or share.",
+        "past": "An admin has changed this task's settings since, so the rollback no longer holds."
+      },
       "no-model": {
         "title": "No in-house model is connected yet",
         "body": "Every stage stays off until a pull request adds the model's route and it passes its evaluation. You can still set the rollback limits."

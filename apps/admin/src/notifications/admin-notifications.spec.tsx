@@ -412,6 +412,44 @@ describe('AdminNotifications assistant spend cap notice', () => {
   });
 });
 
+describe('AdminNotifications in-house rollback notice', () => {
+  it('words the task, stage and reason and links to the AI models settings', async () => {
+    const items = [
+      notice(NEW, {
+        kind: 'admin.ai-in-house-rolled-back',
+        params: { task: 'chat', stage: 'default', reason: 'errors' },
+      }),
+      notice(OLD, {
+        kind: 'admin.ai-in-house-rolled-back',
+        params: { task: 'vision', stage: 'percent', reason: 'guard' },
+      }),
+    ];
+    counts = [{ unread: 2, newest: items[0]! }];
+    call.mockImplementation((method, path) =>
+      Promise.resolve(
+        path.endsWith('/unread-count') || method === 'POST'
+          ? answer(path, method)
+          : { ok: true as const, status: 200, body: { items, next: null } },
+      ),
+    );
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Notifications, 2 unread' }));
+    const chat = await screen.findByRole('link', {
+      name: /Chat: the in-house model was rolled back from Default because its error rate passed the limit/,
+    });
+    expect(chat.getAttribute('href')).toBe('/settings/ai-models');
+    expect(
+      screen.getByRole('link', {
+        name: /Vision: .* from Percent because too many of its answers were rejected/,
+      }),
+    ).toBeTruthy();
+  });
+
+  it('shows the bell to an admin who manages AI models', () => {
+    expect(showsNoticeBell(['settings.ai-models.manage'])).toBe(true);
+  });
+});
+
 describe('AdminNotifications Offer queue backlog notice', () => {
   it('words each reason and links to the Offers tab of the review queue', async () => {
     const items = [

@@ -62,9 +62,67 @@ export interface InHouseOption {
   readonly problem: string | null;
 }
 
+/** A task type's latest auto-rollback (G6e2): numbers and codes only; the limits are tenths of a percent. */
+export interface InHouseRollback {
+  readonly task: string;
+  readonly family: string;
+  readonly stage: string;
+  readonly reason: 'errors' | 'guard';
+  readonly calls: number;
+  readonly failures: number;
+  readonly guardRejected: number;
+  readonly errorsLimitPermille: number;
+  readonly guardLimitPermille: number;
+  readonly minSample: number;
+  readonly rolledBackAt: string;
+  /** True until an admin changes the task type's stage, model or share after the rollback. */
+  readonly heldOff: boolean;
+}
+
 export interface InHouseAnswer {
   readonly settings: readonly GatewaySetting[];
   readonly options: Readonly<Record<string, readonly InHouseOption[]>>;
+  /** The latest rollback of each task type that has one. */
+  readonly rollbacks: readonly InHouseRollback[];
+}
+
+const NUMBER_FIELDS = [
+  'calls',
+  'failures',
+  'guardRejected',
+  'errorsLimitPermille',
+  'guardLimitPermille',
+  'minSample',
+] as const;
+
+function rollbackOf(item: unknown): InHouseRollback | null {
+  if (!isRecord(item)) return null;
+  const { task, family, stage, reason, rolledBackAt, heldOff } = item;
+  if (
+    typeof task !== 'string' ||
+    typeof family !== 'string' ||
+    typeof stage !== 'string' ||
+    (reason !== 'errors' && reason !== 'guard') ||
+    typeof rolledBackAt !== 'string' ||
+    typeof heldOff !== 'boolean' ||
+    NUMBER_FIELDS.some((field) => typeof item[field] !== 'number')
+  ) {
+    return null;
+  }
+  return {
+    task,
+    family,
+    stage,
+    reason,
+    rolledBackAt,
+    heldOff,
+    calls: item['calls'] as number,
+    failures: item['failures'] as number,
+    guardRejected: item['guardRejected'] as number,
+    errorsLimitPermille: item['errorsLimitPermille'] as number,
+    guardLimitPermille: item['guardLimitPermille'] as number,
+    minSample: item['minSample'] as number,
+  };
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -87,7 +145,18 @@ export function inHouseAnswerOf(value: unknown): InHouseAnswer | null {
     }
     options[task] = rows;
   }
-  return { settings, options };
+  // An answer without the field (an older API) shows no banner; a malformed row fails the load.
+  const rollbacks: InHouseRollback[] = [];
+  const raw = value['rollbacks'];
+  if (raw !== undefined) {
+    if (!Array.isArray(raw)) return null;
+    for (const item of raw as unknown[]) {
+      const row = rollbackOf(item);
+      if (row === null) return null;
+      rollbacks.push(row);
+    }
+  }
+  return { settings, options, rollbacks };
 }
 
 /** The value in force for a code: the stored one, or the API's default. */

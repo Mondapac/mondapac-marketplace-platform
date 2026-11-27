@@ -67,6 +67,22 @@ const RETIRED = {
   },
 };
 
+const ROLLBACK = {
+  task: 'write',
+  family: 'mondapac-1',
+  stage: 'percent',
+  reason: 'errors',
+  calls: 400,
+  failures: 120,
+  guardRejected: 3,
+  errorsLimitPermille: 200,
+  guardLimitPermille: 100,
+  minSample: 200,
+  rolledBackAt: '2026-11-27T10:00:00.000Z',
+  heldOff: true,
+};
+const ROLLED_BACK = { ...WITH_MODEL, rollbacks: [ROLLBACK] };
+
 const view = (body: unknown, canManage = true) => {
   call.mockImplementation((method: string) => (method === 'GET' ? ok(body) : ok({ settings: [] })));
   return render(
@@ -237,5 +253,51 @@ describe('Mondapac Intelligence tab', () => {
     call.mockImplementation(() => ok(EMPTY));
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByText('No in-house model is connected yet')).toBeTruthy();
+  });
+
+  it('shows a rollback banner and an off badge while the rollback holds', async () => {
+    view(ROLLED_BACK);
+    expect(await screen.findByText('Rolled back: the external models are answering')).toBeTruthy();
+    expect(screen.getByText(/mondapac-1 was rolled back from Percent on /)).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Its error rate passed the limit: 120 of 400 calls .* over the 20\.0% limit/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/Calls stay on the external models until an admin changes/),
+    ).toBeTruthy();
+    expect(screen.getByText('Off, rolled back from Percent')).toBeTruthy();
+    expect(screen.queryByText('Rolled back earlier')).toBeNull();
+  });
+
+  it('words a guard rollback and shows the other task types without a banner', async () => {
+    view({ ...WITH_MODEL, rollbacks: [{ ...ROLLBACK, reason: 'guard', stage: 'default' }] });
+    expect(await screen.findByText(/3 of 400 calls .* over the 10\.0% limit/)).toBeTruthy();
+    expect(screen.getAllByText(/was rolled back from/)).toHaveLength(1);
+  });
+
+  it('shows an earlier rollback as past once an admin changed the task', async () => {
+    view({ ...WITH_MODEL, rollbacks: [{ ...ROLLBACK, heldOff: false }] });
+    expect(await screen.findByText('Rolled back earlier')).toBeTruthy();
+    expect(screen.getByText(/the rollback no longer holds/)).toBeTruthy();
+    expect(screen.queryByText(/Off, rolled back from/)).toBeNull();
+    expect(screen.getByText('Percent', { selector: 'span' })).toBeTruthy();
+  });
+
+  it('keeps the badge plain off when a held-off task is already off', async () => {
+    view({
+      ...EMPTY,
+      rollbacks: [{ ...ROLLBACK, heldOff: true }],
+    });
+    expect(await screen.findByText('Rolled back: the external models are answering')).toBeTruthy();
+    expect(screen.queryByText(/Off, rolled back from/)).toBeNull();
+  });
+
+  it('fails the load on a malformed rollback and accepts an answer without the field', () => {
+    expect(inHouseAnswerOf({ ...EMPTY, rollbacks: [{ task: 'chat' }] })).toBeNull();
+    expect(inHouseAnswerOf({ ...EMPTY, rollbacks: 'x' })).toBeNull();
+    expect(inHouseAnswerOf(EMPTY)?.rollbacks).toEqual([]);
+    expect(inHouseAnswerOf({ ...EMPTY, rollbacks: [ROLLBACK] })?.rollbacks).toHaveLength(1);
   });
 });
