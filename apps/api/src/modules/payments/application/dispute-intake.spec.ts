@@ -397,7 +397,9 @@ describe.each([
     it('tries again later when Stripe cannot be reached, and gives up on a refusal', async () => {
       reader.answer = err({ code: 'payment.provider-unavailable' });
       expect(await deliver(disputeEvent({ id: 'evt_dp_1' }))).toEqual(ok('recorded'));
-      expect(await apply.execute(system, {})).toEqual(ok({ applied: 0, retried: 1, problems: [] }));
+      expect(await apply.execute(system, {})).toEqual(
+        ok({ applied: 0, retried: 1, threw: 0, problems: [] }),
+      );
       expect(inbox.get(code, 'evt_dp_1')).toMatchObject({ processedAt: null, attempts: 1 });
 
       expect(securityEvents.events).toEqual([]);

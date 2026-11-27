@@ -625,7 +625,7 @@ describe.each(TEST_MARKETS)('transfer executions in market %s (database)', (code
         ),
       ).toBe('recorded');
       expect(
-        await value(market, () => inbox.finish(market, eventId, 'transfer-recorded', T0)),
+        await value(market, () => inbox.finish(market, eventId, 'transfer-recorded', T0, 0)),
       ).toBe(true);
     }
   });
@@ -642,7 +642,7 @@ describe.each(TEST_MARKETS)('transfer executions in market %s (database)', (code
         }),
       ),
     ).toBe('recorded');
-    expect(await value(market, () => inbox.finish(market, eventId, 'account-updated', T0))).toBe(
+    expect(await value(market, () => inbox.finish(market, eventId, 'account-updated', T0, 0))).toBe(
       true,
     );
   });

@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { err, money, ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
@@ -27,25 +28,45 @@ import {
 
 /** Events applied per run; the next run takes the rest. */
 export const APPLY_BATCH = 25;
-/** After this many failed attempts an event is marked `failed` for an admin. */
+/**
+ * After this many started attempts an event is marked `failed` for an admin: at the end of the
+ * last one when it did not succeed, or without applying it when a run finds it already taken this
+ * many times (an event that kills the process on every attempt).
+ */
 export const MAX_ATTEMPTS = 12;
 const FIRST_RETRY_SECONDS = 10;
 const LAST_RETRY_SECONDS = 3600;
+/**
+ * The least wait before an event taken by a run is due again: the scheduler's job lock is held for
+ * as long, so a run that overlaps a slow one does not apply the same event at the same time.
+ */
+export const MIN_RETRY_SECONDS = 60;
+const JOB = 'payments.apply-stripe-events';
+
+const logger = new Logger('ApplyStripeEvents');
 
 const CURRENCY = /^[a-z]{3}$/;
 
 export interface ApplySummary {
   readonly applied: number;
   readonly retried: number;
+  /** Events whose applying (or whose outcome's write) threw; each is logged and tried again. */
+  readonly threw: number;
   /** Events that ended `rejected` or `failed`: ids and outcomes only, for the log. */
   readonly problems: readonly { readonly eventId: string; readonly outcome: EventOutcome }[];
 }
 
 export type ApplyFailure = AccessDenied;
 
-/** Seconds to wait after the n-th failed attempt: 10 s, doubling, at most an hour. */
+/** The back-off after the n-th attempt: 10 s, doubling, at most an hour. */
 export function retryDelaySeconds(attempts: number): number {
   return Math.min(LAST_RETRY_SECONDS, FIRST_RETRY_SECONDS * 2 ** Math.max(0, attempts - 1));
+}
+
+/** When the n-th attempt, taken now, may be tried again: the back-off, never under a minute. */
+function nextAttemptAfter(now: Temporal.Instant, attempts: number): Temporal.Instant {
+  const seconds = Math.max(MIN_RETRY_SECONDS, retryDelaySeconds(attempts));
+  return now.add(Temporal.Duration.from({ seconds }));
 }
 
 type Applied = EventOutcome | 'retry';
@@ -224,15 +245,24 @@ async function applyCardPaymentEvent(
   }
   switch (event.type) {
     case 'payment_intent.amount_capturable_updated': {
-      // Held: what can be captured. Any other state (cancelled since, captured) is not a hold.
-      if (intent.status !== 'requires_capture') return 'ignored';
-      if (!CURRENCY.test(intent.currency) || intent.amountCapturable <= 0n) return 'rejected';
+      // Held: what can be captured. Already captured (a confirm that took the money and then
+      // stopped, Hassan's finding): what was received, so ordering finds the same total and
+      // finishes the confirmation instead of the order waiting with the money taken. Any other
+      // state (cancelled since) is not a hold.
+      const amount =
+        intent.status === 'requires_capture'
+          ? intent.amountCapturable
+          : intent.status === 'succeeded'
+            ? intent.amountReceived
+            : null;
+      if (amount === null) return 'ignored';
+      if (!CURRENCY.test(intent.currency) || amount <= 0n) return 'rejected';
       return outcomeOf(
         await deps.ordering.confirmPayment(context, {
           orderId,
           paymentIntentId: intent.id,
           sessionId: null,
-          amount: money(intent.amountCapturable, intent.currency.toUpperCase()),
+          amount: money(amount, intent.currency.toUpperCase()),
           // Read from Stripe now: ordering voids a hold that is not an accepted card.
           card: { methodType: intent.paymentMethodType ?? '', brand: intent.cardBrand },
         }),
@@ -331,11 +361,38 @@ async function applyOne(
   }
 }
 
+/** The log line of an event whose applying, or whose outcome's write, threw. */
+function logThrown(
+  context: CallContext,
+  event: PendingEvent,
+  attempts: number,
+  step: 'apply' | 'finish',
+  error: unknown,
+): void {
+  // Ids and the error's name, code, SQLSTATE and frames only (the `err` serializer): never the
+  // event's body, the error's message (a database error can quote column values) or order data.
+  logger.error({
+    msg: `${JOB}.threw`,
+    step,
+    eventId: event.eventId,
+    type: event.type,
+    attempts,
+    marketId: context.market.marketId,
+    correlationId: context.correlationId,
+    err: error,
+  });
+}
+
 /**
  * `apply-stripe-events`: the stored events of this Market that are due, oldest first, one at a
- * time. Each ends with its outcome, or is tried again later with a growing delay; after
- * {@link MAX_ATTEMPTS} it is marked `failed`. Ordering's confirm and cancel are idempotent, so an
- * event applied twice (a late overlapping run) changes nothing the second time.
+ * time, each on its own so that one event can never hold up the others (FE-20261125 per-event
+ * error isolation). An event is first taken (`claim`, in a unit of its own: one more attempt, and
+ * the next attempt set), then applied; an error it throws is logged and counts as a retry, never
+ * as `rejected` or `ignored`. So an event that throws, or kills the process, only moves itself
+ * back in the queue, and after {@link MAX_ATTEMPTS} it is marked `failed` (also without applying
+ * it, when a run finds it already taken that many times). Ordering's confirm and cancel are
+ * idempotent, so an event applied twice changes nothing the second time. Only a `claim` that
+ * throws (the database is unreachable) stops the run, after logging the problems found so far.
  */
 export async function applyStripeEvents(
   deps: PaymentsDependencies,
@@ -350,29 +407,79 @@ export async function applyStripeEvents(
   if (!due.ok) return due;
   let applied = 0;
   let retried = 0;
+  let threw = 0;
   const problems: { eventId: string; outcome: EventOutcome }[] = [];
+  /** Writes the outcome of the attempt this run holds; false when it was not written. */
+  const finish = async (event: PendingEvent, outcome: EventOutcome, attempts: number) => {
+    try {
+      const done = await deps.unitOfWork.run<boolean, never>(market, async () =>
+        ok(await deps.inbox.finish(market, event.eventId, outcome, deps.clock.now(), attempts)),
+      );
+      return done.ok && done.value;
+    } catch (error) {
+      // Tried again after its delay; ordering is idempotent, so the outcome stays the same.
+      threw += 1;
+      logThrown(context, event, attempts, 'finish', error);
+      return false;
+    }
+  };
   for (const event of due.value) {
-    const result = await applyOne(deps, context, event);
+    if (event.attempts >= MAX_ATTEMPTS) {
+      // Taken that many times and never finished: it stopped every attempt half-way.
+      if (await finish(event, 'failed', event.attempts)) {
+        applied += 1;
+        problems.push({ eventId: event.eventId, outcome: 'failed' });
+      }
+      continue;
+    }
     const attempts = event.attempts + 1;
+    let claimed: boolean;
+    try {
+      const taken = await deps.unitOfWork.run<boolean, never>(market, async () =>
+        ok(
+          await deps.inbox.claim(
+            market,
+            event.eventId,
+            event.attempts,
+            nextAttemptAfter(deps.clock.now(), attempts),
+          ),
+        ),
+      );
+      claimed = taken.ok && taken.value;
+    } catch (error) {
+      // The database cannot be written: no event can be taken, so the run stops and the
+      // scheduler logs it. What this run found already is logged first, so it is not lost.
+      for (const problem of problems) {
+        logger.error({
+          msg: `${JOB}.${problem.outcome}`,
+          marketId: market.marketId,
+          correlationId: context.correlationId,
+          ...problem,
+        });
+      }
+      throw error;
+    }
+    // Another run took this attempt (or finished the event): it is theirs.
+    if (!claimed) continue;
+    let result: Applied;
+    try {
+      result = await applyOne(deps, context, event);
+    } catch (error) {
+      threw += 1;
+      logThrown(context, event, attempts, 'apply', error);
+      result = 'retry';
+    }
     const outcome: Applied = result === 'retry' && attempts >= MAX_ATTEMPTS ? 'failed' : result;
     if (outcome === 'retry') {
-      const next = deps.clock
-        .now()
-        .add(Temporal.Duration.from({ seconds: retryDelaySeconds(attempts) }));
-      await deps.unitOfWork.run<true, never>(market, async () => {
-        await deps.inbox.retryLater(market, event.eventId, attempts, next);
-        return ok(true);
-      });
+      // Its next attempt was set when it was taken.
       retried += 1;
       continue;
     }
-    await deps.unitOfWork.run<boolean, never>(market, async () =>
-      ok(await deps.inbox.finish(market, event.eventId, outcome, deps.clock.now())),
-    );
+    if (!(await finish(event, outcome, attempts))) continue;
     applied += 1;
     if (outcome === 'rejected' || outcome === 'failed') {
       problems.push({ eventId: event.eventId, outcome });
     }
   }
-  return ok({ applied, retried, problems });
+  return ok({ applied, retried, threw, problems });
 }

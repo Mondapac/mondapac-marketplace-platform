@@ -80,6 +80,7 @@ export interface ReceivedEvent {
 
 /** A stored event waiting to be applied. */
 export interface PendingEvent extends ReceivedEvent {
+  /** Attempts started so far (taken by `claim`), not attempts that failed. */
   readonly attempts: number;
 }
 
@@ -94,21 +95,31 @@ export interface StripeEventInbox {
   /** The oldest unapplied events whose next attempt is due, at most `limit`. */
   due(market: MarketContext, now: Temporal.Instant, limit: number): Promise<PendingEvent[]>;
 
-  /** Marks an unapplied event done; false when it was already done. */
+  /**
+   * Takes the next attempt of an unapplied event before it is applied, in a unit of its own:
+   * `attempts` becomes `expectedAttempts + 1` and the next attempt is set, only while the row is
+   * unapplied and still has `expectedAttempts`. So an attempt is counted, and the event moves back
+   * in the queue, even when applying it throws or the process dies half-way; and of two runs that
+   * overlap only one takes it. True when this run took it.
+   */
+  claim(
+    market: MarketContext,
+    eventId: string,
+    expectedAttempts: number,
+    nextAttemptAt: Temporal.Instant,
+  ): Promise<boolean>;
+
+  /**
+   * Marks an unapplied event done, only while it still has `attempts` (the attempt this run took),
+   * so a late run never overwrites the outcome of a newer one; false otherwise.
+   */
   finish(
     market: MarketContext,
     eventId: string,
     outcome: EventOutcome,
     at: Temporal.Instant,
-  ): Promise<boolean>;
-
-  /** Counts a failed attempt of an unapplied event and sets when to try again. */
-  retryLater(
-    market: MarketContext,
-    eventId: string,
     attempts: number,
-    nextAttemptAt: Temporal.Instant,
-  ): Promise<void>;
+  ): Promise<boolean>;
 }
 
 export const STRIPE_EVENT_INBOX = Symbol('STRIPE_EVENT_INBOX');

@@ -201,7 +201,9 @@ describe.each(TEST_MARKETS)('dispute store in market %s (database)', (code) => {
         }),
       ),
     ).toBe('recorded');
-    expect(await value(market, () => inbox.finish(market, eventId, 'other-market', T0))).toBe(true);
+    expect(await value(market, () => inbox.finish(market, eventId, 'other-market', T0, 0))).toBe(
+      true,
+    );
   });
 
   describe('guards', () => {

@@ -51,28 +51,30 @@ export class PrismaStripeEventInbox implements StripeEventInbox {
     }));
   }
 
+  async claim(
+    market: MarketContext,
+    eventId: string,
+    expectedAttempts: number,
+    nextAttemptAt: Temporal.Instant,
+  ): Promise<boolean> {
+    const updated = await this.prisma.tx(market).paymentsStripeEvent.updateMany({
+      where: { marketId: market.marketId, eventId, processedAt: null, attempts: expectedAttempts },
+      data: { attempts: expectedAttempts + 1, nextAttemptAt: toDate(nextAttemptAt) },
+    });
+    return updated.count === 1;
+  }
+
   async finish(
     market: MarketContext,
     eventId: string,
     outcome: EventOutcome,
     at: Temporal.Instant,
+    attempts: number,
   ): Promise<boolean> {
     const updated = await this.prisma.tx(market).paymentsStripeEvent.updateMany({
-      where: { marketId: market.marketId, eventId, processedAt: null },
+      where: { marketId: market.marketId, eventId, processedAt: null, attempts },
       data: { processedAt: toDate(at), outcome },
     });
     return updated.count === 1;
-  }
-
-  async retryLater(
-    market: MarketContext,
-    eventId: string,
-    attempts: number,
-    nextAttemptAt: Temporal.Instant,
-  ): Promise<void> {
-    await this.prisma.tx(market).paymentsStripeEvent.updateMany({
-      where: { marketId: market.marketId, eventId, processedAt: null },
-      data: { attempts, nextAttemptAt: toDate(nextAttemptAt) },
-    });
   }
 }

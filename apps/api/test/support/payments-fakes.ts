@@ -146,6 +146,12 @@ export class MemoryInbox implements StripeEventInbox {
             r.processedAt === null &&
             r.nextAttemptAt.epochMilliseconds <= now.epochMilliseconds,
         )
+        // As the database orders the queue: next attempt first, then the event id.
+        .sort(
+          (a, b) =>
+            a.nextAttemptAt.epochMilliseconds - b.nextAttemptAt.epochMilliseconds ||
+            (a.eventId < b.eventId ? -1 : a.eventId > b.eventId ? 1 : 0),
+        )
         .slice(0, limit)
         .map(({ eventId, type, objectId, receivedAt, attempts }) => ({
           eventId,
@@ -156,19 +162,42 @@ export class MemoryInbox implements StripeEventInbox {
         })),
     );
   }
-  finish(market: MarketContext, eventId: string, outcome: EventOutcome, at: Temporal.Instant) {
+  /** Set to make the next `claim` throw (the database is unreachable). */
+  claimError: Error | null = null;
+  /** Set to make the next `finish` throw once. */
+  finishError: Error | null = null;
+  claim(market: MarketContext, eventId: string, expected: number, next: Temporal.Instant) {
+    if (this.claimError !== null) return Promise.reject(this.claimError);
     const row = this.rows.get(`${market.marketId}/${eventId}`);
-    if (row === undefined || row.processedAt !== null) return Promise.resolve(false);
+    if (row === undefined || row.processedAt !== null || row.attempts !== expected) {
+      return Promise.resolve(false);
+    }
+    this.rows.set(`${market.marketId}/${eventId}`, {
+      ...row,
+      attempts: expected + 1,
+      nextAttemptAt: next,
+    });
+    return Promise.resolve(true);
+  }
+  finish(
+    market: MarketContext,
+    eventId: string,
+    outcome: EventOutcome,
+    at: Temporal.Instant,
+    attempts: number,
+  ) {
+    if (this.finishError !== null) {
+      const error = this.finishError;
+      this.finishError = null;
+      return Promise.reject(error);
+    }
+    const row = this.rows.get(`${market.marketId}/${eventId}`);
+    if (row === undefined || row.processedAt !== null || row.attempts !== attempts) {
+      return Promise.resolve(false);
+    }
     row.processedAt = at;
     row.outcome = outcome;
     return Promise.resolve(true);
-  }
-  retryLater(market: MarketContext, eventId: string, attempts: number, next: Temporal.Instant) {
-    const row = this.rows.get(`${market.marketId}/${eventId}`);
-    if (row !== undefined && row.processedAt === null) {
-      this.rows.set(`${market.marketId}/${eventId}`, { ...row, attempts, nextAttemptAt: next });
-    }
-    return Promise.resolve();
   }
   get(market: string, eventId: string): Row | undefined {
     return this.rows.get(`${market}/${eventId}`);

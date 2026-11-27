@@ -427,7 +427,7 @@ describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
         await store();
         connect.readAnswer = ok(snapshot());
         const result = await apply();
-        expect(result).toEqual(ok({ applied: 1, retried: 0, problems: [] }));
+        expect(result).toEqual(ok({ applied: 1, retried: 0, threw: 0, problems: [] }));
         expect(connect.reads).toEqual([ACCOUNT]);
         expect(accounts.rows.get(`${code}/${SELLER}`)).toMatchObject({
           status: 'enabled',
@@ -451,7 +451,7 @@ describe.each(['AU', 'ZZ'] as const)('payout account in market %s', (code) => {
 
         await receive(accountEvent({ id: 'evt_test_acct_0003', marketId: code }));
         connect.readAnswer = err({ code: 'payment.provider-unavailable' });
-        expect(await apply()).toEqual(ok({ applied: 0, retried: 1, problems: [] }));
+        expect(await apply()).toEqual(ok({ applied: 0, retried: 1, threw: 0, problems: [] }));
         expect(inbox.get(code, 'evt_test_acct_0003')?.processedAt).toBeNull();
       });
 
