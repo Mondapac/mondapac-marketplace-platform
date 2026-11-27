@@ -99,6 +99,7 @@ const NONE: SellerDashboardSources = {
   payout: null,
   sources: null,
   lowStock: null,
+  certificates: null,
 };
 const KEYS = ['ordering.seller-order.view', 'commission-payouts.earnings.view'];
 

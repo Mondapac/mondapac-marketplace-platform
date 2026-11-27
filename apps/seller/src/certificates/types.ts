@@ -11,6 +11,13 @@ export const CERTIFICATES_PATH = '/settings/certificates';
 export const certificatePath = (certificateId: string): string =>
   `${CERTIFICATES_PATH}/${certificateId}`;
 
+/**
+ * The form of a certificate that is no longer a draft (design 7.2): a correction, a renewal, a
+ * replacement or an edit while it is under review. A draft's form is the certificate's own page.
+ */
+export const certificateEditPath = (certificateId: string): string =>
+  `${certificatePath(certificateId)}/edit`;
+
 /** The review page before submitting (design section 8, CS4). */
 export const certificateReviewPath = (certificateId: string): string =>
   `${certificatePath(certificateId)}/review`;
@@ -52,6 +59,12 @@ export interface CertificateSummary {
   /** Sent once the server adds them (seller certificates PR 1); "—" until then. */
   readonly issuerName?: string | null;
   readonly validUntil?: string | null;
+  /** The day to submit a renewal by (a local date); null without an approved expiry. */
+  readonly renewalSubmitBy?: string | null;
+  /** Whole local days to `validUntil`: 0 on the last day, negative once expired. */
+  readonly daysLeft?: number | null;
+  /** The expiry banner's tone (`info`, `attention`, `critical`), set by the API; null for none. */
+  readonly bannerTone?: string | null;
 }
 
 export interface CertificateList {
@@ -77,10 +90,46 @@ export interface CertificateDocument {
   readonly createdAt: string;
 }
 
+/** The latest decision the seller has to act on (changes needed, declined, revoked). */
+export interface CertificateDecision {
+  /** `changes-requested`, `declined` or `revoked`. */
+  readonly outcome: string;
+  readonly reasonCode: string | null;
+  /** The Market's plain words for the reason; null once the code left the Market's list. */
+  readonly reasonLabel: string | null;
+  /** A key of the seller's next step (the panel's words); null when there is none. */
+  readonly nextStep: string | null;
+  /** The reviewer's text to the seller: plain text, always rendered inert. */
+  readonly reasonText: string | null;
+  readonly decidedAt: string;
+}
+
+/** One line of the seller's short history: never who, never a note. */
+export interface CertificateHistoryEntry {
+  /** `submitted`, `submitted-again`, `renewal-submitted`, `approved`, `changes-requested`, ... */
+  readonly event: string;
+  readonly reasonLabel: string | null;
+  readonly at: string;
+}
+
+/** The approved submission's values: beside a renewal, the certificate in force. */
+export interface CertificateInForce {
+  readonly issuerId: string | null;
+  readonly issuerName: string | null;
+  readonly certificateNumber: string | null;
+  readonly issueDate: string | null;
+  readonly expiryDate: string | null;
+  readonly approvedAt: string | null;
+}
+
 export interface CertificateDetail {
   readonly certificate: CertificateSummary;
   readonly draft: CertificateDraft;
   readonly documents: readonly CertificateDocument[];
+  /** Sent by the server since seller certificates PR 1; absent from an older API. */
+  readonly decision?: CertificateDecision | null;
+  readonly history?: readonly CertificateHistoryEntry[];
+  readonly inForce?: CertificateInForce | null;
 }
 
 export interface CertificateDraftSaved {

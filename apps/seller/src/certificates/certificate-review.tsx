@@ -20,6 +20,7 @@ import { zonePlace } from './certificate-form.tsx';
 import { orderedDocuments } from './documents-card.tsx';
 import { certificateProblemOf } from './errors.ts';
 import { formatDay } from './format.ts';
+import { formPathOf, submitKeyOf } from './status.ts';
 import { mediaLabel } from './upload.ts';
 import {
   CERTIFICATES_PATH,
@@ -65,13 +66,6 @@ export function missingFields(
   return missing;
 }
 
-/** The submit button's words (ux.md section 5 `review.action.*`). */
-function submitKey(status: string): string {
-  return status.endsWith('changes-needed')
-    ? 'certification.review.action.again'
-    : 'certification.review.action.submit';
-}
-
 /**
  * Review and submit (seller certificates design section 8, CS4): every value the seller entered,
  * each with Edit back to its field on the form, and Submit for review. The buttons are only in the
@@ -99,7 +93,7 @@ export function CertificateReview({
   const busy = useRef(false);
   const { certificate, draft } = detail;
   const id = certificate.certificateId;
-  const formPath = certificatePath(id);
+  const formPath = formPathOf(certificate);
   const name = typeName(type.names, type.code, locale);
   const self = type.verificationMode === 'SELF_DECLARATION';
   const issuerPending = certificate.status === 'draft-issuer-not-listed';
@@ -239,7 +233,7 @@ export function CertificateReview({
     );
     if (result.ok) {
       toast.success(t('certification.review.submitted'));
-      router.push(formPath);
+      router.push(certificatePath(id));
       router.refresh();
       return;
     }
@@ -303,7 +297,7 @@ export function CertificateReview({
               softDisabled={blocked}
               aria-describedby={blocked ? 'certificate-submit-blocked' : undefined}
             >
-              {t(submitKey(certificate.status))}
+              {t(submitKeyOf(certificate))}
             </Button>
           </FormActionBar>
         </div>

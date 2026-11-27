@@ -106,6 +106,8 @@ export type CertificatePage =
       readonly options: CertificateOptions;
       /** The seller's working zone, for the expiry line; null when it could not be read. */
       readonly zone: string | null;
+      /** The seller account's own state, shown beside the certificate's (CERT-12). */
+      readonly account: SellerAccountState;
     }
   | { readonly kind: 'not-found'; readonly session: SellerSession }
   | Failed;
@@ -121,10 +123,11 @@ export async function loadCertificatePage(certificateId: string): Promise<Certif
     return { kind: 'no-access', session };
   }
   if (!UUID.test(certificateId)) return { kind: 'not-found', session };
-  const [detail, options, zone] = await Promise.all([
+  const [detail, options, zone, account] = await Promise.all([
     serverGet<CertificateDetail>(`certification/seller/certificates/${certificateId}`),
     serverGet<CertificateOptions>('certification/seller/certificate-options'),
     readSellerZone(),
+    accountState(session),
   ]);
   if (detail.kind === 'signed-out' || options.kind === 'signed-out') redirect('/session-ended');
   if (detail.kind === 'not-found') return { kind: 'not-found', session };
@@ -132,5 +135,5 @@ export async function loadCertificatePage(certificateId: string): Promise<Certif
     return { kind: 'no-access', session };
   }
   if (detail.kind !== 'ok' || options.kind !== 'ok') return { kind: 'unavailable', session };
-  return { kind: 'ok', session, detail: detail.body, options: options.body, zone };
+  return { kind: 'ok', session, detail: detail.body, options: options.body, zone, account };
 }

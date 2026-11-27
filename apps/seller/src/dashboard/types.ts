@@ -4,6 +4,7 @@
 
 import type { SellerOrderCursorPage } from '../orders/types.ts';
 import type { PayoutAccount } from '../payout/types.ts';
+import type { CertificateList } from '../certificates/types.ts';
 import type { SourcesView } from '../stock/types.ts';
 import type { WorkQueueAnswer } from '../work-queue/queues.ts';
 
@@ -43,6 +44,8 @@ export interface SellerDashboardData {
   readonly sources: Widget<SourcesView> | null;
   /** Needs the same key as `sources` (inventory.stock.view). */
   readonly lowStock: Widget<LowStockPage> | null;
+  /** The seller's certificates, for the alert card (certification.own-certificate.view). */
+  readonly certificates: Widget<CertificateList> | null;
 }
 
 /**

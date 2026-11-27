@@ -39,6 +39,10 @@ export const HELP_REGISTRY: HelpRegistry = {
       slug: 'settings-certificates-certificateId',
     },
     {
+      route: '/settings/certificates/[certificateId]/edit',
+      slug: 'settings-certificates-certificateId-edit',
+    },
+    {
       route: '/settings/certificates/[certificateId]/review',
       slug: 'settings-certificates-certificateId-review',
     },
