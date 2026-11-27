@@ -166,6 +166,13 @@ jobs:
           POSTGRES_PORT: '5433'
           REDIS_PORT: '6380'
         run: |
+          # docker-compose.yml takes Valkey from Docker Hub (the mirror refuses it on developer
+          # machines). Here the mirror answers and Docker Hub rate-limits runners, so the step
+          # pulls the same image from the mirror and gives it the Compose name; if the mirror
+          # fails, Compose pulls it from Docker Hub.
+          if docker pull mirror.gcr.io/valkey/valkey:8-alpine; then
+            docker tag mirror.gcr.io/valkey/valkey:8-alpine valkey/valkey:8-alpine
+          fi
           docker compose up -d --wait postgres redis
           if [ "$(docker compose exec -T redis valkey-cli ping)" != "PONG" ]; then
             echo "The Compose Redis did not answer PING" >&2

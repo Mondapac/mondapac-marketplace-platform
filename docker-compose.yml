@@ -39,8 +39,11 @@ services:
 
   # The rate-limit counters (ADR-0054). Valkey 8, the engine of ElastiCache in production; it
   # speaks the Redis protocol. Counts only, nothing to keep: no persistence.
+  # From Docker Hub, like mailpit: Google's mirror (mirror.gcr.io) serves only the official
+  # `library/*` images reliably; for `valkey/valkey` it answers 403 outside the regions where it
+  # is cached. CI pulls it from the mirror and tags it with this name (ci.yml, Compose smoke).
   redis:
-    image: mirror.gcr.io/valkey/valkey:8-alpine
+    image: valkey/valkey:8-alpine
     command: ['valkey-server', '--save', '', '--appendonly', 'no']
     ports:
       - '127.0.0.1:${REDIS_PORT:-6379}:6379'
