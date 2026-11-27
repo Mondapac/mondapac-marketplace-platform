@@ -40,7 +40,7 @@ import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
 const START = Temporal.Instant.from('2026-11-25T10:00:00Z');
 const LIFETIME = { idleTimeoutSeconds: 3600, absoluteLifetimeSeconds: 7200 };
-const NOTE = 'Secret reviewer note 4471';
+const NOTE = 'secret-reviewer-note-0f3b9c7e5a1d4286b4c1d7e9a3f5';
 
 const id = <T extends string>(n: number): Id<T> => {
   const parsed = parseId(`01990000-0000-7000-8000-${n.toString(16).padStart(12, '0')}`);
@@ -391,7 +391,7 @@ describe('admin post-publication review over HTTP (integration)', () => {
       const asViewer = await get(code, `/${row.id}`, sessionOf(code, VIEWER, 2));
       expect(asViewer.body).toMatchObject({ status: 'approved', note: null });
       // Never logged or audited.
-      expect(JSON.stringify([logLines, audits])).not.toContain('4471');
+      expect(JSON.stringify([logLines, audits])).not.toContain(NOTE);
       expect(
         logLines.find((line) => line.msg === 'catalog.offer-post-review-approve'),
       ).toMatchObject({ marketId: code });
@@ -422,7 +422,7 @@ describe('admin post-publication review over HTTP (integration)', () => {
       expect(audits.map((a) => a.action).filter((a) => a.startsWith('catalog.'))).toEqual([
         'catalog.offer.taken-down',
       ]);
-      expect(JSON.stringify([logLines, audits, events])).not.toContain('4471');
+      expect(JSON.stringify([logLines, audits, events])).not.toContain(NOTE);
       // A second decision on the row: 409.
       const again = await post(code, `/${row.id}/approve`, sessionOf(code, MODERATOR, 2), {
         version: 2,
@@ -536,7 +536,7 @@ describe('admin post-publication review over HTTP (integration)', () => {
       expect(response.status).toBe(200);
       expect(response.headers['cache-control']).toBe('no-store');
       expect(response.text).toContain('SKU-1');
-      expect(response.text).not.toContain('4471');
+      expect(response.text).not.toContain(NOTE);
     });
   });
 });
