@@ -11,6 +11,14 @@ export const CERTIFICATES_PATH = '/settings/certificates';
 export const certificatePath = (certificateId: string): string =>
   `${CERTIFICATES_PATH}/${certificateId}`;
 
+/** The review page before submitting (design section 8, CS4). */
+export const certificateReviewPath = (certificateId: string): string =>
+  `${certificatePath(certificateId)}/review`;
+
+/** One file of a certificate, as the relay serves it: always an attachment, never shown inline. */
+export const certificateDocumentPath = (certificateId: string, documentId: string): string =>
+  `/api/certification/seller/certificates/${certificateId}/documents/${documentId}`;
+
 /** The seller-visible statuses (certification design 3.3; ux.md 3.2). */
 export const CERTIFICATE_STATUSES = [
   'draft',
@@ -98,9 +106,39 @@ export interface CertificateTypeOption {
   readonly issuers: readonly CertificateIssuerOption[];
 }
 
+/** The file limits of the Market's certificate intake (seller certificates PR 1). */
+export interface CertificateDocumentLimits {
+  readonly mediaTypes: readonly string[];
+  /** Bytes of one file. */
+  readonly maxBytes: number;
+  /** Files on one certificate. */
+  readonly maxFiles: number;
+  /** Pages of one PDF. */
+  readonly maxPdfPages: number;
+  readonly draftQuotaBytes: number;
+}
+
 export interface CertificateOptions {
   readonly types: readonly CertificateTypeOption[];
+  /** Absent only from an API older than seller certificates PR 1; the panel then checks nothing itself. */
+  readonly documentLimits?: CertificateDocumentLimits;
 }
+
+/** The answer to a file upload: the stored file. */
+export interface CertificateDocumentUploaded extends CertificateDocument {
+  readonly withdrawnSubmissionId: string | null;
+}
+
+/** The answer to a submit. */
+export interface CertificateSubmitted {
+  readonly certificateId: string;
+  readonly submissionId: string;
+  readonly kind: string;
+  readonly submittedAt: string;
+}
+
+/** The longest issuer name an issuer request takes. */
+export const ISSUER_REQUEST_NAME_MAX = 200;
 
 /** The longest certificate number the API takes. */
 export const CERTIFICATE_NUMBER_MAX = 64;

@@ -19,17 +19,21 @@ import {
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
-import { useId, useRef, useState } from 'react';
+import { useCallback, useId, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { DocumentsCard } from './documents-card.tsx';
 import { certificateProblemOf, type CertificateProblem } from './errors.ts';
+import { IssuerRequestDialog } from './issuer-request-dialog.tsx';
 import { opensOnForm } from './status.ts';
 import { CertificateStatusBadge } from './status-badge.tsx';
 import {
   CERTIFICATE_NUMBER_MAX,
   CERTIFICATES_PATH,
   DECLARATION_NOTE_MAX,
+  certificateReviewPath,
   typeName,
   type CertificateDetail,
+  type CertificateDocumentLimits,
   type CertificateDraft,
   type CertificateDraftSaved,
   type CertificateSummary,
@@ -88,9 +92,10 @@ export function zonePlace(zone: string): string {
 }
 
 /**
- * The certificate form (design section 7, CS3): one page with the Details card (the Documents
- * card and Review come with seller certificates PR 3). The header holds the title, the status and
- * Delete draft (in "More" on a phone); Save draft is in the bar at the end, sticky on a phone.
+ * The certificate form (design section 7, CS3): one page with the Details and Documents cards.
+ * The header holds the title, the status and Delete draft (in "More" on a phone); Save draft and
+ * Review are in the bar at the end, sticky on a phone. Review saves first, then opens the review
+ * page. A file goes to the server the moment it is chosen (the Documents card).
  * Typed text lives only in the page's memory, never in browser storage; leaving with unsaved
  * changes asks first.
  */
@@ -99,6 +104,7 @@ export function CertificateForm({
   type,
   canManage,
   zone,
+  limits,
   csrfToken,
 }: {
   readonly detail: CertificateDetail;
@@ -106,6 +112,8 @@ export function CertificateForm({
   readonly type: CertificateTypeOption | undefined;
   readonly canManage: boolean;
   readonly zone: string | null;
+  /** The Market's file limits (certificate options); absent from an older API. */
+  readonly limits?: CertificateDocumentLimits | undefined;
   readonly csrfToken: string;
 }) {
   const t = useTranslations();
@@ -120,6 +128,9 @@ export function CertificateForm({
   const [summarySignal, setSummarySignal] = useState(0);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [requestOpen, setRequestOpen] = useState(false);
   const busy = useRef(false);
   const cancelDelete = useRef<HTMLButtonElement>(null);
   const viewOnlyId = useId();
@@ -145,8 +156,9 @@ export function CertificateForm({
     if (found.then === 'list') router.push(CERTIFICATES_PATH);
   }
 
-  async function save() {
-    if (busy.current || !editable || type === undefined) return;
+  /** Saves the draft; true when it is saved (or nothing changed). */
+  async function save(): Promise<boolean> {
+    if (busy.current || !editable || type === undefined) return false;
     busy.current = true;
     setSaving(true);
     setProblem(null);
@@ -165,14 +177,30 @@ export function CertificateForm({
       setValues(next);
       // "Draft saved" shows beside the button (a status region), so no toast repeats it.
       setSavedOnce(true);
-      return;
+      return true;
     }
     if (result.failure.status === 401) {
       window.location.assign('/session-ended');
-      return;
+      return false;
     }
     fail(certificateProblemOf(result.failure));
+    return false;
   }
+
+  /** Review: save what changed, then open the review page, which lists anything still missing. */
+  async function review() {
+    if (busy.current || !editable || uploading) return;
+    setReviewing(true);
+    const ok = dirty ? await save() : true;
+    if (!ok) {
+      setReviewing(false);
+      return;
+    }
+    // Nothing is left to lose: the leave guard must not ask.
+    router.push(certificateReviewPath(certificate.certificateId));
+  }
+
+  const onBusyChange = useCallback((value: boolean) => setUploading(value), []);
 
   async function remove() {
     if (busy.current) return;
@@ -259,6 +287,12 @@ export function CertificateForm({
         {t('certification.form.correct.banner')}
       </Banner>
     ) : null,
+    certificate.status === 'draft-issuer-not-listed' ? (
+      <Banner key="issuer-request" tone="info">
+        {t('certification.issuer-request.status.open')}{' '}
+        {t('certification.issuer-request.status.open-help')}
+      </Banner>
+    ) : null,
     self && type !== undefined ? (
       <Banner key="claim" tone="info">
         {t('certification.form.claim.banner')}
@@ -306,37 +340,78 @@ export function CertificateForm({
         leave: t('settings.leave.leave'),
       }}
       overlay={
-        <Dialog
-          open={confirmDelete}
-          title={t('certification.draft.delete.title')}
-          onClose={() => (deleting ? undefined : setConfirmDelete(false))}
-          initialFocus={cancelDelete}
-          actions={
-            <>
-              <Button
-                ref={cancelDelete}
-                variant="secondary"
-                onClick={() => setConfirmDelete(false)}
-                disabled={deleting}
-              >
-                {t('certification.action.cancel')}
-              </Button>
-              <Button variant="destructive-solid" onClick={() => void remove()} loading={deleting}>
-                {t('certification.draft.delete.action')}
-              </Button>
-            </>
-          }
-        >
-          <p className="text-sm text-fg-secondary">{t('certification.draft.delete.body')}</p>
-        </Dialog>
+        <>
+          {type !== undefined && editable ? (
+            <IssuerRequestDialog
+              open={requestOpen}
+              typeCode={type.code}
+              limits={limits}
+              csrfToken={csrfToken}
+              onClose={() => setRequestOpen(false)}
+              onSent={() => {
+                setRequestOpen(false);
+                toast.success(t('certification.issuer-request.status.open'));
+                router.refresh();
+              }}
+            />
+          ) : null}
+          <Dialog
+            open={confirmDelete}
+            title={t('certification.draft.delete.title')}
+            onClose={() => (deleting ? undefined : setConfirmDelete(false))}
+            initialFocus={cancelDelete}
+            actions={
+              <>
+                <Button
+                  ref={cancelDelete}
+                  variant="secondary"
+                  onClick={() => setConfirmDelete(false)}
+                  disabled={deleting}
+                >
+                  {t('certification.action.cancel')}
+                </Button>
+                <Button
+                  variant="destructive-solid"
+                  onClick={() => void remove()}
+                  loading={deleting}
+                >
+                  {t('certification.draft.delete.action')}
+                </Button>
+              </>
+            }
+          >
+            <p className="text-sm text-fg-secondary">{t('certification.draft.delete.body')}</p>
+          </Dialog>
+        </>
       }
       saveBar={
         editable ? (
           <div className="max-md:sticky max-md:bottom-[calc(var(--mp-size-bottom-bar)+env(safe-area-inset-bottom))] max-md:z-10 max-md:-mx-4 max-md:bg-surface max-md:px-4 max-md:pb-3">
             <FormActionBar status={status === null ? null : <span role="status">{status}</span>}>
-              <Button type="submit" loading={saving} loadingLabel={t('certification.form.saving')}>
+              <Button
+                type="submit"
+                variant="secondary"
+                loading={saving && !reviewing}
+                disabled={reviewing}
+                loadingLabel={t('certification.form.saving')}
+              >
                 {t('certification.form.save-draft')}
               </Button>
+              <Button
+                type="button"
+                onClick={() => void review()}
+                loading={reviewing}
+                softDisabled={uploading}
+                aria-describedby={uploading ? 'certificate-review-wait' : undefined}
+                loadingLabel={t('certification.form.saving')}
+              >
+                {t('certification.form.review')}
+              </Button>
+              {uploading ? (
+                <span id="certificate-review-wait" className="sr-only">
+                  {t('certification.form.review-wait')}
+                </span>
+              ) : null}
             </FormActionBar>
           </div>
         ) : undefined
@@ -381,9 +456,19 @@ export function CertificateForm({
                 id="certificate-issuerId"
                 label={t('certification.form.issuer.label')}
                 help={
-                  issuers.length === 0 && type !== undefined
-                    ? t('certification.form.issuer.empty')
-                    : t('certification.form.issuer.help')
+                  <>
+                    {issuers.length === 0 && type !== undefined
+                      ? t('certification.form.issuer.empty')
+                      : t('certification.form.issuer.help')}
+                    {editable && certificate.status !== 'draft-issuer-not-listed' ? (
+                      <>
+                        {' '}
+                        <Button variant="link" type="button" onClick={() => setRequestOpen(true)}>
+                          {t('certification.issuer-request.title')}
+                        </Button>
+                      </>
+                    ) : null}
+                  </>
                 }
                 error={fieldError('issuerId')}
                 changed={changed('issuerId')}
@@ -461,8 +546,27 @@ export function CertificateForm({
           </SettingRow>
         ) : null}
       </SettingsSection>
+      {showsDocuments(type, detail.documents.length) ? (
+        <DocumentsCard
+          certificateId={certificate.certificateId}
+          documents={detail.documents}
+          limits={limits}
+          editable={editable}
+          required={type?.requiresDocument === true}
+          csrfToken={csrfToken}
+          error={fieldError('documents')}
+          onBusyChange={onBusyChange}
+        />
+      ) : null}
     </SettingsPage>
   );
+}
+
+/** The Documents card shows for a type that takes files, and whenever files are already there. */
+function showsDocuments(type: CertificateTypeOption | undefined, count: number): boolean {
+  if (count > 0) return true;
+  if (type === undefined) return false;
+  return type.requiresDocument || type.verificationMode !== 'SELF_DECLARATION';
 }
 
 function fieldLabel(t: (key: string) => string, path: string): string {
@@ -479,6 +583,8 @@ function fieldLabel(t: (key: string) => string, path: string): string {
       return t('certification.form.declaration.label');
     case 'selfDeclarationNote':
       return t('certification.form.declaration.note');
+    case 'documents':
+      return t('certification.upload.title');
     default:
       return t('certification.form.title');
   }

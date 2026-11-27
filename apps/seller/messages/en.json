@@ -6260,8 +6260,17 @@
       },
       "settings-certificates-certificateId": {
         "title": "Certificate details",
-        "about": "Fill in the details exactly as they appear on your certificate, then save your draft.",
-        "good": ["Your draft stays saved until you submit it or delete it."],
+        "about": "Fill in the details exactly as they appear on your certificate, add a scan or photo, then review and submit it.",
+        "good": [
+          "Your draft stays saved until you submit it or delete it.",
+          "Each file is checked as soon as you add it."
+        ],
+        "related": []
+      },
+      "settings-certificates-certificateId-review": {
+        "title": "Review your certificate",
+        "about": "Check every value before you submit. Edit takes you back to that field.",
+        "good": ["MondaPac reviews the certificate and emails you when there's a decision."],
         "related": []
       }
     },
@@ -6354,7 +6363,9 @@
         "format": "Check this value.",
         "before-issue-date": "The expiry date must be after the issue date.",
         "invalid": "Check this value."
-      }
+      },
+      "review": "Review",
+      "review-wait": "Wait until your files have finished uploading."
     },
     "view-only": {
       "ask-owner": "You can view certificates but not change them. Ask your shop owner."
@@ -6431,8 +6442,24 @@
       "unavailable": "We couldn't reach MondaPac. Try again."
     },
     "issuer-request": {
+      "title": "My issuer isn't listed",
+      "help": "Tell us who issued your certificate and add the document. We'll check the issuer and email you. We can't promise when.",
+      "name": {
+        "label": "Issuer name (as written on your certificate)"
+      },
+      "file": {
+        "label": "Your certificate",
+        "choose": "Choose a file",
+        "none": "No file chosen",
+        "required": "Add the certificate file."
+      },
+      "action": {
+        "send": "Send request"
+      },
+      "sending": "Sending…",
       "status": {
-        "open": "We're checking your issuer."
+        "open": "We're checking your issuer.",
+        "open-help": "Once we've added your issuer, choose it from the list."
       }
     },
     "list": {
@@ -6450,6 +6477,60 @@
     },
     "setup": {
       "line": "Certificates aren't needed to submit your application. You can add one now or later."
+    },
+    "upload": {
+      "title": "Documents",
+      "help": "{kinds}. Up to {maxSize} per file, {maxFiles} files, {maxPages} pages per PDF.",
+      "help-plain": "Add a scan or photo of your certificate.",
+      "drop": "Drop files here or",
+      "choose": "Choose files",
+      "empty": "No files added yet.",
+      "empty-required": "No files added yet. Add a scan or photo of the certificate.",
+      "page": "Page {number}",
+      "pages": "{count, plural, one {# page} other {# pages}}",
+      "this-file": "This file",
+      "progress": "Upload of {name}",
+      "unreadable": "We couldn't read this file. Try again.",
+      "announce": "{name}: {status}",
+      "status": {
+        "uploading": "Uploading {percent}",
+        "uploading-short": "Uploading…",
+        "checking": "Checking this file…",
+        "ready": "Ready",
+        "refused": "Can't use this file.",
+        "removed": "Removed"
+      },
+      "action": {
+        "replace": "Replace",
+        "remove": "Remove",
+        "remove-named": "Remove {name}",
+        "download": "Download",
+        "download-named": "Download {name}"
+      }
+    },
+    "review": {
+      "title": "Review your certificate",
+      "banner": "MondaPac reviews this certificate before you can use it on offers. You'll get an email when there's a decision.",
+      "action": {
+        "submit": "Submit for review",
+        "renew": "Submit renewal",
+        "again": "Submit again"
+      },
+      "help": {
+        "blocked": "Finish {count, plural, one {# item} other {# items}} first.",
+        "issuer-pending": "You can submit once we've added your issuer and you've chosen it."
+      },
+      "row": {
+        "missing": "Missing",
+        "type": "Type"
+      },
+      "edit": "Edit",
+      "edit-named": "Edit {field}",
+      "back": "Back to edit",
+      "expiry": "Valid until the end of {date}, {zoneName}",
+      "expiry-plain": "Valid until the end of {date}",
+      "submitting": "Submitting…",
+      "submitted": "Submitted for review"
     }
   }
 }
