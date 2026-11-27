@@ -648,6 +648,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "identity.view-password-rules", "rule": "anonymous" },
   { "name": "inventory.availability", "rule": "anonymous" },
   { "name": "inventory.availability-system", "rule": "system" },
   { "name": "inventory.cancel-committed-line", "rule": "system" },

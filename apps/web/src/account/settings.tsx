@@ -14,6 +14,7 @@ import { useAccount, type PasswordOutcome, type Profile } from './account-state.
 import { DeletionEntry, useDeletion } from './account-deletion.tsx';
 import { saveLanguage } from './customer-api.ts';
 import { AcField, PasswordField } from './fields.tsx';
+import { usePasswordRules } from './password-rules.ts';
 import { readOwnInvitation, readStoreName } from './follow-api.ts';
 
 /**
@@ -272,7 +273,10 @@ function ProfileCard() {
 
 function PasswordCard() {
   const t = useTranslations('account.settings');
-  const { changePassword } = useAccount();
+  const { changePassword, source } = useAccount();
+  // The request Market's rule (live, from the API; null until it answers, and the API decides).
+  const rules = usePasswordRules(source.live);
+  const min = rules?.minLength ?? 0;
   // What the API refused (live): shown beside the field it is about, or as a note.
   const [refused, setRefused] = useState<Exclude<PasswordOutcome, 'ok'> | null>(null);
   const [current, setCurrent] = useState('');
@@ -287,7 +291,14 @@ function PasswordCard() {
         : refused === 'current-incorrect'
           ? t('current-incorrect')
           : undefined,
-    next: next.length < 10 ? t('too-short') : refused === 'rejected' ? t('rejected') : undefined,
+    next:
+      next === ''
+        ? t('new-missing')
+        : Array.from(next.normalize('NFKC')).length < min
+          ? t('too-short', { min })
+          : refused === 'rejected'
+            ? t('rejected')
+            : undefined,
     again: again !== next ? t('mismatch') : undefined,
   };
   const edit = (setter: (text: string) => void) => (text: string) => {
@@ -327,7 +338,7 @@ function PasswordCard() {
           autoComplete="new-password"
           value={next}
           onText={edit(setNext)}
-          hint={t('new-hint')}
+          hint={rules ? t('new-hint', { min: rules.minLength, max: rules.maxLength }) : undefined}
           error={tried ? errors.next : undefined}
         />
         <PasswordField

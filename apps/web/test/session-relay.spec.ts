@@ -115,6 +115,16 @@ describe('storefront session relay: what may cross', () => {
     expect(isSessionPathAllowed('DELETE', ['cart', 'saved'])).toBe(false);
   });
 
+  it('allows Create account, "send it again" and the password rule, each with its own method', () => {
+    expect(isSessionPathAllowed('POST', ['identity', 'customer', 'sign-up'])).toBe(true);
+    expect(isSessionPathAllowed('POST', ['identity', 'customer', 'verification-email'])).toBe(true);
+    expect(isSessionPathAllowed('GET', ['identity', 'customer', 'password-rules'])).toBe(true);
+    expect(isSessionPathAllowed('GET', ['identity', 'customer', 'sign-up'])).toBe(false);
+    expect(isSessionPathAllowed('POST', ['identity', 'customer', 'password-rules'])).toBe(false);
+    expect(isSessionPathAllowed('POST', ['identity', 'seller', 'sign-up'])).toBe(false);
+    expect(isSessionPathAllowed('POST', ['identity', 'customer', 'sign-up', 'x'])).toBe(false);
+  });
+
   it("allows only the buyer's own reviews routes, each with its own method", () => {
     const ID = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
     expect(isSessionPathAllowed('GET', ['reviews', 'me'])).toBe(true);

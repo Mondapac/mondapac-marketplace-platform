@@ -220,3 +220,25 @@ delete waits for another admin's approval. Area `people`, always high risk.
   (`sensitive` of the role catalogue) where people is reviewed, the invite dialog says another
   admin must approve it and nothing is sent until then, its button reads "Send for approval", and
   the 202 announces "Sent for approval (SR-n)" only; the team list shows "Awaiting approval".
+
+## Storefront customer sign-up (G-32, 2026-11-27)
+
+The buyer site's Create account form is live (CUS-01, `ux.md` F1, A2 to A4):
+
+- **A2, customer variant**: email and password only (the API refuses a name). The password rule
+  shown is the request Market's, read from the new public route `GET identity/customer/password-rules`
+  (use case `identity.view-password-rules`, anonymous, `{ minLength, maxLength }` from
+  `identity.password` in the Market config). Nothing is hard-coded: until the API answers, no number
+  is shown and the API's own check decides. The Settings password change uses the same rule.
+- **A3**: after `sign-up.accepted` (the same answer for every address) and after a log-in answered
+  `email-verification-required`, the form shows "Check your email" with "Send it again"
+  (`POST identity/customer/verification-email`).
+- **A4**: `/account/confirm-email` (the Market's `links.targets.customer.verify-email`) reads the
+  token from the fragment, removes it from the address bar, asks for the password and calls
+  `POST identity/customer/confirm-email`, which signs in. `link.rejected` shows "This link cannot be
+  used" with a new link for any address. `/account/sign-in` (the `sign-in` target) redirects to
+  `/account`.
+- The relay (`apps/web/src/storefront/session-relay.ts`) allows the three new routes; these calls,
+  like sign-in, carry no CSRF token (the API checks their origin).
+- Deferred: the storefront's "Forgot password?" is still sample and `/account/reset-password` does
+  not exist (register item `FE-20261127-storefront-password-reset`).

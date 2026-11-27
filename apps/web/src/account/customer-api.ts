@@ -128,8 +128,9 @@ async function callOnce<T>(
 ): Promise<ApiResult<T>> {
   try {
     const headers: Record<string, string> = { accept: 'application/json' };
-    // Sign-in starts the session, so it has no token to send.
-    if (method !== 'GET' && path !== 'identity/customer/sign-in') {
+    // Sign-in, sign-up, "send it again" and the email confirmation are made without a session,
+    // so they have no token to send.
+    if (method !== 'GET' && !NO_SESSION_PATHS.has(path)) {
       if (csrfToken === null) {
         // No token yet (a page opened with a session from before): read the session for it.
         const session = await readSession();
@@ -198,6 +199,14 @@ async function callOnce<T>(
   }
 }
 
+/** The routes a visitor calls before having a session (the API checks their origin, not a token). */
+const NO_SESSION_PATHS: ReadonlySet<string> = new Set([
+  'identity/customer/sign-in',
+  'identity/customer/sign-up',
+  'identity/customer/verification-email',
+  'identity/customer/confirm-email',
+]);
+
 /** The two routes that turn the cart into an order; their refusals carry what changed. */
 const PAYMENT_PATHS: ReadonlySet<string> = new Set(['orders/pay', 'orders/checkout']);
 
@@ -237,6 +246,51 @@ export function readSession(): Promise<ApiResult<SessionView>> {
 
 export function signIn(email: string, password: string): Promise<ApiResult<true>> {
   return call('POST', 'identity/customer/sign-in', { email, password }, (json) => {
+    takeToken(json);
+    return true as const;
+  });
+}
+
+/** The Market's password length rule, for the Create account form (`GET identity/customer/password-rules`). */
+export interface PasswordRules {
+  readonly minLength: number;
+  readonly maxLength: number;
+}
+
+const wholeAbove0 = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : undefined;
+
+export function readPasswordRules(): Promise<ApiResult<PasswordRules>> {
+  return call('GET', 'identity/customer/password-rules', undefined, (json) => {
+    const minLength = wholeAbove0(json.minLength);
+    const maxLength = wholeAbove0(json.maxLength);
+    if (minLength === undefined || maxLength === undefined || maxLength < minLength)
+      return undefined;
+    return { minLength, maxLength };
+  });
+}
+
+/**
+ * Creates a customer account (`POST identity/customer/sign-up`, email and password only, `ux.md`
+ * A2). The answer is the same whether or not the address has an account: the mail differs.
+ */
+export function signUp(email: string, password: string): Promise<ApiResult<true>> {
+  return call('POST', 'identity/customer/sign-up', { email, password }, (json) =>
+    json.code === 'sign-up.accepted' ? (true as const) : undefined,
+  );
+}
+
+/** "Send it again" (`POST identity/customer/verification-email`): one answer for every address. */
+export function resendVerification(email: string): Promise<ApiResult<true>> {
+  return call('POST', 'identity/customer/verification-email', { email }, () => true as const);
+}
+
+/**
+ * Confirms the email with the mailed link's token and the account's password
+ * (`POST identity/customer/confirm-email`); on success the session starts, as at sign-in.
+ */
+export function confirmEmail(token: string, password: string): Promise<ApiResult<true>> {
+  return call('POST', 'identity/customer/confirm-email', { token, password }, (json) => {
     takeToken(json);
     return true as const;
   });
