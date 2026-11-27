@@ -44,8 +44,10 @@ buyers on one hot row, and every read adds a WAL write and a dead tuple. Sharded
    in `PersistenceModule`, which is Prisma only; it is the only file that may import `ioredis`
    (`pnpm boundaries`). It connects lazily, on the first count, so the worker never connects.
 3. **When Redis cannot count.** Client: `commandTimeout` 200 ms, no offline queue, no per-request
-   retries, the package's `rejectIfRedisNotReady`, a reconnect on `READONLY` (failover). A failed
-   count of a Redis class is counted in the instance's memory (`RateLimiterMemory`), not refused:
+   retries, the package's `rejectIfRedisNotReady`, a reconnect on `READONLY` (failover). While
+   Redis is its store, a failed count of a Redis class is counted in the instance's memory
+   (`RateLimiterMemory`), not refused (under the rollback switch it is counted in PostgreSQL and
+   fails closed, as before):
    **for these three classes the failure rule changes from "fail closed, 503" to "continue on each
    instance's memory"**, so during an outage the real limit can rise to "limit x instances". A
    circuit breaker sends every request to memory for 5 seconds after 3 failures in a row; when the
