@@ -519,6 +519,27 @@ ADR-0026 decision 9 and ADR-0042 decision 7, so ADR-0053 supersedes those points
   reach a verdict; its calls still fall back to the external models on any failure
   (FE-20261127-ai-gateway-in-house-rollback-low-traffic). Telling the admin in the panel
   and by notification is G6e's (FE-20261127-ai-gateway-in-house-rollback-notice).
+- **Built in G6e1 (Mondapac Intelligence tab, panel only).** Settings > AI Models, tab Mondapac
+  Intelligence (`apps/admin/src/ai-models/in-house-*`), on the G6b routes (`GET` and `PUT
+  settings/admin/ai-models/in-house`, history and revert through `ai-models/history` and
+  `ai-models/revert`); no API change. Per task type the stage in force, the stage (off, shadow,
+  percent, default, each with one line on what it does), the in-house model chosen only among the
+  families the server lists as usable for the task type (a saved one that is no longer usable stays
+  visible with its problem), and only the share of the chosen stage (shadow 0 to 100 %, percent 0 to
+  99 %). The Market's rollback limits are typed in percent with one decimal (0.1 to 5.0, sent as
+  tenths of a percent) and the minimum sample in calls (100 to 10,000). A value outside these bounds
+  is shown on its field and nothing is sent; the server checks everything again and a refused field
+  is listed by its setting with its problem (`shadow-not-approved`, `no-share` and the rest). A
+  preview lists each change before saving; the page never decides what needs the two-step code (the
+  server asks for `settings.ai-in-house.raise`, and the step-up dialog names it). "Roll back to the
+  previous version" is choosing it in the model field or restoring it from the history of that
+  task type's model setting, which passes the same checks. A live or shadow stage whose saved model
+  can no longer be used is an alert (the gateway serves it as off); with no in-house family in the
+  catalogue a note says every stage stays off. The history is the server's 50 rows, not a super
+  list, as on the External models tab. Still to come in G6e: the rollback read and the admin notice
+  (G6e2, FE-20261127-ai-gateway-in-house-rollback-notice), the rollback banner on this tab (G6e3),
+  the shadow comparison (FE-20261126-ai-gateway-shadow-metrics-read) and in-house versions on the
+  Evaluation and Playground tabs (FE-20261127-ai-gateway-in-house-eval-playground-tabs).
 - **In-house route readiness (before any stage other than off).** All of these must hold, else
   every stage stays off (ADR-0052 decision 3, ADR-0053 decision 3): (1) a PR adds the row:
   endpoint, region, exact model version id, the price the platform counts it at, retirement day;
@@ -734,7 +755,7 @@ expectedVersion, note? }` (version 0 is the default) and are a forward change th
   server lists as usable in the Market (the panel never types a model id), a saver model, and the
   saver threshold. A preview lists each change before saving; saving and every restore ask for the
   two-step code. A saved model that is no longer usable (retired, no key, not evaluated) is shown as
-  an alert. The Mondapac Intelligence tab is a placeholder until G6. Ordering uses Up and Down
+  an alert. The Mondapac Intelligence tab was a placeholder until G6e1. Ordering uses Up and Down
   buttons (keyboard and phone friendly); drag and drop, the evaluation scorecard and the playground
   come in later PRs (G5c, G5d).
 - **Built in G5d (Playground tab of Settings > AI Models).** The admin picks a capability that has

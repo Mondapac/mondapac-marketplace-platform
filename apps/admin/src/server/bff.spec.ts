@@ -1070,6 +1070,11 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('POST', models)).status).toBe(404);
     expect((await call('POST', `${models}/revert`)).status).toBe(200);
     expect((await call('PUT', `${models}/revert`)).status).toBe(404);
+    // The in-house model (Mondapac Intelligence) settings: read and change, nothing else (G6e).
+    expect((await read(`${models}/in-house`)).status).toBe(200);
+    expect((await call('PUT', `${models}/in-house`)).status).toBe(200);
+    expect((await call('POST', `${models}/in-house`)).status).toBe(404);
+    expect((await call('DELETE', `${models}/in-house`)).status).toBe(404);
     // The evaluation runs: list and estimate by exact path, one run and its cancel by UUID only.
     const evaluations = `${models}/evaluations`;
     expect((await read(evaluations)).status).toBe(200);

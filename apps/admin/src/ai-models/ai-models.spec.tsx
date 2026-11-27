@@ -190,10 +190,12 @@ describe('Settings › AI Models', () => {
     );
   });
 
-  it('shows the own-model tab as not available yet', () => {
+  it('opens the Mondapac Intelligence tab, which reads its own settings', async () => {
     view();
     fireEvent.click(screen.getByRole('tab', { name: 'Mondapac Intelligence' }));
-    expect(screen.getByText(/Not available yet/)).toBeTruthy();
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith('GET', 'settings/admin/ai-models/in-house'),
+    );
   });
 
   it('shows the field problems of a refused save', async () => {
