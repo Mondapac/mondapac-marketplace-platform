@@ -274,11 +274,11 @@ describe.each(['AU', 'ZZ'] as const)(
       );
     });
 
-    it('refuses percent and default (not served yet) and shadow without the approval', () => {
+    it('takes percent and default (served since G6d2) and refuses shadow without the approval', () => {
       for (const stage of ['percent', 'default'] as const) {
         expect(
           choices.checkInHouse(marketId, 'write', page({ stage, family: 'model-house' })).stage,
-        ).toBe('stage-not-served');
+        ).toBeNull();
       }
       const shadow = page({ stage: 'shadow', family: 'model-house', shadowPercent: 5 });
       expect(choices.checkInHouse(marketId, 'write', shadow).stage).toBe('shadow-not-approved');

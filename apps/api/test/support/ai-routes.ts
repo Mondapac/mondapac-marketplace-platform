@@ -1,6 +1,10 @@
 import type { Clock } from '@mondapac/shared-kernel';
 import { CapabilityRegistry } from '../../src/platform/ai/capability-registry';
 import { EvaluationSuiteRegistry } from '../../src/platform/ai/evaluations/evaluation-suite';
+import {
+  InHouseRollout,
+  type InHouseHealthCheck,
+} from '../../src/platform/ai/own-model/in-house-rollout';
 import { InHouseShadow, type ShadowSampler } from '../../src/platform/ai/own-model/in-house-shadow';
 import type { ShadowApprovals } from '../../src/platform/ai/own-model/in-house-stage';
 import type { CapabilitySpec } from '../../src/platform/ai/capability';
@@ -108,6 +112,27 @@ export function testShadow(
   return new InHouseShadow(
     router,
     suites,
+    options.approvals ?? {},
+    options.sampler ?? { take: () => false },
+  );
+}
+
+/**
+ * The gateway's percent and default stages for a unit test (G6d2): by default no in-house row is
+ * healthy and no call is in the percent share, so no live call reaches the in-house model. A test
+ * of the live stages passes its health and sampler.
+ */
+export function testRollout(
+  router: AiRouter,
+  options: {
+    readonly approvals?: ShadowApprovals;
+    readonly health?: InHouseHealthCheck;
+    readonly sampler?: ShadowSampler;
+  } = {},
+): InHouseRollout {
+  return new InHouseRollout(
+    router,
+    options.health ?? { healthy: () => false },
     options.approvals ?? {},
     options.sampler ?? { take: () => false },
   );

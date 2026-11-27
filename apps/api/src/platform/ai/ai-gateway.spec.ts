@@ -23,6 +23,7 @@ import {
   testRoute,
   testRouteCatalogue,
   testRouter,
+  testRollout,
   testShadow,
 } from '../../../test/support/ai-routes';
 import type { AppConfig } from '../config/app-config';
@@ -182,6 +183,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
       router,
       controls,
       testShadow(router),
+      testRollout(router),
     );
   };
 
@@ -907,6 +909,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
         router,
         controls,
         testShadow(router),
+        testRollout(router),
       );
     };
 

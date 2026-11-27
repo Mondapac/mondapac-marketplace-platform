@@ -114,7 +114,7 @@ export class AiRouter {
    * most {@link MAX_ATTEMPTS}. A stored stage whose model went stale (retired, its pass gone, its key
    * removed) gets no route, so no in-house call is sent.
    */
-  shadowPlan(marketId: MarketId, spec: CapabilitySpec, family: string): PlannedRoute[] {
+  inHousePlan(marketId: MarketId, spec: CapabilitySpec, family: string): PlannedRoute[] {
     if (!this.catalogue.isInHouse(family)) return [];
     return this.#usableRoutes(marketId, spec, family).slice(0, MAX_ATTEMPTS);
   }

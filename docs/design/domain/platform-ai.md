@@ -394,7 +394,7 @@ ADR-0026 decision 9 and ADR-0042 decision 7, so ADR-0053 supersedes those points
   lowering a share and tightening need none; a review revert never makes such a change
   (`loosensAi`). Server checks, on the page as it would stand and before any proof is spent
   (`AiModelChoices.checkInHouse`): the stage is one the gateway serves (`stage-not-served`:
-  `SERVED_IN_HOUSE_STAGES` was `off` only until G6c added shadow; G6d adds percent and default), shadow
+  `SERVED_IN_HOUSE_STAGES` was `off` only until G6c added shadow; G6d2 added percent and default), shadow
   needs the owner's written approval for the Market recorded in ADR-0052 (`shadow-not-approved`:
   `SHADOW_CUSTOMER_DATA_APPROVALS`, per Market as residency and data categories are, set by that PR
   only with the security review; every shadow call carries a real caller's request), a stage other than off needs a model (`no-model`), the model is an in-house family
@@ -426,7 +426,7 @@ ADR-0026 decision 9 and ADR-0042 decision 7, so ADR-0053 supersedes those points
   the capability declares; its evaluation suite has its own check of a real answer
   (`EvaluationSuite.shadow`: `valid`, `invalid` or `guard-rejected`; the description writer's uses
   its draft guard); the call falls in the stage's share; the in-house family has a usable route for
-  the capability now, checked again on this call (`AiRouter.shadowPlan`: Hassan's check, region,
+  the capability now, checked again on this call (`AiRouter.inHousePlan`: Hassan's check, region,
   key, not retired, a pass at the prompt version; FE-20261126-ai-gateway-in-house-call-time-recheck
   for shadow); fewer than `MAX_SHADOW_IN_FLIGHT` (8) samples of the process are out (the slot is
   taken at sampling, so a burst cannot pass it, and given back when the external call is not sent
@@ -473,6 +473,26 @@ ADR-0026 decision 9 and ADR-0042 decision 7, so ADR-0053 supersedes those points
   No budget, no request text, no row is written. G6d2 routes a percent or default call to the
   in-house model only through a healthy row; shadow does not need it (its answer reaches no one and
   its failures are measured). The panel (G6e) may show the same answer.
+- **Built in G6d2 (percent and default routing).** `SERVED_IN_HOUSE_STAGES` is every stage. For
+  a capability call, `InHouseRollout.live` (`own-model/in-house-rollout.ts`) decides whether the
+  in-house model answers it; all must hold, else the call goes to the external models as always:
+  its task type's stage in force (`inHouseStageInForce`) is `percent` or `default`; in `percent` the
+  call is in the share (a draw per call, or for a capability with tool rounds the turn's bucket, a
+  hash of the Market, the capability and the turn id, so one turn stays on one model); `default`
+  takes every call; the in-house family has a usable route for the capability, checked again on
+  this call (`AiRouter.inHousePlan`, the call-time recheck of FE-20261126-ai-gateway-in-house-call-
+  time-recheck: Hassan's check, region, key, not retired, a pass at the prompt version); and that
+  row is healthy now (G6d1). The plan is then the healthy in-house routes first and the Market's
+  external list behind them as the fallback (`livePlan`: at most 3 attempts, with room for one
+  external route when the Market has one), counted on the caller's usual budget scope like any
+  call; a task type without an external list stays `no-route`, even in default. A live call is
+  never also a shadow sample (one stage per task type); the capability's own check of a served
+  answer joins in G6d3, which widens the `ai_calls` CHECK that keeps `output_check` to shadow
+  samples. `status` and the capability cap read count the in-house routes in the most
+  a call can cost. Unlike shadow, no extra owner approval of data categories is asked: the call
+  goes to one model, under the same readiness conditions as an external route (ADR-0052 decision
+  3). The auto-rollback (G6d3) merges before any in-house catalogue row is added; until then the
+  catalogue has none, so every stage but off is refused and AI stays off.
 - **In-house route readiness (before any stage other than off).** All of these must hold, else
   every stage stays off (ADR-0052 decision 3, ADR-0053 decision 3): (1) a PR adds the row:
   endpoint, region, exact model version id, the price the platform counts it at, retirement day;
