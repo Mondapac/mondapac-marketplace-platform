@@ -162,8 +162,6 @@ export class InHouseRollback implements BeforeApplicationShutdown {
     const limits = rollbackLimitsInForce(inHouse.rollback);
     const rolledBackAt = this.clock.now();
     const rollbackId = this.ids.next();
-    // The notice's context (G6e2): the Market's system actor, as asynchronous AI work runs
-    // (ADR-0019 R3), with a correlation id of its own.
     const written = await this.unitOfWork.run(market, async () => {
       await this.store.addInHouseRollback(market, {
         id: rollbackId,
