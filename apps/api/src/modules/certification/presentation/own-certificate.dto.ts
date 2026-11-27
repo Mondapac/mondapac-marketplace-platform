@@ -68,7 +68,11 @@ export class CertificateListItemView extends CertificateSummaryView {
     nullable: true,
     type: String,
     example: '2027-06-30',
-    description: 'The last day the approved certificate is valid (a local date); null without one.',
+    description:
+      'The last day the approved submission is valid (a local date), for every status with an ' +
+      'approval (approved, expiring, renewal pending or sent back, expired, issuer not ' +
+      'recognised); null without one and after a revoke. Never a validity decision: the claim is ' +
+      "evaluateClaims'.",
   })
   validUntil!: string | null;
   @ApiProperty({
@@ -85,15 +89,18 @@ export class CertificateListItemView extends CertificateSummaryView {
     type: Number,
     description:
       'Whole local days from today to validUntil in the zone the approval was measured in: 0 on ' +
-      'the last day, negative once expired.',
+      "the last day, negative once expired. The claim also takes the seller's current zones, so " +
+      'a badge can stop counting a few hours before this reaches -1.',
   })
   daysLeft!: number | null;
   @ApiProperty({
     nullable: true,
     enum: ['info', 'attention', 'critical'],
     description:
-      "The expiry banner's tone from the Market's warning thresholds, for approved-expiring and " +
-      'expired only.',
+      "The expiry banner's tone from the Market's warning thresholds: info from the first, " +
+      'attention from any later one, critical on the last day and once expired. Only for ' +
+      'approved-expiring and expired; null with a renewal pending or sent back (the seller is ' +
+      'already acting on it).',
   })
   bannerTone!: string | null;
 }
@@ -137,7 +144,10 @@ export class CertificateDecisionView {
   @ApiProperty({
     nullable: true,
     type: String,
-    description: "The Market's plain label of the reason; null once the code left the list.",
+    description:
+      "The Market's plain label of the reason (the mail's words, one language; the panel's own " +
+      "words come from reasonCode and nextStep); null once the code left the Market's list for " +
+      'this outcome.',
   })
   reasonLabel!: string | null;
   @ApiProperty({
@@ -245,8 +255,8 @@ export class CertificateSubmitted {
 export class CertificateDocumentUploadRequest {
   @ApiProperty({
     description:
-      'The file as standard base64 text: JPEG, PNG or PDF, at most 10 MiB of bytes. The type is ' +
-      'read from the content.',
+      'The file as standard base64 text, within the limits of certificate-options ' +
+      '`documentLimits` (types, bytes, PDF pages). The type is read from the content.',
   })
   data!: string;
 }

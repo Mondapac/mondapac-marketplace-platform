@@ -350,6 +350,10 @@ describe('seller certificate routes over HTTP (integration)', () => {
       ]);
 
       const read = await http().get(`${base}/certificates/${certificateId}`).set(h).expect(200);
+      // The read holds decrypted text (number, reviewer's text): never cached.
+      expect(read.headers['cache-control']).toContain('no-store');
+      const listing = await http().get(`${base}/certificates`).set(h).expect(200);
+      expect(listing.headers['cache-control']).toContain('no-store');
       expect(read.body).toMatchObject({
         certificate: {
           status: 'awaiting-review',

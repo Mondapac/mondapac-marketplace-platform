@@ -25,6 +25,7 @@ import type {
   DocumentVault,
 } from '../ports/document-ports';
 import type { RateCounterKeys, RateCounterRepository } from '../ports/rate-counters';
+import type { ExpiryPolicy } from '../../domain/expiry';
 import type { ExpiryPolicyProvider } from '../ports/expiry.repository';
 import type { CertificateIndexKeys, ReviewPolicyProvider } from '../ports/review.ports';
 import type { SellerZonesSource } from '../ports/claim-facts.ports';
@@ -190,22 +191,33 @@ export interface DocumentView {
   readonly createdAt: string;
 }
 
+/**
+ * Days before the boundary at which the seller's status becomes `approved-expiring`: the Market's
+ * first (largest) warning threshold (design 3.3, 5.1). A Market without thresholds has none.
+ */
+export function expiringWithinDaysOf(policy: ExpiryPolicy): number {
+  return policy.warningThresholdsDays.length === 0 ? 0 : Math.max(...policy.warningThresholdsDays);
+}
+
 export function summaryOf(
   stored: StoredCertificate,
   editable: boolean,
   now: Temporal.Instant,
+  expiringWithinDays: number,
 ): CertificateSummary {
   const status = sellerStatusOf(
     {
       status: stored.status,
       pendingKind: stored.pendingKind,
       approvedBoundaryAt: stored.approvedBoundaryAt,
+      approvedZone: stored.approvedZone,
       hasApproval: stored.approvedSubmissionId !== null,
       approvedIssuerState: stored.approvedIssuerState,
       issuerRequestOpen: stored.issuerRequestOpen,
       latestOutcome: stored.latestOutcome,
     },
     now,
+    expiringWithinDays,
   );
   return {
     certificateId: stored.id,

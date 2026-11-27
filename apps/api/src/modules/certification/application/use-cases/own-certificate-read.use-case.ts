@@ -16,6 +16,7 @@ import {
   ownerOf,
   parseCertificateId,
   storeFailure,
+  expiringWithinDaysOf,
   summaryOf,
   type DocumentView,
   type OwnCertificateDependencies,
@@ -138,9 +139,18 @@ export class OwnCertificateRead extends UseCase<
       stored,
       isDraftEditable(stored.status, stored.pendingSubmissionId),
       now,
+      expiringWithinDaysOf(expiry),
     );
     // Decrypted outside any unit, as the draft's fields are.
-    const extras = await detailExtrasOf(stored, summary.status, facts, review, deps.cipher, market);
+    const extras = await detailExtrasOf(
+      stored,
+      summary.status,
+      facts,
+      review,
+      deps.cipher,
+      context,
+    );
+    if (!extras.ok) return extras;
     return ok({
       certificate: { ...summary, ...listExtrasOf(stored, summary.status, facts, expiry, now) },
       draft: {
@@ -152,7 +162,7 @@ export class OwnCertificateRead extends UseCase<
         selfDeclarationNote: note.value,
       },
       documents: documents.map(documentViewOf),
-      ...extras,
+      ...extras.value,
     });
   }
 }

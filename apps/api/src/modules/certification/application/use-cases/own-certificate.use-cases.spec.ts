@@ -29,6 +29,7 @@ import { MarketRegistry } from '../../../../platform/market-config/market-regist
 import { MarketConfigExpiryPolicy } from '../../infrastructure/market-config-expiry-policy';
 import { CheckedInReviewPolicy } from '../../infrastructure/review-policy/checked-in-review-policy';
 import { SharpDocumentIntake } from '../../infrastructure/sharp-document-intake';
+import type { CertificateFieldCipher } from '../ports/document-ports';
 import { ownerOf, type OwnCertificateDependencies } from '../own/own-certificate.shared';
 import { OwnCertificateCreate } from './own-certificate-create.use-case';
 import { OwnCertificateDeleteDraft } from './own-certificate-delete-draft.use-case';
@@ -1380,9 +1381,12 @@ describe.each(['AU', 'ZZ'] as const)('own certificates in market %s', (code) => 
         daysLeft: 14,
         bannerTone: 'info',
       });
+      // Both Markets have a later threshold above 9 days and none at 1 day but the last.
+      other.clock.advance(Temporal.Duration.from({ hours: 24 * 5 }));
+      expect(await rowAt()).toMatchObject({ daysLeft: 9, bannerTone: 'attention' });
+      other.clock.advance(Temporal.Duration.from({ hours: 24 * 8 }));
+      expect(await rowAt()).toMatchObject({ daysLeft: 1, bannerTone: 'attention' });
       other.clock.advance(Temporal.Duration.from({ hours: 24 }));
-      expect(await rowAt()).toMatchObject({ daysLeft: 13, bannerTone: 'attention' });
-      other.clock.advance(Temporal.Duration.from({ hours: 24 * 13 }));
       expect(await rowAt()).toMatchObject({ daysLeft: 0, bannerTone: 'critical' });
       other.clock.advance(Temporal.Duration.from({ hours: 24 }));
       expect(await rowAt()).toMatchObject({
@@ -1511,6 +1515,35 @@ describe.each(['AU', 'ZZ'] as const)('own certificates in market %s', (code) => 
         expect(text).not.toContain(context.actor.accountId);
       }
       expect(text).not.toMatch(/accountId|actor/u);
+    });
+
+    it('answers unavailable, never a silent "no text", when the key service fails', async () => {
+      const r = rig();
+      const { certificateId, submissionId } = await submitted(r);
+      const sealed = await r.deps.cipher.seal(market, r.sellerId, 'decision-reason-text', 'x');
+      r.certificates.decisions.set(submissionId, 'changes-requested');
+      r.certificates.decisionDetails.set(submissionId, {
+        reasonCode: reasonFor('changes-requested').code,
+        reasonTextCiphertext: sealed.ok ? sealed.value : null,
+      });
+      const root = r.certificates.certificates.get(certificateId)!;
+      root.status = 'changes-needed';
+      root.pendingSubmissionId = null;
+      root.pendingKind = null;
+      const cipher = r.deps.cipher;
+      const failing: CertificateFieldCipher = {
+        seal: (m, seller, field, value) => cipher.seal(m, seller, field, value),
+        hash: (m, seller, content) => cipher.hash(m, seller, content),
+        open: (m, seller, field, value) =>
+          field === 'decision-reason-text'
+            ? Promise.reject(new Error('key service down'))
+            : cipher.open(m, seller, field, value),
+      };
+      (r.deps as { cipher: CertificateFieldCipher }).cipher = failing;
+      await expect(r.read.execute(r.contextOf(), { certificateId })).resolves.toEqual({
+        ok: false,
+        error: { code: 'access.unavailable' },
+      });
     });
 
     it('gives the file limits with the options, from the intake itself', async () => {

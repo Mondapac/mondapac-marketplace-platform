@@ -18,6 +18,7 @@ import {
   reserveLimits,
   storeFailure,
   logWithdrawnByEdit,
+  expiringWithinDaysOf,
   summaryOf,
   withdrawForEdit,
   type CertificateSummary,
@@ -177,7 +178,12 @@ export class OwnCertificateSaveDraft extends UseCase<
       if (!unchanged.ok) return unchanged;
       if (unchanged.value) {
         return ok({
-          certificate: summaryOf(stored, false, this.deps.clock.now()),
+          certificate: summaryOf(
+            stored,
+            false,
+            this.deps.clock.now(),
+            expiringWithinDaysOf(this.deps.expiryPolicies.policyFor(context.market)),
+          ),
           draft: draftViewOf(draft),
           withdrawnSubmissionId: null,
         });
@@ -229,7 +235,14 @@ export class OwnCertificateSaveDraft extends UseCase<
         }
         const saved = await deps.certificates.findOwn(market, owner.sellerId, certificateId);
         if (saved === null) throw new Error('save-draft: the certificate vanished');
-        return ok(summaryOf(saved, isDraftEditable(saved.status, saved.pendingSubmissionId), now));
+        return ok(
+          summaryOf(
+            saved,
+            isDraftEditable(saved.status, saved.pendingSubmissionId),
+            now,
+            expiringWithinDaysOf(this.deps.expiryPolicies.policyFor(context.market)),
+          ),
+        );
       })
       .catch((error: unknown) => storeFailure(context, 'certification.save-draft.write', error));
     if (!written.ok) return written;

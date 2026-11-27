@@ -8,6 +8,7 @@ import {
   ownerOf,
   reserveLimits,
   storeFailure,
+  expiringWithinDaysOf,
   summaryOf,
   type CertificateSummary,
   type OwnCertificateDependencies,
@@ -94,7 +95,14 @@ export class OwnCertificateCreate extends UseCase<
           if (refusal !== null) return err({ code: refusal } as const);
           const stored = await deps.certificates.findOwn(market, owner.sellerId, id);
           if (stored === null) throw new Error('create: the certificate was not stored');
-          return ok(summaryOf(stored, true, now));
+          return ok(
+            summaryOf(
+              stored,
+              true,
+              now,
+              expiringWithinDaysOf(this.deps.expiryPolicies.policyFor(context.market)),
+            ),
+          );
         },
       );
       return written;

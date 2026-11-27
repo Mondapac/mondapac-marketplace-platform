@@ -1,31 +1,34 @@
 import { Temporal } from '@mondapac/shared-kernel';
-import { bannerToneOf, daysLeftOf } from './own-certificate-view';
+import { approvalBoundary, daysLeftAt } from '../../domain/expiry';
+import { bannerToneOf } from './own-certificate-view';
 
 // The seller's expiry display (seller certificate pages, design 5.1): days left and the banner
 // tone from the Market's thresholds. Display only; the claim is `evaluateClaims`'.
 
 describe('days left', () => {
-  const expiry = Temporal.PlainDate.from('2027-06-30');
-
+  // Expiry date 30 Jun 2027: the boundary is 00:00 of 1 Jul in the approval zone.
   it.each([
-    ['Australia/Brisbane', '2027-06-29T13:59:59Z', 1],
-    ['Australia/Brisbane', '2027-06-29T14:00:00Z', 0],
-    ['Australia/Brisbane', '2027-06-30T14:00:00Z', -1],
-    ['Pacific/Auckland', '2027-06-29T11:59:59Z', 1],
-    ['Pacific/Auckland', '2027-06-29T12:00:00Z', 0],
-  ])('counts local days in the approval zone %s at %s', (zone, at, days) => {
-    expect(daysLeftOf(expiry, zone, null, Temporal.Instant.from(at))).toBe(days);
+    ['Australia/Brisbane', '2027-06-30T14:00:00Z', '2027-06-29T13:59:59Z', 1],
+    ['Australia/Brisbane', '2027-06-30T14:00:00Z', '2027-06-29T14:00:00Z', 0],
+    ['Australia/Brisbane', '2027-06-30T14:00:00Z', '2027-06-30T14:00:00Z', -1],
+    ['Pacific/Auckland', '2027-06-30T12:00:00Z', '2027-06-29T11:59:59Z', 1],
+    ['Pacific/Auckland', '2027-06-30T12:00:00Z', '2027-06-29T12:00:00Z', 0],
+  ])('counts local days in the approval zone %s', (zone, boundary, at, days) => {
+    expect(
+      daysLeftAt(
+        approvalBoundary(Temporal.Instant.from(boundary), zone),
+        Temporal.Instant.from(at),
+      ),
+    ).toBe(days);
   });
 
-  it('counts back from the stored boundary when the approval zone is not usable', () => {
-    const boundary = Temporal.Instant.from('2027-06-30T14:00:00Z');
-    const at = (iso: string) => daysLeftOf(expiry, '+10:00', boundary, Temporal.Instant.from(iso));
+  it('counts whole 24-hour days back from the stored boundary without a usable zone', () => {
+    const boundary = approvalBoundary(Temporal.Instant.from('2027-06-30T14:00:00Z'), '+10:00');
+    expect(boundary.zone).toBeNull();
+    const at = (iso: string) => daysLeftAt(boundary, Temporal.Instant.from(iso));
     expect(at('2027-06-29T14:00:00Z')).toBe(0);
     expect(at('2027-06-29T13:59:59Z')).toBe(1);
     expect(at('2027-06-30T14:00:00Z')).toBe(-1);
-    expect(
-      daysLeftOf(expiry, null, null, Temporal.Instant.from('2027-06-29T00:00:00Z')),
-    ).toBeNull();
   });
 });
 
@@ -55,10 +58,12 @@ describe('banner tone', () => {
     }
   });
 
-  it('follows the Market thresholds, in any order', () => {
-    expect(bannerToneOf('approved-expiring', 4, [7, 60, 3])).toBe('attention');
-    expect(bannerToneOf('approved-expiring', 2, [7, 60, 3])).toBe('critical');
+  it('follows the Market thresholds, in any order: critical is only the last day', () => {
     expect(bannerToneOf('approved-expiring', 10, [7, 60, 3])).toBe('info');
+    expect(bannerToneOf('approved-expiring', 6, [7, 60, 3])).toBe('attention');
+    expect(bannerToneOf('approved-expiring', 2, [7, 60, 3])).toBe('attention');
+    expect(bannerToneOf('approved-expiring', 0, [7, 60, 3])).toBe('critical');
+    expect(bannerToneOf('approved-expiring', 6, [30, 7])).toBe('attention');
     expect(bannerToneOf('approved-expiring', 3, [30])).toBe('info');
     expect(bannerToneOf('approved-expiring', 3, [])).toBe('info');
   });

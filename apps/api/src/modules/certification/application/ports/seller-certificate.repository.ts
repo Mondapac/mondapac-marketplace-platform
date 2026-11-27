@@ -24,6 +24,8 @@ export interface StoredCertificate {
   readonly approvedSubmissionId: Id<'Submission'> | null;
   /** The boundary stored at approval, for the status display only (never a claim input). */
   readonly approvedBoundaryAt: Temporal.Instant | null;
+  /** The seller's zone at approval (the approved decision row), for the status display only. */
+  readonly approvedZone: string | null;
   readonly approvedIssuerState: IssuerState | null;
   /**
    * True while the seller has an open "my issuer is not listed" request of this type (design
@@ -257,7 +259,7 @@ export interface SellerCertificateRepository {
   ): Promise<'deleted' | 'unlinked' | 'missing'>;
   /**
    * The view facts of the seller's own certificates, by record id, in a few bounded statements
-   * (one per kind, never one per record). Every statement is filtered by the seller id; a record
+   * (one per kind, never one per record). `detail` takes exactly one record (it throws otherwise). Every statement is filtered by the seller id; a record
    * of another seller has no entry.
    */
   viewFacts(

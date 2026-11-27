@@ -1,9 +1,14 @@
-import { Temporal } from '@mondapac/shared-kernel';
-import type { Id, MarketContext } from '@mondapac/shared-kernel';
-import { renewalSubmitBy, type ExpiryPolicy } from '../../domain/expiry';
-import type { ReviewPolicy } from '../../domain/review';
+import { Logger } from '@nestjs/common';
+import { err, ok, Temporal } from '@mondapac/shared-kernel';
+import type { CallContext, Result } from '@mondapac/shared-kernel';
+import {
+  approvalBoundary,
+  daysLeftAt,
+  renewalSubmitBy,
+  type ExpiryPolicy,
+} from '../../domain/expiry';
+import { reasonFor, type ReasonOutcome, type ReviewPolicy } from '../../domain/review';
 import type { SellerStatusCode } from '../../domain/seller-certificate';
-import { isUsableZone } from '../../domain/validity';
 import type { CertificateFieldCipher } from '../ports/document-ports';
 import type {
   CertificateViewFacts,
@@ -115,28 +120,11 @@ function inForceSubmission(
 }
 
 /**
- * Whole local days from `now` to the expiry date in the approval's zone; without a usable zone,
- * counted back from the stored boundary (the start of the day after the expiry date).
- */
-export function daysLeftOf(
-  expiryDate: Temporal.PlainDate,
-  approvedZone: string | null,
-  boundary: Temporal.Instant | null,
-  now: Temporal.Instant,
-): number | null {
-  if (isUsableZone(approvedZone)) {
-    const today = now.toZonedDateTimeISO(approvedZone).toPlainDate();
-    return today.until(expiryDate, { largestUnit: 'days' }).days;
-  }
-  if (boundary === null) return null;
-  const hours = boundary.since(now, { largestUnit: 'hours' }).total({ unit: 'hours' });
-  return Math.ceil(hours / 24) - 1;
-}
-
-/**
- * The banner tone from the Market's warning thresholds (seller pages design 5.1: first threshold
- * info, the ones between attention, the last day and after expiry critical). A threshold of N
- * days starts N - 1 whole days before the expiry date (expiry.ts `warningStart`).
+ * The banner tone from the Market's warning thresholds (seller pages design 5.1): from the first
+ * (largest) threshold `info`, from any later threshold `attention`, the last day and after expiry
+ * `critical`. A threshold of N days starts N - 1 whole days before the last day (`warningStart`).
+ * Only `approved-expiring` and `expired` show the banner: with a renewal pending or sent back the
+ * seller already acts on it.
  */
 export function bannerToneOf(
   status: SellerStatusCode,
@@ -146,14 +134,8 @@ export function bannerToneOf(
   if (status === 'expired') return 'critical';
   if (status !== 'approved-expiring' || daysLeft === null) return null;
   if (daysLeft <= 0) return 'critical';
-  const sorted = [...thresholdsDays].sort((a, b) => a - b);
-  const largest = sorted[sorted.length - 1];
-  const smallest = sorted[0];
-  if (largest === undefined || smallest === undefined) return 'info';
-  if (sorted.length > 1 && daysLeft <= smallest - 1) return 'critical';
-  if (sorted.length > 1 && sorted.slice(0, -1).some((days) => daysLeft <= days - 1)) {
-    return 'attention';
-  }
+  const sorted = [...thresholdsDays].sort((a, b) => b - a);
+  if (sorted.slice(1).some((days) => daysLeft <= days - 1)) return 'attention';
   return 'info';
 }
 
@@ -179,12 +161,10 @@ export function listExtrasOf(
       bannerTone: null,
     };
   }
-  const daysLeft = daysLeftOf(
-    expiryDate,
-    inForce?.decision?.approvedZone ?? null,
-    stored.approvedBoundaryAt,
-    now,
-  );
+  const daysLeft =
+    stored.approvedBoundaryAt === null
+      ? null
+      : daysLeftAt(approvalBoundary(stored.approvedBoundaryAt, stored.approvedZone), now);
   return {
     issuerName,
     validUntil: expiryDate.toString(),
@@ -203,25 +183,55 @@ const DECISION_STATUSES: ReadonlySet<SellerStatusCode> = new Set([
 function reasonOf(
   policy: ReviewPolicy,
   code: string | null,
+  outcome: ReasonOutcome,
 ): { reasonLabel: string | null; nextStep: string | null } {
-  const reason = code === null ? undefined : policy.reasons.find((r) => r.code === code);
+  const reason = code === null ? null : reasonFor(policy, code, outcome);
   return { reasonLabel: reason?.label ?? null, nextStep: reason?.nextStep ?? null };
 }
 
+const logger = new Logger('OwnCertificateView');
+
+/** A sealed field that cannot be read at all (the key service failed), not an erased key. */
+export class FieldUnreadable extends Error {
+  override readonly name = 'FieldUnreadable';
+}
+
+/**
+ * Opens one sealed field of the seller's read. An erased key (the seller's data was erased) answers
+ * null, as a field that is gone; anything thrown (the key service down, a broken envelope) is
+ * `FieldUnreadable`, so the read answers unavailable rather than a silent "no text". Both are
+ * logged with ids only (Hassan L1).
+ */
 async function openOrNull(
   cipher: CertificateFieldCipher,
-  market: MarketContext,
-  sellerId: Id<'Seller'>,
+  context: CallContext,
+  stored: StoredCertificate,
+  submissionId: string,
   field: 'decision-reason-text' | 'submission-certificate-number',
   sealed: string | null,
 ): Promise<string | null> {
   if (sealed === null) return null;
+  const line = {
+    field,
+    certificateId: stored.id,
+    submissionId,
+    marketId: context.market.marketId,
+    correlationId: context.correlationId,
+  };
+  let opened;
   try {
-    const opened = await cipher.open(market, sellerId, field, sealed);
-    return opened.ok ? opened.value : null;
-  } catch {
-    return null;
+    opened = await cipher.open(context.market, stored.sellerId, field, sealed);
+  } catch (error) {
+    logger.error({
+      msg: 'certification.own-certificate-field-unreadable',
+      ...line,
+      errorName: error instanceof Error ? error.name : 'unknown',
+    });
+    throw new FieldUnreadable(field);
   }
+  if (opened.ok) return opened.value;
+  logger.warn({ msg: 'certification.own-certificate-field-key-erased', ...line });
+  return null;
 }
 
 function historyOf(facts: CertificateViewFacts, policy: ReviewPolicy): CertificateHistoryEntry[] {
@@ -246,7 +256,7 @@ function historyOf(facts: CertificateViewFacts, policy: ReviewPolicy): Certifica
         event: decision.outcome,
         reasonLabel:
           decision.outcome === 'changes-requested' || decision.outcome === 'declined'
-            ? reasonOf(policy, decision.reasonCode).reasonLabel
+            ? reasonOf(policy, decision.reasonCode, decision.outcome).reasonLabel
             : null,
         at: decision.decidedAt.toString(),
       },
@@ -258,7 +268,9 @@ function historyOf(facts: CertificateViewFacts, policy: ReviewPolicy): Certifica
       entry: {
         event: change.toStatus,
         reasonLabel:
-          change.toStatus === 'revoked' ? reasonOf(policy, change.reasonCode).reasonLabel : null,
+          change.toStatus === 'revoked'
+            ? reasonOf(policy, change.reasonCode, 'revoked').reasonLabel
+            : null,
         at: change.occurredAt.toString(),
       },
       at: change.occurredAt,
@@ -271,29 +283,52 @@ function historyOf(facts: CertificateViewFacts, policy: ReviewPolicy): Certifica
     .map((item) => item.entry);
 }
 
+/**
+ * The read's decision, history and approved values. A sealed field the key service cannot open
+ * makes the whole read unavailable.
+ */
 export async function detailExtrasOf(
   stored: StoredCertificate,
   status: SellerStatusCode,
   facts: CertificateViewFacts,
   policy: ReviewPolicy,
   cipher: CertificateFieldCipher,
-  market: MarketContext,
+  context: CallContext,
+): Promise<Result<CertificateDetailExtras, { readonly code: 'access.unavailable' }>> {
+  try {
+    return ok(await detailExtras(stored, status, facts, policy, cipher, context));
+  } catch (error) {
+    if (error instanceof FieldUnreadable) return err({ code: 'access.unavailable' });
+    throw error;
+  }
+}
+
+async function detailExtras(
+  stored: StoredCertificate,
+  status: SellerStatusCode,
+  facts: CertificateViewFacts,
+  policy: ReviewPolicy,
+  cipher: CertificateFieldCipher,
+  context: CallContext,
 ): Promise<CertificateDetailExtras> {
   let decision: CertificateDecisionView | null = null;
-  const newestDecision = facts.newest?.decision ?? null;
+  const newest = facts.newest;
+  const newestDecision = newest?.decision ?? null;
   if (
     DECISION_STATUSES.has(status) &&
+    newest !== null &&
     newestDecision !== null &&
     (newestDecision.outcome === 'changes-requested' || newestDecision.outcome === 'declined')
   ) {
     decision = {
       outcome: newestDecision.outcome,
       reasonCode: newestDecision.reasonCode,
-      ...reasonOf(policy, newestDecision.reasonCode),
+      ...reasonOf(policy, newestDecision.reasonCode, newestDecision.outcome),
       reasonText: await openOrNull(
         cipher,
-        market,
-        stored.sellerId,
+        context,
+        stored,
+        newest.id,
         'decision-reason-text',
         newestDecision.reasonTextCiphertext,
       ),
@@ -305,7 +340,7 @@ export async function detailExtrasOf(
       decision = {
         outcome: 'revoked',
         reasonCode: revoke.reasonCode,
-        ...reasonOf(policy, revoke.reasonCode),
+        ...reasonOf(policy, revoke.reasonCode, 'revoked'),
         reasonText: null,
         decidedAt: revoke.occurredAt.toString(),
       };
@@ -321,8 +356,9 @@ export async function detailExtrasOf(
           issuerName: approved.issuerName,
           certificateNumber: await openOrNull(
             cipher,
-            market,
-            stored.sellerId,
+            context,
+            stored,
+            approved.id,
             'submission-certificate-number',
             approved.certificateNumberCiphertext,
           ),

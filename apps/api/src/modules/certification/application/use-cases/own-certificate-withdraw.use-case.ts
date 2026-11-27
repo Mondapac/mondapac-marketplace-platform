@@ -9,6 +9,7 @@ import {
   ownerOf,
   parseCertificateId,
   storeFailure,
+  expiringWithinDaysOf,
   summaryOf,
   type CertificateSummary,
   type OwnCertificateDependencies,
@@ -101,7 +102,14 @@ export class OwnCertificateWithdraw extends UseCase<
         ]);
         const after = await deps.certificates.findOwn(market, owner.sellerId, certificateId);
         if (after === null) throw new Error('withdraw: the certificate vanished');
-        return ok(summaryOf(after, isDraftEditable(after.status, after.pendingSubmissionId), now));
+        return ok(
+          summaryOf(
+            after,
+            isDraftEditable(after.status, after.pendingSubmissionId),
+            now,
+            expiringWithinDaysOf(this.deps.expiryPolicies.policyFor(context.market)),
+          ),
+        );
       })
       .catch((error: unknown) => storeFailure(context, 'certification.withdraw', error));
   }

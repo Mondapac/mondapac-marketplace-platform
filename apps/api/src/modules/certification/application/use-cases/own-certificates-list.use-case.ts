@@ -8,6 +8,7 @@ import {
   invalid,
   ownerOf,
   storeFailure,
+  expiringWithinDaysOf,
   summaryOf,
   type OwnCertificateDependencies,
   type ValidationFailure,
@@ -119,6 +120,7 @@ export class OwnCertificatesList extends UseCase<
           stored,
           isDraftEditable(stored.status, stored.pendingSubmissionId),
           now,
+          expiringWithinDaysOf(expiry),
         );
         return {
           ...summary,

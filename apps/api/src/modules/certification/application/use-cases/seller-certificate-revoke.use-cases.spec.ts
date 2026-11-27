@@ -105,6 +105,7 @@ describe.each(['AU', 'ZZ'] as const)('revoke and full history, Market %s', (code
         pendingKind: options.renewal === true ? 'renewal' : null,
         approvedSubmissionId: hasApproval ? approvedId : null,
         approvedBoundaryAt: hasApproval ? Temporal.Instant.from('2028-01-01T14:00:00Z') : null,
+        approvedZone: null,
         approvedIssuerState: hasApproval ? 'active' : null,
         issuerRequestOpen: false,
         latestOutcome: null,

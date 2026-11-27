@@ -1014,6 +1014,54 @@ describe.each(TEST_MARKETS)('certification seller certificates in market %s (dat
       expect(elsewhere.get(id)).toMatchObject({ newest: null, recent: [], draftIssuerName: null });
     });
 
+    it('never reads an admin account, a history note or a withdrawal actor into the facts', async () => {
+      const { seller, id, write } = await readyToSubmit();
+      await inUnit(() => repository.submit(market, write));
+      const admin = uuid7();
+      const NOTE = `v1.${'N'.repeat(48)}`;
+      await insert('seller_submission_decisions', {
+        ...base(),
+        submission_id: write.submissionId,
+        outcome: 'declined',
+        reason_code: 'holder-name-mismatch',
+        actor_kind: 'admin',
+        actor_account_id: admin,
+        decided_at: T1.add({ hours: 1 }).toString(),
+      });
+      await insert('seller_certification_history', {
+        id: uuid7(),
+        ...base(),
+        seller_certification_id: id,
+        from_status: 'in-review',
+        to_status: 'revoked',
+        submission_id: write.submissionId,
+        actor_kind: 'admin',
+        actor_account_id: admin,
+        reason_code: 'approved-in-error',
+        note_ciphertext: NOTE,
+        occurred_at: T1.add({ hours: 2 }).toString(),
+      });
+      const stored = await inUnit(() => repository.findOwn(market, seller as Id<'Seller'>, id));
+      const facts = await inUnit(() =>
+        repository.viewFacts(market, seller as Id<'Seller'>, [stored!], { detail: true }),
+      );
+      const text = JSON.stringify([...facts.values()]);
+      expect(text).toContain('holder-name-mismatch');
+      expect(text).toContain('approved-in-error');
+      expect(text).not.toContain(admin);
+      expect(text).not.toContain(write.submittedByAccountId);
+      expect(text).not.toContain(NOTE);
+      expect(text).not.toMatch(/account|actor|note/iu);
+      // The detail read is one record's.
+      await expect(
+        inUnit(() =>
+          repository.viewFacts(market, seller as Id<'Seller'>, [stored!, stored!], {
+            detail: true,
+          }),
+        ),
+      ).rejects.toThrow('exactly one record');
+    });
+
     it("names the draft's issuer and reads the approved submission and the record's revoke", async () => {
       const { seller, id, write } = await readyToSubmit();
       await inUnit(() => repository.submit(market, write));

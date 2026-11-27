@@ -1,5 +1,6 @@
 import { err, ok, parsePlainText, Temporal } from '@mondapac/shared-kernel';
 import type { Id, Result } from '@mondapac/shared-kernel';
+import { approvalBoundary, warningStart } from './expiry';
 import type { IssuerState, SellerCertificationStatus } from './validity';
 
 // The seller side of a certificate (certification design 2.1, 3.1 to 3.3): the draft a seller
@@ -9,8 +10,6 @@ import type { IssuerState, SellerCertificationStatus } from './validity';
 export const MAX_DOCUMENTS_PER_CERTIFICATE = 10;
 export const MAX_CERTIFICATE_NUMBER_LENGTH = 64;
 export const MAX_SELF_DECLARATION_NOTE_LENGTH = 1000;
-/** The first warning threshold of the seller's status (design 3.3; Market configuration later). */
-export const EXPIRING_WITHIN_DAYS = 30;
 /** The content schema version of a submission (data design 3.5). */
 export const SUBMISSION_CONTENT_SCHEMA_VERSION = 1;
 
@@ -320,6 +319,8 @@ export interface SellerStatusInput {
   readonly pendingKind: SubmissionKind | null;
   /** The boundary stored at approval; null without an approval or without an expiry. */
   readonly approvedBoundaryAt: Temporal.Instant | null;
+  /** The seller's zone at approval, which gave the boundary; null when unknown. */
+  readonly approvedZone: string | null;
   readonly hasApproval: boolean;
   readonly approvedIssuerState: IssuerState | null;
   /** True while the seller has an open "my issuer is not listed" request for this type. */
@@ -346,9 +347,15 @@ export interface SellerStatus {
 /**
  * The status code from the record, the pending submission and the stored boundary at `now`
  * (design 3.3). Past the boundary the answer is "expired" whether or not the job ran (design 2.4
- * rule 4). This is a display; the claim is decided by `evaluateClaims`, never from here.
+ * rule 4). `approved-expiring` starts with the Market's first (largest) warning threshold, on the
+ * same local day as the job's warning (`warningStart` in the approval zone). This is a display;
+ * the claim is decided by `evaluateClaims`, never from here.
  */
-export function sellerStatusOf(input: SellerStatusInput, now: Temporal.Instant): SellerStatus {
+export function sellerStatusOf(
+  input: SellerStatusInput,
+  now: Temporal.Instant,
+  expiringWithinDays: number,
+): SellerStatus {
   const none = null;
   const { status, pendingKind } = input;
   if (status === 'declined') return { code: 'declined', submitBy: none };
@@ -379,8 +386,11 @@ export function sellerStatusOf(input: SellerStatusInput, now: Temporal.Instant):
   if (input.latestOutcome === 'changes-requested') {
     return { code: 'approved-renewal-changes-needed', submitBy: boundary };
   }
-  if (boundary !== null) {
-    const warnFrom = boundary.subtract({ hours: EXPIRING_WITHIN_DAYS * 24 });
+  if (boundary !== null && expiringWithinDays > 0) {
+    const warnFrom = warningStart(
+      approvalBoundary(boundary, input.approvedZone),
+      expiringWithinDays,
+    );
     if (Temporal.Instant.compare(now, warnFrom) >= 0) {
       return { code: 'approved-expiring', submitBy: boundary };
     }

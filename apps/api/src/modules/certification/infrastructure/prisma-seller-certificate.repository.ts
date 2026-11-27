@@ -43,7 +43,12 @@ export const fromDay = (date: Date | null): Temporal.PlainDate | null =>
 export const CERTIFICATE_INCLUDE = {
   type: { select: { code: true } },
   pendingSubmission: { select: { kind: true } },
-  approvedSubmission: { select: { issuer: { select: { state: true } } } },
+  approvedSubmission: {
+    select: {
+      issuer: { select: { state: true } },
+      decision: { select: { approvedZone: true } },
+    },
+  },
   _count: { select: { submissions: true } },
 } as const;
 
@@ -69,7 +74,10 @@ export interface CertificateRow {
   draftSelfDeclarationNoteCiphertext: string | null;
   type: { code: string };
   pendingSubmission: { kind: string } | null;
-  approvedSubmission: { issuer: { state: string } | null } | null;
+  approvedSubmission: {
+    issuer: { state: string } | null;
+    decision: { approvedZone: string | null } | null;
+  } | null;
   _count: { submissions: number };
 }
 
@@ -150,6 +158,7 @@ export function toCertificate(
     pendingKind: (row.pendingSubmission?.kind ?? null) as SubmissionKind | null,
     approvedSubmissionId: row.approvedSubmissionId as Id<'Submission'> | null,
     approvedBoundaryAt: row.approvedBoundaryAt === null ? null : toInstant(row.approvedBoundaryAt),
+    approvedZone: row.approvedSubmission?.decision?.approvedZone ?? null,
     approvedIssuerState: (row.approvedSubmission?.issuer?.state ?? null) as IssuerState | null,
     issuerRequestOpen: openRequests.has(`${row.sellerId}|${row.typeId}`),
     latestOutcome: latestOutcomeOf(row, newest.get(row.id)),
@@ -382,6 +391,10 @@ export class PrismaSellerCertificateRepository implements SellerCertificateRepos
   ): Promise<ReadonlyMap<string, CertificateViewFacts>> {
     const own = certificates.filter((c) => c.sellerId === sellerId);
     if (own.length === 0) return new Map();
+    // The detail read is one record's: its two extra statements run per record (Mohammad L7).
+    if (options.detail && own.length !== 1) {
+      throw new Error('viewFacts: the detail read takes exactly one record');
+    }
     const tx = this.prisma.tx(market);
     const base = { marketId: market.marketId, sellerId };
 

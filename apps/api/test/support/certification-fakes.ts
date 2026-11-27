@@ -143,6 +143,9 @@ export class MemoryCertificates implements SellerCertificateRepository {
     certificates: readonly StoredCertificate[],
     options: { readonly detail: boolean },
   ): Promise<ReadonlyMap<string, CertificateViewFacts>> {
+    if (options.detail && certificates.length !== 1) {
+      throw new Error('viewFacts: the detail read takes exactly one record');
+    }
     const out = new Map<string, CertificateViewFacts>();
     for (const c of certificates) {
       const row = this.certificates.get(c.id);
@@ -200,6 +203,10 @@ export class MemoryCertificates implements SellerCertificateRepository {
       pendingKind: row.pendingKind,
       approvedSubmissionId: row.approvedSubmissionId,
       approvedBoundaryAt: row.approvedBoundaryAt,
+      approvedZone:
+        row.approvedSubmissionId === null
+          ? null
+          : (this.decisionDetails.get(row.approvedSubmissionId)?.approvedZone ?? null),
       approvedIssuerState: null,
       issuerRequestOpen: this.openIssuerRequests.has(`${row.sellerId}|${row.typeId}`),
       latestOutcome: this.latestOutcome(row),
