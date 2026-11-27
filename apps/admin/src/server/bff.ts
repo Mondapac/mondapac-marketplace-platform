@@ -281,6 +281,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The last 30 days of AI usage per model family and task type (settings; same view key; no
     // query): the scorecard and the change preview's monthly estimate (G5e). Numbers only.
     'settings/admin/ai-models/usage',
+    // The in-house model (Mondapac Intelligence) settings and the in-house families each task type
+    // may take now (settings; same view key; no query; G6e).
+    'settings/admin/ai-models/in-house',
     // The Offer review policy (settings; keys settings.offer-review.view / .manage).
     'settings/admin/offer-review',
     // Whether the Offer review emergency stop is on (settings; any admin, the banner).
@@ -338,6 +341,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The model lists, saver models and saver threshold (settings; protected key
     // settings.ai-models.manage; every change asks a fresh two-step code).
     'settings/admin/ai-models',
+    // The in-house model settings (settings; protected key settings.ai-models.manage; the API asks a
+    // fresh two-step code for a change that sends more to the in-house model).
+    'settings/admin/ai-models/in-house',
     // The Offer review policy (settings): every changed setting with its `expectedVersion`, all
     // or nothing.
     'settings/admin/offer-review',

@@ -9641,6 +9641,9 @@
         "ai-models": {
           "change": "change the AI models"
         },
+        "ai-in-house": {
+          "raise": "send more AI calls to Mondapac Intelligence"
+        },
         "ai-gateway-limits": {
           "raise": "raise an AI spending cap"
         },
@@ -14939,10 +14942,89 @@
         "unknown": "Something went wrong. Try again."
       }
     },
-    "own": {
-      "section": "Mondapac Intelligence",
-      "body": "The platform's own model.",
-      "later": "Not available yet. It will be set up here when it is ready."
+    "in-house": {
+      "loading": "Loading Mondapac Intelligence settings",
+      "load-failed": "Couldn't load the Mondapac Intelligence settings.",
+      "retry": "Try again",
+      "invalid": "A choice isn't allowed. Check the stages, models, shares and limits.",
+      "in-force": "Stage in force:",
+      "no-model": {
+        "title": "No in-house model is connected yet",
+        "body": "Every stage stays off until a pull request adds the model's route and it passes its evaluation. You can still set the rollback limits."
+      },
+      "alerts": {
+        "title": "Some chosen in-house models can't be used now",
+        "item": "{family} ({task}): {why}. Calls go to the external models until this is fixed."
+      },
+      "stage": {
+        "label": "Stage for {task}",
+        "off": "Off",
+        "shadow": "Shadow",
+        "percent": "Percent",
+        "default": "Default",
+        "help": {
+          "off": "Only the external models answer.",
+          "shadow": "A share of calls is also sent to the in-house model to measure it. Its answers reach no one.",
+          "percent": "The in-house model answers a share of calls. The external models are its fallback.",
+          "default": "The in-house model answers every call. The external models are its fallback."
+        }
+      },
+      "model": {
+        "label": "In-house model for {task}",
+        "none": "No model",
+        "help": "Only in-house versions usable here are listed. To roll back to the previous version, choose it here or restore it from History.",
+        "none-usable": "No in-house version is usable for this task now."
+      },
+      "shadow": {
+        "label": "Shadow share for {task} (%)",
+        "help": "Share of calls also sent to the in-house model, 0 to {max}.",
+        "invalid": "Enter a whole number from 0 to {max}."
+      },
+      "rollout": {
+        "label": "Percent share for {task} (%)",
+        "help": "Share of calls the in-house model answers, 0 to {max}. For every call, choose Default.",
+        "invalid": "Enter a whole number from 0 to {max}."
+      },
+      "rollback": {
+        "section": "Automatic rollback",
+        "intro": "In Percent or Default, if a rate goes above its limit, calls go back to the external models by themselves until an admin changes that task's settings.",
+        "errors": "Error rate limit (%)",
+        "guard": "Guard rejection limit (%)",
+        "limit-help": "From 0.1 to 5.0. Raising a limit asks for your two-step code.",
+        "limit-invalid": "Enter a number from 0.1 to 5.0, with at most one decimal.",
+        "sample": "Minimum calls before judging",
+        "sample-help": "From {min, number} to {max, number} calls in the last hour.",
+        "sample-invalid": "Enter a whole number from {min, number} to {max, number}."
+      },
+      "save-intro": "Review the changes first. A change that sends more calls to the in-house model, or slows its rollback, asks for your two-step code. Switching off, lowering a share or tightening a limit doesn't.",
+      "history-intro": "The latest 50 changes of one setting. Restoring makes a new change and passes the same checks.",
+      "preview-body": "These changes apply from the next AI call.",
+      "percent-value": "{value}%",
+      "calls-value": "{value, number} calls",
+      "code": {
+        "stage": "{task} stage",
+        "model": "{task} in-house model",
+        "shadow": "{task} shadow share",
+        "rollout": "{task} percent share",
+        "ai-in-house-rollback-errors": "Error rate limit",
+        "ai-in-house-rollback-guard": "Guard rejection limit",
+        "ai-in-house-rollback-sample": "Minimum calls before judging"
+      },
+      "problem": {
+        "unknown-model": "Unknown model",
+        "external-model": "An external model, not an in-house one",
+        "no-capability": "No AI feature uses this task yet",
+        "stage-not-served": "This stage isn't available yet",
+        "shadow-not-approved": "Shadow isn't approved for this Market's data",
+        "no-model": "Choose a model first",
+        "no-share": "Set a share above 0",
+        "task-unsupported": "Not for this task",
+        "not-checked": "Not checked yet",
+        "region": "Not allowed in this region",
+        "no-key": "No key set",
+        "retired": "Retired",
+        "not-evaluated": "Not evaluated yet"
+      }
     },
     "task": {
       "chat": { "label": "Chat", "about": "Conversations, such as the buyer assistant." },
@@ -18369,7 +18451,9 @@
           "Restoring an earlier choice also asks for your code.",
           "The Evaluation tab shows what a run of a model would cost before you start it. Starting one asks for your code. A result is only a pass candidate until a pull request records it.",
           "The Scorecard on the Evaluation tab shows each model's last 30 days of real use: calls, cost per 1,000 calls, error rate, how fast 95% of calls answered, how often it was used as a fallback for a failed model, and how many capabilities it passed.",
-          "The Playground tab runs a made-up sample on two models side by side. It needs no code, costs a little from the evaluation budget, and is limited to 20 runs a day for each admin."
+          "The Playground tab runs a made-up sample on two models side by side. It needs no code, costs a little from the evaluation budget, and is limited to 20 runs a day for each admin.",
+          "The Mondapac Intelligence tab sets, for each task, how much the platform's own model is used: Off, Shadow (measured only, answers reach no one), Percent or Default. External models are always its fallback.",
+          "If the in-house model's error or guard rejection rate goes above its limit, calls go back to the external models by themselves until you change that task's settings."
         ],
         "related": [
           {

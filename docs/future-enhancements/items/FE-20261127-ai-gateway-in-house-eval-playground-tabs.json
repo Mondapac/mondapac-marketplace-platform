@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261127-ai-gateway-in-house-eval-playground-tabs",
+  "area": "assistant",
+  "title": "درگاه AI: نسخه‌های مدل اختصاصی در زبانه‌های Evaluation و Playground",
+  "desc": "طرح (platform-ai.md، G6 slices) می‌گوید G6e نسخه‌های مدل اختصاصی را در زبانه‌های Evaluation و Playground هم نشان دهد تا ادمین بتواند ارزیابی آن‌ها را اجرا کند. سرور این را می‌پذیرد، اما فهرست‌های پنل هنوز فقط مدل‌های بیرونی‌اند. G6e1 فقط زبانهٔ Mondapac Intelligence را ساخت. کار: افزودن خانواده‌های in-house از پاسخ GET settings/admin/ai-models/in-house به فهرست مدل‌های این دو زبانه، با برچسب «مدل اختصاصی».",
+  "src": "docs/design/domain/platform-ai.md (Built in G6e1)",
+  "date": "2026-11-27",
+  "trig": "پس از G6e3، پیش از افزودن نخستین ردیف in-house به کاتالوگ",
+  "prio": "متوسط",
+  "status": "موکول"
+}

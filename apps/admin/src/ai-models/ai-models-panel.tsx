@@ -22,6 +22,7 @@ import { formatInstant } from '../shared/format.ts';
 import { REVIEW_NOTE_MAX, isNoteFailure, useSentForReview } from '../shared/review-note.tsx';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { EvaluationPanel } from './evaluation-panel.tsx';
+import { InHousePanel } from './in-house-panel.tsx';
 import { familiesOfOptions } from './evaluation-types.ts';
 import { AiPlayground } from './playground.tsx';
 import { Scorecard } from './scorecard.tsx';
@@ -112,7 +113,7 @@ function changesOf(rows: readonly GatewaySetting[], draft: Draft): readonly Chan
  * Settings › AI Models › External models: per task type the models to try in order (at most three,
  * chosen only among the families the server lists as usable here), a cheaper saver model that goes
  * first from the saver threshold, and that threshold. Before saving, a preview lists each change;
- * saving always asks for the two-step code. The own-model tab is a placeholder until G6.
+ * saving always asks for the two-step code. The Mondapac Intelligence tab is `InHousePanel` (G6e).
  */
 export function AiModelsPanel({
   initial,
@@ -447,11 +448,7 @@ export function AiModelsPanel({
           />
         </div>
       ) : tab === 'own' ? (
-        <div id="ai-models-panel" role="tabpanel" aria-labelledby="ai-models-panel-tab-own">
-          <SettingsSection title={t('own.section')} description={t('own.body')}>
-            <p className="px-5 py-4 text-sm">{t('own.later')}</p>
-          </SettingsSection>
-        </div>
+        <InHousePanel canManage={canManage} csrfToken={csrfToken} />
       ) : (
         <div
           id="ai-models-panel"
