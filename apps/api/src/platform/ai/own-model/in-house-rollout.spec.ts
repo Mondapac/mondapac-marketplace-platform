@@ -18,6 +18,7 @@ import {
 } from '../../../../test/support/ai-routes';
 import {
   inMemoryAiUsage,
+  InMemoryAiUsageUnitOfWork,
   type InMemoryAiUsageStore,
 } from '../../../../test/support/in-memory-ai-usage';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
@@ -40,6 +41,7 @@ import {
 } from '../evaluations/evaluation-suite';
 import type { CallRecord } from '../usage/ai-usage-store';
 import type { InHouseRollback } from './in-house-rollback';
+import { InHouseRollbackStatusRead } from './in-house-rollback-status';
 import {
   ROLLBACK_JUDGE_EVERY,
   ROLLBACK_READ_FOR,
@@ -584,6 +586,46 @@ describe.each(['AU', 'ZZ'])('in-house percent and default stages (G6d2) in %s', 
       controls.inHouseOf(code, { changedAt: { write: NOW } });
       clock.advance(ROLLBACK_READ_FOR);
       expect(await runWriter(gateway)).toMatchObject({ ok: true, turn: IN_HOUSE });
+    });
+
+    it("reads each task type's latest rollback and whether it holds the stage off, for the tab only of its Market (G6e2)", async () => {
+      gatewayOf({ page: DEFAULT });
+      const statusRead = new InHouseRollbackStatusRead(new InMemoryAiUsageUnitOfWork(store), store);
+      const row = (minutes: number, reason: 'errors' | 'guard', id: string) => ({
+        id,
+        task: 'write',
+        family: 'model-house',
+        stage: 'percent' as const,
+        reason,
+        calls: 100,
+        failures: reason === 'errors' ? 10 : 0,
+        guardRejected: reason === 'guard' ? 10 : 0,
+        errorsLimitPermille: 50,
+        guardLimitPermille: 50,
+        minSample: 100,
+        rolledBackAt: NOW.subtract({ minutes }),
+      });
+      await store.addInHouseRollback(
+        market,
+        row(5, 'errors', '0193aaaa-0000-7000-8000-000000000001'),
+      );
+      await store.addInHouseRollback(
+        market,
+        row(1, 'guard', '0193aaaa-0000-7000-8000-000000000002'),
+      );
+      const latest: Partial<ReturnType<typeof row>> = row(1, 'guard', '');
+      delete latest.id;
+      expect(await statusRead.status(market, {})).toEqual([{ ...latest, heldOff: true }]);
+      expect(await statusRead.status(market, { write: NOW.subtract({ minutes: 2 }) })).toEqual([
+        { ...latest, heldOff: true },
+      ]);
+      expect(await statusRead.status(market, { write: NOW })).toEqual([
+        { ...latest, heldOff: false },
+      ]);
+      const other = testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default');
+      expect(await statusRead.status(other, {})).toEqual([]);
+      jest.spyOn(store, 'latestInHouseRollbacks').mockRejectedValue(new Error('down'));
+      await expect(statusRead.status(market, {})).rejects.toThrow();
     });
 
     it('holds every live stage off when the rollbacks cannot be read', async () => {

@@ -248,14 +248,18 @@ export class InMemoryAiUsageStore implements AiUsageStore {
 
   latestInHouseRollbacks(
     market: MarketContext,
-  ): Promise<Readonly<Partial<Record<string, Temporal.Instant>>>> {
+    tasks: readonly string[],
+  ): Promise<Readonly<Partial<Record<string, InHouseRollbackRecord>>>> {
     this.#check();
-    const latest: Partial<Record<string, Temporal.Instant>> = {};
-    for (const rollback of this.rollbacks) {
-      if (rollback.marketId !== market.marketId) continue;
+    const latest: Partial<Record<string, InHouseRollbackRecord>> = {};
+    for (const { marketId, ...rollback } of this.rollbacks) {
+      if (marketId !== market.marketId || !tasks.includes(rollback.task)) continue;
       const was = latest[rollback.task];
-      if (was === undefined || Temporal.Instant.compare(rollback.rolledBackAt, was) > 0) {
-        latest[rollback.task] = rollback.rolledBackAt;
+      if (
+        was === undefined ||
+        Temporal.Instant.compare(rollback.rolledBackAt, was.rolledBackAt) > 0
+      ) {
+        latest[rollback.task] = rollback;
       }
     }
     return Promise.resolve(latest);

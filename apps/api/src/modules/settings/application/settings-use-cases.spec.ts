@@ -53,6 +53,7 @@ import type { AiModelChoices, ModelChoiceProblem } from '../../../platform/ai/mo
 import { ChangeAiModels } from './use-cases/change-ai-models.use-case';
 import { ChangeAiInHouse } from './use-cases/change-ai-in-house.use-case';
 import { ViewAiInHouse } from './use-cases/view-ai-in-house.use-case';
+import type { InHouseRollbackStatusRead } from '../../../platform/ai/own-model/in-house-rollback-status';
 import type { InHouseTaskPage } from '../../../platform/ai/model-choices';
 import { ChangeAiCapabilities } from './use-cases/change-ai-capabilities.use-case';
 import { RevertAiGatewaySetting } from './use-cases/revert-ai-gateway-setting.use-case';
@@ -2379,10 +2380,39 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         return { list: [], saver: null };
       }
     }
+    /** The latest rollbacks (G6e2): records the change times it was asked with. */
+    class FakeRollbacks implements Pick<InHouseRollbackStatusRead, 'status'> {
+      readonly asked: unknown[] = [];
+      status(_market: MarketContext, changedAt: Readonly<Record<string, Temporal.Instant>>) {
+        this.asked.push(changedAt);
+        const rolledBackAt = T0.add({ minutes: 5 });
+        return Promise.resolve([
+          {
+            task: 'write',
+            family: 'house-1',
+            stage: 'percent' as const,
+            reason: 'guard' as const,
+            calls: 200,
+            failures: 1,
+            guardRejected: 30,
+            errorsLimitPermille: 20,
+            guardLimitPermille: 10,
+            minSample: 200,
+            rolledBackAt,
+            heldOff:
+              changedAt['write'] === undefined ||
+              Temporal.Instant.compare(rolledBackAt, changedAt['write']) >= 0,
+          },
+        ]);
+      }
+    }
     let choices: FakeInHouse;
+    let rollbacks: FakeRollbacks;
     beforeEach(() => {
       choices = new FakeInHouse();
+      rollbacks = new FakeRollbacks();
     });
+    const view = () => new ViewAiInHouse(gate, deps, choices, rollbacks).execute(adminCtx(), {});
     const change = (input: Record<string, unknown>, context = adminCtx()) =>
       new ChangeAiInHouse(gate, deps, choices).execute(context, input);
     const set = (codeOf: string, value: unknown, expectedVersion = 0) => ({
@@ -2402,9 +2432,10 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       );
 
     it('shows every stage off, no model, no share and the default rollback limits', async () => {
-      const view = await new ViewAiInHouse(gate, deps, choices).execute(adminCtx(), {});
+      const viewed = await view();
       expect(
-        view.ok && view.value.settings.map(({ code, value, version }) => [code, value, version]),
+        viewed.ok &&
+          viewed.value.settings.map(({ code, value, version }) => [code, value, version]),
       ).toEqual([
         ['ai-in-house-stage-chat', 'off', 0],
         ['ai-in-house-stage-extract', 'off', 0],
@@ -2426,9 +2457,31 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         ['ai-in-house-rollback-guard', '10', 0],
         ['ai-in-house-rollback-sample', '200', 0],
       ]);
-      expect(view.ok && view.value.options.write).toEqual([
+      expect(viewed.ok && viewed.value.options.write).toEqual([
         { family: 'house-old', problem: 'not-evaluated' },
       ]);
+    });
+
+    it("shows each task type's latest rollback, held off until an admin changes the task type after it (G6e2)", async () => {
+      // Never changed: held off, and asked with no change time.
+      let viewed = await view();
+      expect(rollbacks.asked).toEqual([{}]);
+      expect(viewed.ok && viewed.value.rollbacks).toEqual([
+        expect.objectContaining({ task: 'write', reason: 'guard', heldOff: true }),
+      ]);
+      // A change of the shadow share alone does not lift it: only stage, model or percent share.
+      deps = { ...deps, clock: new FixedClock(T0.add({ minutes: 10 })) };
+      proofLeft = true;
+      expect((await change({ changes: [set('ai-in-house-shadow-write', '1')] })).ok).toBe(true);
+      viewed = await view();
+      expect(rollbacks.asked.at(-1)).toEqual({});
+      expect(viewed.ok && viewed.value.rollbacks[0]?.heldOff).toBe(true);
+      // A change of the percent share after the rollback lifts it.
+      proofLeft = true;
+      expect((await change({ changes: [set('ai-in-house-rollout-write', '5')] })).ok).toBe(true);
+      viewed = await view();
+      expect(rollbacks.asked.at(-1)).toEqual({ write: T0.add({ minutes: 10 }) });
+      expect(viewed.ok && viewed.value.rollbacks[0]?.heldOff).toBe(false);
     });
 
     it('needs the two-step code to start a stage, choose a model or raise a share, and saves nothing without it', async () => {

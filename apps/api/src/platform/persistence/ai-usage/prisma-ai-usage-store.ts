@@ -326,17 +326,33 @@ export class PrismaAiUsageStore implements AiUsageStore {
 
   async latestInHouseRollbacks(
     market: MarketContext,
-  ): Promise<Readonly<Partial<Record<string, Temporal.Instant>>>> {
-    // One row per task type of the Market (the index market_id, task, rolled_back_at DESC); the
-    // rows are few (a rollback is rare and needs an admin to resume).
-    const groups = await this.prisma.tx(market).aiInHouseRollback.groupBy({
-      by: ['task'],
-      where: { marketId: market.marketId, tenantId: market.tenantId },
-      _max: { rolledBackAt: true },
-    });
-    const latest: Partial<Record<string, Temporal.Instant>> = {};
-    for (const group of groups) {
-      if (group._max.rolledBackAt !== null) latest[group.task] = instantOf(group._max.rolledBackAt);
+    tasks: readonly string[],
+  ): Promise<Readonly<Partial<Record<string, InHouseRollbackRecord>>>> {
+    // The latest row of each task type: one lookup per task type on the index (market_id, task,
+    // rolled_back_at DESC), so the read stays small however many rollbacks the Market keeps.
+    const tx = this.prisma.tx(market);
+    const latest: Partial<Record<string, InHouseRollbackRecord>> = {};
+    for (const task of tasks) {
+      const row = await tx.aiInHouseRollback.findFirst({
+        where: { marketId: market.marketId, tenantId: market.tenantId, task },
+        orderBy: { rolledBackAt: 'desc' },
+      });
+      if (row === null) continue;
+      latest[task] = {
+        id: row.id,
+        task: row.task,
+        family: row.family,
+        // The table's CHECKs allow only these values.
+        stage: row.stage as InHouseRollbackRecord['stage'],
+        reason: row.reason as InHouseRollbackRecord['reason'],
+        calls: row.calls,
+        failures: row.failures,
+        guardRejected: row.guardRejected,
+        errorsLimitPermille: row.errorsLimitPermille,
+        guardLimitPermille: row.guardLimitPermille,
+        minSample: row.minSample,
+        rolledBackAt: instantOf(row.rolledBackAt),
+      };
     }
     return latest;
   }

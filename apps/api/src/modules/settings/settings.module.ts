@@ -36,6 +36,7 @@ import { ViewAiModels } from './application/use-cases/view-ai-models.use-case';
 import { AiModelChoices } from '../../platform/ai/model-choices';
 import { AiEvaluationControl } from '../../platform/ai/evaluations/evaluation-control';
 import { AiModelUsage } from '../../platform/ai/usage/ai-model-usage';
+import { InHouseRollbackStatusRead } from '../../platform/ai/own-model/in-house-rollback-status';
 import { CancelAiEvaluation } from './application/use-cases/cancel-ai-evaluation.use-case';
 import { EstimateAiEvaluation } from './application/use-cases/estimate-ai-evaluation.use-case';
 import { RunAiEvaluation } from './application/use-cases/run-ai-evaluation.use-case';
@@ -164,12 +165,22 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       useFactory: (gate: UseCaseGate, choices: AiModelChoices, ...values: unknown[]) =>
         new ChangeAiModels(gate, dependenciesOf(values), choices),
     },
-    // The Mondapac Intelligence tab (G6b): its checks are AiModelChoices' too.
+    // The Mondapac Intelligence tab (G6b): its checks are AiModelChoices' too; its rollback read
+    // (G6e2) is platform/ai's InHouseRollbackStatusRead.
     {
       provide: ViewAiInHouse,
-      inject: [USE_CASE_GATE, AiModelChoices, ...PORTS.map(([, token]) => token)],
-      useFactory: (gate: UseCaseGate, choices: AiModelChoices, ...values: unknown[]) =>
-        new ViewAiInHouse(gate, dependenciesOf(values), choices),
+      inject: [
+        USE_CASE_GATE,
+        AiModelChoices,
+        InHouseRollbackStatusRead,
+        ...PORTS.map(([, token]) => token),
+      ],
+      useFactory: (
+        gate: UseCaseGate,
+        choices: AiModelChoices,
+        rollbacks: InHouseRollbackStatusRead,
+        ...values: unknown[]
+      ) => new ViewAiInHouse(gate, dependenciesOf(values), choices, rollbacks),
     },
     {
       provide: ChangeAiInHouse,

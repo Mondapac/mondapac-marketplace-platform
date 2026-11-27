@@ -4,11 +4,12 @@ import type { Clock, IdGenerator, MarketContext } from '@mondapac/shared-kernel'
 import { CLOCK } from '../../clock/clock.module';
 import { ID_GENERATOR } from '../../ids/ids.module';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../unit-of-work/unit-of-work';
-import type { CapabilityTask } from '../capability';
+import { CAPABILITY_TASKS, type CapabilityTask } from '../capability';
 import { CapabilityRegistry } from '../capability-registry';
 import type { AiInHouseControls } from '../gateway-controls';
 import { AiRouter } from '../routing/ai-router';
 import { AI_USAGE_STORE, type AiUsageStore, type ServedTotals } from '../usage/ai-usage-store';
+import { heldOffBy } from './in-house-rollback-status';
 import { rollbackLimitsInForce, type RollbackLimits } from './in-house-stage';
 
 /** The window the rates are judged on: the served in-house calls of the last hour. */
@@ -91,8 +92,7 @@ export class InHouseRollback implements BeforeApplicationShutdown {
   ): Promise<boolean> {
     const latest = (await this.#read(market)).latest[task];
     if (latest === undefined) return false;
-    const changedAt = inHouse.changedAt?.[task];
-    return changedAt === undefined || Temporal.Instant.compare(latest, changedAt) >= 0;
+    return heldOffBy(latest, inHouse.changedAt?.[task]);
   }
 
   /**
@@ -200,11 +200,15 @@ export class InHouseRollback implements BeforeApplicationShutdown {
     }
     const read = await this.unitOfWork.run(
       market,
-      async () => ok(await this.store.latestInHouseRollbacks(market)),
+      async () => ok(await this.store.latestInHouseRollbacks(market, CAPABILITY_TASKS)),
       { readOnly: true },
     );
     if (!read.ok) throw new Error('the in-house rollbacks could not be read');
-    const fresh = { at: now, latest: read.value };
+    const latest: Partial<Record<string, Temporal.Instant>> = {};
+    for (const [task, row] of Object.entries(read.value)) {
+      if (row !== undefined) latest[task] = row.rolledBackAt;
+    }
+    const fresh = { at: now, latest };
     this.#reads.set(market.marketId, fresh);
     return fresh;
   }

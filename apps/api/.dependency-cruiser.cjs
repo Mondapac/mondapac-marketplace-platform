@@ -412,6 +412,9 @@ module.exports = {
           // The AI Models page's usage read (G5e): numbers only, no model call. Rule
           // ai-model-usage-only-from-settings limits it.
           '^src/platform/ai/usage/ai-model-usage\\.ts$',
+          // The Mondapac Intelligence tab's rollback read (G6e2): numbers only, no model call. Rule
+          // ai-in-house-rollback-status-only-from-settings limits it.
+          '^src/platform/ai/own-model/in-house-rollback-status\\.ts$',
           // The usage store's port; rule ai-usage-store-only-in-persistence limits who imports it.
           '^src/platform/ai/usage/ai-usage-store\\.ts$',
           // A module's read of its own capability's usage (G7); no model call. Rule
@@ -604,6 +607,21 @@ module.exports = {
         ],
       },
       to: { path: '^src/platform/ai/usage/ai-model-usage\\.ts$' },
+    },
+    {
+      name: 'ai-in-house-rollback-status-only-from-settings',
+      comment:
+        "Only settings reads the in-house model's latest auto-rollbacks (G6e2; docs/design/domain/" +
+        'platform-ai.md section 8, "Built in G6e2"): its module file and the in-house view use case.',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '^src/platform/ai/',
+          '^src/modules/settings/settings\\.module\\.ts$',
+          '^src/modules/settings/application/use-cases/view-ai-in-house\\.use-case\\.ts$',
+        ],
+      },
+      to: { path: '^src/platform/ai/own-model/in-house-rollback-status\\.ts$' },
     },
     {
       name: 'no-ai-in-identity-payments-or-payouts',

@@ -136,11 +136,14 @@ export interface AiUsageStore {
 
   /**
    * The latest auto-rollback of each task type of the Market (G6d3), by task type; a task type
-   * without one is left out. Read-only unit is enough.
+   * without one is left out. The whole row (G6e2: the Mondapac Intelligence tab shows it); numbers
+   * and codes only. `tasks` are the task types to look up (one index lookup each). Read-only unit
+   * is enough.
    */
   latestInHouseRollbacks(
     market: MarketContext,
-  ): Promise<Readonly<Partial<Record<string, Temporal.Instant>>>>;
+    tasks: readonly string[],
+  ): Promise<Readonly<Partial<Record<string, InHouseRollbackRecord>>>>;
 
   /** Deletes up to `limit` calls that occurred before `before`, oldest first; answers how many. */
   purgeCalls(market: MarketContext, before: Temporal.Instant, limit: number): Promise<number>;
