@@ -458,6 +458,21 @@ ADR-0026 decision 9 and ADR-0042 decision 7, so ADR-0053 supersedes those points
   at least one capability of it is fully approved (`shadow-not-approved`). The approvals stay empty,
   and the catalogue has no in-house row, so no shadow call is sent: AI stays off until Hassan's
   approval and the AWS evidence (readiness conditions 1 to 6) are recorded.
+- **Built in G6d1 (health check, no routing yet; FE-20261126-ai-gateway-in-house-health-check).**
+  The contract has a health address (`GET <endpoint>/v1/health`, contract section 6): with the
+  Market's key and the contract header, no body, the server lists the model versions it serves now.
+  The adapter (`InHouseHttpProvider.health`) answers healthy only for HTTP 200, this contract and the
+  row's exact version listed, from an uncompressed body of at most 64 KiB and 50 versions, no
+  redirect; anything else or no answer in 5 s is not healthy, and it never throws.
+  `ModelGateway.healthy` keeps the key as for a call (false under the kill switch, without the
+  Market's key or for another route kind). `InHouseHealth` (`own-model/in-house-health.ts`) keeps,
+  per Market and row in the memory of one API instance (like the circuit breaker), the last answer:
+  `healthy` never waits, answers true only for a check that said so less than 60 s ago, and starts
+  one check in the background (one at a time per Market and row) when there is none or it is 30 s
+  old, so a row in use stays fresh and the first call after a pause goes external (fail closed).
+  No budget, no request text, no row is written. G6d2 routes a percent or default call to the
+  in-house model only through a healthy row; shadow does not need it (its answer reaches no one and
+  its failures are measured). The panel (G6e) may show the same answer.
 - **In-house route readiness (before any stage other than off).** All of these must hold, else
   every stage stays off (ADR-0052 decision 3, ADR-0053 decision 3): (1) a PR adds the row:
   endpoint, region, exact model version id, the price the platform counts it at, retirement day;

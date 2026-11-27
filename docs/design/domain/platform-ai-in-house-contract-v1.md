@@ -104,3 +104,29 @@ in it.
 
 Use 400, 413 and 422 only for a request every route would refuse. A version or key problem answered
 with 400 would stop the platform from falling back to its other routes.
+
+## 6. Health check
+
+The platform asks the server, without a model call and without any request text, whether it
+serves the recorded model version now. It sends live traffic (the percent and default stages)
+only to a server that answered this check well within the last minute; shadow traffic does not
+need it.
+
+| Item | Rule |
+| --- | --- |
+| Call | `GET <endpoint>/v1/health`, no body. About every 30 seconds per Market while the route is in use |
+| Headers | `accept: application/json`, `accept-encoding: identity`, `authorization: Bearer <key>` (the Market's key), `mondapac-contract: mondapac-model/1` |
+| Answer | HTTP 200, uncompressed UTF-8 JSON of at most 64 KiB: `{ "contract": "mondapac-model/1", "models": ["mondapac-intelligence-2026-12-01"] }` |
+| `models` | The model version ids the server serves now for this key, at most 50 |
+| Time | The platform waits at most 5 seconds |
+
+```json
+{ "contract": "mondapac-model/1", "models": ["mondapac-intelligence-2026-12-01"] }
+```
+
+The platform counts the server as healthy for the version only when the status is 200, the body
+names this contract and `models` lists the version exactly. Any other answer (another status, a
+redirect, a larger or compressed body, another contract, the version missing) or no answer in
+time counts as not healthy: live calls then go to the external models. The server may add other
+fields; the platform ignores them. The health answer carries no customer data and the platform
+keeps only "healthy or not" and the time of the check.

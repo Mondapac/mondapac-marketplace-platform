@@ -25,6 +25,7 @@ import {
   InHouseShadow,
   RANDOM_SHADOW_SAMPLER,
 } from './own-model/in-house-shadow';
+import { InHouseHealth } from './own-model/in-house-health';
 import { AI_SHADOW_APPROVALS, SHADOW_CUSTOMER_DATA_APPROVALS } from './own-model/in-house-stage';
 import { ModelGateway } from './model-gateway';
 import { MODEL_PROVIDER } from './model-provider';
@@ -58,6 +59,8 @@ import { AI_USAGE_STORE, type AiUsageStore } from './usage/ai-usage-store';
  * G6c: {@link InHouseShadow} sends a share of a capability's calls also to the in-house model,
  * measured only, under the owner's approvals ({@link AI_SHADOW_APPROVALS}, checked-in) and the
  * sampler ({@link AI_SHADOW_SAMPLER}); tests may bind their own, like the catalogue.
+ * G6d1: {@link InHouseHealth} keeps each in-house row's health check (contract `GET /v1/health`),
+ * which G6d's live stages require.
  *
  * `app.module.ts` passes the module that provides and exports `SELLER_AI_SWITCH` (sellers'), as it
  * does for identity's authorisation check, so `platform/` imports no module; a graph without it
@@ -126,6 +129,7 @@ export class AiModule {
         { provide: AI_SHADOW_APPROVALS, useValue: SHADOW_CUSTOMER_DATA_APPROVALS },
         { provide: AI_SHADOW_SAMPLER, useValue: RANDOM_SHADOW_SAMPLER },
         InHouseShadow,
+        InHouseHealth,
         AiGateway,
         AiUsageReport,
         AiModelChoices,

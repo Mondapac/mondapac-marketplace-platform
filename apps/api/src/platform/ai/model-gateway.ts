@@ -136,6 +136,40 @@ export class ModelGateway {
     }
   }
 
+  /**
+   * Whether an in-house route row serves its model version now, by the contract's health check
+   * (G6d1): no model call, no request text, no budget. False under the kill switch, without the
+   * Market's key, for a row of another route kind, on any failure or after `timeoutMs`. The key
+   * stays here, as for a call.
+   */
+  async healthy(marketId: MarketId, row: RouteRow, timeoutMs: number): Promise<boolean> {
+    if (row.route !== 'in-house-http' || this.provider.health === undefined) return false;
+    const apiKey = this.#keyOf(marketId, row.route);
+    if (this.#killed || apiKey === null) return false;
+    const credentials = {
+      apiKey,
+      model: row.model,
+      route: row.route,
+      region: row.region,
+      endpoint: row.endpoint ?? null,
+    };
+    const abort = new AbortController();
+    let timer: NodeJS.Timeout | undefined;
+    const cut = new Promise<false>((resolve) => {
+      timer = setTimeout(() => {
+        abort.abort();
+        resolve(false);
+      }, timeoutMs);
+    });
+    try {
+      return (await Promise.race([this.provider.health(credentials, abort.signal), cut])) === true;
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   #keyOf(marketId: MarketId, route: RouteKind): string | null {
     const keys =
       route === 'anthropic-api'

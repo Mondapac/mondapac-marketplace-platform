@@ -167,6 +167,15 @@ export function inHouseCallUrl(endpoint: string): string {
   return `${url.origin}${url.pathname.replace(/\/$/, '')}/v1/messages`;
 }
 
+/**
+ * The health address of a valid in-house endpoint, built from its parsed form (contract path
+ * `/v1/health`, section 6; G6d1, FE-20261126-ai-gateway-in-house-health-check).
+ */
+export function inHouseHealthUrl(endpoint: string): string {
+  const url = new URL(endpoint);
+  return `${url.origin}${url.pathname.replace(/\/$/, '')}/v1/health`;
+}
+
 /** Why a row is invalid, or null. Checked once, when the catalogue is loaded. */
 export function routeRowProblem(row: RouteRow): string | null {
   if (row.id !== `${row.route}/${row.model}`) return `${row.id}: the id is "<route>/<model>"`;
