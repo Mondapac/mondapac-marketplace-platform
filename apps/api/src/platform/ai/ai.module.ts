@@ -26,6 +26,11 @@ import {
   RANDOM_SHADOW_SAMPLER,
 } from './own-model/in-house-shadow';
 import { InHouseHealth } from './own-model/in-house-health';
+import {
+  AI_IN_HOUSE_HEALTH,
+  AI_ROLLOUT_SAMPLER,
+  InHouseRollout,
+} from './own-model/in-house-rollout';
 import { AI_SHADOW_APPROVALS, SHADOW_CUSTOMER_DATA_APPROVALS } from './own-model/in-house-stage';
 import { ModelGateway } from './model-gateway';
 import { MODEL_PROVIDER } from './model-provider';
@@ -60,7 +65,9 @@ import { AI_USAGE_STORE, type AiUsageStore } from './usage/ai-usage-store';
  * measured only, under the owner's approvals ({@link AI_SHADOW_APPROVALS}, checked-in) and the
  * sampler ({@link AI_SHADOW_SAMPLER}); tests may bind their own, like the catalogue.
  * G6d1: {@link InHouseHealth} keeps each in-house row's health check (contract `GET /v1/health`),
- * which G6d's live stages require.
+ * which G6d's live stages require. G6d2: {@link InHouseRollout} lets the in-house model answer a
+ * share of a task type's calls (percent) or all of them (default), external models behind it, only
+ * through healthy routes; tests bind their own health ({@link AI_IN_HOUSE_HEALTH}) and sampler.
  *
  * `app.module.ts` passes the module that provides and exports `SELLER_AI_SWITCH` (sellers'), as it
  * does for identity's authorisation check, so `platform/` imports no module; a graph without it
@@ -130,6 +137,9 @@ export class AiModule {
         { provide: AI_SHADOW_SAMPLER, useValue: RANDOM_SHADOW_SAMPLER },
         InHouseShadow,
         InHouseHealth,
+        { provide: AI_IN_HOUSE_HEALTH, useExisting: InHouseHealth },
+        { provide: AI_ROLLOUT_SAMPLER, useValue: RANDOM_SHADOW_SAMPLER },
+        InHouseRollout,
         AiGateway,
         AiUsageReport,
         AiModelChoices,

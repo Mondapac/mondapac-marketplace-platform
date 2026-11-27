@@ -20,6 +20,7 @@ import { ModelGateway } from './model-gateway';
 import { AiRouter, planPrice } from './routing/ai-router';
 import type { ModelRequest } from './model-provider';
 import type { ModelTokenPrice } from './catalogue/route-catalogue';
+import { InHouseRollout, livePlan } from './own-model/in-house-rollout';
 import { InHouseShadow, type ShadowSample } from './own-model/in-house-shadow';
 import { maskRequest } from './personal-data-masker';
 import { SELLER_AI_SWITCH, type SellerAiSwitch } from './seller-ai-switch';
@@ -188,6 +189,7 @@ export class AiGateway {
     private readonly router: AiRouter,
     @Inject(AI_GATEWAY_CONTROLS) private readonly controls: AiGatewayControls,
     private readonly shadow: InHouseShadow,
+    private readonly rollout: InHouseRollout,
   ) {}
 
   /**
@@ -207,9 +209,11 @@ export class AiGateway {
       // Off once a cap cannot take the most one call of the capability can cost: its largest
       // input (two characters a token at the cap, counted one token a character) and its whole
       // output allowance (Hassan, PR 1348 M1), so the host flow shows its non-AI path (R8).
-      const price = planPrice(
-        this.router.plan(context.market.marketId, spec, false, controls.models),
-      );
+      // The in-house routes of a live stage count too (G6d2), whether or not this call is sampled.
+      const price = planPrice([
+        ...this.router.plan(context.market.marketId, spec, false, controls.models),
+        ...this.rollout.candidates(context.market.marketId, spec, controls.inHouse),
+      ]);
       const largest = largestCallOf(spec, price);
       const scope = scopeOf(spec, context, options);
       if (await this.usage.overBudget(context.market, scope, controls.caps, largest)) {
@@ -236,9 +240,10 @@ export class AiGateway {
     const spec = this.registry.get(capability);
     if (spec === undefined) throw new Error(`"${capability}" is not a registered capability`);
     const controls = await this.controls.read(context);
-    const price = planPrice(
-      this.router.plan(context.market.marketId, spec, false, controls.models),
-    );
+    const price = planPrice([
+      ...this.router.plan(context.market.marketId, spec, false, controls.models),
+      ...this.rollout.candidates(context.market.marketId, spec, controls.inHouse),
+    ]);
     return this.usage.capabilityCapFull(
       context.market,
       capability,
@@ -321,10 +326,16 @@ export class AiGateway {
         saver = false;
       }
     }
-    const plan = this.router.plan(marketId, spec, saver, models);
+    const external = this.router.plan(marketId, spec, saver, models);
+    // Percent and default (G6d2): the in-house model answers a share of the calls, or all of them,
+    // with the external list as its fallback, through healthy routes checked again now.
+    const live = this.rollout.live(marketId, spec, controls.inHouse, options.turnId);
+    const plan = live === null ? external : livePlan(live.routes, external);
     // Shadow (G6c): decided before the external call, so both calls of the sample carry the
-    // capability's own check of their answer.
-    const shadow = this.shadow.sample(marketId, spec, sent, controls.inHouse);
+    // capability's own check of their answer. A task type has one stage, so a live call is never
+    // also a shadow sample.
+    const shadow =
+      live === null ? this.shadow.sample(marketId, spec, sent, controls.inHouse) : null;
     const deps: ModelCallDependencies = {
       models: this.models,
       usage: this.usage,

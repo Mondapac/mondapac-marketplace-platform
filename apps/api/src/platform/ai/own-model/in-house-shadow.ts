@@ -58,7 +58,7 @@ export interface ShadowSample {
  *    the valid-output and guard-rejection rates compare.
  * 5. The call is in the stage's share (the sampler).
  * 6. The in-house model has a usable route for the capability now, checked again on this call
- *    (`AiRouter.shadowPlan`: Hassan's check, region, key, not retired, a pass at the prompt version).
+ *    (`AiRouter.inHousePlan`: Hassan's check, region, key, not retired, a pass at the prompt version).
  * 7. Fewer than {@link MAX_SHADOW_IN_FLIGHT} samples of this process are out: the slot is taken
  *    here, at once, so a burst of concurrent calls cannot pass the cap (Hassan 1, Mohammad 1, G6c
  *    review). The application is not closing.
@@ -101,7 +101,7 @@ export class InHouseShadow implements BeforeApplicationShutdown {
       if (suite?.shadow === undefined) return null;
       const page = inHouse.tasks[spec.task]!;
       if (!this.sampler.take(page.shadowPercent)) return null;
-      const plan = this.router.shadowPlan(marketId, spec, family);
+      const plan = this.router.inHousePlan(marketId, spec, family);
       if (plan.length === 0) return null;
       this.#slots += 1;
       return { id: randomUUID(), plan, check: (turn) => suite.shadow!(sent, turn) };
@@ -125,7 +125,7 @@ export class InHouseShadow implements BeforeApplicationShutdown {
       if (this.#closing) return null;
       const family = this.#familyInForce(marketId, spec, inHouse);
       if (family === null) return null;
-      const plan = this.router.shadowPlan(marketId, spec, family);
+      const plan = this.router.inHousePlan(marketId, spec, family);
       return plan.length === 0 ? null : plan;
     } catch {
       return null;

@@ -10,7 +10,7 @@ import {
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
 import { unusedChangeTrail } from '../support/change-trail-fakes';
-import { testShadow } from '../support/ai-routes';
+import { testRollout, testShadow } from '../support/ai-routes';
 import { inMemoryAiUsage } from '../support/in-memory-ai-usage';
 import { FakeUnitOfWork } from '../support/pricing-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../support/test-config';
@@ -536,6 +536,7 @@ describe(`buyer assistant real-model evaluation (${EVALUATION_VERSION})`, () => 
     router,
     evaluationControls(family),
     testShadow(router),
+    testRollout(router),
   );
   const reportDir = process.env.ASSISTANT_EVAL_REPORT_DIR ?? join(tmpdir(), 'assistant-eval');
 

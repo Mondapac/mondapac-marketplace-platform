@@ -35,9 +35,9 @@ const APPROVED: ShadowApprovals = {
 };
 
 describe('in-house stage checks (G6b, G6c)', () => {
-  it('serves off and shadow today, and has no owner approval for customer data in shadow', () => {
-    // G6c serves shadow; G6d adds percent and default, by PR with its routing.
-    expect(SERVED_IN_HOUSE_STAGES).toEqual(['off', 'shadow']);
+  it('serves every stage since G6d2, and has no owner approval for customer data in shadow', () => {
+    // G6c serves shadow; G6d2 adds percent and default with their routing.
+    expect(SERVED_IN_HOUSE_STAGES).toEqual(['off', 'shadow', 'percent', 'default']);
     expect(SHADOW_CUSTOMER_DATA_APPROVALS).toEqual({});
     expect(IN_HOUSE_STAGES).toEqual(['off', 'shadow', 'percent', 'default']);
   });
@@ -71,14 +71,19 @@ describe('in-house stage checks (G6b, G6c)', () => {
   });
 
   it.each(['percent', 'default'] as const)(
-    'refuses %s while the gateway does not serve it',
+    'takes %s with a usable model and its share, without an owner approval (G6d2)',
     (stage) => {
       const check = checkInHouseTask(
         'AU',
-        page({ stage, family: 'house-1', shadowPercent: 5, rolloutPercent: 5 }),
+        page({ stage, family: 'house-1', shadowPercent: 0, rolloutPercent: 5 }),
         usable,
       );
-      expect(check.stage).toBe('stage-not-served');
+      expect(check).toEqual({
+        stage: null,
+        family: null,
+        shadowPercent: null,
+        rolloutPercent: null,
+      });
     },
   );
 
@@ -152,14 +157,22 @@ describe('in-house stage checks (G6b, G6c)', () => {
   });
 
   it('serves a stored stage only as the rules allow it, else off (the read G6c and G6d use)', () => {
-    for (const stage of ['shadow', 'percent', 'default'] as const) {
-      expect(
-        inHouseStageInForce(
-          'AU',
-          page({ stage, family: 'house-1', shadowPercent: 5, rolloutPercent: 5 }),
-        ),
-      ).toBe('off');
-    }
+    // Shadow needs the Market's approval; the live stages are served as stored (G6d2).
+    const full = { family: 'house-1', shadowPercent: 5, rolloutPercent: 5 };
+    expect(inHouseStageInForce('AU', page({ stage: 'shadow', ...full }))).toBe('off');
+    expect(inHouseStageInForce('AU', page({ stage: 'shadow', ...full }), APPROVED)).toBe('shadow');
+    expect(inHouseStageInForce('AU', page({ stage: 'percent', ...full }))).toBe('percent');
+    expect(inHouseStageInForce('AU', page({ stage: 'default', ...full }))).toBe('default');
+    // A live stage without a model, or percent without its share or above 99 %, is off.
+    expect(inHouseStageInForce('AU', page({ stage: 'default', ...full, family: null }))).toBe(
+      'off',
+    );
+    expect(inHouseStageInForce('AU', page({ stage: 'percent', ...full, rolloutPercent: 0 }))).toBe(
+      'off',
+    );
+    expect(
+      inHouseStageInForce('AU', page({ stage: 'percent', ...full, rolloutPercent: 100 })),
+    ).toBe('off');
     expect(inHouseStageInForce('AU', page({ family: 'house-1' }))).toBe('off');
   });
 

@@ -12,10 +12,17 @@ export { IN_HOUSE_STAGES, type InHouseStage, type InHouseTaskPage, type Rollback
 /**
  * The stages the gateway serves today. A stage the gateway does not serve yet is refused
  * (`stage-not-served`), so no admin saves a stage that silently does nothing. G6c serves `shadow`
- * (`own-model/in-house-shadow.ts`); G6d adds `percent` and `default` (after the health check
- * FE-20261126-ai-gateway-in-house-health-check). Code, changed by PR only.
+ * (`own-model/in-house-shadow.ts`); G6d2 serves `percent` and `default`
+ * (`own-model/in-house-rollout.ts`, only through rows the health check of G6d1 found serving the
+ * version). The auto-rollback (G6d3) merges before any in-house catalogue row: until then the
+ * catalogue has none, so every stage but off is refused. Code, changed by PR only.
  */
-export const SERVED_IN_HOUSE_STAGES: readonly InHouseStage[] = Object.freeze(['off', 'shadow']);
+export const SERVED_IN_HOUSE_STAGES: readonly InHouseStage[] = Object.freeze([
+  'off',
+  'shadow',
+  'percent',
+  'default',
+]);
 
 /** The owner's written approval of customer data in shadow runs for one Market. */
 export interface ShadowApproval {
