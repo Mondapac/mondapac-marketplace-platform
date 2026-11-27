@@ -38,6 +38,10 @@ export const HELP_REGISTRY: HelpRegistry = {
       route: '/settings/certificates/[certificateId]',
       slug: 'settings-certificates-certificateId',
     },
+    {
+      route: '/settings/certificates/[certificateId]/review',
+      slug: 'settings-certificates-certificateId-review',
+    },
     { route: '/settings/team', slug: 'settings-team' },
     { route: '/settings/invite-customers', slug: 'settings-invite-customers' },
     { route: '/settings/exclusive-perks', slug: 'settings-exclusive-perks' },

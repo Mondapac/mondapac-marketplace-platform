@@ -131,6 +131,21 @@ Recorded so Jafar and the owners can accept or refuse them.
 9. **CS1 rows.** The account's own state is a line above the list ("Your seller account: …", CERT-12); the type
    name is the row's link and the row button is separate (the row is not a button); the actions column has a
    header read only by screen readers. Issuer and Valid until show "—" until the seller read sends them.
+10. **CS3 Documents card and CS4 (seller certificates PR 3).** A file goes to the server when chosen; each row
+   shows Uploading (bar and percent), "Checking this file…", Ready, or "Can't use this file." with the reason
+   (design v2 replaces `upload.status.refused` "Not accepted"), announced through a polite live region. The help
+   line takes the kinds, size, file count and PDF pages from `documentLimits` (`upload.help` becomes
+   "{kinds}. Up to …"); the panel refuses a file over the size or of another kind before sending it. A stored file
+   reads "Page n" in its order (the API keeps no file name; the chosen name shows on the page only) and downloads
+   as an attachment; there is no View, Move up or Move down (future items). The review page lists each value with
+   Edit back to its field; while anything is missing Submit stays focusable but unavailable with
+   `review.help.blocked` linked to the first missing item. "My issuer isn't listed" is a dialog (full screen
+   below 640 px) with one file and no note (the API takes none; future item); while the request is open the form
+   shows `issuer-request.status.open` and the review page says Submit waits for the issuer. New text for legal:
+   `upload.help-plain`, `upload.drop`, `upload.empty`, `upload.empty-required`, `upload.page`, `upload.pages`,
+   `upload.unreadable`, `form.review`, `form.review-wait`, `review.row.type`, `review.edit`, `review.back`,
+   `review.expiry`, `review.submitted`, `review.help.issuer-pending`, `issuer-request.file.*`,
+   `issuer-request.status.open-help`.
 
 ## 2. Flows
 

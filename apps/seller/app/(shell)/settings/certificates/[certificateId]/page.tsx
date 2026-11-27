@@ -101,6 +101,7 @@ export default async function CertificatePage({
         type={type}
         canManage={page.session.permissionKeys.includes(CERTIFICATE_MANAGE_PERMISSION)}
         zone={page.zone}
+        limits={page.options.documentLimits}
         csrfToken={page.session.csrfToken}
       />
     </SettingsShell>
