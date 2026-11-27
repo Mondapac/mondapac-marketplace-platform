@@ -100,6 +100,12 @@ export interface ModelProvider {
     request: ModelRequest,
     signal: AbortSignal,
   ): Promise<ModelTurn>;
+  /**
+   * Whether the route serves `credentials.model` now, without a model call (G6d1; the in-house
+   * contract's `GET /v1/health`, section 6). Only an adapter whose contract has a health address
+   * implements it; it never throws: any failure, or no such address, is false.
+   */
+  health?(credentials: ModelCredentials, signal: AbortSignal): Promise<boolean>;
 }
 
 /** Nest token of the {@link ModelProvider}; tests bind a fake, so CI never calls a model. */

@@ -2,6 +2,8 @@ import type { Fetch } from './anthropic-messages.provider';
 import {
   IN_HOUSE_CONTRACT,
   IN_HOUSE_MAX_ANSWER_BYTES,
+  IN_HOUSE_MAX_HEALTH_BYTES,
+  IN_HOUSE_MAX_HEALTH_MODELS,
   IN_HOUSE_MAX_REQUEST_BYTES,
   InHouseHttpProvider,
 } from './in-house-http.provider';
@@ -329,5 +331,108 @@ describe('the route dispatch of the model provider (G6a)', () => {
     expect(
       await kindOf(providers.call({ ...CREDENTIALS, route: 'toString' }, REQUEST, signal)),
     ).toBe('client');
+  });
+});
+
+describe('the in-house health check, contract section 6 (G6d1, FE-20261126-ai-gateway-in-house-health-check)', () => {
+  const HEALTHY = { contract: IN_HOUSE_CONTRACT, models: ['mondapac-intelligence-v1'] };
+
+  it('gets /v1/health with the key and the contract header, no body, no redirect', async () => {
+    const { sent, provider } = answering(200, HEALTHY);
+    expect(await provider.health(CREDENTIALS, signal)).toBe(true);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.url).toBe('https://intelligence.example.com/model/v1/health');
+    expect(sent[0]!.init.method).toBe('GET');
+    expect(sent[0]!.init.redirect).toBe('error');
+    expect(sent[0]!.init.body).toBeUndefined();
+    const headers = sent[0]!.init.headers as Record<string, string>;
+    expect(headers.authorization).toBe(`Bearer ${KEY}`);
+    expect(headers['mondapac-contract']).toBe(IN_HOUSE_CONTRACT);
+    expect(headers['accept-encoding']).toBe('identity');
+  });
+
+  it.each([
+    ['another status', 503, HEALTHY, {}],
+    ['a redirect', 302, HEALTHY, { location: 'https://elsewhere.example.com/' }],
+    ['another contract', 200, { ...HEALTHY, contract: 'mondapac-model/2' }, {}],
+    ['the version not served', 200, { ...HEALTHY, models: ['mondapac-intelligence-v2'] }, {}],
+    ['no model list', 200, { contract: IN_HOUSE_CONTRACT }, {}],
+    [
+      'a model list with a non-string',
+      200,
+      { ...HEALTHY, models: [1, 'mondapac-intelligence-v1'] },
+      {},
+    ],
+    [
+      'too many models',
+      200,
+      {
+        ...HEALTHY,
+        models: [
+          ...Array.from({ length: IN_HOUSE_MAX_HEALTH_MODELS }, (_, i) => `v-${i}`),
+          'mondapac-intelligence-v1',
+        ],
+      },
+      {},
+    ],
+    ['a body that is not JSON', 200, 'ok', {}],
+    ['an array body', 200, ['mondapac-intelligence-v1'], {}],
+    ['a compressed body', 200, HEALTHY, { 'content-encoding': 'gzip' }],
+    [
+      'a declared length over the cap',
+      200,
+      HEALTHY,
+      { 'content-length': String(IN_HOUSE_MAX_HEALTH_BYTES + 1) },
+    ],
+  ])('is not healthy on %s', async (_name, status, body, headers) => {
+    const { provider } = answering(status, body, headers);
+    expect(await provider.health(CREDENTIALS, signal)).toBe(false);
+  });
+
+  it('is not healthy on a body over the cap without a length header', async () => {
+    const { provider } = answering(200, {
+      ...HEALTHY,
+      padding: 'x'.repeat(IN_HOUSE_MAX_HEALTH_BYTES),
+    });
+    expect(await provider.health(CREDENTIALS, signal)).toBe(false);
+  });
+
+  it('is not healthy on a network failure, and never throws', async () => {
+    const provider = new InHouseHttpProvider(() => Promise.reject(new Error('reset')));
+    expect(await provider.health(CREDENTIALS, signal)).toBe(false);
+  });
+
+  it('sends nothing for another route kind or an endpoint outside the rules', async () => {
+    const { sent, provider } = answering(200, HEALTHY);
+    expect(await provider.health({ ...CREDENTIALS, route: 'anthropic-api' }, signal)).toBe(false);
+    expect(await provider.health({ ...CREDENTIALS, endpoint: null }, signal)).toBe(false);
+    expect(
+      await provider.health(
+        { ...CREDENTIALS, endpoint: 'http://intelligence.example.com' },
+        signal,
+      ),
+    ).toBe(false);
+    expect(
+      await provider.health(
+        { ...CREDENTIALS, endpoint: 'https://intelligence.example.com:8443' },
+        signal,
+      ),
+    ).toBe(false);
+    expect(sent).toHaveLength(0);
+  });
+
+  it('route providers forward the check to the adapter of the route kind, else false', async () => {
+    const inHouse = answering(200, HEALTHY);
+    const messages: ModelProvider = { call: () => Promise.reject(new Error('unused')) };
+    const providers = new RouteProviders({
+      'anthropic-api': messages,
+      'bedrock-mantle': messages,
+      'in-house-http': inHouse.provider,
+    });
+    expect(await providers.health(CREDENTIALS, signal)).toBe(true);
+    expect(
+      await providers.health({ ...CREDENTIALS, route: 'anthropic-api', endpoint: null }, signal),
+    ).toBe(false);
+    expect(await providers.health({ ...CREDENTIALS, route: 'toString' }, signal)).toBe(false);
   });
 });

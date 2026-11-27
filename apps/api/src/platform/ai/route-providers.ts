@@ -27,4 +27,17 @@ export class RouteProviders implements ModelProvider {
     if (adapter === undefined) return Promise.reject(new ModelProviderError('client'));
     return adapter.call(credentials, request, signal);
   }
+
+  /** The route kind's adapter health check (G6d1); a kind without one is never healthy. */
+  async health(credentials: ModelCredentials, signal: AbortSignal): Promise<boolean> {
+    const adapter = Object.hasOwn(this.adapters, credentials.route)
+      ? this.adapters[credentials.route as RouteKind]
+      : undefined;
+    if (adapter?.health === undefined) return false;
+    try {
+      return (await adapter.health(credentials, signal)) === true;
+    } catch {
+      return false;
+    }
+  }
 }

@@ -1,4 +1,8 @@
-import { inHouseCallUrl, inHouseEndpointProblem } from './catalogue/route-catalogue';
+import {
+  inHouseCallUrl,
+  inHouseEndpointProblem,
+  inHouseHealthUrl,
+} from './catalogue/route-catalogue';
 import type { Fetch } from './anthropic-messages.provider';
 import {
   ModelProviderError,
@@ -21,6 +25,15 @@ export const IN_HOUSE_MAX_REQUEST_BYTES = 1_048_576;
 
 /** The largest answer body read, in bytes; a bigger one is a server fault and is not parsed. */
 export const IN_HOUSE_MAX_ANSWER_BYTES = 1_048_576;
+
+/**
+ * The largest health answer read, in bytes (contract section 6): it lists model version ids only,
+ * so a bigger one is a fault and is not parsed.
+ */
+export const IN_HOUSE_MAX_HEALTH_BYTES = 65_536;
+
+/** The most model version ids a health answer may list (contract section 6). */
+export const IN_HOUSE_MAX_HEALTH_MODELS = 50;
 
 const STOPS: ReadonlySet<string> = new Set(['end', 'tool-use', 'max-tokens', 'refusal']);
 
@@ -129,18 +142,66 @@ export class InHouseHttpProvider implements ModelProvider {
       request.maxOutputTokens,
     );
   }
+
+  /**
+   * The contract's health check (section 6; G6d1, FE-20261126-ai-gateway-in-house-health-check):
+   * `GET <endpoint>/v1/health` with the Market's key and the contract header, no body. True only on
+   * HTTP 200 with a body that names this contract and lists `credentials.model` among the versions
+   * the server serves now; anything else (another status, a redirect, a body over
+   * {@link IN_HOUSE_MAX_HEALTH_BYTES}, compressed or malformed, another contract, the version not
+   * listed, a network failure) is false. It costs no model call and sends no request text, so it
+   * may run before any stage is live. Never throws.
+   */
+  async health(credentials: ModelCredentials, signal: AbortSignal): Promise<boolean> {
+    const endpoint = credentials.endpoint;
+    if (
+      credentials.route !== 'in-house-http' ||
+      endpoint === null ||
+      inHouseEndpointProblem(endpoint) !== null
+    ) {
+      return false;
+    }
+    try {
+      const response = await this.fetchFn(inHouseHealthUrl(endpoint), {
+        method: 'GET',
+        signal,
+        redirect: 'error',
+        headers: {
+          accept: 'application/json',
+          'accept-encoding': 'identity',
+          authorization: `Bearer ${credentials.apiKey}`,
+          'mondapac-contract': IN_HOUSE_CONTRACT,
+        },
+      });
+      if (response.status !== 200) return false;
+      const body: unknown = JSON.parse(await readCapped(response, IN_HOUSE_MAX_HEALTH_BYTES));
+      if (typeof body !== 'object' || body === null || Array.isArray(body)) return false;
+      const answer = body as Record<string, unknown>;
+      if (answer.contract !== IN_HOUSE_CONTRACT || !Array.isArray(answer.models)) return false;
+      const models = answer.models as unknown[];
+      if (models.length > IN_HOUSE_MAX_HEALTH_MODELS) return false;
+      if (!models.every((model) => typeof model === 'string')) return false;
+      return models.includes(credentials.model);
+    } catch {
+      return false;
+    }
+  }
 }
 
 /**
- * The answer body as UTF-8 text, read as a stream and cut at {@link IN_HOUSE_MAX_ANSWER_BYTES}: a
+ * The answer body as UTF-8 text, read as a stream and cut at `maxBytes` (by default
+ * {@link IN_HOUSE_MAX_ANSWER_BYTES}): a
  * body over the cap, with or without a length header, is a server fault and is not read further
  * (Hassan, G6a review 1; Mohammad 5). A length header that is not a whole number is a fault too.
  */
-async function readCapped(response: Response): Promise<string> {
+async function readCapped(
+  response: Response,
+  maxBytes: number = IN_HOUSE_MAX_ANSWER_BYTES,
+): Promise<string> {
   const declared = response.headers.get('content-length');
   if (declared !== null) {
     if (!/^\d{1,12}$/.test(declared)) throw new ModelProviderError('server');
-    if (Number(declared) > IN_HOUSE_MAX_ANSWER_BYTES) throw new ModelProviderError('server');
+    if (Number(declared) > maxBytes) throw new ModelProviderError('server');
   }
   const encoding = response.headers.get('content-encoding');
   if (encoding !== null && encoding.trim().toLowerCase() !== 'identity') {
@@ -156,7 +217,7 @@ async function readCapped(response: Response): Promise<string> {
     const value = next.value;
     if (!(value instanceof Uint8Array)) throw new ModelProviderError('server');
     size += value.byteLength;
-    if (size > IN_HOUSE_MAX_ANSWER_BYTES) {
+    if (size > maxBytes) {
       await reader.cancel().catch(() => undefined);
       throw new ModelProviderError('server');
     }
