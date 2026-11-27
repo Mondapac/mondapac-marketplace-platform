@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261123-dashboards-monthly-rollup-long-ranges",
+  "area": "admin",
+  "title": "خلاصهٔ ماهانه برای بازه‌های بلند",
+  "desc": "جدول خلاصهٔ ماهانه برای بازه‌های بیش از ۹۰ روز (پیشنهاد مجتبی).",
+  "src": "design/admin/dashboards-v2/dashboards-v2-fa.html (هادی، مجتبی، رضا) (شناسهٔ قبلی در فهرست متمرکز: FE-190)",
+  "date": "2026-11-23",
+  "trig": "وقتی بازهٔ دلخواه کند شد",
+  "prio": "پایین",
+  "status": "موکول"
+}

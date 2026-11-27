@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261123-dashboards-customisable-layout",
+  "area": "admin",
+  "title": "چیدمان قابل شخصی‌سازی داشبورد",
+  "desc": "جابه‌جا و پنهان کردن کارت‌ها برای هر کاربر.",
+  "src": "design/admin/dashboards-v2/dashboards-v2-fa.html (هادی، مجتبی، رضا) (شناسهٔ قبلی در فهرست متمرکز: FE-187)",
+  "date": "2026-11-23",
+  "trig": "پس از فاز ۱ داشبورد ۲",
+  "prio": "پایین",
+  "status": "موکول"
+}

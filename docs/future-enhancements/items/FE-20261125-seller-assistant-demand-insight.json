@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-seller-assistant-demand-insight",
+  "area": "assistant",
+  "title": "دستیار فروشنده: بینش تقاضا",
+  "desc": "نمایش «مشتری‌ها این را جستجو کردند و کسی نمی‌فروشد» برای دسته‌های مجاز فروشنده، از دادهٔ جستجوی بی‌نتیجه.",
+  "src": "design/seller/seller-assistant/seller-assistant-design-fa.html (بخش ۱۷) (شناسهٔ قبلی در فهرست متمرکز: FE-224)",
+  "date": "2026-11-25",
+  "trig": "پس از فاز ۳ دستیار فروشنده",
+  "prio": "متوسط",
+  "status": "موکول"
+}

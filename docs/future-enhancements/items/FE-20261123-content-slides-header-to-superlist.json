@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261123-content-slides-header-to-superlist",
+  "area": "admin",
+  "title": "انتقال سربرگ صفحه‌های Content و Slides به SuperList",
+  "desc": "این دو صفحه عنوان و دکمهٔ New را در ردیف دست‌ساز می‌کشند؛ ظاهرشان درست است ولی با مدل Orders یکی نیستند.",
+  "src": "design/admin/sellers-links/sellers-links-fa.html (رضا، جعفر، هادی) (شناسهٔ قبلی در فهرست متمرکز: FE-194)",
+  "date": "2026-11-23",
+  "trig": "هر زمان که روی همین بخش کار شد",
+  "prio": "پایین",
+  "status": "موکول"
+}

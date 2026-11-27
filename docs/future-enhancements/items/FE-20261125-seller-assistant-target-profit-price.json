@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-seller-assistant-target-profit-price",
+  "area": "assistant",
+  "title": "دستیار فروشنده: پیشنهاد قیمت بر اساس سود هدف",
+  "desc": "دستیار با هزینهٔ خصوصی فروشنده و سود هدف، قیمت پیشنهاد کند (فقط با pricing.cost.view و همان Save).",
+  "src": "design/seller/seller-assistant/seller-assistant-design-fa.html (بخش ۱۷) (شناسهٔ قبلی در فهرست متمرکز: FE-223)",
+  "date": "2026-11-25",
+  "trig": "پس از بک‌اند Cost و نظر مشاور مالیاتی",
+  "prio": "متوسط",
+  "status": "موکول"
+}

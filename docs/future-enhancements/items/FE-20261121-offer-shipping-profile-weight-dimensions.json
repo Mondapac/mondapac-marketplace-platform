@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261121-offer-shipping-profile-weight-dimensions",
+  "area": "seller",
+  "title": "زمان آماده‌سازی، وزن، ابعاد و پروفایل ارسال هر Offer",
+  "desc": "اطلاعات ارسال روی Offer؛ امروز ارسال مبلغ ثابت هر فروشنده است.",
+  "src": "design/seller/offer-page/offer-page-design-fa.html (شناسهٔ قبلی در فهرست متمرکز: FE-205)",
+  "date": "2026-11-21",
+  "trig": "فاز ارسال (shipping)",
+  "prio": "متوسط",
+  "status": "موکول"
+}

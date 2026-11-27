@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-seller-dashboard-assistant-today-card",
+  "area": "seller",
+  "title": "کارت «Today» دستیار روی داشبورد فروشنده",
+  "desc": "همان شمارش‌های کارت Today دستیار (پیش‌نویس نیمه‌کاره، در صف، بی‌موجودی، ویژهٔ رو به پایان) روی داشبورد فروشنده.",
+  "src": "design/seller/seller-assistant/seller-assistant-design-fa.html (بخش ۱۷) (شناسهٔ قبلی در فهرست متمرکز: FE-230)",
+  "date": "2026-11-25",
+  "trig": "پس از فاز ۳ دستیار فروشنده",
+  "prio": "پایین",
+  "status": "موکول"
+}

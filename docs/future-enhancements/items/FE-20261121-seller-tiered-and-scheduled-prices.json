@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261121-seller-tiered-and-scheduled-prices",
+  "area": "seller",
+  "title": "قیمت پلکانی و زمان‌بندی چند قیمت",
+  "desc": "قیمت بر حسب تعداد (B2B) و زمان‌بندی بیش از یک قیمت ویژه برای هر سایز.",
+  "src": "design/seller/offer-page/offer-page-design-fa.html (شناسهٔ قبلی در فهرست متمرکز: FE-204)",
+  "date": "2026-11-21",
+  "trig": "پس از نیاز مشتریان B2B",
+  "prio": "پایین",
+  "status": "موکول"
+}

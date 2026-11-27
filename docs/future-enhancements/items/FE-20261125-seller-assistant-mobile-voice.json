@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-seller-assistant-mobile-voice",
+  "area": "assistant",
+  "title": "دستیار فروشنده در اپ موبایل و پیام صوتی",
+  "desc": "همان دستیار در اپ موبایل فروشنده با ورودی صوتی برای کار پشت پیشخوان.",
+  "src": "design/seller/seller-assistant/seller-assistant-design-fa.html (بخش ۱۷) (شناسهٔ قبلی در فهرست متمرکز: FE-226)",
+  "date": "2026-11-25",
+  "trig": "پس از ساخت اپ موبایل فروشنده",
+  "prio": "پایین",
+  "status": "موکول"
+}

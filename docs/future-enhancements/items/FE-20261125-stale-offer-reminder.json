@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-stale-offer-reminder",
+  "area": "seller",
+  "title": "یادآوری Offer بهروزنشده",
+  "desc": "اگر Offer مدتی (مثلاً ۹۰ روز) قیمت یا موجودی را عوض نکرده، ایمیل یادآوری به فروشنده و نشان در لیست Offers و Products؛ برای جلوگیری از Offerهای رهاشده و قیمت قدیمی.",
+  "src": "design/seller/offer-page/offer-page-design-fa.html (تصمیم john ۲۵ نوامبر) (شناسهٔ قبلی در فهرست متمرکز: FE-220)",
+  "date": "2026-11-25",
+  "trig": "همراه فاز ۷ صفحهٔ Offer یا پس از ساخت لیست‌ها",
+  "prio": "متوسط",
+  "status": "موکول"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261121-seller-estimated-profit-target-pricing",
+  "area": "seller",
+  "title": "سود برآوردی و قیمت‌گذاری هدفمند",
+  "desc": "نمایش سود (دریافتی منهای هزینه) و پیشنهاد قیمت بر اساس سود هدف؛ نیاز به تصمیم مالک و بک‌اند Cost.",
+  "src": "design/seller/offer-page/offer-page-design-fa.html (شناسهٔ قبلی در فهرست متمرکز: FE-207)",
+  "date": "2026-11-21",
+  "trig": "پس از تصمیم john",
+  "prio": "متوسط",
+  "status": "موکول"
+}

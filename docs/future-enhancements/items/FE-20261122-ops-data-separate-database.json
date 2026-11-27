@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261122-ops-data-separate-database",
+  "area": "infra",
+  "title": "بانک جدا برای دادهٔ عملیاتی در کنار دمو",
+  "desc": "دادهٔ عملیاتی تست و دموی قدیمی (demo-local.bat) یک بانک مشترک (mondapac) دارند و ops-local.bat reset همهٔ دادهٔ دمو را پاک می‌کند. راه: نام بانک جدا (مثلاً mondapac_ops) با DATABASE_URL و MIGRATION_DATABASE_URL جدا در ops-local.bat و dev-local.bat ops، تا هر دو کنار هم بمانند و جابه‌جایی بدون پاک کردن باشد.",
+  "src": "PR 1278 (پیام روشن‌تر ops-local؛ کاظم) (شناسهٔ قبلی در فهرست متمرکز: FE-162)",
+  "date": "2026-11-22",
+  "trig": "اگر john خواست دمو و دادهٔ عملیاتی هم‌زمان روی یک کامپیوتر بمانند",
+  "prio": "پایین",
+  "status": "موکول"
+}

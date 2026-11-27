@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-seller-assistant-promotions",
+  "area": "assistant",
+  "title": "دستیار فروشنده: ساخت تخفیف promotions",
+  "desc": "ساخت تخفیف خودکار با دستیار، با همان Save.",
+  "src": "design/seller/seller-assistant/seller-assistant-design-fa.html (بخش ۱۷) (شناسهٔ قبلی در فهرست متمرکز: FE-227)",
+  "date": "2026-11-25",
+  "trig": "پس از تصمیم سقف مشترک promotions و قیمت ویژه",
+  "prio": "پایین",
+  "status": "موکول"
+}
