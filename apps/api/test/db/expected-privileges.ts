@@ -160,6 +160,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: [],
     },
     'platform.ai_budget_reservations': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    // AI Gateway G6d3 (platform-ai.md, Built in G6d3): an in-house rollback is inserted once and
+    // never changed; the gateway reads the latest per task type.
+    'platform.ai_in_house_rollbacks': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // AI Gateway G4c (platform-ai.md section 10): runs are enqueued, claimed, renewed, finished and
     // purged; a capability's verdict is set; samples are inserted once and purged with their run;
     // a playground day is counted and purged.
