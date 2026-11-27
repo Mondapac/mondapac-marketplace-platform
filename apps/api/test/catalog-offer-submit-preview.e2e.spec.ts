@@ -583,7 +583,15 @@ describe('seller submit preview over HTTP (integration, slice 7b)', () => {
       expect(contact.body).toEqual({ outcome: 'review', reasons: ['contact-text'] });
       expect(contact.text).not.toMatch(/0412|345|678|example|call|shop/);
       const line = logLines.filter((l) => l.msg === 'catalog.own-offer-submit-preview');
-      expect(JSON.stringify(line)).not.toMatch(/0412|example|contact-text|handling|badge/);
+      // The logger's own changing fields (a millisecond timestamp, the pid, a random correlation
+      // id) can hold "0412" by chance, so they are left out of the check; every other field of
+      // the line must still never hold the matched text or a reason name.
+      const byChance = new Set(['time', 'pid', 'hostname', 'correlationId']);
+      const logged = JSON.stringify(line, (key, value: unknown) =>
+        byChance.has(key) ? undefined : value,
+      );
+      expect(line.length).toBeGreaterThan(0);
+      expect(logged).not.toMatch(/0412|example|contact-text|handling|badge/);
 
       // A told reason beside a hidden one: the told one by name, the rest as one.
       reviewFacts = { ...CLEAN_FACTS, sensitiveCategory: true, probation: true };
