@@ -46,7 +46,10 @@ export class CapabilityRegistry implements OnApplicationBootstrap {
       if (this.#specs.has(spec.id)) {
         throw new CapabilityRegistryError(`The capability "${spec.id}" is registered twice`);
       }
-      this.#specs.set(spec.id, Object.freeze({ ...spec }));
+      this.#specs.set(
+        spec.id,
+        Object.freeze({ ...spec, dataCategories: Object.freeze([...spec.dataCategories]) }),
+      );
     }
   }
 

@@ -1,12 +1,14 @@
 import {
-  checkInHouseTask,
+  checkInHouseTask as checkWith,
   IN_HOUSE_STAGES,
   SERVED_IN_HOUSE_STAGES,
   SHADOW_CUSTOMER_DATA_APPROVALS,
   inHouseStageInForce,
   rollbackLimitsInForce,
+  shadowApprovedFor,
   type InHouseProblem,
   type InHouseTaskPage,
+  type ShadowApprovals,
 } from './in-house-stage';
 
 // The Mondapac Intelligence tab's stage rules (AI Gateway G6b; docs/design/domain/platform-ai.md
@@ -21,11 +23,21 @@ const page = (overrides: Partial<InHouseTaskPage> = {}): InHouseTaskPage => ({
   ...overrides,
 });
 const usable = (): InHouseProblem | null => null;
+/** One capability of the task type, sending seller texts; no approval unless one is given. */
+const checkInHouseTask = (
+  marketId: string,
+  taskPage: InHouseTaskPage,
+  familyProblem: (family: string) => InHouseProblem | null,
+  approvals: ShadowApprovals = {},
+) => checkWith(marketId, taskPage, familyProblem, [['seller-text']], approvals);
+const APPROVED: ShadowApprovals = {
+  AU: { recordedIn: 'ADR-0052', approvedOn: '2026-11-27', categories: ['seller-text'] },
+};
 
-describe('in-house stage checks (G6b)', () => {
-  it('serves only off today, and has no owner approval for customer data in shadow', () => {
-    // G6c adds shadow and G6d percent and default, each by PR with its routing.
-    expect(SERVED_IN_HOUSE_STAGES).toEqual(['off']);
+describe('in-house stage checks (G6b, G6c)', () => {
+  it('serves off and shadow today, and has no owner approval for customer data in shadow', () => {
+    // G6c serves shadow; G6d adds percent and default, by PR with its routing.
+    expect(SERVED_IN_HOUSE_STAGES).toEqual(['off', 'shadow']);
     expect(SHADOW_CUSTOMER_DATA_APPROVALS).toEqual({});
     expect(IN_HOUSE_STAGES).toEqual(['off', 'shadow', 'percent', 'default']);
   });
@@ -58,7 +70,7 @@ describe('in-house stage checks (G6b)', () => {
     );
   });
 
-  it.each(['shadow', 'percent', 'default'] as const)(
+  it.each(['percent', 'default'] as const)(
     'refuses %s while the gateway does not serve it',
     (stage) => {
       const check = checkInHouseTask(
@@ -81,12 +93,62 @@ describe('in-house stage checks (G6b)', () => {
       shadowPercent: null,
     });
     expect(
-      checkInHouseTask('AU', page({ stage: 'shadow', family: 'house-1' }), usable).shadowPercent,
+      checkInHouseTask('AU', page({ stage: 'shadow', family: 'house-1' }), usable, APPROVED)
+        .shadowPercent,
     ).toBe('no-share');
     // The other stage's share plays no part.
     expect(
       checkInHouseTask('AU', page({ stage: 'default', family: 'house-1' }), usable).rolloutPercent,
     ).toBeNull();
+  });
+
+  it('takes shadow only with the owner approval of every category of one capability (FE-280)', () => {
+    const shadow = page({ stage: 'shadow', family: 'house-1', shadowPercent: 10 });
+    expect(checkInHouseTask('AU', shadow, usable).stage).toBe('shadow-not-approved');
+    expect(checkInHouseTask('ZZ', shadow, usable, APPROVED).stage).toBe('shadow-not-approved');
+    expect(checkInHouseTask('AU', shadow, usable, APPROVED)).toEqual({
+      stage: null,
+      family: null,
+      shadowPercent: null,
+      rolloutPercent: null,
+    });
+    // A capability with a category the owner did not approve does not make the stage stand;
+    // one fully approved capability of the task type does (the other is never sent to shadow).
+    expect(
+      checkWith('AU', shadow, usable, [['seller-text', 'certificate-file']], APPROVED).stage,
+    ).toBe('shadow-not-approved');
+    expect(
+      checkWith('AU', shadow, usable, [['certificate-file'], ['seller-text']], APPROVED).stage,
+    ).toBeNull();
+    // No capability of the task type: nothing could be sent, so shadow is not approved.
+    expect(checkWith('AU', shadow, usable, [], APPROVED).stage).toBe('shadow-not-approved');
+    // A shadow stage still meets the route checks of its model.
+    expect(checkInHouseTask('AU', shadow, () => 'not-evaluated', APPROVED).family).toBe(
+      'not-evaluated',
+    );
+  });
+
+  it('approves a capability for shadow only when every category it declares is approved', () => {
+    expect(shadowApprovedFor('AU', ['seller-text'], APPROVED)).toBe(true);
+    expect(shadowApprovedFor('AU', ['seller-text', 'customer-message'], APPROVED)).toBe(false);
+    expect(shadowApprovedFor('AU', [], APPROVED)).toBe(false);
+    expect(shadowApprovedFor('ZZ', ['seller-text'], APPROVED)).toBe(false);
+    // A key of the object prototype is no approval.
+    expect(shadowApprovedFor('constructor', ['seller-text'], APPROVED)).toBe(false);
+    expect(shadowApprovedFor('AU', ['seller-text'])).toBe(false);
+  });
+
+  it('serves a stored shadow stage only with the approval, a model and a share', () => {
+    const shadow = page({ stage: 'shadow', family: 'house-1', shadowPercent: 5 });
+    expect(inHouseStageInForce('AU', shadow, APPROVED)).toBe('shadow');
+    expect(inHouseStageInForce('AU', shadow)).toBe('off');
+    expect(inHouseStageInForce('ZZ', shadow, APPROVED)).toBe('off');
+    expect(inHouseStageInForce('AU', { ...shadow, family: null }, APPROVED)).toBe('off');
+    expect(inHouseStageInForce('AU', { ...shadow, shadowPercent: 0 }, APPROVED)).toBe('off');
+    expect(inHouseStageInForce('AU', { ...shadow, shadowPercent: 101 }, APPROVED)).toBe('off');
+    expect(inHouseStageInForce('AU', { ...shadow, shadowPercent: Number.NaN }, APPROVED)).toBe(
+      'off',
+    );
   });
 
   it('serves a stored stage only as the rules allow it, else off (the read G6c and G6d use)', () => {

@@ -10,6 +10,7 @@ import {
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
 import { unusedChangeTrail } from '../support/change-trail-fakes';
+import { testShadow } from '../support/ai-routes';
 import { inMemoryAiUsage } from '../support/in-memory-ai-usage';
 import { FakeUnitOfWork } from '../support/pricing-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../support/test-config';
@@ -79,7 +80,11 @@ import {
   type EvaluationCase,
 } from '../../src/modules/assistant/domain/evaluation-set';
 import { GatewayAssistantRuntime } from '../../src/modules/assistant/infrastructure/gateway-assistant-runtime';
-import { NO_CAPS, type AiGatewayControls } from '../../src/platform/ai/gateway-controls';
+import {
+  NO_CAPS,
+  NO_IN_HOUSE,
+  type AiGatewayControls,
+} from '../../src/platform/ai/gateway-controls';
 import { listsOf, switchesOnBut } from '../support/ai-gateway-controls';
 import { FacadeAssistantTools } from '../../src/modules/assistant/infrastructure/facade-assistant-tools';
 import { FakeStepUp } from '../support/step-up-fakes';
@@ -474,6 +479,7 @@ const evaluationControls = (family: string): AiGatewayControls => ({
       models: listsOf(family),
       // Every capability on: the run evaluates the model, not the Market's switches (G4d3).
       capabilities: switchesOnBut(),
+      inHouse: NO_IN_HOUSE,
     }),
 });
 
@@ -529,6 +535,7 @@ describe(`buyer assistant real-model evaluation (${EVALUATION_VERSION})`, () => 
     clock,
     router,
     evaluationControls(family),
+    testShadow(router),
   );
   const reportDir = process.env.ASSISTANT_EVAL_REPORT_DIR ?? join(tmpdir(), 'assistant-eval');
 

@@ -222,6 +222,9 @@ export class PrismaAiUsageStore implements AiUsageStore {
           costMicroUsd: BigInt(call.costMicroUsd),
           latencyMs: call.latencyMs,
           outcome: call.outcome,
+          shadow: call.shadow,
+          shadowSample: call.shadowSample,
+          outputCheck: call.outputCheck,
         },
       ],
       skipDuplicates: true,
@@ -275,6 +278,8 @@ export class PrismaAiUsageStore implements AiUsageStore {
       tenantId: market.tenantId,
       occurredAt: { gte: timestampOf(since), lt: timestampOf(until) },
       capability: { not: leaveOut },
+      // The models' served calls only: a shadow call answered no one (G6c).
+      shadow: false,
     };
     const groups = await tx.aiCall.groupBy({
       by: ['provider', 'model', 'outcome', 'attempt'],

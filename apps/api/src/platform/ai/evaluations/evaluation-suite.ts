@@ -1,6 +1,9 @@
 import { Injectable, type OnApplicationBootstrap, type Provider } from '@nestjs/common';
 import { CapabilityRegistry, RESERVED_OWNER } from '../capability-registry';
 import type { ModelRequest, ModelTurn } from '../model-provider';
+import type { OutputCheck } from '../usage/ai-usage-store';
+
+export type { OutputCheck } from '../usage/ai-usage-store';
 
 /**
  * The checks a suite grades an answer with (G4c; docs/design/domain/platform-ai.md section 8, Tab
@@ -54,6 +57,15 @@ export interface EvaluationSuite {
    * run never stores it.
    */
   display(sampleId: string, turn: ModelTurn): string | null;
+  /**
+   * The capability's own check of a real caller's answer, for a shadow sample (G6c; design section
+   * 6, "Shadow mode"): `valid` when the capability would use it, `invalid` when it would not (no text
+   * alone, nothing left after its guard), `guard-rejected` when its guard took out a certification
+   * claim. `request` is the request as sent (masked). Pure and deterministic: nothing of the answer is
+   * kept or shown, only this result. A capability without it is never sent to shadow, since its
+   * rates could not be compared.
+   */
+  shadow?(request: ModelRequest, turn: ModelTurn): OutputCheck;
 }
 
 /** Registration refused at boot (an unknown or foreign capability, tools, a duplicate, sealed). */

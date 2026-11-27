@@ -12,6 +12,7 @@ import {
   type BudgetLine,
   type BudgetPeriod,
   type CallOutcome,
+  type OutputCheck,
   type ReservationRecord,
 } from './ai-usage-store';
 
@@ -51,6 +52,14 @@ export interface SettledCall {
   readonly costMicroUsd: number;
   readonly latencyMs: number;
   readonly outcome: CallOutcome;
+  /**
+   * A shadow call (G6c): its cost is held and spent on the same counters as any call (design section
+   * 6, "the same budget"), but the day row counts only its cost: it is not a request of the
+   * capability, so calls, failures, tokens and latency stay those of the answers callers got.
+   */
+  readonly shadow: boolean;
+  readonly shadowSample: string | null;
+  readonly outputCheck: OutputCheck | null;
 }
 
 /**
@@ -397,18 +406,19 @@ export class AiUsage {
           });
           // The call's row is there already: this call was settled before, nothing more to count.
           if (!first) return ok(null);
+          const counted = !call.shadow;
           await this.store.addUsage(market, {
             day,
             capability: scope.capability,
             sellerId: scope.sellerId,
-            calls: 1,
-            failures: call.outcome === 'ok' ? 0 : 1,
-            fallbacks: fallback ? 1 : 0,
+            calls: counted ? 1 : 0,
+            failures: counted && call.outcome !== 'ok' ? 1 : 0,
+            fallbacks: counted && fallback ? 1 : 0,
             refusals: 0,
-            inputTokens: call.inputTokens,
-            outputTokens: call.outputTokens,
+            inputTokens: counted ? call.inputTokens : 0,
+            outputTokens: counted ? call.outputTokens : 0,
             costMicroUsd: cost,
-            latencyMs: call.latencyMs,
+            latencyMs: counted ? call.latencyMs : null,
           });
         }
         // Swept already: the estimate was counted as spent, and it covers the cost.

@@ -7,7 +7,7 @@ import type { ModelRequest, ModelTurn, ModelUsage } from './model-provider';
 import { planPrice, type PlannedRoute } from './routing/ai-router';
 import type { CircuitBreaker } from './routing/circuit-breaker';
 import { RESERVATION_GRACE, type AiUsage, type UsageScope } from './usage/ai-usage';
-import type { CallOutcome } from './usage/ai-usage-store';
+import type { CallOutcome, OutputCheck } from './usage/ai-usage-store';
 
 export interface GatewayRoute {
   readonly provider: string;
@@ -88,6 +88,19 @@ export interface PlannedCall {
   /** Masked, with the capability's output cap. */
   readonly sent: ModelRequest;
   readonly timeoutMs: number;
+  /**
+   * A shadow call of the in-house model (G6c): counted on the same budget, recorded with
+   * `shadow` and not as a request of the capability. Its answer is returned to no one: the caller
+   * of a shadow call drops the run.
+   */
+  readonly shadow?: boolean;
+  /** The shadow sample both calls of it belong to (G6c), kept on their rows; else none. */
+  readonly sample?: string;
+  /**
+   * The capability's own check of an answer, on the calls of a shadow sample (G6c): only its result
+   * is kept, on the call's row. A check that throws is recorded as no check.
+   */
+  readonly check?: (turn: ModelTurn) => OutputCheck;
 }
 
 /** The last attempt that was sent: its call id (the reservation's), route, usage and cost. */
@@ -124,6 +137,15 @@ export async function callThroughPlan(
 ): Promise<PlannedCallResult> {
   const { models, usage, clock, breaker, logger } = deps;
   const { label, market, scope, caps, plan, sent, timeoutMs } = call;
+  const shadow = call.shadow === true;
+  const checkOf = (turn: ModelTurn): OutputCheck | null => {
+    if (call.check === undefined) return null;
+    try {
+      return call.check(turn);
+    } catch {
+      return null;
+    }
+  };
   const { marketId } = market;
   const nothing = (run: GatewayRun, overBudget = false): PlannedCallResult => ({
     run,
@@ -135,7 +157,8 @@ export async function callThroughPlan(
     reason: 'off' | 'over-budget',
   ): Promise<PlannedCallResult> => {
     logger.warn({ msg: 'ai.run.failed', capability: label, marketId, failure });
-    if (reason === 'over-budget') await usage.refused(market, scope);
+    // A refused shadow call is no refusal a caller saw: the day row counts none (G6c review).
+    if (reason === 'over-budget' && !shadow) await usage.refused(market, scope);
     return nothing({ ok: false, reason, costMicroUsd: 0 }, reason === 'over-budget');
   };
 
@@ -229,6 +252,9 @@ export async function callThroughPlan(
       costMicroUsd: cost,
       latencyMs,
       outcome,
+      shadow,
+      shadowSample: call.sample ?? null,
+      outputCheck: result.ok ? checkOf(result.turn) : null,
     });
     const route: GatewayRoute = {
       provider: row.provider,

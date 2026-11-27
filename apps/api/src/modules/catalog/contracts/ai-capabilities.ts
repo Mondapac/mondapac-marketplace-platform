@@ -19,6 +19,9 @@ const WRITER = {
   maxToolRounds: 0,
   timeoutMs: WRITER_TIMEOUT_MS,
   promptVersion: WRITER_PROMPT_VERSION,
+  // The product text typed in the form: the category of seller texts (ADR-0019 decision 3), also
+  // when an admin types it.
+  dataCategories: ['seller-text'],
 } as const;
 
 export const DESCRIPTION_WRITER_SELLER = 'catalog.description-writer.seller';

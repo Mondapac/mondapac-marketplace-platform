@@ -20,6 +20,7 @@ const SPEC: CapabilitySpec = {
   maxToolRounds: 1,
   timeoutMs: 1000,
   promptVersion: 'v1',
+  dataCategories: ['customer-message'],
 };
 
 describe('AiUsageReport (AI Gateway G7)', () => {

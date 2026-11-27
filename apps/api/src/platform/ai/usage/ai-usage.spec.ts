@@ -41,6 +41,9 @@ const settled = (cost: number): SettledCall => ({
   costMicroUsd: cost,
   latencyMs: 10,
   outcome: 'ok',
+  shadow: false,
+  shadowSample: null,
+  outputCheck: null,
 });
 
 describe.each([

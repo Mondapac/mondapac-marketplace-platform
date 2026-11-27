@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261126-ai-gateway-shadow-metrics-read",
+  "area": "assistant",
+  "title": "درگاه AI: خواندن و مقایسهٔ سنجه‌های shadow مدل اختصاصی",
+  "desc": "G6c برای هر نمونهٔ shadow دو ردیف در platform.ai_calls ثبت می‌کند (پاسخ مدل بیرونی و پاسخ مدل اختصاصی، با ستون‌های shadow، shadow_sample و output_check) اما هنوز خوانشی ندارد. G6e باید برای هر نوع کار و نسخهٔ مدل اختصاصی، توکن، تأخیر p95، نرخ خطا، نرخ خروجی معتبر و نرخ ردّ نگهبان را کنار مدل بیرونی روی همان نمونه‌ها نشان دهد (فقط عدد، بدون متن) و هزینهٔ shadow را در نمای کلی جدا برچسب بزند. نمایه: پس از EXPLAIN، اگر لازم شد، نمایهٔ جزئی (market_id, occurred_at) WHERE shadow_sample IS NOT NULL با CREATE INDEX CONCURRENTLY در مهاجرتی بیرون از تراکنش (مجتبی، بازبینی G6c).",
+  "src": "docs/design/domain/platform-ai.md (Built in G6c)",
+  "date": "2026-11-26",
+  "trig": "در G6e، زبانهٔ Mondapac Intelligence",
+  "prio": "متوسط",
+  "status": "موکول"
+}

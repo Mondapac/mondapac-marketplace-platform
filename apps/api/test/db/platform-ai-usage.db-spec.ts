@@ -85,6 +85,9 @@ const settled = (cost: number): SettledCall => ({
   costMicroUsd: cost,
   latencyMs: 700,
   outcome: 'ok',
+  shadow: false,
+  shadowSample: null,
+  outputCheck: null,
 });
 
 async function sqlStateOf(client: Client, statement: string, values: unknown[] = []) {
@@ -304,9 +307,49 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
           'output_tokens',
           'provider',
           'seller_id',
+          'shadow',
+          'shadow_sample',
+          'output_check',
           'tenant_id',
         ].sort(),
       );
+    });
+
+    it('counts a shadow call only by its cost on the day row, and keeps its sample and check (G6c)', async () => {
+      const scope = scopeOf();
+      const sample = uuid();
+      for (const shadow of [false, true]) {
+        const reservation = await usage.reserve(
+          market,
+          scope,
+          caps,
+          50,
+          Temporal.Duration.from({ minutes: 1 }),
+        );
+        if (reservation === 'over-budget') throw new Error('unexpected');
+        await usage.settle(market, reservation, {
+          ...settled(40),
+          shadow,
+          shadowSample: sample,
+          outputCheck: shadow ? 'guard-rejected' : 'valid',
+        });
+      }
+      const days = await sql.query(
+        `SELECT calls, failures, input_tokens::int AS input, cost_micro_usd::int AS cost,
+                latency_le_500_ms + latency_le_1000_ms AS fast
+           FROM platform.ai_usage_days WHERE capability = $1`,
+        [scope.capability],
+      );
+      expect(days.rows).toEqual([{ calls: 1, failures: 0, input: 10, cost: 80, fast: 1 }]);
+      const calls = await sql.query(
+        `SELECT shadow, shadow_sample AS sample, output_check AS "check" FROM platform.ai_calls
+          WHERE capability = $1 ORDER BY shadow`,
+        [scope.capability],
+      );
+      expect(calls.rows).toEqual([
+        { shadow: false, sample, check: 'valid' },
+        { shadow: true, sample, check: 'guard-rejected' },
+      ]);
     });
 
     it('keeps one day row per capability without a seller (NULLS NOT DISTINCT), with latency buckets', async () => {
@@ -404,13 +447,16 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
           latency?: number;
           outcome?: string;
           cost?: number;
+          shadow?: boolean;
         },
       ) =>
         owner.query(
           `INSERT INTO platform.ai_calls (id, market_id, tenant_id, occurred_at, day, capability,
              seller_id, guest, provider, model, attempt, input_tokens, output_tokens,
-             input_pico_usd, output_pico_usd, cost_micro_usd, latency_ms, outcome)
-           VALUES ($1, $2, $3, $4, $5, $6, NULL, false, 'anthropic', $7, $8, 1, 1, 1, 1, $9, $10, $11)`,
+             input_pico_usd, output_pico_usd, cost_micro_usd, latency_ms, outcome, shadow,
+             shadow_sample)
+           VALUES ($1, $2, $3, $4, $5, $6, NULL, false, 'anthropic', $7, $8, 1, 1, 1, 1, $9, $10, $11,
+             $12, $13)`,
           [
             uuid(),
             market.marketId,
@@ -423,6 +469,8 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
             values.cost ?? 100,
             values.latency ?? 400,
             values.outcome ?? 'ok',
+            values.shadow ?? false,
+            values.shadow === true ? uuid() : null,
           ],
         );
       const recent = new Date(NOW.epochMilliseconds - 3_600_000);
@@ -430,6 +478,8 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
       await insertCall(recent, { attempt: 2, latency: 1500, outcome: 'timeout', cost: 50 });
       await insertCall(recent, { latency: 40_000 });
       await insertCall(recent, { capability: AI_EVALUATION_USAGE, cost: 99_999 });
+      // A shadow call (G6c) answered no one: left out of the served calls.
+      await insertCall(recent, { shadow: true, cost: 99_999 });
       await insertCall(new Date(NOW.epochMilliseconds - 31 * 86_400_000), { cost: 99_999 });
 
       const day = NOW.toZonedDateTimeISO('UTC').toPlainDate();
@@ -763,5 +813,37 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
       expect(await sqlStateOf(sql, call, [uuid(), ...base, outcome])).toBe('ok');
     }
     expect(await sqlStateOf(sql, call, [uuid(), ...base, 'refusal'])).toBe(CHECK_VIOLATION);
+    // G6c: a shadow row and the capability's check of an answer, only on an ok call.
+    const checked = `INSERT INTO platform.ai_calls (id, market_id, tenant_id, occurred_at, day,
+        capability, seller_id, guest, provider, model, attempt, input_tokens, output_tokens,
+        input_pico_usd, output_pico_usd, cost_micro_usd, latency_ms, outcome, shadow, shadow_sample,
+        output_check)
+      VALUES ($1, $2, $3, now(), '2026-11-25', 'test.x', NULL, false, 'mondapac', 'm', 1,
+        0, 0, 1, 1, 0, 1, $4, $5, $6, $7)`;
+    const sample = uuid();
+    for (const check of ['valid', 'invalid', 'guard-rejected', null]) {
+      expect(await sqlStateOf(sql, checked, [uuid(), ...base, 'ok', true, sample, check])).toBe(
+        'ok',
+      );
+    }
+    expect(await sqlStateOf(sql, checked, [uuid(), ...base, 'ok', false, sample, 'valid'])).toBe(
+      'ok',
+    );
+    expect(await sqlStateOf(sql, checked, [uuid(), ...base, 'timeout', true, sample, null])).toBe(
+      'ok',
+    );
+    // A check only on an ok call, only in a sample; a shadow call always in a sample.
+    expect(
+      await sqlStateOf(sql, checked, [uuid(), ...base, 'timeout', true, sample, 'valid']),
+    ).toBe(CHECK_VIOLATION);
+    expect(await sqlStateOf(sql, checked, [uuid(), ...base, 'ok', true, sample, 'text'])).toBe(
+      CHECK_VIOLATION,
+    );
+    expect(await sqlStateOf(sql, checked, [uuid(), ...base, 'ok', false, null, 'valid'])).toBe(
+      CHECK_VIOLATION,
+    );
+    expect(await sqlStateOf(sql, checked, [uuid(), ...base, 'ok', true, null, null])).toBe(
+      CHECK_VIOLATION,
+    );
   });
 });

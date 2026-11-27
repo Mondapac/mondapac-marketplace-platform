@@ -546,7 +546,8 @@ export class AdminSettingsController {
       'details.actionKey); switching off, lowering a share or tightening a limit needs none. ' +
       'Server checks on the page as it would stand (400 validation.failed, details.fields with ' +
       'the setting code as path and the problem as code): the stage is one the gateway serves ' +
-      '(stage-not-served), shadow needs the owner approval recorded in ADR-0052 ' +
+      '(stage-not-served: off and shadow today), shadow needs the owner approval recorded in ADR-0052 ' +
+      'for every data category of at least one capability of the task type ' +
       '(shadow-not-approved), a stage other than off needs a model (no-model) that is an ' +
       'in-house family (unknown-model, external-model) usable in the Market for every capability ' +
       'of the task type with an evaluation pass (no-capability, not-checked, region, no-key, ' +

@@ -1269,6 +1269,14 @@ reserved to that folder by `scripts/check-prisma-boundaries.mjs`, `AI_USAGE_TABL
 - CHECKs: closed `outcome`, `period`, `scope` values; a month starts on day 1; a seller key is a
   UUID and a Market or guest key is empty; `held >= spent >= 0`; every count non-negative; no
   guest call names a seller; a reservation expires after it is created.
+- G6c (migration `20261126230000_platform_ai_call_shadow`): `ai_calls` gains `shadow` (a shadow
+  call of the in-house model, default false), `shadow_sample` (UUID, the same on the external call
+  and its shadow call) and `output_check` (`valid`, `invalid`, `guard-rejected`). CHECKs: a closed
+  `output_check`, only on an `ok` call in a sample; a shadow call has a sample. Written on INSERT
+  only (no grant change). The scorecard read filters `shadow = false` on the same index range; G6e's
+  comparison read decides on a partial index after EXPLAIN (FE-20261126-ai-gateway-shadow-metrics-read).
+  Rolling back deletes the shadow rows first. A shadow call adds only its cost to `ai_usage_days`
+  (no call, failure, token or latency count), so a day row's cost can include shadow cost.
 - Locking: one unit takes the counter rows in the fixed order most specific first (seller or
   guest pool, capability, Market day, Market month), so two units never wait in a cycle and the
   Market rows every call shares are locked last, just before the commit. Reserve inserts its

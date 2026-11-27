@@ -11,6 +11,24 @@ export type CapabilityAudience = (typeof CAPABILITY_AUDIENCES)[number];
 export const CAPABILITY_TASKS = ['chat', 'extract', 'write', 'vision'] as const;
 export type CapabilityTask = (typeof CAPABILITY_TASKS)[number];
 
+/**
+ * The categories of data a capability sends to a model (ADR-0019 decision 3, ADR-0052 decision 7):
+ * the only ones the owner approved. `seller-text`: seller texts and the product text typed in a
+ * panel form; `certificate-file`: a certificate file and what is read from it; `customer-message`:
+ * the customer's own message; `order-status` and `order-tracking`: the customer's order status and
+ * tracking. No address, phone or payment data is a category; a new one needs the owner's approval
+ * in an amending ADR. A shadow run needs the owner's approval for every category of the capability
+ * in the Market (G6c, FE-20261126-ai-gateway-shadow-approval-per-category).
+ */
+export const AI_DATA_CATEGORIES = [
+  'seller-text',
+  'certificate-file',
+  'customer-message',
+  'order-status',
+  'order-tracking',
+] as const;
+export type AiDataCategory = (typeof AI_DATA_CATEGORIES)[number];
+
 export interface CapabilitySpec {
   /** `<owner module>.<name>`, lowercase kebab-case parts, for example `catalog.description-writer`. */
   readonly id: string;
@@ -33,6 +51,12 @@ export interface CapabilitySpec {
   readonly timeoutMs: number;
   /** The prompt version an evaluation pass is bound to (ADR-0019 decision 9). */
   readonly promptVersion: string;
+  /**
+   * Every category of data its requests carry ({@link AI_DATA_CATEGORIES}), at least one, each
+   * once. Declared by the owning module; the gateway sends a capability's calls to shadow only when
+   * the owner approved all of them for the Market (G6c).
+   */
+  readonly dataCategories: readonly AiDataCategory[];
 }
 
 const ID =
@@ -65,6 +89,16 @@ export function capabilitySpecProblem(spec: unknown): string | null {
   if (!positiveInt(s.timeoutMs, 120_000)) return 'timeoutMs is 1 to 120,000';
   if (typeof s.promptVersion !== 'string' || !PROMPT_VERSION.test(s.promptVersion)) {
     return 'promptVersion is 1 to 64 of A-Z a-z 0-9 . _ -';
+  }
+  if (
+    !Array.isArray(s.dataCategories) ||
+    s.dataCategories.length === 0 ||
+    new Set(s.dataCategories).size !== s.dataCategories.length ||
+    !s.dataCategories.every((category) =>
+      (AI_DATA_CATEGORIES as readonly unknown[]).includes(category),
+    )
+  ) {
+    return 'dataCategories is one or more known categories, each once';
   }
   // R9: no tools under an admin or the system actor.
   if ((s.audience === 'admin' || s.audience === 'system') && s.maxToolRounds !== 0) {

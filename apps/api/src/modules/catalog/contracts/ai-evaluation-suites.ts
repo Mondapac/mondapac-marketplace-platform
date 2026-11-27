@@ -2,6 +2,7 @@ import type {
   EvaluationCheck,
   EvaluationGrade,
   EvaluationSuite,
+  OutputCheck,
 } from '../../../platform/ai/evaluations/evaluation-suite';
 import type { ModelRequest, ModelTurn } from '../../../platform/ai/model-provider';
 import { draftText, guardDraft } from '../domain/description-writer/draft-guard';
@@ -75,6 +76,25 @@ function grade(item: WriterEvaluationCase | undefined, turn: ModelTurn): Evaluat
   return { passed: checks.length === 0, checks };
 }
 
+/**
+ * The writer's own check of a real answer in a shadow sample (G6c): what the modal would do with
+ * it. Not text alone, or nothing left after the guard: `invalid`; the guard took out a certification
+ * claim: `guard-rejected` (the rate the in-house model is compared and rolled back on); else
+ * `valid`. The facts the guard checks numbers against are the request's own text (the form data the
+ * prompt builder put in it), so a number the model added is still left out.
+ */
+function shadowCheck(request: ModelRequest, turn: ModelTurn): OutputCheck {
+  const text = textOf(turn);
+  if (text === null) return 'invalid';
+  const facts = request.messages
+    .flatMap((message) => message.blocks)
+    .map((block) => (block.type === 'text' ? block.text : ''))
+    .join('\n');
+  const guarded = guardDraft(text, facts);
+  if (guarded.leftOut.certification > 0) return 'guard-rejected';
+  return draftText(guarded.sentences).trim().length === 0 ? 'invalid' : 'valid';
+}
+
 function writerSuite(capability: string): EvaluationSuite {
   return {
     capability,
@@ -110,6 +130,7 @@ function writerSuite(capability: string): EvaluationSuite {
       const kept = shown(item, request, text);
       return kept.trim().length === 0 ? null : kept;
     },
+    shadow: shadowCheck,
   };
 }
 

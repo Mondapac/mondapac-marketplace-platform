@@ -39,6 +39,7 @@ const base = {
   maxToolRounds: 0,
   timeoutMs: 1000,
   promptVersion: 'p-1',
+  dataCategories: ['seller-text'],
 } as const;
 const WRITER: CapabilitySpec = { id: 'alpha.writer', task: 'write', ...base };
 const CHAT: CapabilitySpec = { id: 'alpha.chat', task: 'chat', ...base };
@@ -100,6 +101,9 @@ function call(overrides: Partial<CallRecord>): CallRecord {
     costMicroUsd: 400,
     latencyMs: 300,
     outcome: 'ok',
+    shadow: false,
+    shadowSample: null,
+    outputCheck: null,
     ...overrides,
   };
 }

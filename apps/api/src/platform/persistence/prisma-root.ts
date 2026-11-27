@@ -1,4 +1,4 @@
-import type { OnModuleDestroy } from '@nestjs/common';
+import type { OnApplicationShutdown } from '@nestjs/common';
 import { PrismaPg } from '@prisma/adapter-pg';
 import type { PoolConfig } from 'pg';
 import { PrismaClient, type Prisma } from '../../generated/prisma/client';
@@ -38,7 +38,7 @@ export type PrismaRootOptions = Omit<Prisma.PrismaClientOptions, 'adapter' | 'ac
  * `prisma.service.ts`. Its users are the guarded client built on it, `DatabaseProbe`, and
  * later the relay and the scheduler lock, each in short transactions of their own.
  */
-export class PrismaRoot extends PrismaClient implements OnModuleDestroy {
+export class PrismaRoot extends PrismaClient implements OnApplicationShutdown {
   /** The pool's connection wait, also the `maxWait` of the root's own transactions. */
   readonly connectionWaitMs: number;
 
@@ -50,7 +50,12 @@ export class PrismaRoot extends PrismaClient implements OnModuleDestroy {
     this.connectionWaitMs = connectionWaitMs;
   }
 
-  async onModuleDestroy(): Promise<void> {
+  /**
+   * The pool closes last, after every `onModuleDestroy` and `beforeApplicationShutdown`, so work
+   * still out when the application closes (the AI Gateway's shadow calls, G6c) settles its rows
+   * first (Mohammad, G6c review 2).
+   */
+  async onApplicationShutdown(): Promise<void> {
     await this.$disconnect();
   }
 }
