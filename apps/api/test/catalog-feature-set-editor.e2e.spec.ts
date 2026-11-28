@@ -358,6 +358,26 @@ describe('feature-set editor over HTTP (integration)', () => {
       expect(store.rows.size).toBe(0);
     }, 30_000);
 
+    it('refuses a set without the Core group at once where the create waits for approval', async () => {
+      await boot();
+      await seeded(code);
+      const editor = adminSession(code, EDITOR, 9);
+      reviews.review('catalogue', 'medium');
+      const noCore = await http()
+        .post(SETS)
+        .set(editor)
+        .send(
+          body({
+            groups: [{ groupCode: 'details', names: { [locale]: 'Details' }, attributes: [] }],
+            note: 'No core group',
+          }),
+        )
+        .expect(422);
+      expect(noCore.body).toMatchObject({ code: 'attribute-family.core-invalid' });
+      expect(proposer.proposed).toHaveLength(0);
+      expect(store.rows.size).toBe(0);
+    }, 30_000);
+
     it('refuses a missing Core group, an unknown or draft attribute and too many variant attributes', async () => {
       await boot();
       await seeded(code);

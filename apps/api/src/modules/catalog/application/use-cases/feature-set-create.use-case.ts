@@ -6,7 +6,7 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type { SystemActionProposer, SystemRequestRecorder } from '../../../system-requests';
 import { CATALOG_ATTRIBUTE_EDIT } from '../../contracts/permissions';
-import { AttributeFamily } from '../../domain/attribute-family';
+import { AttributeFamily, checkFeatureSetContent } from '../../domain/attribute-family';
 import { AttributeFamilyCreatedAudit } from '../../domain/audit';
 import { ATTRIBUTE_LOAD_MAX } from '../attributes/attribute-admin-views';
 import {
@@ -152,6 +152,10 @@ export class FeatureSetCreate extends UseCase<
           if (policy.reviewed) {
             const checked = await buildContent(this.deps, context, prepared.value);
             if (!checked.ok) return err(checked.error);
+            // The same domain checks the approval will run (the Core group first and complete),
+            // so a set that could never be approved is refused now with its real reason.
+            const refused = checkFeatureSetContent(checked.value, prepared.value.defaultLocale);
+            if (refused !== null) return err(featureSetDomainFailureOf(refused));
             const code = await freeCode(this.deps, context, prepared.value);
             if (!code.ok) return err(code.error);
             const proposed = await proposeCatalogueAction(this.deps.proposer, context, policy, {
