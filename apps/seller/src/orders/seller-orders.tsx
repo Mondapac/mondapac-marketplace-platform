@@ -80,7 +80,7 @@ const withSearch = (current: Query, text: string): Query =>
 function countOf(counts: SellerOrderCounts, tab: FulfilmentFilter): number {
   switch (tab) {
     case 'all':
-      return counts.toShip + counts.shipped + counts.delivered;
+      return counts.toShip + counts.cancelled + counts.shipped + counts.delivered;
     case 'to-ship':
       return counts.toShip;
     case 'shipped':

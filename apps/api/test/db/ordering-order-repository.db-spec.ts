@@ -1041,15 +1041,40 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     expect(shipped).toEqual([]);
     expect(await value(market, () => repository.countForSeller(market, seller.sellerId))).toEqual({
       toShip: 1,
+      cancelled: 0,
       shipped: 0,
       delivered: 0,
     });
     expect(
       await value(market, () => repository.countForSeller(market, unpaidSeller.sellerId)),
-    ).toEqual({ toShip: 0, shipped: 0, delivered: 0 });
+    ).toEqual({ toShip: 0, cancelled: 0, shipped: 0, delivered: 0 });
     expect(foreign).toBeNull();
     expect(notPaid).toBeNull();
     expect(elsewhere).toBeNull();
+  });
+
+  it('keeps an admin-cancelled seller order out of To ship and its count, but under All', async () => {
+    const paid = await paidOrder();
+    const seller = paid.sellerOrders[0]!;
+    await value(market, () => repository.markCancelled(market, paid.id, T0));
+    const list = (fulfilment: 'to-ship' | null) =>
+      value(market, () =>
+        repository.listForSeller(
+          market,
+          seller.sellerId,
+          { fulfilment, from: null, to: null },
+          { limit: 10, after: null },
+        ),
+      );
+
+    expect((await list('to-ship')).map((r) => r.sellerOrder.id)).toEqual([]);
+    expect((await list(null)).map((r) => r.sellerOrder.id)).toEqual([seller.id]);
+    expect(await value(market, () => repository.countForSeller(market, seller.sellerId))).toEqual({
+      toShip: 0,
+      cancelled: 1,
+      shipped: 0,
+      delivered: 0,
+    });
   });
 
   it("pages a seller's paid seller orders by offset with a total, a date range and a sort", async () => {

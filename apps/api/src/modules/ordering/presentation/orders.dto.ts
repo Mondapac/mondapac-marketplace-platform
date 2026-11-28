@@ -691,6 +691,7 @@ export class SellerOrderShipBody extends SellerOrderDetailBody {
 
 export class SellerOrderCountsBody {
   @ApiProperty() toShip!: number;
+  @ApiProperty() cancelled!: number;
   @ApiProperty() shipped!: number;
   @ApiProperty() delivered!: number;
 }
