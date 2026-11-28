@@ -1,6 +1,7 @@
 import { err, money, ok, parseId } from '@mondapac/shared-kernel';
-import type { CallContext, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Result, Temporal } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
+import { adminCancelledAt } from '../../domain/order';
 import type { RefundNotice, RefundNoticeFailure } from '../../contracts';
 import type { OrderingDependencies } from '../checkout-flow';
 
@@ -58,12 +59,18 @@ export class RefundNoticeQuery extends UseCase<
         // Units the order holds and units Stripe has given back (this refund included).
         const total = order.lines.reduce((sum, line) => sum + line.quantity, 0);
         const all = await this.deps.refunds.listForOrder(context.market, order.id);
-        const refundedUnits = all
-          .filter((entry) => entry.refund.state === 'succeeded')
-          .reduce(
-            (sum, entry) => sum + entry.refund.lines.reduce((n, line) => n + line.quantity, 0),
-            0,
-          );
+        const succeeded = all.filter((entry) => entry.refund.state === 'succeeded');
+        const refundedUnits = succeeded.reduce(
+          (sum, entry) => sum + entry.refund.lines.reduce((n, line) => n + line.quantity, 0),
+          0,
+        );
+        const settledKey = (r: { settledAt: Temporal.Instant | null; id: string }) =>
+          `${r.settledAt === null ? '' : r.settledAt.toString()}|${r.id}`;
+        const lastKey = succeeded
+          .map((e) => settledKey(e.refund))
+          .sort()
+          .at(-1);
+        const refundedGross = succeeded.reduce((sum, entry) => sum + entry.refund.gross, 0n);
         return ok({
           orderId: order.id,
           accountId: order.accountId,
@@ -73,6 +80,9 @@ export class RefundNoticeQuery extends UseCase<
           amount: money(refund.gross, refund.currency),
           units: refund.lines.reduce((sum, line) => sum + line.quantity, 0),
           orderFullyRefunded: total > 0 && refundedUnits >= total,
+          isLastSettled: lastKey === settledKey(refund),
+          cancelledByAdmin: adminCancelledAt(order) !== null,
+          refundedTotal: money(refundedGross, refund.currency),
         });
       },
       { readOnly: true },

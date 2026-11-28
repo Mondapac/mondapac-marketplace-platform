@@ -81,6 +81,9 @@ const refundOf = (code: 'AU' | 'ZZ'): RefundNotice => ({
   amount: code === 'AU' ? money(1500n, 'AUD') : money(1500n, 'JPY'),
   units: 2,
   orderFullyRefunded: false,
+  isLastSettled: true,
+  cancelledByAdmin: false,
+  refundedTotal: code === 'AU' ? money(1500n, 'AUD') : money(1500n, 'JPY'),
 });
 
 describe.each([['AU'], ['ZZ']] as const)('order emails in market %s', (code) => {
@@ -507,9 +510,35 @@ describe.each([['AU'], ['ZZ']] as const)('order emails in market %s', (code) => 
       expect(sent[0]?.text).toContain('an item was damaged');
       expect(sent[0]?.text).toContain(`Order reference: ${ORDER}`);
       refundNotice = Promise.resolve(
-        ok({ ...refundOf(code), reason: 'other', requestedBy: 'admin', orderFullyRefunded: true }),
+        ok({ ...refundOf(code), reason: 'other', requestedBy: 'admin', cancelledByAdmin: true }),
       );
-      expect(await unavailableMail(2)).toEqual(ok({ code: 'order-mail.sent', sent: 1 }));
+      expect(await unavailableMail(2)).toEqual(
+        ok({ code: 'order-mail.skipped', reason: 'cancel.waiting-other-refunds' }),
+      );
+      // Fully refunded but another refund settled after this one: that delivery sends the mail.
+      refundNotice = Promise.resolve(
+        ok({
+          ...refundOf(code),
+          reason: 'other',
+          requestedBy: 'admin',
+          cancelledByAdmin: true,
+          orderFullyRefunded: true,
+          isLastSettled: false,
+        }),
+      );
+      expect(await unavailableMail(4)).toEqual(
+        ok({ code: 'order-mail.skipped', reason: 'cancel.waiting-other-refunds' }),
+      );
+      refundNotice = Promise.resolve(
+        ok({
+          ...refundOf(code),
+          reason: 'other',
+          requestedBy: 'admin',
+          cancelledByAdmin: true,
+          orderFullyRefunded: true,
+        }),
+      );
+      expect(await unavailableMail(3)).toEqual(ok({ code: 'order-mail.sent', sent: 1 }));
       expect(sent[1]?.subject).toBe('Your order was cancelled');
       expect(sent[1]?.text).toMatch(code === 'AU' ? /Refunded: .*15\.00/ : /Refunded: .*1,500/);
     });
