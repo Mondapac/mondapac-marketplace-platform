@@ -81,6 +81,12 @@ export class ReviewRevisionBody {
   @ApiProperty({ description: 'IANA zone the seller chose.' }) operatingTimezone!: string;
   @ApiProperty({ type: ReviewRegisterAtSubmissionBody })
   registerAtSubmission!: ReviewRegisterAtSubmissionBody;
+  @ApiProperty({
+    type: [String],
+    description:
+      "The Market's claim words found in the store name (a reviewer hint, never a refusal).",
+  })
+  storeNameClaimWords!: readonly string[];
   @ApiProperty({ type: ReviewContentBody }) content!: ReviewContentBody;
 }
 

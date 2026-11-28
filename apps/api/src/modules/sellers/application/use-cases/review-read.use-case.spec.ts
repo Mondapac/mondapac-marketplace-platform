@@ -32,6 +32,7 @@ import {
   type BusinessFileRevision,
 } from '../../domain/business-file-revision';
 import { identifierIndexKeyOf } from '../../domain/business-identifier';
+import { reservedWordsOf } from '../../domain/reserved-words';
 import { registerCheckAfter } from '../../domain/register-check';
 import { SellerFile } from '../../domain/seller-file';
 import type { RegisterLookupSettings } from '../ports/register-lookup-policy';
@@ -123,6 +124,7 @@ describe.each(['AU', 'ZZ'] as const)('review.read in Market %s', (code) => {
       reviewChecks,
       accessReader: access,
       identifierSchemes: { schemeOf: () => null },
+      policy: { reservedWords: () => reservedWordsOf({ slugs: [], claimWords: ['halal'] }) },
       onboardingAreas: {
         openCodes: () => [],
         nameOf: (_market, code) => (code === 'area-1' ? 'Area One' : null),
@@ -235,6 +237,17 @@ describe.each(['AU', 'ZZ'] as const)('review.read in Market %s', (code) => {
     for (const secret of ['Al Noor', '3000 0000', 'example.com', '51824753556', 'George']) {
       expect(logged).not.toContain(secret);
     }
+  });
+
+  it('lists the claim words of the store name as a reviewer hint, and none for a plain name', async () => {
+    await addRevision('onboarding', 1, { ...CONTENT, storeName: "Sam's Halal Butchery" });
+    const flagged = await useCase().execute(admin(), { sellerId });
+    expect(flagged.ok && flagged.value.current.storeNameClaimWords).toEqual(['halal']);
+
+    revisions.rows.clear();
+    await addRevision('onboarding', 1);
+    const plain = await useCase().execute(admin(), { sellerId });
+    expect(plain.ok && plain.value.current.storeNameClaimWords).toEqual([]);
   });
 
   it('names the area: the edited English name, else the configured one, else null', async () => {

@@ -1,4 +1,4 @@
-import { BackLink, Badge, Card, DataList, type BadgeTone, PageHeader } from '@mondapac/ui';
+import { BackLink, Badge, Banner, Card, DataList, type BadgeTone, PageHeader } from '@mondapac/ui';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { formatInstant } from '../shared/format.ts';
 import { addressLines, areaName, known } from './format.ts';
@@ -84,6 +84,15 @@ function Revision({
           {t(`sellers.review.revision-status.${known(revision.status, REVISION_STATUSES)}`)}
         </Badge>
       </p>
+      {revision.storeNameClaimWords.length > 0 ? (
+        <Banner tone="attention" title={t('sellers.review.claim-words.title')}>
+          <p>
+            {t('sellers.review.claim-words.body', {
+              words: revision.storeNameClaimWords.join(', '),
+            })}
+          </p>
+        </Banner>
+      ) : null}
       <DataList
         rows={[
           ...rows.map((row, index) => {

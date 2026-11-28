@@ -740,6 +740,7 @@ const REVIEW_DECISION_PORTS = {
       accessReader: true,
       identifierSchemes: true,
       onboardingAreas: true,
+      policy: true,
       areaNames: true,
       audit: true,
       clock: true,
