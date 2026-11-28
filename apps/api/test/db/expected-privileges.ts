@@ -554,12 +554,14 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     // Phase 5 package 4: a seller order's fulfilment steps (to-ship, shipped, delivered) change
     // the fulfilment columns only; the amounts never change. The buyer-first flags (dashboards v2)
-    // are written once, by the unit that confirms the payment.
+    // are written once, by the unit that confirms the payment. An admin's cancellation stamps
+    // cancelled_at, and the worker stock_released_at once inventory released the lines (BUG-017).
     'ordering.seller_orders': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [
         'buyer_first_order',
         'buyer_first_with_seller',
+        'cancelled_at',
         'carrier',
         'delivered_at',
         'delivery_attention',
@@ -572,6 +574,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'refunded_amount',
         'refunded_in_full',
         'shipped_at',
+        'stock_released_at',
         'tracking_ref',
       ],
     },

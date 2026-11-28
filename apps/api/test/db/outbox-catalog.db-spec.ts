@@ -403,6 +403,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // The dashboard's seller tasks (dashboards upgrade, phase 1, PR 6): one seller's open paid orders.
   'ordering.seller_orders_market_id_seller_id_open_idx':
     "CREATE INDEX seller_orders_market_id_seller_id_open_idx ON ordering.seller_orders USING btree (market_id, seller_id) WHERE ((fulfilment <> 'delivered'::text) AND (paid_at IS NOT NULL) AND (refunded_in_full = false))",
+  // The worker's queue of cancelled seller orders whose stock is not released yet (BUG-017).
+  'ordering.seller_orders_market_id_stock_to_release_idx':
+    'CREATE INDEX seller_orders_market_id_stock_to_release_idx ON ordering.seller_orders USING btree (market_id, cancelled_at) WHERE ((cancelled_at IS NOT NULL) AND (stock_released_at IS NULL))',
   'ordering.seller_refund_limits_default_key':
     'CREATE UNIQUE INDEX seller_refund_limits_default_key ON ordering.seller_refund_limits USING btree (market_id) WHERE (seller_id IS NULL)',
   'ordering.seller_refund_limits_seller_key':
