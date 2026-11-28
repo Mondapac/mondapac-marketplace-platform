@@ -2,11 +2,13 @@ import { Card, LoadError } from '@mondapac/ui';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { catalogStateFor } from '../../../../src/catalog/catalog-states.tsx';
+import { OfferBadges } from '../../../../src/catalog/offer-badges.tsx';
 import { OfferDetail } from '../../../../src/catalog/offer-detail.tsx';
 import { EDIT_PERMISSION, type OfferView } from '../../../../src/catalog/types.ts';
 import { VariantsTable } from '../../../../src/catalog/variants-table.tsx';
 import { loadActiveShelves } from '../../../../src/server/category-proposals-page.ts';
 import { isUuid, loadCatalogPage } from '../../../../src/server/catalog-page.ts';
+import { loadOfferBadgeData } from '../../../../src/server/offer-badges.ts';
 import { loadReviewStanding } from '../../../../src/server/review-standing.ts';
 import { loadOfferSizes } from '../../../../src/server/offer-sizes.ts';
 import { canEstimateReceive } from '../../../../src/price/receive-permissions.ts';
@@ -46,12 +48,18 @@ export default async function OfferPage({
   const state = await catalogStateFor(page, 's_offers', title);
   if (state !== null || page.kind !== 'ok') return state;
   const keys = page.session.permissionKeys;
-  const [sizes, shelves, standing] = await Promise.all([
+  const tags = page.body.tags ?? [];
+  const [sizes, shelves, standing, badgeData] = await Promise.all([
     loadOfferSizes(page.body, keys, locale, (number) =>
       t('catalog.variants-table.variant-n', { number }),
     ),
     loadActiveShelves(keys, locale),
     loadReviewStanding(),
+    loadOfferBadgeData(
+      keys,
+      tags.map((tag) => tag.typeCode),
+      locale,
+    ),
   ]);
   return (
     <SellerShell session={page.session} activeId="s_offers" title={title}>
@@ -61,6 +69,16 @@ export default async function OfferPage({
         csrfToken={page.session.csrfToken}
         shelves={shelves}
         standing={standing}
+        badges={
+          <OfferBadges
+            offerId={offerId}
+            csrfToken={page.session.csrfToken}
+            tags={tags}
+            choices={badgeData.choices}
+            names={badgeData.names}
+            canEdit={keys.includes(EDIT_PERMISSION)}
+          />
+        }
         heldPrice={
           sizes !== 'unavailable' && sizes.rows.some((row) => (row.price?.held ?? null) !== null)
         }

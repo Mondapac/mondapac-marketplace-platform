@@ -244,6 +244,10 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/seller/products/:id/topic-suggestions',
     'catalog/seller/products/:id/images',
     'catalog/seller/offers/:id/submit',
+    // Add a certification badge (a tag of one certificate type) to an offer, and sell without a
+    // suspended one (Offer page, badges). The API judges the type, the certificate and the state.
+    'catalog/seller/offers/:id/tags',
+    'catalog/seller/offers/:id/tags/:type/sell-without-badge',
     // Ask for a size a platform product does not have (catalog, variants V7).
     'catalog/seller/offers/:id/variant-requests',
     // Withdraw a waiting category proposal (categories C9b).
@@ -282,6 +286,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // A saved filter of a generic seller list (lists); the list key is in the query.
     'lists/seller/saved-filters/:id',
     'catalog/seller/offers/:id',
+    // Take an active badge off an offer (Offer page, badges).
+    'catalog/seller/offers/:id/tags/:type',
     'catalog/seller/products/:id/images/:id',
     'catalog/seller/saved-filters/:id',
     // A saved view of the order list (ordering).
@@ -643,6 +649,9 @@ function upstreamQuery(method: string, path: readonly string[], requestUrl: stri
 /** A customer code as the shop knows it (`XXXX-XXXX`); a typed start is shorter, so this is only the shape. */
 const CUSTOMER_CODE = /^[0-9A-Za-z-]{1,12}$/;
 
+/** A certification type code in a path: the shape the API gives its types (the API checks it exists). */
+const TYPE_CODE_PART = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
+
 const PHOTO_SIZES: ReadonlySet<string> = new Set(['thumb', 'medium', 'large', 'small']);
 
 /**
@@ -663,7 +672,9 @@ function matches(template: string, path: readonly string[], marketId: string | n
             ? PHOTO_SIZES.has(path[index] ?? '')
             : part === ':code'
               ? CUSTOMER_CODE.test(path[index] ?? '')
-              : part === path[index],
+              : part === ':type'
+                ? TYPE_CODE_PART.test(path[index] ?? '')
+                : part === path[index],
     )
   );
 }

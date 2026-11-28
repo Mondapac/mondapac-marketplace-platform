@@ -648,6 +648,34 @@ describe('relay allowlist for stock locations', () => {
       expect(upstream).toHaveBeenLastCalledWith(`http://api.test/${target}`, expect.anything());
     }
   });
+  it('relays the badge writes of an offer by UUID and type code, and refuses other shapes', async () => {
+    const upstream = upstreamOk();
+    const del = (path: string) =>
+      new Request(`http://seller.localhost:3001/api/${path}`, {
+        method: 'DELETE',
+        headers: sameOrigin,
+      });
+    const add = ['catalog', 'seller', 'offers', ID, 'tags'];
+    const sell = ['catalog', 'seller', 'offers', ID, 'tags', 'halal', 'sell-without-badge'];
+    const remove = ['catalog', 'seller', 'offers', ID, 'tags', 'halal'];
+    expect((await relay(config, post(add.join('/')), add, upstream)).status).toBe(200);
+    expect((await relay(config, post(sell.join('/')), sell, upstream)).status).toBe(200);
+    expect((await relay(config, del(remove.join('/')), remove, upstream)).status).toBe(200);
+    const bad: [string[], 'post' | 'del'][] = [
+      [['catalog', 'seller', 'offers', 'x', 'tags'], 'post'],
+      [['catalog', 'seller', 'offers', ID, 'tags', 'ha/lal', 'sell-without-badge'], 'post'],
+      [['catalog', 'seller', 'offers', ID, 'tags', 'halal', 'other'], 'post'],
+      [['catalog', 'seller', 'offers', ID, 'tags', 'a'.repeat(65)], 'del'],
+      [['catalog', 'seller', 'offers', ID, 'tags', '..'], 'del'],
+      [['catalog', 'seller', 'offers', ID, 'tags', '.'], 'del'],
+      [['catalog', 'seller', 'offers', ID, 'tags', '..', 'sell-without-badge'], 'post'],
+      [['catalog', 'seller', 'offers', 'x', 'tags', 'halal'], 'del'],
+    ];
+    for (const [path, how] of bad) {
+      const request = how === 'post' ? post(path.join('/')) : del(path.join('/'));
+      expect((await relay(config, request, path, upstream)).status).toBe(404);
+    }
+  });
   it('relays a handling write by UUID only as a PUT, and refuses other shapes', async () => {
     const upstream = upstreamOk();
     const handling = ['catalog', 'seller', 'offers', ID, 'handling'];

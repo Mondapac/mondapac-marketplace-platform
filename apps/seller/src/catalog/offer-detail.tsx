@@ -38,6 +38,7 @@ export async function OfferDetail({
   sizes = null,
   standing = null,
   heldPrice = false,
+  badges = null,
 }: {
   readonly offer: OfferView;
   readonly canEdit?: boolean;
@@ -50,6 +51,8 @@ export async function OfferDetail({
   readonly standing?: ReviewStanding | null;
   /** A price of this offer waits for our check (pricing's state on the size rows). */
   readonly heldPrice?: boolean;
+  /** The "Badges" card (certificate badges); null shows none. */
+  readonly badges?: ReactNode;
 }) {
   const t = await getTranslations();
   const marketLocale = await getLocale();
@@ -156,6 +159,7 @@ export async function OfferDetail({
         ) : null}
       </Card>
       {offSale}
+      {badges}
       {sizes}
       {canEdit && shelves.length > 0 ? (
         <ShelfPicker

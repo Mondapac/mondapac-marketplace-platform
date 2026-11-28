@@ -166,6 +166,15 @@ export interface ProductView {
   readonly topicRefs?: readonly TopicRef[];
 }
 
+/** One badge of an offer as the seller sees it (`tags` of the single offer read). */
+export interface OfferTag {
+  readonly typeCode: string;
+  /** `active`, `pending-publish` or `suspended`; a status this panel does not know reads as waiting. */
+  readonly status: string;
+  readonly basis: string | null;
+  readonly reasonCode: string | null;
+}
+
 export interface OfferView {
   readonly offerId: string;
   readonly productId: string;
@@ -196,6 +205,8 @@ export interface OfferView {
     variantSku: string | null;
     selling: boolean;
   }[];
+  /** The offer's certification badges (single read only); absent from the list rows. */
+  readonly tags?: readonly OfferTag[];
   /**
    * Set while a once-published offer is off sale after our take-down (single read only): the
    * reason code and the time. Never an admin note.
