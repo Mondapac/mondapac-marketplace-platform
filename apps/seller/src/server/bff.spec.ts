@@ -666,6 +666,9 @@ describe('relay allowlist for stock locations', () => {
       [['catalog', 'seller', 'offers', ID, 'tags', 'ha/lal', 'sell-without-badge'], 'post'],
       [['catalog', 'seller', 'offers', ID, 'tags', 'halal', 'other'], 'post'],
       [['catalog', 'seller', 'offers', ID, 'tags', 'a'.repeat(65)], 'del'],
+      [['catalog', 'seller', 'offers', ID, 'tags', '..'], 'del'],
+      [['catalog', 'seller', 'offers', ID, 'tags', '.'], 'del'],
+      [['catalog', 'seller', 'offers', ID, 'tags', '..', 'sell-without-badge'], 'post'],
       [['catalog', 'seller', 'offers', 'x', 'tags', 'halal'], 'del'],
     ];
     for (const [path, how] of bad) {

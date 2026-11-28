@@ -103,6 +103,7 @@ export function OfferBadges({
                 {canEdit && tag.status === 'suspended' ? (
                   <Button
                     variant="secondary"
+                    aria-label={t('sell-without-named', { name: nameOf(tag.typeCode) })}
                     loading={pending === `sell-${tag.typeCode}`}
                     disabled={pending !== null}
                     onClick={() =>
@@ -125,6 +126,7 @@ export function OfferBadges({
                 {canEdit && tag.status !== 'suspended' ? (
                   <Button
                     variant="secondary"
+                    aria-label={t('remove-named', { name: nameOf(tag.typeCode) })}
                     loading={pending === `remove-${tag.typeCode}`}
                     disabled={pending !== null}
                     onClick={() =>

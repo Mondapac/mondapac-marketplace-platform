@@ -84,7 +84,7 @@ describe('OfferBadges', () => {
   it('removes an active badge and sells a suspended one without it', async () => {
     call.mockResolvedValue({ ok: true, status: 204, body: null });
     mount({ tags: [tag('active'), tag('suspended', 'kosher')], choices: [] });
-    fireEvent.click(screen.getByRole('button', { name: 'Remove badge' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove the Halal badge' }));
     await waitFor(() =>
       expect(call).toHaveBeenCalledWith(
         'DELETE',
@@ -94,7 +94,7 @@ describe('OfferBadges', () => {
       ),
     );
     await screen.findByText('The badge is off the offer.');
-    fireEvent.click(screen.getByRole('button', { name: 'Sell without this badge' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sell without the Kosher badge' }));
     await waitFor(() =>
       expect(call).toHaveBeenCalledWith(
         'POST',

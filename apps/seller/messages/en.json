@@ -2075,6 +2075,8 @@
       "add": "Add the {name} badge",
       "remove": "Remove badge",
       "sell-without": "Sell without this badge",
+      "remove-named": "Remove the {name} badge",
+      "sell-without-named": "Sell without the {name} badge",
       "reload": "Reload the offer",
       "need-certificate": "To add a badge you need an approved certificate.",
       "certificates-link": "Go to your certificates",

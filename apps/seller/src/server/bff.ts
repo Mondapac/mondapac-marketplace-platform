@@ -650,7 +650,7 @@ function upstreamQuery(method: string, path: readonly string[], requestUrl: stri
 const CUSTOMER_CODE = /^[0-9A-Za-z-]{1,12}$/;
 
 /** A certification type code in a path: the shape the API gives its types (the API checks it exists). */
-const TYPE_CODE_PART = /^[A-Za-z0-9_.-]{1,64}$/;
+const TYPE_CODE_PART = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
 
 const PHOTO_SIZES: ReadonlySet<string> = new Set(['thumb', 'medium', 'large', 'small']);
 
