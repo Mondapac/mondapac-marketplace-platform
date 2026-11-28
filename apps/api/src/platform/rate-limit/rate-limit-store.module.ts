@@ -47,10 +47,18 @@ export const RATE_LIMIT_REDIS_KEY_PREFIX = Symbol('RATE_LIMIT_REDIS_KEY_PREFIX')
         clock: Clock,
         keyPrefix: string,
       ): RateLimitCounters => {
-        new Logger('RateLimitCounters').log({
-          msg: 'rate-limit.store',
-          store: redis === null ? 'postgres' : 'redis',
-        });
+        const logger = new Logger('RateLimitCounters');
+        if (redis === null) {
+          // BUG-019: without Redis every class shares one PostgreSQL row per origin, so parallel
+          // reads of one browser wait on its lock, hold pooled connections and answer 503.
+          logger.warn({
+            msg: 'rate-limit.store',
+            store: 'postgres',
+            hint: 'Every rate-limit class is counted in PostgreSQL. Set REDIS_URL (docker compose starts Redis) unless RATE_LIMIT_STORE=postgres is the rollback switch on purpose.',
+          });
+        } else {
+          logger.log({ msg: 'rate-limit.store', store: 'redis' });
+        }
         return new RoutedRateLimitCounters(
           redis === null ? null : new RedisRateLimitCounters(redis, clock, keyPrefix),
           postgres,

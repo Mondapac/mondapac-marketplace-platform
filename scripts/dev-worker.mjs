@@ -12,9 +12,16 @@ for (const filter of ['@mondapac/shared-kernel', '@mondapac/platform-import', '@
   if (build.status !== 0) process.exit(build.status ?? 1);
 }
 
+// The large heap ceiling dev-local.bat sets is for the build above (the type-check). The running
+// worker does not need it, and on an 8 GB machine a 6 GB ceiling lets its heap grow until the
+// machine pages and every transaction times out (Prisma P2028, BUG-019): drop it here.
+const nodeOptions = (process.env.NODE_OPTIONS ?? '')
+  .split(/\s+/)
+  .filter((flag) => flag !== '' && !flag.startsWith('--max-old-space-size='))
+  .join(' ');
 const worker = spawn(process.execPath, ['apps/api/dist/main'], {
   stdio: 'inherit',
-  env: { ...process.env, APP_ROLE: 'worker' },
+  env: { ...process.env, APP_ROLE: 'worker', NODE_OPTIONS: nodeOptions },
 });
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => worker.kill(signal));
 worker.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)));

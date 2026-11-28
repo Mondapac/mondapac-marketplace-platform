@@ -42,6 +42,13 @@ findstr /b /c:"MIGRATION_DATABASE_URL=" ".env" >nul 2>nul || (
   move /y ".env" ".env.old" >nul
   copy /y ".env.example" ".env" >nul
 )
+rem An .env from before ADR-0054 has no REDIS_URL: every rate-limit class is then counted in one
+rem PostgreSQL row per origin, and parallel panel reads wait on its lock and empty the pool (BUG-019).
+rem Compose starts Redis; the rollback switch RATE_LIMIT_STORE=postgres, when set, is left alone.
+findstr /b /c:"REDIS_URL=" /c:"RATE_LIMIT_STORE=" ".env" >nul 2>nul || (
+  echo .env has no REDIS_URL: adding REDIS_URL=redis://127.0.0.1:6379, the Redis of docker compose
+  echo REDIS_URL=redis://127.0.0.1:6379>>".env"
+)
 if not exist "apps\seller\.env.local" (
   echo Creating apps\seller\.env.local from apps\seller\.env.example
   copy /y "apps\seller\.env.example" "apps\seller\.env.local" >nul
@@ -94,12 +101,16 @@ set "SERVICE_AREA_CONFIG_DIR=%CD%\.local\service-areas"
 rem The loader builds the catalog through the admin API; the worker must not seed the starter tree first.
 if "%OPS%"=="1" set "CATALOG_SEED_JOBS_OFF=catalog.seed-category-tree,catalog.seed-attributes,catalog.seed-cultures"
 rem Type-checking the API takes about 2.7 GB of heap, more than Node's default limit on an 8 GB
-rem machine ("JavaScript heap out of memory", exit code 134). Raise the limit for the windows below;
-rem it is a ceiling, not a reservation. Flags already in NODE_OPTIONS are kept.
+rem machine ("JavaScript heap out of memory", exit code 134). Raise the limit for the API window and
+rem the worker's build only. Not for the panels and the buyer site: with a 6 GB ceiling in five
+rem processes on an 8 GB machine the heaps grow until Windows pages Docker out, and every
+rem transaction times out (Prisma P2028, BUG-019). dev-worker.mjs runs the built worker without it.
+set "BASE_NODE_OPTIONS=%NODE_OPTIONS%"
 set "NODE_OPTIONS=%NODE_OPTIONS% --max-old-space-size=6144"
 start "MondaPac API" /d "%CD%" cmd /k "pnpm dev"
 rem The worker builds the API once; wait so it does not race the API watcher that cleans dist.
 start "MondaPac worker" /d "%CD%" cmd /k "timeout /t 60 /nobreak && pnpm dev:worker"
+set "NODE_OPTIONS=%BASE_NODE_OPTIONS%"
 
 echo [5/5] Starting the seller and admin panels and the buyer site in their own windows
 start "MondaPac seller panel" /d "%CD%" cmd /k "pnpm dev:seller"
@@ -149,7 +160,7 @@ echo   Mail (Mailpit): http://localhost:8025
 if "%SEED%"=="1" echo   Sample logins : .local\demo-credentials.txt  (written when the demo data window says Done)
 if "%OPS%"=="1" echo   Sample logins : scripts\ops-data\README.md  (the loader window says Done when the data is ready)
 echo To stop: close the windows, then run "docker compose down" (add -v to wipe the demo data).
-echo (The windows inherit MARKET_CONFIG_DIR, SERVICE_AREA_CONFIG_DIR and NODE_OPTIONS from this one.)
+echo (The windows inherit MARKET_CONFIG_DIR and SERVICE_AREA_CONFIG_DIR from this one; the API and the worker build also a larger Node heap.)
 pause
 endlocal
 exit /b 0
