@@ -75,7 +75,8 @@ describe('seller order row actions', () => {
     fulfilment: 'to-ship' | 'shipped' | 'delivered',
     deliveryMethod: string,
     readyAt: unknown = null,
-  ) => ({ fulfilment, deliveryMethod, readyAt }) as never;
+    cancelledAt: unknown = null,
+  ) => ({ fulfilment, deliveryMethod, readyAt, cancelledAt }) as never;
 
   it('offers ready and report-unavailable before the order is ready', () => {
     expect(rowActions(row('to-ship', 'standard'), SELLER_ORDER_ACTION_RULES, ALL)).toEqual([
@@ -85,6 +86,12 @@ describe('seller order row actions', () => {
       'ready',
       'report-unavailable',
     ]);
+  });
+
+  it('offers neither ready nor report-unavailable once an admin cancelled the order (BUG-017)', () => {
+    expect(
+      rowActions(row('to-ship', 'standard', null, new Date()), SELLER_ORDER_ACTION_RULES, ALL),
+    ).toEqual(['open', 'packing-slip', 'copy-number']);
   });
 
   it('offers hand-over only for a ready pickup order', () => {
