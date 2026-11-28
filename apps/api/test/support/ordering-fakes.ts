@@ -676,7 +676,8 @@ export class MemoryOrders implements OrderRepository {
     const paid = this.paid(sellerId);
     const count = (step: Fulfilment, cancelled = false) =>
       paid.filter(
-        (r) => r.sellerOrder.fulfilment === step && (r.sellerOrder.cancelledAt !== null) === cancelled,
+        (r) =>
+          r.sellerOrder.fulfilment === step && (r.sellerOrder.cancelledAt !== null) === cancelled,
       ).length;
     return Promise.resolve({
       toShip: count('to-ship'),
