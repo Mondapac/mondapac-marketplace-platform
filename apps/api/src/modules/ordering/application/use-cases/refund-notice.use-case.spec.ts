@@ -1,4 +1,4 @@
-import { err, ok, money, parseId } from '@mondapac/shared-kernel';
+import { err, ok, money, parseId, Temporal } from '@mondapac/shared-kernel';
 import { testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import { expectSystemOnly, openGate } from '../../../../../test/support/system-only-denial';
 import { RefundNoticeQuery } from './refund-notice.use-case';
@@ -14,7 +14,15 @@ function id(value: string) {
   return parsed.value;
 }
 
-function query(state: string, refundOrderId: string, currency: string) {
+function query(
+  state: string,
+  refundOrderId: string,
+  currency: string,
+  options: {
+    readonly cancelledAt?: Temporal.Instant | null;
+    readonly orderUnits?: number;
+  } = {},
+) {
   const refund = {
     id: id(REFUND),
     orderId: id(refundOrderId),
@@ -36,7 +44,9 @@ function query(state: string, refundOrderId: string, currency: string) {
         Promise.resolve({
           id: id(ORDER),
           accountId: id(ACCOUNT),
-          lines: [{ quantity: 3 }, { quantity: 2 }],
+          status: 'confirmed',
+          lines: [{ quantity: options.orderUnits ?? 5 }],
+          sellerOrders: [{ cancelledAt: options.cancelledAt ?? null }],
         }),
     },
   };
@@ -72,8 +82,25 @@ describe.each([
         amount: money(1250n, currency),
         units: 3,
         orderFullyRefunded: false,
+        cancelledByAdmin: false,
+        refundedTotal: money(1250n, currency),
       }),
     );
+  });
+
+  it('tells an admin-cancelled order apart and says when every unit is refunded', async () => {
+    const cancelledAt = Temporal.Instant.from('2026-11-28T00:00:00Z');
+    const ask = (options: { cancelledAt?: Temporal.Instant | null; orderUnits?: number }) =>
+      query('succeeded', ORDER, currency, options).execute(system(), {
+        orderId: ORDER,
+        refundId: REFUND,
+      });
+    const partial = await ask({ cancelledAt });
+    expect(partial.ok && partial.value.cancelledByAdmin).toBe(true);
+    expect(partial.ok && partial.value.orderFullyRefunded).toBe(false);
+    const full = await ask({ cancelledAt, orderUnits: 3 });
+    expect(full.ok && full.value.orderFullyRefunded).toBe(true);
+    expect(full.ok && full.value.refundedTotal).toEqual(money(1250n, currency));
   });
 
   it.each([

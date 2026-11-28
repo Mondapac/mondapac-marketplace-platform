@@ -56,7 +56,9 @@ export type OrderMailSkipped =
   | 'recipient.none'
   | 'link.unconfigured'
   /** Only a pickup order gets a "ready" mail; other methods are told by shipment and delivery. */
-  | 'ready.not-pickup';
+  | 'ready.not-pickup'
+  /** An admin cancelled the order: one mail goes out, when the last seller order's refund settles. */
+  | 'cancel.waiting-other-refunds';
 
 export type OrderMailOutput =
   | { readonly code: 'order-mail.sent'; readonly sent: number }
@@ -313,7 +315,7 @@ export async function sendOrderShipped(
 /**
  * The customer's mail once Stripe confirmed a refund: "Part of your order is unavailable" for
  * units a seller marked unavailable (order detail decision 6); for an admin's refund, "Your order
- * was cancelled" when the whole order is now refunded, else "Your refund".
+ * was cancelled" (once, with the total refunded) when an admin cancelled it, else "Your refund".
  */
 export async function sendItemUnavailableRefund(
   deps: OrderMailDependencies,
@@ -332,6 +334,12 @@ export async function sendItemUnavailableRefund(
     }
     throw new Error(`${name}: the refund could not be read: ${notice.error.code}`);
   }
+  const cancelled =
+    notice.value.reason !== SELLER_UNAVAILABLE_REASON && notice.value.cancelledByAdmin;
+  // A cancelled order has one refund per seller order: tell the customer once, when the last settles.
+  if (cancelled && !notice.value.orderFullyRefunded) {
+    return finish(deps, context, input, name, { skipped: 'cancel.waiting-other-refunds' });
+  }
   const url = deps.policy.customerOrderUrl(context.market, notice.value.orderId);
   if (url === null) return finish(deps, context, input, name, { skipped: 'link.unconfigured' });
   const to = await recipientOf(deps, context, {
@@ -349,10 +357,10 @@ export async function sendItemUnavailableRefund(
           orderUrl: url,
           locale,
         })
-      : notice.value.orderFullyRefunded
+      : cancelled
         ? orderCancelledMail({
             orderId: notice.value.orderId,
-            amount: notice.value.amount,
+            amount: notice.value.refundedTotal,
             orderUrl: url,
             locale,
           })

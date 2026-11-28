@@ -92,11 +92,12 @@ export interface RefundNotice {
   readonly requestedBy: 'admin' | 'seller';
   readonly amount: Money;
   readonly units: number;
-  /**
-   * Whether every unit of the order is now refunded (this refund and the succeeded ones before
-   * it): an admin's cancel and refund ends here, and the customer is told the order is cancelled.
-   */
+  /** Whether every unit of the order is now refunded (this refund and the succeeded ones before it). */
   readonly orderFullyRefunded: boolean;
+  /** Whether an admin cancelled the order (Cancel and refund, BUG-017): `cancelReason admin-cancelled`. */
+  readonly cancelledByAdmin: boolean;
+  /** The gross of every refund of the order that Stripe confirmed so far, this one included. */
+  readonly refundedTotal: Money;
 }
 
 /** An unknown, foreign-Market or not succeeded refund is `ordering.refund-not-found`. */
