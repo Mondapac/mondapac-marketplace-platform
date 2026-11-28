@@ -11,6 +11,7 @@ import {
   CHECK_PERMISSION,
   DECIDE_PERMISSION,
   OWNER_RESET_PERMISSION,
+  SUSPEND_PERMISSION,
   REVIEW_PERMISSION,
   SETTINGS_EDIT_PERMISSION,
   type ReviewRead,
@@ -49,6 +50,7 @@ import {
 import { CategoryProposalsCard } from '../../../../src/sellers/category-proposals-card.tsx';
 import { DECIDE_PERMISSION as PROPOSAL_DECIDE_PERMISSION } from '../../../../src/categories/proposals/types.ts';
 import { OwnerSecondFactorCard } from '../../../../src/sellers/owner-second-factor-card.tsx';
+import { SellerAccessCard } from '../../../../src/sellers/seller-access-card.tsx';
 import { BackToSellers, ReviewView } from '../../../../src/sellers/review-view.tsx';
 import { CommissionRateCard } from '../../../../src/commission/rate-card.tsx';
 import { LedgerCard } from '../../../../src/commission/ledger-card.tsx';
@@ -311,6 +313,11 @@ export default async function SellerReviewPage({
     return shell(
       <div className="flex flex-col gap-6">
         <ReviewView review={result.body} decide={decide} />
+        {/* Suspend or lift: only for a holder of the key, in a state where it applies (SEL-07). */}
+        {permissionKeys.includes(SUSPEND_PERMISSION) &&
+        (result.body.access === 'approved' || result.body.access === 'suspended') ? (
+          <SellerAccessCard sellerId={sellerId} access={result.body.access} csrfToken={csrfToken} />
+        ) : null}
         {permissionKeys.includes('customers.customers.view') ? (
           // The seller's Customers tab (customers management phase 3): its own page.
           <nav aria-label={t('customers.seller-tab.nav')}>

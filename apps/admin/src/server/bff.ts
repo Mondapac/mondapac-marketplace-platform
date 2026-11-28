@@ -579,6 +579,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'identity/admin/invitations/:id/revoke',
     'identity/admin/sellers/:id/invitations',
     'identity/admin/sellers/:id/second-factor/reset',
+    // Suspend an approved seller with a reason, or lift a suspension (identity SEL-07).
+    'identity/admin/sellers/:id/suspend',
+    'identity/admin/sellers/:id/reinstate',
     // Queue a recount of one seller's health (sellers, seller health package 5).
     'sellers/admin/:id/health/recalculate',
     'sellers/admin/:id/review/approve',
