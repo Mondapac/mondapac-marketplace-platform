@@ -76,6 +76,7 @@ export default async function OfferPage({
             tags={tags}
             choices={badgeData.choices}
             names={badgeData.names}
+            unavailable={badgeData.unavailable}
             canEdit={keys.includes(EDIT_PERMISSION)}
           />
         }

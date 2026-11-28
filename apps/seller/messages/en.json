@@ -2079,6 +2079,8 @@
       "sell-without-named": "Sell without the {name} badge",
       "reload": "Reload the offer",
       "need-certificate": "To add a badge you need an approved certificate.",
+      "unavailable": "We couldn't load your certificates just now, so we can't show the badges you can add.",
+      "try-again": "Try again",
       "certificates-link": "Go to your certificates",
       "status": {
         "active": "On the offer",
