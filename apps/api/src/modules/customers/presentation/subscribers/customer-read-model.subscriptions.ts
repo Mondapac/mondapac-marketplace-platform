@@ -3,7 +3,10 @@ import {
   type RegisteredSubscription,
   type SubscriberContext,
 } from '../../../../platform/events/event-subscriptions';
-import type { EventDelivery } from '../../../../platform/events/event-delivery';
+import {
+  deliveredWithoutInbox,
+  type EventDelivery,
+} from '../../../../platform/events/event-delivery';
 import {
   AccountDisabled,
   AccountDisplayNameChanged,
@@ -67,7 +70,10 @@ export function customerReadModelSubscriptions(
       event,
       handle: async (consumed, delivery, context) => {
         // A seller's or an admin's account is not a customer: nothing to copy.
-        if (consumed.payload.population !== 'customer') return;
+        if (consumed.payload.population !== 'customer') {
+          deliveredWithoutInbox(delivery);
+          return;
+        }
         await run(name, { accountId: consumed.payload.accountId }, delivery, context);
       },
     });

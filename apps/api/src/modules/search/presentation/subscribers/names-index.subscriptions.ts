@@ -38,6 +38,7 @@ export function namesIndexSubscriptions(sync: SyncOfferDocuments): RegisteredSub
     subscription({
       name: INDEX_ON_CATEGORY_CHANGED_SUBSCRIBER,
       event: PlatformCategoryChanged,
+      inbox: 'none',
       handle: (event, _delivery, context) =>
         run(INDEX_ON_CATEGORY_CHANGED_SUBSCRIBER, context, {
           categoryId: event.payload.categoryId as Id<'Category'>,
@@ -46,6 +47,7 @@ export function namesIndexSubscriptions(sync: SyncOfferDocuments): RegisteredSub
     subscription({
       name: INDEX_ON_CATEGORY_MOVED_SUBSCRIBER,
       event: PlatformCategoryMoved,
+      inbox: 'none',
       handle: (event, _delivery, context) =>
         run(INDEX_ON_CATEGORY_MOVED_SUBSCRIBER, context, {
           categoryId: event.payload.categoryId as Id<'Category'>,
@@ -54,6 +56,7 @@ export function namesIndexSubscriptions(sync: SyncOfferDocuments): RegisteredSub
     subscription({
       name: INDEX_ON_SELLER_APPROVED_SUBSCRIBER,
       event: SellerAccessApproved,
+      inbox: 'none',
       handle: (event, _delivery, context) =>
         run(INDEX_ON_SELLER_APPROVED_SUBSCRIBER, context, {
           sellerId: event.payload.sellerId as Id<'Seller'>,

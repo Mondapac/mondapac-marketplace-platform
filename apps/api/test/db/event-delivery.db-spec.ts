@@ -8,6 +8,7 @@ import {
   DISPATCH_BATCH_SIZE,
   MAX_DELIVERY_ATTEMPTS,
   backOffSeconds,
+  deliveredWithoutInbox,
   type EventDelivery,
 } from '../../src/platform/events/event-delivery';
 import {
@@ -57,7 +58,16 @@ const otherThing = defineEvent({
   payload: { thingId: eventField.id() },
 });
 
-type Behaviour = 'consume' | 'throw' | 'skip' | 'forge' | 'other-market' | 'refuse';
+type Behaviour =
+  | 'consume'
+  | 'throw'
+  | 'skip'
+  | 'acknowledge'
+  | 'acknowledge-after-refuse'
+  | 'acknowledge-stale'
+  | 'forge'
+  | 'other-market'
+  | 'refuse';
 
 interface Handled {
   readonly eventId: string;
@@ -119,6 +129,26 @@ describe('event delivery (database integration)', () => {
             throw new Error('handler down');
           case 'skip':
             record(false);
+            return;
+          case 'acknowledge':
+            record(false);
+            deliveredWithoutInbox(delivery);
+            return;
+          case 'acknowledge-after-refuse':
+            record(false);
+            await db.unitOfWork.runOnce(context.market, delivery, () =>
+              Promise.resolve(err('refused')),
+            );
+            deliveredWithoutInbox(delivery);
+            return;
+          case 'acknowledge-stale':
+            record(false);
+            // Another dispatcher claimed the row meanwhile (its lease ran out): a new claim.
+            await sql.query(
+              `UPDATE platform.event_delivery SET attempts = attempts + 1 WHERE subscriber = $1`,
+              [name],
+            );
+            deliveredWithoutInbox(delivery);
             return;
           case 'forge':
             record(false);
@@ -374,13 +404,13 @@ describe('event delivery (database integration)', () => {
     },
   );
 
-  it('marks delivered, with no inbox row, a handler that returns without opening runOnce (BUG-015)', async () => {
+  it('marks delivered, with no inbox row, a handler that says it needs none (BUG-015)', async () => {
     const clock = startClock();
-    const handler = recordingHandler(uniqueName('skip'));
+    const handler = recordingHandler(uniqueName('acknowledge'));
     const { relay, dispatcher } = stackOf([handler.entry], clock);
     await writeThings('ZZ', 1);
     await relayAll(relay);
-    handler.state.behaviour = 'skip';
+    handler.state.behaviour = 'acknowledge';
 
     expect((await dispatcher.runOnce()).claimed).toBe(1);
 
@@ -396,7 +426,36 @@ describe('event delivery (database integration)', () => {
     expect(handler.handled).toHaveLength(1);
   });
 
+  it('leaves pending a delivery whose row another claim took while its handler ran (BUG-015, Mojtaba)', async () => {
+    const clock = startClock();
+    const handler = recordingHandler(uniqueName('acknowledge-stale'));
+    const { relay, dispatcher } = stackOf([handler.entry], clock);
+    await writeThings('AU', 1);
+    await relayAll(relay);
+    handler.state.behaviour = 'acknowledge-stale';
+    const log = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    try {
+      await dispatcher.runOnce();
+      expect(log).toHaveBeenCalledWith(
+        expect.objectContaining({ msg: 'event-delivery.lease-lost' }),
+      );
+    } finally {
+      log.mockRestore();
+    }
+
+    expect((await deliveriesOf(handler.entry.name))[0]).toMatchObject({
+      status: 'pending',
+      attempts: 2,
+    });
+  });
+
   it.each([
+    ['returns without runOnce', 'skip', 'delivery.not-consumed'],
+    [
+      'says it needs no inbox after a runOnce that did not commit',
+      'acknowledge-after-refuse',
+      'delivery.not-consumed',
+    ],
     ['passes a copy of its delivery', 'forge', 'delivery.handler-failed'],
     ['passes its delivery with another Market', 'other-market', 'delivery.handler-failed'],
     ['has its work refused (rolled back)', 'refuse', 'delivery.not-consumed'],

@@ -5,6 +5,7 @@ import { createCallContext, systemActor } from '@mondapac/shared-kernel/contexts
 import { decodePayload } from '../../events/decode-payload';
 import {
   BACK_OFF_BASE_SECONDS,
+  isDeliveredWithoutInbox,
   BACK_OFF_MAX_SECONDS,
   DISPATCH_BATCH_SIZE,
   HANDLER_BUDGET_MS,
@@ -82,14 +83,14 @@ UPDATE "platform"."event_delivery"
    AND "attempts" = $5 AND "next_attempt_at" = $6::timestamptz`;
 
 /**
- * Marks delivered a delivery whose handler returned without opening a `runOnce` (BUG-015): it had
- * nothing to record in an inbox. Only while the row is still pending and holds this claim.
+ * Marks delivered a delivery its handler finished without an inbox row (BUG-015), only while the
+ * row is still pending and holds this claim: its attempts and lease end as the claim returned them.
  */
 const DELIVERED = `
 UPDATE "platform"."event_delivery"
    SET "status" = 'delivered', "delivered_at" = $4::timestamptz, "error_code" = NULL
  WHERE "market_id" = $1 AND "event_id" = $2::uuid AND "subscriber" = $3 AND "status" = 'pending'
-   AND "attempts" = $5`;
+   AND "attempts" = $5 AND "next_attempt_at" = $6::timestamptz`;
 
 const FAILED = `
 UPDATE "platform"."event_delivery" SET "error_code" = $4
@@ -121,9 +122,9 @@ const valueOf = <T>(parsed: Parsed<T>): T | null => (parsed.ok ? parsed.value : 
  * one's handler with the entry adapter of foundations 5.1: the Market's context from the
  * factory, that Market's system actor and the envelope's correlation id. The handler calls one
  * `system` use case, whose `runOnce` marks the delivery delivered; a handler that throws, or
- * opens a `runOnce` that does not commit, has failed, and the row comes due again after its
- * back-off. A handler that returns without opening a `runOnce` had nothing to record in an inbox
- * (an idempotent re-read, or an event it skips) and is marked delivered (BUG-015). After 10 claims it is `dead`, with an error code and one error-level line marked
+ * returns without a committed `runOnce`, has failed, and the row comes due again after its
+ * back-off. A handler that finished on purpose without an inbox row (`deliveredWithoutInbox`, or a
+ * subscription declared `inbox: 'none'`) and opened no `runOnce` is marked delivered (BUG-015). After 10 claims it is `dead`, with an error code and one error-level line marked
  * for alerting. An unknown subscriber, a type that is not the subscription's, or an envelope
  * or payload that does not decode is dead at once. Logs carry event id, type, subscriber,
  * Market and correlation id; never a payload or an error message.
@@ -261,18 +262,25 @@ export class PrismaEventDispatcher implements EventDispatcher {
       this.logger.debug({ msg: 'event-delivery.delivered', ...this.fields(row) });
       return;
     }
-    // A `runOnce` that was opened and did not commit (its work refused, so rolled back) failed.
-    if (deliveryOpened(delivery)) return this.fail(row, 'delivery.not-consumed');
-    // The handler chose no inbox (an idempotent re-read, or an event it skips): done (BUG-015).
-    await this.root.$executeRawUnsafe(
+    // A `runOnce` that was opened and did not commit (its work refused, so rolled back) failed,
+    // and so did a handler that returned without one and without saying it needs none.
+    if (deliveryOpened(delivery) || !isDeliveredWithoutInbox(delivery)) {
+      return this.fail(row, 'delivery.not-consumed');
+    }
+    const marked = await this.root.$executeRawUnsafe(
       DELIVERED,
       row.market_id,
       row.event_id,
       row.subscriber,
       new Date(this.clock.now().epochMilliseconds),
       row.attempts,
+      row.next_attempt_at,
     );
-    this.logger.debug({ msg: 'event-delivery.delivered-without-inbox', ...this.fields(row) });
+    // Info, not debug (Kazem): a skip that should not have been one stays visible in the log.
+    this.logger.log({
+      msg: marked === 1 ? 'event-delivery.delivered-without-inbox' : 'event-delivery.lease-lost',
+      ...this.fields(row),
+    });
   }
 
   /** A failed delivery: dead at once when permanent or at the last attempt; else retried. */

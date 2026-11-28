@@ -52,9 +52,8 @@ export function deliverySettled(delivery: EventDelivery): boolean {
 }
 
 /**
- * Whether the handler started a `runOnce` of this delivery (BUG-015). A handler that never opened
- * one has nothing to record in an inbox (an idempotent re-read, or an event it skips), so the
- * dispatcher marks it delivered; one that opened a `runOnce` that did not commit has failed.
+ * Whether the handler started a `runOnce` of this delivery (BUG-015): one that was opened and did
+ * not commit has failed, even when the handler also said it needed no inbox.
  */
 export function deliveryOpened(delivery: EventDelivery): boolean {
   return issued.get(delivery)?.opened === true;

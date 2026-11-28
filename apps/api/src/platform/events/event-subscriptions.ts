@@ -12,7 +12,7 @@ import type {
   PayloadOf,
   SystemActor,
 } from '@mondapac/shared-kernel';
-import type { EventDelivery } from './event-delivery';
+import { deliveredWithoutInbox, type EventDelivery } from './event-delivery';
 
 /**
  * What a handler receives as its context (platform persistence design, "P", 6.4; foundations
@@ -41,6 +41,13 @@ export interface EventSubscription<F extends PayloadFields> {
   /** `<module>.<handler>`: the delivery's `subscriber` and the inbox's `handler`. */
   readonly name: string;
   readonly event: EventDefinition<string, F>;
+  /**
+   * `none`: the handler converges by re-reading and keeps no inbox row (BUG-015). Once `handle`
+   * returns, the delivery is marked delivered without one ({@link deliveredWithoutInbox}). Left
+   * out, the use case must open `runOnce` (or the handler call `deliveredWithoutInbox` for an event
+   * it skips).
+   */
+  readonly inbox?: 'none';
   handle(
     event: ConsumedEvent<F>,
     delivery: EventDelivery,
@@ -72,8 +79,10 @@ export function subscription<F extends PayloadFields>(
   return {
     name: declared.name,
     event: { type: declared.event.type, fields: declared.event.fields },
-    handle: (event, delivery, context) =>
-      declared.handle(event as unknown as ConsumedEvent<F>, delivery, context),
+    handle: async (event, delivery, context) => {
+      await declared.handle(event as unknown as ConsumedEvent<F>, delivery, context);
+      if (declared.inbox === 'none') deliveredWithoutInbox(delivery);
+    },
   };
 }
 

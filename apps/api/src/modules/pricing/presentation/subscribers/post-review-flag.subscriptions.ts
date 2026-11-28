@@ -22,6 +22,8 @@ export function postReviewFlagSubscriptions(
     subscription({
       name: REFER_FOR_POST_REVIEW_SUBSCRIBER,
       event: OfferPostReviewFlagged,
+      // Catalog keys the referral on the record: a redelivery answers `duplicate` (no inbox row).
+      inbox: 'none',
       async handle(event, delivery, context) {
         const result = await refer.execute(context, {
           delivery,
