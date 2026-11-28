@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261128-catalog-index-stamp-mark-rows-hash",
+  "area": "catalog",
+  "title": "مهر ایندکس جستجو: ردیف‌های mark فرهنگ با هش به‌جای بیشینهٔ updated_at",
+  "desc": "مهر ایندکس (searchIndexStamp) ردیف‌های catalog.culture_categories یک بازار را فقط با تعداد و بیشینهٔ updated_at می‌شمارد. اگر دو تراکنش mark هم‌زمان باشند و آن که زمان کوچک‌تری گرفته دیرتر commit کند، تغییرش نه تعداد را عوض می‌کند نه بیشینه را، و مهر آن را نمی‌بیند. امروز همگام‌سازی مستقیم زیرشاخه (رویداد mark) اصل کار است و مهر فقط پشتیبان است، پس اثرش کم است. راه‌حل: هش محتوای ردیف‌ها (مثلاً md5 روی string_agg مرتب‌شده) یا ستون version افزایشی، با تأیید database-designer.",
+  "src": "apps/api/src/modules/catalog/infrastructure/prisma-offer-search-facts.reader.ts (searchIndexStamp)",
+  "date": "2026-11-28",
+  "trig": "دیده شدن Offer با culture_codes کهنه پس از تغییر mark، یا چند نمونهٔ API با ساعت ناهمسان",
+  "prio": "پایین",
+  "status": "موکول"
+}

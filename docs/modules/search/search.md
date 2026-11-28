@@ -372,7 +372,10 @@ index, the answer carries counts, and the use cases talk to a port.
   derecognised, a certification type deactivated and a handed-off subtree. Catalog's index stamp
   also covers each culture's code, status and required type and the culture mark rows, so the
   first fill of the column and a required-type change come from the stamp-driven reindex. Nothing
-  throws because a scope is large.
+  throws because a scope is large. The mark rows enter the stamp as their count and latest
+  `updated_at`, so a change is seen only when its `updated_at` is the Market's latest; two
+  concurrent mark writes that commit out of time order can hide one from the stamp (the direct
+  subtree sync still runs). Deferred: FE-20261128-catalog-index-stamp-mark-rows-hash.
 - **Ordering (security L2 of #848).** A document's `indexed_at` is the instant its sync began
   reading; a write or a delete from an earlier read never replaces a document from a later read
   (`UPDATE ... WHERE indexed_at <= $read`, else an insert that skips an existing row). Every change

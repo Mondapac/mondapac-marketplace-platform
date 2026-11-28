@@ -645,10 +645,17 @@ describe.each(TEST_MARKETS)('catalog search facts in market %s (database)', (cod
     });
     const marked = await stampOf(market);
     expect(marked).not.toBe(active);
+    // A change keeps the row count, so the stamp sees it only through the latest `updated_at` of
+    // the Market's mark rows. The app writes the Clock's now, which is later than every earlier
+    // row. A fixed time here is not: other spec files leave mark rows in this Market with later
+    // fixed times (catalog-cultures uses 2026-11-11), and then the latest `updated_at` stays put.
+    // So the row moves past the Market's latest mark row, as a real write would.
     await owner.query(
       `UPDATE catalog.culture_categories SET visible = NULL, certification_mark = 'neutral',
-         updated_at = $2 WHERE culture_id = $1`,
-      [cultureId, T0.add({ minutes: 1 }).toString()],
+         updated_at = (SELECT max(updated_at) FROM catalog.culture_categories WHERE market_id = $2)
+           + interval '1 minute'
+       WHERE culture_id = $1`,
+      [cultureId, market.marketId],
     );
     const changed = await stampOf(market);
     expect(changed).not.toBe(marked);
