@@ -51,6 +51,7 @@ export const HELP_REGISTRY: HelpRegistry = {
     { route: '/settings/exclusive-perks', slug: 'settings-exclusive-perks' },
     { route: '/account-setup', slug: 'account-setup' },
     { route: '/account-setup/business-details', slug: 'account-setup-business-details' },
+    { route: '/account-setup/business-activity', slug: 'account-setup-business-activity' },
     { route: '/account-setup/business-number', slug: 'account-setup-business-number' },
     { route: '/account-setup/address', slug: 'account-setup-address' },
     { route: '/account-setup/web-address', slug: 'account-setup-web-address' },

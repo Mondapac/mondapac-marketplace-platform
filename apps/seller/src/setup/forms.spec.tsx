@@ -84,7 +84,10 @@ describe('BusinessForm', () => {
       ),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Save and continue' }));
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/account-setup/address'));
+    // The business activity step comes right after the business details.
+    await waitFor(() =>
+      expect(router.push).toHaveBeenCalledWith('/account-setup/business-activity'),
+    );
   });
 });
 
@@ -259,8 +262,9 @@ describe('SetupHub', () => {
     render(wrap(<SetupHub file={{ ...emptyFile, missing: ['slug'] }} csrfToken="t" />));
     // Account created, Email confirmed and three finished steps.
     expect(screen.getAllByText('Done')).toHaveLength(5);
-    // The shop web address and MondaPac reviews; Review and submit is Waiting.
-    expect(screen.getAllByText('To do')).toHaveLength(2);
+    // What you sell (no choice yet), the shop web address and MondaPac reviews; Review and submit
+    // is Waiting.
+    expect(screen.getAllByText('To do')).toHaveLength(3);
     expect(screen.getByText('1 field left')).toBeTruthy();
   });
 });

@@ -7,7 +7,7 @@ export interface SaveProblem {
   readonly fields: Readonly<Record<string, string>>;
 }
 
-const FIELD_CODES = new Set(['required', 'characters', 'length', 'format', 'region']);
+const FIELD_CODES = new Set(['required', 'characters', 'length', 'format', 'region', 'not-active']);
 
 /** Codes that have their own message under `sellers.error`. */
 const PLAIN = new Set([

@@ -40,6 +40,9 @@ export interface BusinessActivityListPage {
   readonly nextAfterId: Id<'BusinessActivity'> | null;
 }
 
+/** The most active activities a seller-facing list returns; the admin keeps the set small. */
+export const ACTIVE_ACTIVITIES_CAP = 200;
+
 /** The reads of the business-activity package, in a read-only unit. */
 export interface BusinessActivityReader {
   /** By code, then id; keyset-paged. */
@@ -53,6 +56,9 @@ export interface BusinessActivityReader {
 
   /** The activities matching the filter, over all pages. */
   count(market: MarketContext, filter: BusinessActivityPageFilter): Promise<number>;
+
+  /** The ACTIVE activities of the Market, by code (at most {@link ACTIVE_ACTIVITIES_CAP}). */
+  listActive(market: MarketContext): Promise<readonly BusinessActivityState[]>;
 
   /** Which of these ids are activities of the Market with status `active`. */
   activeIds(

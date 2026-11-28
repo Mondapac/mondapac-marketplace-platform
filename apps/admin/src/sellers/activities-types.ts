@@ -10,6 +10,12 @@ export const EXTRA_MAX = 9;
 export interface SellerActivities {
   readonly mainActivityId: string | null;
   readonly extraActivityIds: readonly string[];
+  /** What the seller asked for during setup (BUG-012 step 2); null or absent when nothing was asked. */
+  readonly requested?: {
+    readonly mainActivityId: string;
+    readonly extraActivityIds: readonly string[];
+    readonly requestedAt: string;
+  } | null;
   readonly lastChange: {
     readonly changedBy: string;
     readonly changedAt: string;

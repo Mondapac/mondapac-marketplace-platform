@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261128-seller-signup-activity-audit",
+  "area": "seller",
+  "title": "ثبت ممیزی برای درخواست فعالیت فروشنده",
+  "desc": "ذخیرهٔ درخواست فعالیت توسط فروشنده فقط شناسهٔ حساب و زمان را در جدول خودش نگه می‌دارد؛ ردیف ممیزی (audit) جدا و تاریخچهٔ تغییرات درخواست ندارد.",
+  "src": "apps/api/src/modules/sellers/application/use-cases/my-file-activities-save.use-case.ts",
+  "date": "2026-11-28",
+  "trig": "نیاز بازبین یا امنیت به تاریخچهٔ درخواست‌ها",
+  "prio": "پایین",
+  "status": "موکول"
+}

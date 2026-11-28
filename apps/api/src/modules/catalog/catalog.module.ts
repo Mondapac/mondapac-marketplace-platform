@@ -437,6 +437,7 @@ import { OwnProductController } from './presentation/own-product.controller';
 import { OwnTopicController } from './presentation/own-topic.controller';
 import { OwnTopicList } from './application/use-cases/own-topic-list.use-case';
 import { OwnProductCreate } from './application/use-cases/own-product-create.use-case';
+import { OwnBusinessActivities } from './application/use-cases/own-business-activities.use-case';
 import { OwnCategoryPicker } from './application/use-cases/own-category-picker.use-case';
 import { OwnPlatformProductSearch } from './application/use-cases/own-platform-product-search.use-case';
 import { PLATFORM_PRODUCT_SEARCH_READER } from './application/ports/platform-product-search.reader';
@@ -656,6 +657,7 @@ import {
   AdminDescriptionWriterController,
   OwnDescriptionWriterController,
 } from './presentation/description-writer.controller';
+import { OwnBusinessActivitiesController } from './presentation/own-business-activities.controller';
 import { SettingsModule } from '../settings';
 import { ListsModule, registerLists } from '../lists';
 import { CATALOG_LISTS } from './application/saved-filters/list-definitions';
@@ -1202,6 +1204,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
     CategoryProposalAdminController,
     OwnDescriptionWriterController,
     AdminDescriptionWriterController,
+    OwnBusinessActivitiesController,
   ],
   imports: [
     CertificationModule,
@@ -1436,6 +1439,11 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       activityEditProbe: true,
     }),
     // The activity ids that are active, for sellers' assignment check (ADR-0040 decision 4).
+    useCaseProvider(OwnBusinessActivities, {
+      unitOfWork: true,
+      activityReader: true,
+      policy: true,
+    }),
     useCaseProvider(BusinessActivitiesActiveQuery, { unitOfWork: true, activityReader: true }),
     {
       provide: CATALOG_ACTIVITIES_FACADE,

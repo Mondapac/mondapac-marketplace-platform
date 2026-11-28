@@ -73,7 +73,25 @@ export class SellerActivitiesLastChangeBody {
   reason!: string;
 }
 
+export class SellerActivitiesRequestedBody {
+  @ApiProperty({ format: 'uuid' })
+  mainActivityId!: string;
+
+  @ApiProperty({ type: [String] })
+  extraActivityIds!: string[];
+
+  @ApiProperty({ description: 'When the seller saved the request (UTC, ISO 8601).' })
+  requestedAt!: string;
+}
+
 export class SellerActivitiesBody {
+  @ApiProperty({
+    type: SellerActivitiesRequestedBody,
+    nullable: true,
+    description: 'What the seller asked for during setup; null when the seller did not.',
+  })
+  requested!: SellerActivitiesRequestedBody | null;
+
   @ApiProperty({ format: 'uuid', nullable: true, type: String })
   mainActivityId!: string | null;
 
@@ -138,6 +156,14 @@ export class SellerActivitiesController {
     return {
       mainActivityId: result.value.mainActivityId,
       extraActivityIds: [...result.value.extraActivityIds],
+      requested:
+        result.value.requested === null
+          ? null
+          : {
+              mainActivityId: result.value.requested.mainActivityId,
+              extraActivityIds: [...result.value.requested.extraActivityIds],
+              requestedAt: result.value.requested.requestedAt,
+            },
       lastChange: result.value.lastChange,
     };
   }

@@ -92,3 +92,31 @@ export interface FormDescriptors {
 }
 
 export type SlugCheck = { readonly code: string; readonly slug?: string };
+
+/** One business activity the seller may choose (`GET catalog/own/business-activities`). */
+export interface ActivityChoice {
+  readonly id: string;
+  readonly code: string;
+  readonly names: Readonly<Record<string, string>>;
+}
+
+export interface ActivityChoices {
+  readonly items: readonly ActivityChoice[];
+  readonly defaultLocale: string;
+}
+
+/** The seller's own request and what an admin assigned (`GET sellers/my-file/activities`). */
+export interface MyActivities {
+  readonly requested: {
+    readonly mainActivityId: string;
+    readonly extraActivityIds: readonly string[];
+    readonly requestedAt: string;
+  } | null;
+  readonly assigned: {
+    readonly mainActivityId: string | null;
+    readonly extraActivityIds: readonly string[];
+  };
+}
+
+/** The most extra activities beside the main one (the API's own bound). */
+export const MAX_EXTRA_ACTIVITIES = 9;

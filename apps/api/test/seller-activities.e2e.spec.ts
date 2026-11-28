@@ -8,6 +8,7 @@ import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-ro
 import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
+import { SELLER_ACTIVITY_REQUEST_REPOSITORY } from '../src/modules/sellers/application/ports/seller-activity-request.repository';
 import {
   SELLER_BUSINESS_ACTIVITY_REPOSITORY,
   type ActivityChangeRecord,
@@ -116,6 +117,8 @@ describe('seller business activities over HTTP (integration, package 4a)', () =>
           .useValue(clock)
           .overrideProvider(SELLER_BUSINESS_ACTIVITY_REPOSITORY)
           .useValue(assignments)
+          .overrideProvider(SELLER_ACTIVITY_REQUEST_REPOSITORY)
+          .useValue({ find: () => Promise.resolve(null), save: () => Promise.resolve() })
           .overrideProvider(SELLER_FILE_REPOSITORY)
           .useValue({
             existingIds: (market: MarketContext, ids: readonly Id<'Seller'>[]) =>
@@ -327,7 +330,12 @@ describe('seller business activities over HTTP (integration, package 4a)', () =>
       const empty = await get(code, sellerId(1), sessionHeaders(code, ROOT, 1));
       expect(empty.status).toBe(200);
       expect(empty.headers['cache-control']).toBe('no-store');
-      expect(empty.body).toEqual({ mainActivityId: null, extraActivityIds: [], lastChange: null });
+      expect(empty.body).toEqual({
+        mainActivityId: null,
+        extraActivityIds: [],
+        requested: null,
+        lastChange: null,
+      });
 
       const set = await put(code, sellerId(1), sessionHeaders(code, ROOT, 2), {
         mainActivityId: activityId(1),
@@ -346,6 +354,7 @@ describe('seller business activities over HTTP (integration, package 4a)', () =>
       expect(read.body).toEqual({
         mainActivityId: activityId(1),
         extraActivityIds: [activityId(2), activityId(3)],
+        requested: null,
         lastChange: { changedBy: ROOT, changedAt: START.toString(), reason: CANARY },
       });
       // The reason is admin text: it is answered, never logged.

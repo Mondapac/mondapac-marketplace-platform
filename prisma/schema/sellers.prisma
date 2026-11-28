@@ -146,6 +146,7 @@ model SellersSellerFile {
   adminFlags                     SellersAdminFlag[]
   businessActivities             SellersSellerBusinessActivity[]
   businessActivityChanges        SellersSellerBusinessActivityChange[]
+  activityRequest                SellersSellerActivityRequest?
   offerReviewFlagChanges         SellersOfferReviewFlagChange[]
   cultures                       SellersSellerCulture[]
   healthDays                     SellersSellerHealthDay[]
@@ -636,6 +637,26 @@ model SellersSellerBusinessActivityChange {
 
   @@index([marketId, sellerId, changedAt, id], map: "seller_business_activity_changes_seller_idx")
   @@map("seller_business_activity_changes")
+  @@schema("sellers")
+}
+
+/// The business activities a seller asks for while setting up the account (BUG-012 step 2;
+/// ADR-0040 decision 4: chosen at sign-up, approved in review). One row per seller, replaced on
+/// each save. A request is only a request: it never changes what the seller carries
+/// (`seller_business_activities`); the reviewer reads it on the seller page and applies it, or
+/// another set, with the admin change. Ids only; the CHECKs are hand-written in the migration.
+model SellersSellerActivityRequest {
+  marketId         String            @map("market_id") @db.VarChar(8)
+  tenantId         String            @map("tenant_id")
+  sellerId         String            @map("seller_id") @db.Uuid
+  mainActivityId   String            @map("main_activity_id") @db.Uuid
+  extraActivityIds String[]          @map("extra_activity_ids") @db.Uuid
+  requestedBy      String            @map("requested_by") @db.Uuid
+  requestedAt      DateTime          @map("requested_at") @db.Timestamptz(6)
+  sellerFile       SellersSellerFile @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, sellerId])
+  @@map("seller_activity_requests")
   @@schema("sellers")
 }
 

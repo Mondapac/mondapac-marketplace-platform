@@ -83,16 +83,24 @@ export function SellerActivitiesCard({
     .filter((a) => a.active)
     .map((a) => ({ value: a.id, label: a.name }));
 
-  function startEdit() {
+  const asked = initial.requested ?? null;
+  const askedSet = (): { main: string; extras: readonly string[] } | null =>
+    asked === null ? null : { main: asked.mainActivityId, extras: asked.extraActivityIds };
+  // The request is worth showing while it differs from what the seller carries now.
+  const askedDiffers =
+    asked !== null &&
+    (asked.mainActivityId !== current.mainActivityId ||
+      asked.extraActivityIds.join() !== current.extraActivityIds.join());
+
+  /** Starts the edit with the seller's current set, or with the set the seller asked for. */
+  function startEdit(source: { main: string | null; extras: readonly string[] } | null = null) {
+    const from = source ?? { main: current.mainActivityId, extras: current.extraActivityIds };
     // An inactive activity cannot be saved again, so the form starts without it.
     const pickable = (id: string) => options.some((o) => o.value === id);
-    setMain(
-      current.mainActivityId === null || !pickable(current.mainActivityId)
-        ? null
-        : toOption(current.mainActivityId),
-    );
-    setExtras(current.extraActivityIds.filter(pickable).map(toOption));
-    setReason('');
+    setMain(from.main === null || !pickable(from.main) ? null : toOption(from.main));
+    setExtras(from.extras.filter(pickable).map(toOption));
+    // Confirming the request: the reason is filled in and can be changed.
+    setReason(source === null ? '' : t('request-reason'));
     setErrors({});
     setProblem(null);
     setEditing(true);
@@ -224,13 +232,48 @@ export function SellerActivitiesCard({
             })}
           </p>
         )}
+        {askedDiffers && asked !== null ? (
+          <div className="flex flex-col gap-2 rounded-md border border-line p-3">
+            <strong>{t('request-title')}</strong>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-fg-muted">{t('main')}:</span>
+              <strong>{nameOf(asked.mainActivityId)}</strong>
+            </div>
+            {asked.extraActivityIds.length === 0 ? null : (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-fg-muted">{t('extra')}:</span>
+                {asked.extraActivityIds.map((id) => (
+                  <Badge key={id} tone="neutral">
+                    {nameOf(id)}
+                  </Badge>
+                ))}
+              </div>
+            )}
+            <p className="text-sm text-fg-muted">
+              {t('request-when', { when: formatInstant(asked.requestedAt, locale) })}
+            </p>
+            {canEdit && !editing ? (
+              <ActionRow>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    const set = askedSet();
+                    if (set !== null) startEdit({ main: set.main, extras: set.extras });
+                  }}
+                >
+                  {t('request-use')}
+                </Button>
+              </ActionRow>
+            ) : null}
+          </div>
+        ) : null}
         {problem === null ? null : <Banner tone="critical">{t(`error.${problem}`)}</Banner>}
         {!canEdit && editNote ? (
           <p className="text-sm text-fg-muted">{t('names-unavailable')}</p>
         ) : null}
         {canEdit && !editing ? (
           <ActionRow>
-            <Button variant="secondary" onClick={startEdit}>
+            <Button variant="secondary" onClick={() => startEdit()}>
               {t('edit')}
             </Button>
           </ActionRow>

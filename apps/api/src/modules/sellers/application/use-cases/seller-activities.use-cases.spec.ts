@@ -141,7 +141,12 @@ function setUp() {
     active,
     withhold: () => void (held = false),
     breakDirectory: () => void (directoryDown = true),
-    get: new SellerActivitiesGetUseCase(gate, { unitOfWork, files, businessActivities: rows }),
+    get: new SellerActivitiesGetUseCase(gate, {
+      unitOfWork,
+      files,
+      businessActivities: rows,
+      activityRequests: { find: () => Promise.resolve(null), save: () => Promise.resolve() },
+    }),
     set: new SellerActivitiesSetUseCase(gate, {
       unitOfWork,
       businessActivities: rows,
@@ -213,7 +218,9 @@ describe.each([['AU'], ['ZZ']])('seller business activities in %s', (code) => {
   it('allows a seller with no activity to exist, and reads it as none', async () => {
     const { t, sellerId } = withSeller();
     const view = await t.get.execute(adminOf(t, code), { sellerId });
-    expect(view).toEqual(ok({ mainActivityId: null, extraActivityIds: [], lastChange: null }));
+    expect(view).toEqual(
+      ok({ requested: null, mainActivityId: null, extraActivityIds: [], lastChange: null }),
+    );
     expect(
       await t.system.execute(testCallContext(market, 'system'), { sellerIds: [sellerId] }),
     ).toEqual(ok(new Map([[sellerId, { mainActivityId: null, activityIds: [] }]])));

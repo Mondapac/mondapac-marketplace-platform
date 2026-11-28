@@ -11,6 +11,9 @@ import type { MissingPart, MyFile } from './types.ts';
 // each step's state from `missing` (sellers ux 3.1 S1 and 3.3).
 const PARTS: Readonly<Record<SetupStepKey, readonly MissingPart[]>> = {
   business: ['storeName', 'businessName', 'phone'],
+  // The activity choice has no missing part: the API does not hold the submit back for it; the
+  // hub reads whether the seller has made a choice.
+  activity: [],
   address: ['address', 'timezone'],
   number: ['identifier'],
   slug: ['slug'],
@@ -127,6 +130,7 @@ export function SetupHub({
   file,
   csrfToken,
   certificates = false,
+  activityChosen = false,
 }: {
   readonly file: MyFile;
   readonly csrfToken: string;
@@ -135,6 +139,8 @@ export function SetupHub({
    * send a certificate with the application, but needs none to submit it.
    */
   readonly certificates?: boolean;
+  /** The seller has asked for a main business activity (or an admin has assigned one). */
+  readonly activityChosen?: boolean;
 }) {
   const t = useTranslations('sellers');
   const tc = useTranslations('certification');
@@ -183,12 +189,25 @@ export function SetupHub({
           {SETUP_STEPS.map((step) => {
             const count = left(step.key);
             const needs = outside && step.key === 'address';
-            const stepState: StepState = needs ? 'needs' : count === 0 ? 'done' : 'todo';
+            const picked = step.key === 'activity';
+            const stepState: StepState = needs
+              ? 'needs'
+              : picked
+                ? activityChosen
+                  ? 'done'
+                  : 'todo'
+                : count === 0
+                  ? 'done'
+                  : 'todo';
             const detail = needs
               ? t('account.detail-not-in-area')
-              : count > 0
-                ? t('account.detail-fields-left', { count })
-                : undefined;
+              : picked
+                ? activityChosen
+                  ? undefined
+                  : t('account.detail-activity')
+                : count > 0
+                  ? t('account.detail-fields-left', { count })
+                  : undefined;
             return (
               <Row
                 key={step.key}

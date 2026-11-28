@@ -186,12 +186,30 @@ export async function adminSignIn(email, password, secret, market = MARKET) {
  */
 export async function setMainActivity(admin, secret, sellerId, locale) {
   const list = await admin.ok('GET', '/catalog/admin/business-activities?status=active&limit=1');
-  let activityId = list.items[0]?.id;
-  if (activityId === undefined) {
+  let activity = list.items[0];
+  if (activity === undefined) {
     const created = await admin.ok('POST', '/catalog/admin/business-activities', {
       names: { [locale]: 'General' },
     });
-    activityId = created.activity.id;
+    activity = created.activity;
+  }
+  const activityId = activity.id;
+  // An activity that reaches no category leaves the seller's category picker empty
+  // (notice=no-activity), so the sellers it is given to could not list a product. Give it every
+  // department of the tree when it reaches none (the loader runs after the catalog pack).
+  if ((activity.categoryIds ?? []).length === 0) {
+    const tree = await admin.ok('GET', '/catalog/admin/categories');
+    const departments = tree.categories
+      .filter((row) => row.depth === 0 && row.status === 'active')
+      .map((row) => row.id);
+    if (departments.length > 0) {
+      await admin.ok('PUT', `/catalog/admin/business-activities/${activityId}`, {
+        version: activity.version,
+        names: activity.names,
+        description: activity.description ?? null,
+        categoryIds: departments,
+      });
+    }
   }
   const actionKey = 'sellers.business-activity.change';
   const proofs = stepUpProofs.get(admin) ?? new Map();

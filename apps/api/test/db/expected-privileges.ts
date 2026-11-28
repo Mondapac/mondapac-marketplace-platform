@@ -355,6 +355,11 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: [],
     },
+    // BUG-012 step 2: a seller's own request for activities; a save replaces the row's values.
+    'sellers.seller_activity_requests': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['extra_activity_ids', 'main_activity_id', 'requested_at', 'requested_by'],
+    },
     'sellers.seller_business_activity_changes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Offer approval slice 4 (ADR-0051 decision 4): the Offer review flag change log is insert-only.
     'sellers.offer_review_flag_changes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
