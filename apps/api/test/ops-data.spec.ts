@@ -735,3 +735,23 @@ describe('the ops-data refresh batch', () => {
     expect(answer.out.trim()).toBe('refused refused free');
   });
 });
+
+describe('the ops-data TOTP codes (BUG-035)', () => {
+  it('never sends one code twice: the second request for a step waits for the next step', () => {
+    const { status, out } = run(`
+      import { freshCode } from './scripts/ops-data/lib.mjs';
+      let now = 1_700_000_010_000;
+      Date.now = () => now;
+      globalThis.setTimeout = (fn, ms) => { now += ms; fn(); };
+      const secret = 'JBSWY3DPEHPK3PXP';
+      const first = await freshCode(secret);
+      const startedAt = now;
+      const second = await freshCode(secret);
+      console.log(JSON.stringify({ waited: now - startedAt, differs: first !== second }));
+    `);
+    expect(status).toBe(0);
+    const result = JSON.parse(out.trim().split('\n').pop()!);
+    expect(result.waited).toBeGreaterThan(0);
+    expect(result.differs).toBe(true);
+  });
+});
