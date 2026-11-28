@@ -3473,6 +3473,7 @@
       "order": "Order",
       "status": "Status",
       "paid": "Paid",
+      "delivery": "Delivery",
       "items": "Items",
       "total": "Total"
     },
