@@ -43,7 +43,7 @@ const lastStepUsed = new Map();
  */
 export async function freshCode(secret) {
   const step = () => Math.floor(Date.now() / 30000);
-  if (lastStepUsed.get(secret) === step()) await sleep(30000 - (Date.now() % 30000) + 1500);
+  while (lastStepUsed.get(secret) === step()) await sleep(30000 - (Date.now() % 30000) + 1500);
   lastStepUsed.set(secret, step());
   return totp(secret);
 }
