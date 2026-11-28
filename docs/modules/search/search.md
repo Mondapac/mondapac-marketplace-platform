@@ -374,7 +374,8 @@ index, the answer carries counts, and the use cases talk to a port.
   first fill of the column and a required-type change come from the stamp-driven reindex. Nothing
   throws because a scope is large. The mark rows enter the stamp as their count and latest
   `updated_at`, so a change is seen only when its `updated_at` is the Market's latest; two
-  concurrent mark writes that commit out of time order can hide one from the stamp (the direct
+  concurrent mark writes that commit out of time order, or a delete plus an insert at or below the
+  latest `updated_at` between two stamp reads, can hide a change from the stamp (the direct
   subtree sync still runs). Deferred: FE-20261128-catalog-index-stamp-mark-rows-hash.
 - **Ordering (security L2 of #848).** A document's `indexed_at` is the instant its sync began
   reading; a write or a delete from an earlier read never replaces a document from a later read
