@@ -18,6 +18,8 @@ interface IssuedDelivery {
   readonly module: string;
   /** The dispatcher's clock: the instant of the inbox row and of `delivered_at`. */
   readonly now: () => Temporal.Instant;
+  /** Whether a `runOnce` of this delivery was started, whatever its outcome. */
+  opened: boolean;
   settled: boolean;
 }
 
@@ -40,13 +42,22 @@ export function issueDelivery(
     attempt: fields.attempt,
   });
   const module = fields.subscriber.slice(0, fields.subscriber.indexOf('.'));
-  issued.set(delivery, { market, module, now, settled: false });
+  issued.set(delivery, { market, module, now, opened: false, settled: false });
   return delivery;
 }
 
 /** Whether a `runOnce` of this delivery committed (P 6.4: otherwise the handler failed). */
 export function deliverySettled(delivery: EventDelivery): boolean {
   return issued.get(delivery)?.settled === true;
+}
+
+/**
+ * Whether the handler started a `runOnce` of this delivery (BUG-015). A handler that never opened
+ * one has nothing to record in an inbox (an idempotent re-read, or an event it skips), so the
+ * dispatcher marks it delivered; one that opened a `runOnce` that did not commit has failed.
+ */
+export function deliveryOpened(delivery: EventDelivery): boolean {
+  return issued.get(delivery)?.opened === true;
 }
 
 /** The record of a delivery for `runOnce`; throws when it is unknown or of another Market. */

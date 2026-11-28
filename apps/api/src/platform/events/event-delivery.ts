@@ -8,8 +8,9 @@ import type { Id, Temporal } from '@mondapac/shared-kernel';
  * of the work (ADR-0006 decision 5).
  *
  * Only the dispatcher creates one, and `runOnce` refuses a delivery it did not create, so a
- * module cannot forge or reuse one. A handler that returns without a `runOnce` that committed
- * has failed: the delivery comes due again after its back-off.
+ * module cannot forge or reuse one. A handler that opens a `runOnce` that does not commit has
+ * failed: the delivery comes due again after its back-off. A handler that returns without opening
+ * one (an idempotent re-read, or an event it skips) needs no inbox row and is delivered (BUG-015).
  */
 export interface EventDelivery {
   readonly eventId: Id<'event'>;

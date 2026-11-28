@@ -160,6 +160,8 @@ export class PrismaUnitOfWork implements UnitOfWork {
     }
     if (!isMinted(market)) throw new UnmintedMarketContextError();
     const record = issuedDeliveryFor(delivery, market);
+    // From here on the handler has chosen the inbox: only a committed unit settles it (BUG-015).
+    record.opened = true;
     const result = await this.run(
       market,
       async (): Promise<Result<HandledOnce<T>, E>> => {

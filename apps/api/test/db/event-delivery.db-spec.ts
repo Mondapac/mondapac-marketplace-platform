@@ -4,6 +4,7 @@ import type { CallContext } from '@mondapac/shared-kernel';
 import { FixedClock } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import {
+  BACK_OFF_MAX_SECONDS,
   DISPATCH_BATCH_SIZE,
   MAX_DELIVERY_ATTEMPTS,
   backOffSeconds,
@@ -373,8 +374,29 @@ describe('event delivery (database integration)', () => {
     },
   );
 
+  it('marks delivered, with no inbox row, a handler that returns without opening runOnce (BUG-015)', async () => {
+    const clock = startClock();
+    const handler = recordingHandler(uniqueName('skip'));
+    const { relay, dispatcher } = stackOf([handler.entry], clock);
+    await writeThings('ZZ', 1);
+    await relayAll(relay);
+    handler.state.behaviour = 'skip';
+
+    expect((await dispatcher.runOnce()).claimed).toBe(1);
+
+    expect((await deliveriesOf(handler.entry.name))[0]).toMatchObject({
+      status: 'delivered',
+      attempts: 1,
+      error_code: null,
+    });
+    expect(await inboxOf(handler.entry.name)).toEqual([]);
+    // Delivered once: a later pass, even after the longest back-off, claims nothing again.
+    clock.advance(seconds(BACK_OFF_MAX_SECONDS));
+    expect((await dispatcher.runOnce()).claimed).toBe(0);
+    expect(handler.handled).toHaveLength(1);
+  });
+
   it.each([
-    ['returns without runOnce', 'skip', 'delivery.not-consumed'],
     ['passes a copy of its delivery', 'forge', 'delivery.handler-failed'],
     ['passes its delivery with another Market', 'other-market', 'delivery.handler-failed'],
     ['has its work refused (rolled back)', 'refuse', 'delivery.not-consumed'],
