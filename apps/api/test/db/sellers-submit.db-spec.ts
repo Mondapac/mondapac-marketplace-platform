@@ -751,7 +751,18 @@ describe.each(TEST_MARKETS)('sellers submission in market %s (database integrati
       const ready = await readySeller(undefined, identifier);
       expect((await submit(ready.context)).ok).toBe(true);
       const [revision] = await revisions(ready.sellerId);
+      await giveMainActivity(ready.sellerId);
       return { ...ready, revisionId: revision!.id as string };
+    };
+    /** ADR-0040 decision 4: an approval needs the seller's main activity (a plain id, no foreign key). */
+    const giveMainActivity = async (sellerId: string) => {
+      await owner.query(
+        `INSERT INTO sellers.seller_business_activities
+           (market_id, tenant_id, seller_id, activity_id, is_main, assigned_by, assigned_at)
+         SELECT market_id, tenant_id, seller_id, $3::uuid, true, $4::uuid, now()
+           FROM sellers.seller_files WHERE market_id = $1 AND seller_id = $2`,
+        [code, sellerId, randomUUID(), randomUUID()],
+      );
     };
     const fileRow = async (sellerId: string) =>
       (

@@ -404,6 +404,7 @@ const REVIEW_DECISION_PORTS = {
   registerChecks: true,
   registerPolicy: true,
   reviewChecks: true,
+  businessActivities: true,
   files: true,
   revisions: true,
   claims: true,

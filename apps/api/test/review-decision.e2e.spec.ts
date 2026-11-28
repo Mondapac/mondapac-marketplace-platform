@@ -14,6 +14,7 @@ import { SELLER_ACCESS_READER } from '../src/modules/sellers/application/ports/s
 import { SELLER_FILE_REPOSITORY } from '../src/modules/sellers/application/ports/seller-file.repository';
 import { ADMIN_FLAG_REPOSITORY } from '../src/modules/sellers/application/ports/admin-flag.repository';
 import { IDENTIFIER_CLAIM_REPOSITORY } from '../src/modules/sellers/application/ports/identifier-claim.repository';
+import { SELLER_BUSINESS_ACTIVITY_REPOSITORY } from '../src/modules/sellers/application/ports/seller-business-activity.repository';
 import { REVIEW_CHECK_REPOSITORY } from '../src/modules/sellers/application/ports/review-check.repository';
 import { SELLER_ACCESS_DECIDER } from '../src/modules/sellers/application/ports/seller-access-decider';
 import { SHOP_SLUG_REPOSITORY } from '../src/modules/sellers/application/ports/shop-slug.repository';
@@ -116,6 +117,16 @@ describe('the reviewer decision over HTTP (integration, slice 7a-decide)', () =>
           .useValue(decider)
           .overrideProvider(REVIEW_CHECK_REPOSITORY)
           .useValue(reviewChecks)
+          .overrideProvider(SELLER_BUSINESS_ACTIVITY_REPOSITORY)
+          .useValue({
+            // Every seller of this file carries a main activity (the gate is covered in its unit spec).
+            find: (_market: unknown, ids: readonly string[]) =>
+              Promise.resolve(
+                new Map(
+                  ids.map((id) => [id, { mainActivityId: 'activity-main', extraActivityIds: [] }]),
+                ),
+              ),
+          })
           .overrideProvider(IDENTIFIER_CLAIM_REPOSITORY)
           .useValue(new InMemoryClaims())
           .overrideProvider(ADMIN_FLAG_REPOSITORY)

@@ -203,6 +203,10 @@ describe('decisionProblemOf', () => {
     expect(decisionProblemOf({ status: 409, code: 'review.identifier-claimed' }).reload).toBe(
       false,
     );
+    expect(decisionProblemOf({ status: 409, code: 'review.activity-required' })).toMatchObject({
+      key: 'sellers.decision.error.activity-required',
+      reload: false,
+    });
     expect(
       decisionProblemOf({
         status: 400,

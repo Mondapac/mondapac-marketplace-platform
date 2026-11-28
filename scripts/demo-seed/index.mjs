@@ -13,7 +13,17 @@ import { createRequire } from 'node:module';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ROOT, assertLocalDevelopment, loadDotEnv } from './guard.mjs';
-import { API, MAILPIT, MARKET, ORIGINS, Session, adminSignIn, mailLink, sleep } from './lib.mjs';
+import {
+  API,
+  MAILPIT,
+  MARKET,
+  ORIGINS,
+  Session,
+  adminSignIn,
+  mailLink,
+  setMainActivity,
+  sleep,
+} from './lib.mjs';
 import { ADMIN, BUYER, HELD, OFFERS, PASSWORD, PRODUCTS, SELLERS, SPECIAL } from './data.mjs';
 
 loadDotEnv();
@@ -130,9 +140,13 @@ function firstAdminInvitation() {
   );
 }
 
+/** The admin's authenticator secret, for the step-up code of the activity change. */
+let adminSecret = null;
+
 async function ensureAdmin(state) {
   log('[2/8] Platform admin');
   const { totp } = await import('./lib.mjs');
+  adminSecret = state.admin?.secret ?? null;
   if (state.admin?.accepted) {
     try {
       return await adminSignIn(ADMIN.email, PASSWORD, state.admin.secret);
@@ -182,6 +196,7 @@ async function ensureAdmin(state) {
     accepted: true,
   };
   writeState(state);
+  adminSecret = enrolment.secret;
   return adminSignIn(ADMIN.email, PASSWORD, enrolment.secret);
 }
 
@@ -248,6 +263,7 @@ async function ensureSeller(admin, seller) {
   if (!row) throw new Error(`${seller.key}: not in the awaiting-review list`);
   const review = await admin.ok('GET', `/sellers/admin/${row.sellerId}/review`);
   const revisionId = review.current.id;
+  await setMainActivity(admin, adminSecret, row.sellerId, LOCALE);
   await admin.ok('PUT', `/sellers/admin/${row.sellerId}/review/manual-register-check`, {
     revisionId,
     observedOutcome: 'active',

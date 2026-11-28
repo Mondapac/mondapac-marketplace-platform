@@ -37,6 +37,7 @@ export const MY_FILE_STATUS = {
   'file.decision-in-progress': 409,
   'review.not-current-revision': 409,
   'review.identifier-claimed': 409,
+  'review.activity-required': 409,
   'review.register-negative': 409,
   'review.manual-register-check-required': 409,
   'seller-access.owner-unverified': 409,

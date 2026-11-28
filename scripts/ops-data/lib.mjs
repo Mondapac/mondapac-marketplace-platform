@@ -159,3 +159,36 @@ export async function adminSignIn(email, password, secret, market = MARKET) {
   }
   throw new Error('unreachable');
 }
+
+/**
+ * Gives a seller its main business activity (ADR-0040 decision 4: an approval needs one). The
+ * Market's first active activity is used; one named "General" is created when none exists. The
+ * change needs a fresh two-step code for its action, and a code is accepted once, so a code used a
+ * moment ago makes the loader wait for the next 30 s step.
+ */
+export async function setMainActivity(admin, secret, sellerId, locale) {
+  const list = await admin.ok('GET', '/catalog/admin/business-activities?status=active&limit=1');
+  let activityId = list.items[0]?.id;
+  if (activityId === undefined) {
+    const created = await admin.ok('POST', '/catalog/admin/business-activities', {
+      names: { [locale]: 'General' },
+    });
+    activityId = created.activity.id;
+  }
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const verified = await admin.request('POST', '/identity/admin/step-up/verify', {
+      actionKey: 'sellers.business-activity.change',
+      code: totp(secret),
+    });
+    if (verified.status < 300) break;
+    if (attempt === 1) {
+      throw new Error(`step-up: ${verified.status} ${JSON.stringify(verified.body)}`);
+    }
+    await sleep(30000 - (Date.now() % 30000) + 1500);
+  }
+  await admin.ok('PUT', `/sellers/admin/${sellerId}/business-activities`, {
+    mainActivityId: activityId,
+    extraActivityIds: [],
+    reason: 'Loader: main activity before approval',
+  });
+}

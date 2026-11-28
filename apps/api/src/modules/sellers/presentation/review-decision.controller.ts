@@ -92,7 +92,7 @@ export class ReviewDecisionController {
     type: SellersErrorBody,
     description:
       `${CONFLICTS}, review.register-negative, review.manual-register-check-required, ` +
-      'review.identifier-claimed, seller-access.owner-unverified',
+      'review.identifier-claimed, review.activity-required, seller-access.owner-unverified',
   })
   @ApiUnsupportedMediaTypeResponse({ type: SellersErrorBody, description: 'Not application/json' })
   @ApiServiceUnavailableResponse({
