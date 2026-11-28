@@ -43,6 +43,8 @@ import {
   UNIT_ATTEMPTS,
 } from '../../../../platform/unit-of-work/unit-of-work';
 import { DECISION_CALL_DEADLINE_MS, RECONCILE_AFTER } from '../../domain/decision-intent';
+import type { SellerBusinessActivityRepository } from '../ports/seller-business-activity.repository';
+import type { StoredActivityAssignment } from '../../domain/seller-business-activities';
 import type { ReviewDecisionDependencies } from '../review/decision-request';
 import { CloseDecision } from './close-decision.use-case';
 import { ReconcileDecisions } from './reconcile-decisions.use-case';
@@ -55,6 +57,19 @@ import { ReviewReject } from './review-reject.use-case';
 // register guard, the identifier claim, and the two paths that finish a decision whose request
 // died (the event handler and the reconciliation job), including their interleavings (Hassan M3).
 // PostgreSQL (the row lock, the partial indexes, the CHECKs) is covered by the db specs.
+
+/** Which sellers carry a main business activity; the rest of the port is not used by a decision. */
+class FakeActivities {
+  readonly held = new Map<string, StoredActivityAssignment>();
+  find(_market: unknown, sellerIds: readonly Id<'Seller'>[]) {
+    const found = new Map<Id<'Seller'>, StoredActivityAssignment>();
+    for (const id of sellerIds) {
+      const row = this.held.get(id);
+      if (row !== undefined) found.set(id, row);
+    }
+    return Promise.resolve(found);
+  }
+}
 
 const START = Temporal.Instant.from('2026-10-10T10:00:00Z');
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
@@ -106,6 +121,7 @@ describe.each(['AU', 'ZZ'] as const)('the reviewer decision in Market %s', (code
   let decider: FakeDecider;
   let audit: RecordingAudit;
   let policy: FixedRegisterLookupPolicy;
+  let activities: FakeActivities;
   let deps: ReviewDecisionDependencies;
   let sellerId: Id<'Seller'>;
   let revisionId: Id<'BusinessFileRevision'>;
@@ -188,6 +204,10 @@ describe.each(['AU', 'ZZ'] as const)('the reviewer decision in Market %s', (code
     await revisions.add(market, revision, sealed.value);
     await slugs.hold(market, { sellerId: seller, slug: `shop-${seller.slice(-6)}` as ShopSlug });
     access.set(seller, 'pending');
+    activities.held.set(seller, {
+      mainActivityId: 'activity-main' as StoredActivityAssignment['mainActivityId'],
+      extraActivityIds: [],
+    });
     return { sellerId: seller, revisionId: revision.id };
   }
 
@@ -226,6 +246,7 @@ describe.each(['AU', 'ZZ'] as const)('the reviewer decision in Market %s', (code
     access = new FakeAccess();
     decider = new FakeDecider();
     audit = new RecordingAudit();
+    activities = new FakeActivities();
     policy = new FixedRegisterLookupPolicy({ [code]: CONFIGURED });
     deps = {
       unitOfWork: new TransactionalUnitOfWork([
@@ -241,6 +262,7 @@ describe.each(['AU', 'ZZ'] as const)('the reviewer decision in Market %s', (code
       registerChecks,
       registerPolicy: policy,
       reviewChecks,
+      businessActivities: activities as unknown as SellerBusinessActivityRepository,
       files,
       revisions,
       claims,
@@ -254,6 +276,24 @@ describe.each(['AU', 'ZZ'] as const)('the reviewer decision in Market %s', (code
   afterEach(() => jest.restoreAllMocks());
 
   describe('approve', () => {
+    it('refuses to approve a seller with no main business activity, and decides nothing', async () => {
+      activeCheck(sellerId);
+      activities.held.delete(sellerId);
+
+      const result = await approve().execute(admin(), { sellerId, revisionId });
+
+      expect(result).toEqual({ ok: false, error: { code: 'review.activity-required' } });
+      expect(decider.calls).toHaveLength(0);
+      expect(await statusOf(sellerId, revisionId)).toBe('pending');
+
+      activities.held.set(sellerId, {
+        mainActivityId: 'activity-main' as StoredActivityAssignment['mainActivityId'],
+        extraActivityIds: [],
+      });
+      const again = await approve().execute(admin(), { sellerId, revisionId });
+      expect(again.ok && again.value.decision).toBe('approved');
+    });
+
     it('approves revision N: the pointer, the public name, the claim and the public slug, in one settlement', async () => {
       activeCheck(sellerId);
 

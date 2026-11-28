@@ -4,6 +4,7 @@ import type { ApiFailure } from '../api/client.ts';
 const BY_CODE: Readonly<Record<string, string>> = {
   'review.not-current-revision': 'not-current',
   'review.identifier-claimed': 'identifier-claimed',
+  'review.activity-required': 'activity-required',
   'review.register-negative': 'register-negative',
   'review.manual-register-check-required': 'check-required',
   'seller-access.owner-unverified': 'owner-unverified',

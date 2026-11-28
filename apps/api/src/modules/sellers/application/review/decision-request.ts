@@ -8,6 +8,7 @@ import type { AccessUnavailable, SellersUnavailable } from '../draft/draft-suppo
 import type { FileNotFound } from '../draft/draft-view';
 import type { RegisterCheckRepository } from '../ports/register-check.repository';
 import type { RegisterLookupPolicy } from '../ports/register-lookup-policy';
+import type { SellerBusinessActivityRepository } from '../ports/seller-business-activity.repository';
 import type { ReviewCheckRepository } from '../ports/review-check.repository';
 import type { AccessDecisionAnswer, SellerAccessDecider } from '../ports/seller-access-decider';
 import type { SellerAccessReader } from '../ports/seller-access-reader';
@@ -59,6 +60,8 @@ export type ReviewDecisionFailure =
   | { readonly code: 'file.decision-in-progress' }
   /** Another seller of the Market holds the identifier (AC 21). Never told to the seller. */
   | { readonly code: 'review.identifier-claimed' }
+  /** The seller carries no main business activity (ADR-0040 decision 4): set it, then approve. */
+  | { readonly code: 'review.activity-required' }
   | RegisterGuardRefused
   | { readonly code: IdentityRefusal }
   /** The reason's length or characters (identity's HF13), or a missing or malformed field. */
@@ -75,6 +78,7 @@ export interface ReviewDecisionDependencies extends SettlementDependencies {
   readonly registerChecks: RegisterCheckRepository;
   readonly registerPolicy: RegisterLookupPolicy;
   readonly reviewChecks: ReviewCheckRepository;
+  readonly businessActivities: SellerBusinessActivityRepository;
 }
 
 /** The largest reason passed on; `identity` applies its own rule (HF13) within it. */
@@ -255,6 +259,12 @@ async function beginDecision(
     return err({ code: 'review.not-current-revision' });
   }
   if (intentKind !== 'approve-requested') return ok(undefined);
+
+  // ADR-0040 decision 4: a seller is approved with a main business activity, or its category
+  // picker stays empty. The reviewer sets it first (PUT sellers/admin/:sellerId/business-activities).
+  const carried = await deps.businessActivities.find(market, [sellerId]);
+  if ((carried.get(sellerId)?.mainActivityId ?? null) === null)
+    return err({ code: 'review.activity-required' });
 
   const settings = deps.registerPolicy.settingsOf(market);
   const index = revision.identifierIndex;
