@@ -23,10 +23,9 @@ const DECLARED = new RegExp(
   'g',
 );
 const CHECKED = new RegExp(String.raw`(?:_PERMISSION\w*\s*=\s*|\.includes\()['"](${KEY})['"]`, 'g');
-const CONSTANT = new RegExp(
-  String.raw`\bconst (?![A-Z0-9_]*_KEYS?\b)[A-Z][A-Z0-9_]*\s*=\s*['"](${KEY})['"]`,
-  'g',
-);
+const CONSTANT = new RegExp(String.raw`\bconst ([A-Z][A-Z0-9_]*)\s*=\s*['"](${KEY})['"]`, 'g');
+// Step-up action keys (system-requests), named like permissions but not permissions.
+const ACTION_KEYS = new Set(['DECIDE_HIGH_KEY', 'POLICY_CHANGE_KEY']);
 const RULE = /\b(?:anyOf|allOf|requires):\s*(\[[^\]]*\]|'[^']*'|"[^"]*")/g;
 const STRING = new RegExp(`['"](${KEY})['"]`, 'g');
 
@@ -61,10 +60,10 @@ function checkedKeys(prefixes: ReadonlySet<string>): Map<string, string[]> {
       for (const inner of match[1]!.matchAll(STRING)) add(inner[1]!, file);
     }
     // Other constants (CATEGORY_VIEW, GROUPS_MANAGE): a three-part value under a module's prefix.
-    // `*_KEY` constants are step-up action keys, not permissions, and are left out.
     for (const match of text.matchAll(CONSTANT)) {
-      const key = match[1]!;
+      const key = match[2]!;
       const parts = key.split('.');
+      if (ACTION_KEYS.has(match[1]!)) continue;
       if (parts.length === 3 && prefixes.has(parts[0]!)) add(key, file);
     }
   }
