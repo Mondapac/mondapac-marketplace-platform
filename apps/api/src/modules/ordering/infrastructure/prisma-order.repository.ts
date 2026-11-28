@@ -850,14 +850,23 @@ export class PrismaOrderRepository implements OrderRepository {
   }
 
   async countForSeller(market: MarketContext, sellerId: Id<'Seller'>): Promise<SellerOrderCounts> {
+    // A cancelled seller order keeps fulfilment to-ship (CHECK seller_orders_cancelled_check) and is
+    // marked by cancelled_at: count it apart so To ship counts only what is left to pack.
     const groups = await this.prisma.tx(market).orderingSellerOrder.groupBy({
-      by: ['fulfilment'],
+      by: ['fulfilment', 'cancelledAt'],
       where: { marketId: market.marketId, sellerId, order: { status: 'confirmed' } },
       _count: { _all: true },
     });
-    const count = (fulfilment: Fulfilment) =>
-      groups.find((group) => group.fulfilment === fulfilment)?._count._all ?? 0;
-    return { toShip: count('to-ship'), shipped: count('shipped'), delivered: count('delivered') };
+    const count = (fulfilment: Fulfilment, cancelled: boolean) =>
+      groups
+        .filter((g) => g.fulfilment === fulfilment && (g.cancelledAt !== null) === cancelled)
+        .reduce((sum, g) => sum + g._count._all, 0);
+    return {
+      toShip: count('to-ship', false),
+      cancelled: count('to-ship', true),
+      shipped: count('shipped', false),
+      delivered: count('delivered', false),
+    };
   }
 
   async findForSeller(
@@ -1163,6 +1172,8 @@ const sellerWhere = (market: MarketContext, sellerId: Id<'Seller'>, filter: Sell
   marketId: market.marketId,
   sellerId,
   ...(filter.fulfilment === null ? {} : { fulfilment: filter.fulfilment }),
+  // The To ship tab lists what is left to pack: admin-cancelled orders stay under All only.
+  ...(filter.fulfilment === 'to-ship' ? { cancelledAt: null } : {}),
   ...(filter.reference === undefined || filter.reference === null
     ? {}
     : { OR: [{ id: filter.reference }, { orderId: filter.reference }] }),

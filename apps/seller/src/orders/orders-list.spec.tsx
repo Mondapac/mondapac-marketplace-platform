@@ -71,7 +71,7 @@ const row = (
   ...over,
   actions,
 });
-const COUNTS = { toShip: 3, shipped: 20, delivered: 2 };
+const COUNTS = { toShip: 3, cancelled: 0, shipped: 20, delivered: 2 };
 const pageOf = (rows: SellerOrderRow[], over: Partial<SellerOrderPage> = {}): SellerOrderPage => ({
   sellerOrders: rows,
   nextCursor: null,
@@ -156,7 +156,7 @@ describe('seller orders list', () => {
   });
 
   it('says so when the shop has no order at all, with no filter', () => {
-    mount(pageOf([], { counts: { toShip: 0, shipped: 0, delivered: 0 } }));
+    mount(pageOf([], { counts: { toShip: 0, cancelled: 0, shipped: 0, delivered: 0 } }));
     expect(screen.getByRole('heading', { name: 'No paid orders yet' })).toBeTruthy();
   });
 
@@ -507,7 +507,7 @@ describe('seller orders saved filters', () => {
 
   it("keeps the built-in tabs' counts when a saved filter is open", async () => {
     // The API counts for the request's own filters, so a saved tab's answer is narrow.
-    const narrow = { toShip: 0, shipped: 1, delivered: 0 };
+    const narrow = { toShip: 0, cancelled: 0, shipped: 1, delivered: 0 };
     serve(
       (url) => pageOf([row()], { counts: paramsOf(url)['from'] === undefined ? COUNTS : narrow }),
       savedAnswer([saved()]),

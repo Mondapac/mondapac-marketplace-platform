@@ -125,6 +125,7 @@ export interface SellerOrderRow extends SellerOrderView {
 
 export interface SellerOrderCounts {
   readonly toShip: number;
+  readonly cancelled: number;
   readonly shipped: number;
   readonly delivered: number;
 }

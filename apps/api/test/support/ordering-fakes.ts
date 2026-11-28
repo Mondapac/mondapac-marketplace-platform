@@ -613,6 +613,7 @@ export class MemoryOrders implements OrderRepository {
   private matches(r: SellerOrderRecord, filter: SellerOrderFilter): boolean {
     return (
       (filter.fulfilment === null || r.sellerOrder.fulfilment === filter.fulfilment) &&
+      (filter.fulfilment !== 'to-ship' || r.sellerOrder.cancelledAt === null) &&
       (filter.reference === undefined ||
         filter.reference === null ||
         r.sellerOrder.id === filter.reference ||
@@ -673,10 +674,13 @@ export class MemoryOrders implements OrderRepository {
   }
   countForSeller(_m: MarketContext, sellerId: Id<'Seller'>) {
     const paid = this.paid(sellerId);
-    const count = (step: Fulfilment) =>
-      paid.filter((r) => r.sellerOrder.fulfilment === step).length;
+    const count = (step: Fulfilment, cancelled = false) =>
+      paid.filter(
+        (r) => r.sellerOrder.fulfilment === step && (r.sellerOrder.cancelledAt !== null) === cancelled,
+      ).length;
     return Promise.resolve({
       toShip: count('to-ship'),
+      cancelled: count('to-ship', true),
       shipped: count('shipped'),
       delivered: count('delivered'),
     });

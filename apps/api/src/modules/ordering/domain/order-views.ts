@@ -235,7 +235,10 @@ export interface LabelledSellerOrderShipView extends LabelledSellerOrderDetailVi
 
 /** The seller's paid seller orders per fulfilment step, whatever the page or filter. */
 export interface SellerOrderCounts {
+  /** To ship excludes cancelled orders: those wait for no packing. */
   readonly toShip: number;
+  /** Orders the admin cancelled (stored fulfilment stays to-ship; `cancelledAt` marks them). */
+  readonly cancelled: number;
   readonly shipped: number;
   readonly delivered: number;
 }
