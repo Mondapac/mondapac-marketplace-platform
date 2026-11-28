@@ -21,6 +21,14 @@ function query(
   options: {
     readonly cancelledAt?: Temporal.Instant | null;
     readonly orderUnits?: number;
+    readonly settledAt?: Temporal.Instant | null;
+    /** Other refunds of the order: state, gross, settled time, id. */
+    readonly others?: readonly {
+      state: string;
+      gross: bigint;
+      settledAt: Temporal.Instant | null;
+      id: string;
+    }[];
   } = {},
 ) {
   const refund = {
@@ -31,13 +39,20 @@ function query(
     actor: { population: 'seller', accountId: id(ACCOUNT) },
     gross: 1250n,
     currency,
+    settledAt: options.settledAt ?? null,
     lines: [{ quantity: 2 }, { quantity: 1 }],
   };
   const deps = {
     unitOfWork: { run: (_market: unknown, work: () => Promise<unknown>) => work() },
     refunds: {
       findById: () => Promise.resolve(refund),
-      listForOrder: () => Promise.resolve([{ refund, creditNoteId: null }]),
+      listForOrder: () =>
+        Promise.resolve(
+          [
+            refund,
+            ...(options.others ?? []).map((o) => ({ ...refund, ...o, lines: [{ quantity: 1 }] })),
+          ].map((r) => ({ refund: r, creditNoteId: null })),
+        ),
     },
     orders: {
       findById: () =>
@@ -82,6 +97,7 @@ describe.each([
         amount: money(1250n, currency),
         units: 3,
         orderFullyRefunded: false,
+        isLastSettled: true,
         cancelledByAdmin: false,
         refundedTotal: money(1250n, currency),
       }),
@@ -101,6 +117,30 @@ describe.each([
     const full = await ask({ cancelledAt, orderUnits: 3 });
     expect(full.ok && full.value.orderFullyRefunded).toBe(true);
     expect(full.ok && full.value.refundedTotal).toEqual(money(1250n, currency));
+  });
+
+  it('sums the succeeded refunds only and marks the last one settled', async () => {
+    const at = (iso: string) => Temporal.Instant.from(iso);
+    const ask = (
+      settledAt: Temporal.Instant,
+      others: NonNullable<Parameters<typeof query>[3]>['others'],
+    ) =>
+      query('succeeded', ORDER, currency, { settledAt, orderUnits: 4, others }).execute(system(), {
+        orderId: ORDER,
+        refundId: REFUND,
+      });
+    const others = [
+      { state: 'succeeded', gross: 500n, settledAt: at('2026-11-28T00:00:10Z'), id: 'x1' },
+      { state: 'failed', gross: 9000n, settledAt: at('2026-11-28T00:00:30Z'), id: 'x2' },
+    ];
+    // This refund settled last: it is the one to mail; the failed refund counts for nothing.
+    const last = await ask(at('2026-11-28T00:00:20Z'), others);
+    expect(last.ok && last.value.isLastSettled).toBe(true);
+    expect(last.ok && last.value.refundedTotal).toEqual(money(1750n, currency));
+    expect(last.ok && last.value.orderFullyRefunded).toBe(true);
+    // An earlier settlement is not the last.
+    const early = await ask(at('2026-11-28T00:00:05Z'), others);
+    expect(early.ok && early.value.isLastSettled).toBe(false);
   });
 
   it.each([

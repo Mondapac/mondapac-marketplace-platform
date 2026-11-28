@@ -94,6 +94,8 @@ export interface RefundNotice {
   readonly units: number;
   /** Whether every unit of the order is now refunded (this refund and the succeeded ones before it). */
   readonly orderFullyRefunded: boolean;
+  /** Whether this is the last settled succeeded refund of the order (latest `settledAt`, then id): one mail per cancel. */
+  readonly isLastSettled: boolean;
   /** Whether an admin cancelled the order (Cancel and refund, BUG-017): `cancelReason admin-cancelled`. */
   readonly cancelledByAdmin: boolean;
   /** The gross of every refund of the order that Stripe confirmed so far, this one included. */

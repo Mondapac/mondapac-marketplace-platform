@@ -57,7 +57,7 @@ export type OrderMailSkipped =
   | 'link.unconfigured'
   /** Only a pickup order gets a "ready" mail; other methods are told by shipment and delivery. */
   | 'ready.not-pickup'
-  /** An admin cancelled the order: one mail goes out, when the last seller order's refund settles. */
+  /** An admin cancelled the order: one mail goes out, for the last refund to settle. */
   | 'cancel.waiting-other-refunds';
 
 export type OrderMailOutput =
@@ -337,7 +337,7 @@ export async function sendItemUnavailableRefund(
   const cancelled =
     notice.value.reason !== SELLER_UNAVAILABLE_REASON && notice.value.cancelledByAdmin;
   // A cancelled order has one refund per seller order: tell the customer once, when the last settles.
-  if (cancelled && !notice.value.orderFullyRefunded) {
+  if (cancelled && !(notice.value.orderFullyRefunded && notice.value.isLastSettled)) {
     return finish(deps, context, input, name, { skipped: 'cancel.waiting-other-refunds' });
   }
   const url = deps.policy.customerOrderUrl(context.market, notice.value.orderId);
