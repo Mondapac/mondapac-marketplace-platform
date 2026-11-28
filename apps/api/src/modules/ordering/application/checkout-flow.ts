@@ -761,6 +761,7 @@ export async function placeOrder<T>(
       shippedAt: null,
       deliveredAt: null,
       inventoryRecordedAt: null,
+      cancelledAt: null,
       ledgerState: 'pending' as const,
       deliveryMethod: choiceOf(seller.sellerId).method,
       deliveryWindow: choiceOf(seller.sellerId).window,

@@ -117,6 +117,13 @@ model OrderingSellerOrder {
   /// The minutes the Market gave the seller to get the order ready, frozen at placement (5 to
   /// 2880, CHECK). The promised ready-by time derives from it. Null on orders placed before it.
   readyPrepMinutes       Int?                            @map("ready_prep_minutes")
+  /// When an admin cancelled the order (Cancel and refund), set in the cancellation's unit while
+  /// the seller order is to-ship and not ready (CHECK: only on a to-ship order). Final: it can no
+  /// longer be marked ready, and its stock goes back to inventory.
+  cancelledAt            DateTime?                       @map("cancelled_at") @db.Timestamptz(6)
+  /// Set by the worker once inventory has released the cancelled lines (CHECK: only after
+  /// `cancelled_at`).
+  stockReleasedAt        DateTime?                       @map("stock_released_at") @db.Timestamptz(6)
   /// Set by the platform when the order needs an admin: no-carrier (nothing can serve it),
   /// carrier-unknown (a booking whose answer was lost, so it may exist) or cancel-unknown (a
   /// cancel whose answer was lost) (CHECK). The seller

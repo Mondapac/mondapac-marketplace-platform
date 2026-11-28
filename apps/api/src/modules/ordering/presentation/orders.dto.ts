@@ -169,6 +169,14 @@ export class SellerOrderBody {
       'confirmed). The seller never delivers instead.',
   })
   deliveryAttention!: string | null;
+  @ApiProperty({
+    format: 'date-time',
+    nullable: true,
+    description:
+      'When an admin cancelled the order (Cancel and refund); null otherwise. Final: the seller ' +
+      'order is never marked ready, and its stock goes back to inventory.',
+  })
+  cancelledAt!: string | null;
   @ApiProperty({ type: [OrderLineBody] }) lines!: OrderLineBody[];
 }
 
@@ -183,8 +191,12 @@ export class OrderBody {
       'superseded',
       'provider-failed',
       'discount-changed',
+      'admin-cancelled',
     ],
     nullable: true,
+    description:
+      'Why the order is cancelled. admin-cancelled: a paid order an admin cancelled (Cancel and ' +
+      'refund); its status stays confirmed, and cancelledAt is when.',
   })
   cancelReason!: string | null;
   @ApiProperty({ enum: ['none', 'authorised', 'captured', 'voided'] }) paymentState!: string;
@@ -583,6 +595,7 @@ const sellerOrderBody = (seller: SellerOrderLike): SellerOrderBody => ({
   deliveryWindowEnd: seller.deliveryWindow?.end.toString() ?? null,
   readyAt: seller.readyAt?.toString() ?? null,
   deliveryAttention: seller.deliveryAttention,
+  cancelledAt: seller.cancelledAt?.toString() ?? null,
   lines: seller.lines.map(lineBody),
 });
 

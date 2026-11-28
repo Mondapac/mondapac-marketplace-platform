@@ -152,6 +152,7 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
           shippedAt: null,
           deliveredAt: null,
           inventoryRecordedAt: null,
+          cancelledAt: null,
           ledgerState: 'not-applicable',
           deliveryMethod: options.method ?? 'instant',
           deliveryWindow: null,

@@ -61,6 +61,7 @@ const order = (n: number, fulfilment: SellerOrderView['fulfilment']): SellerOrde
   deliveryWindowStart: null,
   deliveryWindowEnd: null,
   readyAt: null,
+  cancelledAt: null,
   deliveryAttention: null,
   lines: [],
 });

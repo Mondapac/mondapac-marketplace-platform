@@ -122,6 +122,7 @@ describe.each(TEST_MARKETS)('offer pairs in market %s (database)', (code) => {
           shippedAt: null,
           deliveredAt: null,
           inventoryRecordedAt: null,
+          cancelledAt: null,
           ledgerState: 'pending',
           deliveryMethod: 'instant',
           deliveryWindow: null,

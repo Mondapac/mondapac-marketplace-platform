@@ -71,6 +71,7 @@ const order = (over: Partial<SellerOrderView> = {}): SellerOrderView => ({
   deliveryWindowStart: null,
   deliveryWindowEnd: null,
   readyAt: null,
+  cancelledAt: null,
   deliveryAttention: null,
   lines: [line()],
   ...over,
@@ -244,6 +245,16 @@ describe('OrderDetail', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Copy order ID' }));
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
     expect(writeText.mock.calls[0]?.[0]).toMatch(/^[0-9A-F]{8}$/);
+  });
+
+  it('shows an order an admin cancelled as Cancelled, with nothing to prepare', () => {
+    mountDetail(order({ cancelledAt: '2026-10-14T12:00:00.000Z' }));
+    expect(screen.getByText('Cancelled', { selector: 'span' })).toBeTruthy();
+    expect(
+      screen.getByText(/An admin cancelled this order and refunded the customer/),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Mark ready' })).toBeNull();
+    expect(screen.queryByText('Next step')).toBeNull();
   });
 
   it('has one action on a paid order, "Mark ready", and no carrier or tracking form', () => {

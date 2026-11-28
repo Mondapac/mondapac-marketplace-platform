@@ -17,7 +17,8 @@ import {
 // marked ready). The cancellation is a full refund of every seller order, built from the same
 // frozen values as a refund by hand: every unit not yet refunded and the shipping not yet given
 // back. The order itself stays `confirmed` (the ledger and the carrier steps follow refunds, not
-// the status); a seller order whose every unit is refunded can no longer be marked ready.
+// the status); every seller order is stamped `cancelledAt` in the same unit (BUG-017), so it can no
+// longer be marked ready, its stock goes back to inventory and the views show it cancelled.
 
 /** A paid order's seller order as the cancellation checks it. */
 export interface CancelPart {

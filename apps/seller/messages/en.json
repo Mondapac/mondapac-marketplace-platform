@@ -3362,6 +3362,7 @@
     "optional": "optional",
     "ref": "#{id}",
     "detail-title": "Order #{id}",
+    "cancelled-notice": "An admin cancelled this order and refunded the customer. There is nothing to prepare, and its units go back to your stock.",
     "next-step": "Next step",
     "copy-id": "Copy order ID",
     "copy-id-done": "Order ID copied.",
@@ -3476,7 +3477,8 @@
       "to-ship": "Awaiting you",
       "ready": "Ready",
       "shipped": "Shipped",
-      "delivered": "Delivered"
+      "delivered": "Delivered",
+      "cancelled": "Cancelled"
     },
     "deliver": "Mark as delivered",
     "error": {

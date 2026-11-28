@@ -638,8 +638,10 @@ export interface CancelInput {
  * has marked its part ready. Every refund is written in one unit, with the seller orders' rows
  * locked by the raised sums, and the order is read again under those locks: a seller who marked
  * ready meanwhile rolls the whole cancellation back (the seller's side checks the refunds under
- * the same lock, fulfilment-flow.ts). Then each refund settles with Stripe on its own, as a
- * refund by hand does; a refused one is failed and that part is refunded by hand.
+ * the same lock, fulfilment-flow.ts). The same unit stamps every seller order cancelled: it can
+ * no longer be marked ready, its views show the order cancelled, and the worker gives the stock
+ * back to inventory. Then each refund settles with Stripe on its own, as a refund by hand does; a
+ * refused one is failed and that part is refunded by hand (or by cancelling again).
  */
 export async function adminCancelOrder(
   deps: OrderingDependencies,
@@ -736,6 +738,15 @@ export async function adminCancelOrder(
         notStarted({ fulfilment: s.fulfilment, ready: s.readyAt !== null }),
       )
     ) {
+      return err({ code: 'ordering.cancel-too-late' } as const);
+    }
+    // The cancellation itself (BUG-017): every seller order is stamped cancelled, under the same
+    // locks, so none can be marked ready afterwards and the worker gives the stock back
+    // (`releaseCancelledStock`). A seller order already stamped by an earlier cancellation whose
+    // refund failed counts as done; any other shortfall means one moved on, so all rolls back.
+    const already = fresh.sellerOrders.filter((s) => s.cancelledAt !== null).length;
+    const stamped = await deps.orders.markCancelled(context.market, orderId, deps.clock.now());
+    if (already + stamped !== fresh.sellerOrders.length) {
       return err({ code: 'ordering.cancel-too-late' } as const);
     }
     const currency = priced[0]!.refund.currency;

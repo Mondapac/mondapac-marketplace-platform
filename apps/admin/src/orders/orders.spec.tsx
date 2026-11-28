@@ -248,6 +248,31 @@ describe('order detail layout', () => {
     expect(screen.getByText('Al Noor Butchery marked ready for pickup')).toBeTruthy();
   });
 
+  it('shows a paid order an admin cancelled as Cancelled, with its reason and no steps', () => {
+    const at = '2026-10-13T03:00:00.000Z';
+    render(
+      wrap(
+        <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
+          order={order({
+            cancelReason: 'admin-cancelled',
+            cancelledAt: at,
+            sellerOrders: [part({ cancelledAt: at })],
+          })}
+        />,
+      ),
+    );
+    expect(screen.getAllByText('Cancelled', { selector: 'span' }).length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText('Confirmed', { selector: 'span' })).toBeNull();
+    expect(
+      screen.getByText(
+        'This order was cancelled: An admin cancelled it and refunded the customer.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('list', { name: 'Progress' })).toBeNull();
+  });
+
   it('shows no steps before payment or after a cancel', () => {
     render(
       wrap(

@@ -61,6 +61,8 @@ export function adminOrderActionRules(
 
 type SellerOrderRowState = Pick<SellerOrderDetailView, 'fulfilment' | 'deliveryMethod'> & {
   readonly readyAt: unknown;
+  /** Set when an admin cancelled the order: nothing is left to prepare or report. */
+  readonly cancelledAt: unknown;
 };
 
 /**
@@ -76,7 +78,7 @@ export const SELLER_ORDER_ACTION_RULES: readonly RowActionRule<SellerOrderRowSta
   {
     id: 'ready',
     permission: ORDERING_SELLER_ORDER_MARK_READY.key,
-    when: (row) => row.fulfilment === 'to-ship' && row.readyAt === null,
+    when: (row) => row.fulfilment === 'to-ship' && row.readyAt === null && row.cancelledAt === null,
   },
   {
     id: 'hand-over',
@@ -92,6 +94,6 @@ export const SELLER_ORDER_ACTION_RULES: readonly RowActionRule<SellerOrderRowSta
   {
     id: 'report-unavailable',
     permission: ORDERING_SELLER_ORDER_MARK_UNAVAILABLE.key,
-    when: (row) => row.fulfilment === 'to-ship' && row.readyAt === null,
+    when: (row) => row.fulfilment === 'to-ship' && row.readyAt === null && row.cancelledAt === null,
   },
 ];

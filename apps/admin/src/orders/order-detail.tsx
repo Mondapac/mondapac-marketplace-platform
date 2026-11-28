@@ -23,7 +23,7 @@ import { backHrefOf, type CustomerOrigin } from './order-href.ts';
 import { OrderMoreMenu, RefundButton } from './order-actions.tsx';
 import { FallbackId, FullId } from './fallback-id.tsx';
 import { orderEvents, type OrderEvent } from './order-activity.ts';
-import { FulfilmentBadge, OrderStatusBadge } from './status-badge.tsx';
+import { displayStatusOf, FulfilmentBadge, OrderStatusBadge } from './status-badge.tsx';
 import {
   CANCEL_REASONS,
   DELIVERY_METHODS,
@@ -85,7 +85,7 @@ export function OrderDetail({
           title={t('reference', { id: shortId(order.orderId) })}
           badges={
             <>
-              <OrderStatusBadge status={order.status} />
+              <OrderStatusBadge status={displayStatusOf(order)} />
               <OrderMoreMenu
                 order={order}
                 canRefund={canRefund}
@@ -426,7 +426,10 @@ function SellerPartCard({
   const locale = useLocale();
   const rows: readonly DataListRow[] = [
     { label: t('field.seller-account'), value: <FullId id={part.sellerId} /> },
-    { label: t('field.fulfilment'), value: <FulfilmentBadge fulfilment={part.fulfilment} /> },
+    {
+      label: t('field.fulfilment'),
+      value: <FulfilmentBadge fulfilment={part.fulfilment} cancelled={part.cancelledAt !== null} />,
+    },
     {
       label: t('field.delivery-method'),
       value: t(`delivery-method.${known(part.deliveryMethod, DELIVERY_METHODS)}`),
@@ -451,7 +454,7 @@ function SellerPartCard({
           {t(`detail.attention.${attentionKey(part.deliveryAttention)}`)}
         </Banner>
       )}
-      {paid ? <FulfilmentSteps part={part} /> : null}
+      {paid && part.cancelledAt === null ? <FulfilmentSteps part={part} /> : null}
       <DataList rows={rows} missing={t('none')} />
       <ul className="flex flex-col divide-y divide-line-row border-t border-line">
         {part.lines.map((line) => (

@@ -337,8 +337,9 @@ export interface OrderRepository {
   ): Promise<'saved' | 'stale'>;
 
   /**
-   * Writes the ready time of one seller order only if it is still `to-ship` and not ready yet;
-   * `stale` writes nothing (a double click, a second tab, or an order that has moved on).
+   * Writes the ready time of one seller order only if it is still `to-ship`, not ready yet and not
+   * cancelled; `stale` writes nothing (a double click, a second tab, an order that has moved on, or
+   * one an admin cancelled).
    */
   saveReady(market: MarketContext, sellerOrder: SellerOrder): Promise<'saved' | 'stale'>;
 
@@ -368,6 +369,24 @@ export interface OrderRepository {
 
   /** Marks the seller order as written into the ledger (once; a second call changes nothing). */
   markLedgerRecorded(market: MarketContext, sellerOrderId: Id<'SellerOrder'>): Promise<void>;
+
+  /**
+   * An admin's cancellation (BUG-017): stamps every seller order of the order that is still
+   * `to-ship`, not ready and not cancelled with the cancellation time, and answers how many it
+   * stamped. In the cancellation's unit, under the row locks its refunds hold: a caller that
+   * stamped fewer than the order's seller orders rolls the unit back.
+   */
+  markCancelled(market: MarketContext, orderId: Id<'Order'>, at: Temporal.Instant): Promise<number>;
+
+  /** Cancelled seller orders whose stock inventory has not released yet, oldest cancel first. */
+  findStockToRelease(market: MarketContext, limit: number): Promise<readonly SellerOrderRecord[]>;
+
+  /** Marks a cancelled seller order's stock as released (once; a second call changes nothing). */
+  markStockReleased(
+    market: MarketContext,
+    sellerOrderId: Id<'SellerOrder'>,
+    at: Temporal.Instant,
+  ): Promise<void>;
 
   /** Marks the lines as recorded in inventory (once; a second call changes nothing). */
   markInventoryRecorded(

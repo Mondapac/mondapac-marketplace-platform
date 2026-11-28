@@ -100,13 +100,18 @@ export function accountOrderOf(
   // Never paid (still waiting, expired, payment failed): not an order the buyer placed.
   if (orderId === null || placedOn === null || !Array.isArray(body.sellerOrders)) return null;
   if (body.status !== 'confirmed' && body.status !== 'cancelled') return null;
-  const cancelled = body.status === 'cancelled';
+  // A paid order an admin cancelled (Cancel and refund) keeps the status confirmed and says so in
+  // its cancel reason; each of its parts carries the cancellation time.
+  const cancelled = body.status === 'cancelled' || body.cancelReason === 'admin-cancelled';
   const notes = isRecord(body.sellerNotes) ? body.sellerNotes : {};
   const parts: OrderPart[] = [];
   for (const seller of body.sellerOrders) {
     if (!isRecord(seller) || !Array.isArray(seller.lines)) return null;
     const sellerId = typeof seller.sellerId === 'string' ? seller.sellerId : null;
-    const status = partStatus(cancelled, seller.fulfilment);
+    const status = partStatus(
+      cancelled || (typeof seller.cancelledAt === 'string' && INSTANT.test(seller.cancelledAt)),
+      seller.fulfilment,
+    );
     const deliveryMethod = METHODS.find((method) => method === seller.deliveryMethod) ?? null;
     const deliveryFee = moneyOf(seller.shipping);
     const discount = optionalMoney(seller.discount);

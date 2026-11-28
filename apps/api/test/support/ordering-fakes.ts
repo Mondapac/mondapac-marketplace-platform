@@ -781,7 +781,10 @@ export class MemoryOrders implements OrderRepository {
     for (const [orderId, order] of this.rows) {
       const index = order.sellerOrders.findIndex((seller) => seller.id === sellerOrder.id);
       if (index < 0) continue;
-      if (order.sellerOrders[index]!.fulfilment !== from) return Promise.resolve('stale' as const);
+      const current = order.sellerOrders[index]!;
+      if (current.fulfilment !== from || (from === 'to-ship' && current.cancelledAt !== null)) {
+        return Promise.resolve('stale' as const);
+      }
       const sellerOrders = order.sellerOrders.map((seller, i) =>
         i === index ? { ...sellerOrder, inventoryRecordedAt: seller.inventoryRecordedAt } : seller,
       );
@@ -811,7 +814,10 @@ export class MemoryOrders implements OrderRepository {
   saveReady(_m: MarketContext, sellerOrder: SellerOrder) {
     return this.patchSeller(
       sellerOrder,
-      (current) => current.fulfilment === 'to-ship' && current.readyAt === null,
+      (current) =>
+        current.fulfilment === 'to-ship' &&
+        current.readyAt === null &&
+        current.cancelledAt === null,
       (current) => ({ ...current, readyAt: sellerOrder.readyAt }),
     );
   }
@@ -860,6 +866,39 @@ export class MemoryOrders implements OrderRepository {
       );
       this.rows.set(orderId, { ...order, sellerOrders });
     }
+    return Promise.resolve();
+  }
+  markCancelled(_m: MarketContext, orderId: Id<'Order'>, at: Temporal.Instant) {
+    const order = this.rows.get(orderId);
+    if (order === undefined) return Promise.resolve(0);
+    let stamped = 0;
+    const sellerOrders = order.sellerOrders.map((seller) => {
+      if (
+        seller.fulfilment !== 'to-ship' ||
+        seller.readyAt !== null ||
+        seller.cancelledAt !== null
+      ) {
+        return seller;
+      }
+      stamped += 1;
+      return { ...seller, cancelledAt: at };
+    });
+    this.rows.set(orderId, { ...order, sellerOrders });
+    return Promise.resolve(stamped);
+  }
+  /** Seller orders whose stock the worker released (not a domain field). */
+  readonly stockReleased = new Map<string, Temporal.Instant>();
+  findStockToRelease(_m: MarketContext, limit: number) {
+    return Promise.resolve(
+      this.paid(null)
+        .filter(
+          (r) => r.sellerOrder.cancelledAt !== null && !this.stockReleased.has(r.sellerOrder.id),
+        )
+        .slice(0, limit),
+    );
+  }
+  markStockReleased(_m: MarketContext, sellerOrderId: Id<'SellerOrder'>, at: Temporal.Instant) {
+    if (!this.stockReleased.has(sellerOrderId)) this.stockReleased.set(sellerOrderId, at);
     return Promise.resolve();
   }
   markInventoryRecorded(_m: MarketContext, sellerOrderId: Id<'SellerOrder'>, at: Temporal.Instant) {
@@ -1395,8 +1434,10 @@ export class FakeInventory implements InventoryOrderingPort {
     this.committed.push(request);
     return Promise.resolve(ok({ reservationId: request.reservationId as Id<'Reservation'> }));
   }
+  cancelLineFails: LineCommandFailure | null = null;
   cancelCommittedLine(_c: CallContext, request: { orderLineId: string }) {
     this.calls.push(`cancel-line:${request.orderLineId}`);
+    if (this.cancelLineFails !== null) return Promise.resolve(err(this.cancelLineFails));
     return Promise.resolve(ok({ orderLineId: request.orderLineId }));
   }
   shipped: string[] = [];

@@ -1,6 +1,11 @@
 import { money, Temporal } from '@mondapac/shared-kernel';
 import type { Id, Money } from '@mondapac/shared-kernel';
-import type { CancelReason, OrderState, SellerOrder } from './order';
+import {
+  adminCancelledAt,
+  type OrderState,
+  type OrderViewCancelReason,
+  type SellerOrder,
+} from './order';
 import type { Refund, RefundReason } from './refund';
 
 // The order activity timeline (order detail, panels row 4): a read-only list of what happened to
@@ -52,7 +57,7 @@ export interface OrderActivityEvent {
   /** A refund's amount (what goes back to the customer, tax included); null otherwise. */
   readonly amount: Money | null;
   /** The refund reason or the cancel reason (closed lists); null otherwise. */
-  readonly reason: RefundReason | CancelReason | null;
+  readonly reason: RefundReason | OrderViewCancelReason | null;
   readonly by: OrderActivityActor | null;
 }
 
@@ -158,6 +163,13 @@ export function orderActivity(
   if (order.confirmedAt !== null) events.push(event('order-paid', order.confirmedAt));
   if (order.status === 'cancelled' && order.cancelledAt !== null) {
     events.push(event('order-cancelled', order.cancelledAt, { reason: order.cancelReason }));
+  }
+  // A paid order an admin cancelled (BUG-017): its status stays confirmed.
+  const adminCancelled = adminCancelledAt(order);
+  if (adminCancelled !== null) {
+    events.push(
+      event('order-cancelled', adminCancelled, { by: 'admin', reason: 'admin-cancelled' }),
+    );
   }
   for (const sellerOrder of order.sellerOrders) events.push(...sellerOrderSteps(sellerOrder));
   for (const refund of refunds) {

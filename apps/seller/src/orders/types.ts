@@ -91,6 +91,8 @@ export interface SellerOrderView {
   readonly deliveryWindowEnd: string | null;
   /** When this shop said the order is ready; null until then. */
   readonly readyAt: string | null;
+  /** When an admin cancelled the order and refunded the customer; null otherwise. Final. */
+  readonly cancelledAt: string | null;
   /** Set when the platform must arrange the delivery itself; the shop does nothing. */
   readonly deliveryAttention: 'no-carrier' | 'carrier-unknown' | 'cancel-unknown' | null;
   /** Tries left and the lock of a ready pickup order; null for any other order. */

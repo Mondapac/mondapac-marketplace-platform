@@ -24,6 +24,7 @@ export const part = (over: Partial<SellerPart> = {}): SellerPart => ({
   deliveryWindowEnd: null,
   readyAt: null,
   deliveryAttention: null,
+  cancelledAt: null,
   lines: [
     {
       lineId: '0190a000-0000-7000-8000-0000000000b1',

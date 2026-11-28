@@ -25,6 +25,7 @@ export const CANCEL_REASONS = [
   'superseded',
   'provider-failed',
   'discount-changed',
+  'admin-cancelled',
 ] as const;
 
 export interface Money {
@@ -93,6 +94,8 @@ export interface SellerPart {
   readonly readyAt: string | null;
   /** A delivery problem the platform must look at (carrier trouble); null when none. */
   readonly deliveryAttention: string | null;
+  /** When an admin cancelled the order (Cancel and refund); null otherwise. Final. */
+  readonly cancelledAt: string | null;
   readonly lines: readonly OrderLine[];
 }
 

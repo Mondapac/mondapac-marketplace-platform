@@ -10,7 +10,7 @@ import { shortId } from '../shared/short-id.ts';
 import { FallbackId } from './fallback-id.tsx';
 import type { OrderColumn } from './orders-columns.ts';
 import { orderHref, type CustomerOrigin } from './order-href.ts';
-import { OrderStatusBadge } from './status-badge.tsx';
+import { displayStatusOf, OrderStatusBadge } from './status-badge.tsx';
 import { PAYMENT_STATES, type AdminOrderRow } from './types.ts';
 
 /** One line per seller part: the shop name, or the short id when the name is unknown. */
@@ -87,7 +87,7 @@ export function OrdersTable({
       id: 'status',
       header: t('col.status'),
       corner: true,
-      cell: (order) => <OrderStatusBadge status={order.status} />,
+      cell: (order) => <OrderStatusBadge status={displayStatusOf(order)} />,
     },
     ...columns.map((column): SuperColumn<AdminOrderRow> => ({
       id: column,

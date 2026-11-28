@@ -6641,6 +6641,7 @@
       "superseded": "Replaced by a newer checkout",
       "provider-failed": "Payment provider failed",
       "discount-changed": "A discount no longer applied",
+      "admin-cancelled": "An admin cancelled it and refunded the customer",
       "unknown": "Other"
     },
     "col": {

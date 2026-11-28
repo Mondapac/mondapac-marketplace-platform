@@ -9,7 +9,9 @@ export const RECORD_SHIPMENTS_JOB = 'ordering.record-shipments';
  * `ordering.record-shipments`, every 10 seconds: for each hosted Market, the scheduler's
  * system-actor context goes unchanged to `RecordShipments` (rule `system`). Safe to run twice and
  * concurrently: inventory's `recordShipment` is keyed by the order line and a seller order is
- * marked once. A seller order inventory refuses is logged and tried again next run.
+ * marked once. The same run gives back the stock of seller orders an admin cancelled (BUG-017,
+ * `cancelCommittedLine`, keyed by the order line too). A seller order inventory refuses is logged
+ * and tried again next run.
  */
 export function recordShipmentsJob(record: RecordShipments): JobDefinition {
   const logger = new Logger('RecordShipmentsJob');
@@ -23,8 +25,9 @@ export function recordShipmentsJob(record: RecordShipments): JobDefinition {
       for (const problem of result.value.failed) {
         logger.error({ msg: `${RECORD_SHIPMENTS_JOB}.failed`, ...fields, ...problem });
       }
-      if (result.value.recorded > 0) {
-        logger.log({ msg: RECORD_SHIPMENTS_JOB, ...fields, recorded: result.value.recorded });
+      const { recorded, released } = result.value;
+      if (recorded > 0 || released > 0) {
+        logger.log({ msg: RECORD_SHIPMENTS_JOB, ...fields, recorded, released });
       }
     },
   };

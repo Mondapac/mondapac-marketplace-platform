@@ -124,6 +124,23 @@ describe.each(['AUD', 'JPY'])('a paid order in %s', (currency) => {
     expect(cancelled?.parts.map((part) => part.status)).toEqual(['cancelled', 'cancelled']);
   });
 
+  it('shows a paid order an admin cancelled as cancelled, though its status stays confirmed', () => {
+    const base = orderBody(currency);
+    const body = {
+      ...base,
+      cancelReason: 'admin-cancelled',
+      sellerOrders: base.sellerOrders.map((part) => ({
+        ...part,
+        fulfilment: 'to-ship',
+        deliveredAt: null,
+        cancelledAt: '2026-10-21T01:00:00.000Z',
+      })),
+    };
+    const shown = accountOrderOf(body, LABELS);
+    expect(shown?.status).toBe('cancelled');
+    expect(shown?.parts.map((part) => part.status)).toEqual(['cancelled', 'cancelled']);
+  });
+
   it('reads the discounts of a part and takes them off the total the buyer paid', () => {
     const body: { sellerOrders: Record<string, unknown>[] } = orderBody(currency);
     body.sellerOrders[0] = {

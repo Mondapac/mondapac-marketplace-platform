@@ -2855,19 +2855,19 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       const record = () => new RecordShipments(gate, deps).execute(system, {});
 
       // Nothing shipped, nothing to record.
-      expect(await record()).toEqual(ok({ recorded: 0, failed: [] }));
+      expect(await record()).toEqual(ok({ recorded: 0, released: 0, failed: [] }));
       expect(inventory.shipped).toEqual([]);
 
       await ship(sellerA, sellerOrderId);
       inventory.shipmentFails = { code: 'conflict.retry' };
       const failed = await record();
       expect(failed).toEqual(
-        ok({ recorded: 0, failed: [{ sellerOrderId, code: 'conflict.retry' }] }),
+        ok({ recorded: 0, released: 0, failed: [{ sellerOrderId, code: 'conflict.retry' }] }),
       );
 
       inventory.shipmentFails = null;
       const done = await record();
-      expect(done).toEqual(ok({ recorded: 1, failed: [] }));
+      expect(done).toEqual(ok({ recorded: 1, released: 0, failed: [] }));
       const lineIds = orders.rows
         .get(order.id)!
         .lines.filter((l) => l.sellerOrderId === sellerOrderId)
@@ -2875,7 +2875,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(inventory.shipped).toEqual(lineIds);
 
       // The seller order is marked, so the next run finds nothing.
-      expect(await record()).toEqual(ok({ recorded: 0, failed: [] }));
+      expect(await record()).toEqual(ok({ recorded: 0, released: 0, failed: [] }));
       expect(inventory.shipped).toEqual(lineIds);
       // Only the system actor may run it.
       expect(await new RecordShipments(gate, deps).execute(customer, {})).toMatchObject({

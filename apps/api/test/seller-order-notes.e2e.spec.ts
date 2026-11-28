@@ -92,6 +92,7 @@ describe.each(TEST_MARKETS)('seller notes and order activity over HTTP in market
     shippedAt: START.add({ minutes: 30 }),
     deliveredAt: null,
     inventoryRecordedAt: null,
+    cancelledAt: null,
     ledgerState: 'pending',
     deliveryMethod: 'instant',
     deliveryWindow: null,

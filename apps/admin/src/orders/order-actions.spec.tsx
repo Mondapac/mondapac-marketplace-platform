@@ -51,6 +51,7 @@ function fixtures(currency: string, shippingAmount: string) {
     deliveryWindowStart: null,
     deliveryWindowEnd: null,
     readyAt: null,
+    cancelledAt: null,
     deliveryAttention: null,
     lines: [
       {

@@ -345,6 +345,7 @@ describe.each([['AU'], ['ZZ']] as const)('seller notes and order activity in mar
       shippedAt: null,
       deliveredAt: null,
       inventoryRecordedAt: null,
+      cancelledAt: null,
       ledgerState: 'pending',
       deliveryMethod: 'instant',
       deliveryWindow: null,

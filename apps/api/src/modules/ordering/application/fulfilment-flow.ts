@@ -411,6 +411,11 @@ export async function markSellerOrderReady(
       });
     };
     if (record.sellerOrder.readyAt !== null) return already(record);
+    // An admin cancelled the order (BUG-017): final, whatever its refunds' state.
+    if (record.sellerOrder.cancelledAt !== null) {
+      outcome = 'ordering.seller-order-refunded';
+      return err({ code: 'ordering.seller-order-refunded' } as const);
+    }
     const ready = markReady(record.sellerOrder, now);
     if (ready === null) {
       outcome = 'ordering.fulfilment-conflict';
@@ -420,6 +425,10 @@ export async function markSellerOrderReady(
       // A second tab won the race: if it said ready, this is a repeat, else the order moved on.
       const fresh = await deps.orders.findForSeller(context.market, sellerId, sellerOrderId.value);
       if (fresh !== null && fresh.sellerOrder.readyAt !== null) return already(fresh);
+      if (fresh !== null && fresh.sellerOrder.cancelledAt !== null) {
+        outcome = 'ordering.seller-order-refunded';
+        return err({ code: 'ordering.seller-order-refunded' } as const);
+      }
       outcome = 'ordering.fulfilment-conflict';
       return err({ code: 'ordering.fulfilment-conflict' } as const);
     }
@@ -700,6 +709,8 @@ export async function labelled(
 
 export interface ShipmentRecording {
   readonly recorded: number;
+  /** Cancelled seller orders whose committed lines inventory released (BUG-017). */
+  readonly released: number;
   /** Seller orders whose lines inventory refused or could not be reached for; tried again next run. */
   readonly failed: readonly { readonly sellerOrderId: string; readonly code: string }[];
 }
@@ -747,5 +758,52 @@ export async function recordShipments(
     });
     recorded += 1;
   }
-  return ok({ recorded, failed });
+  const released = await releaseCancelledStock(deps, context, failed);
+  if (!released.ok) return released;
+  return ok({ recorded, released: released.value, failed });
+}
+
+/**
+ * The worker's side of an admin's cancellation (BUG-017): cancels the committed lines of each
+ * cancelled seller order in inventory, so the units are sellable again (`cancelCommittedLine` is
+ * keyed by the order line, so a repeat is harmless), then marks the seller order released. A line
+ * inventory no longer holds as committed (never committed, or already cancelled) counts as done.
+ * Any other refusal leaves the seller order for the next run and is reported in `failed`.
+ */
+async function releaseCancelledStock(
+  deps: OrderingDependencies,
+  context: CallContext,
+  failed: { sellerOrderId: string; code: string }[],
+): Promise<Result<number, FulfilmentFailure>> {
+  const pending = await deps.unitOfWork.run<
+    Awaited<ReturnType<typeof deps.orders.findStockToRelease>>,
+    FulfilmentFailure
+  >(
+    context.market,
+    async () => ok(await deps.orders.findStockToRelease(context.market, RECORD_BATCH)),
+    { readOnly: true },
+  );
+  if (!pending.ok) return pending;
+  let released = 0;
+  for (const record of pending.value) {
+    let problem: string | null = null;
+    for (const line of record.lines) {
+      const done = await deps.inventory.cancelCommittedLine(context, { orderLineId: line.id });
+      if (!done.ok && done.error.code !== 'inventory.line.not-found') {
+        problem = done.error.code;
+        break;
+      }
+    }
+    if (problem !== null) {
+      failed.push({ sellerOrderId: record.sellerOrder.id, code: problem });
+      continue;
+    }
+    const at = deps.clock.now();
+    await deps.unitOfWork.run<true, FulfilmentFailure>(context.market, async () => {
+      await deps.orders.markStockReleased(context.market, record.sellerOrder.id, at);
+      return ok(true as const);
+    });
+    released += 1;
+  }
+  return ok(released);
 }
