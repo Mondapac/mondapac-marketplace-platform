@@ -58,6 +58,7 @@ export function catalogIndexSubscriptions(sync: SyncOfferDocuments): RegisteredS
     subscription({
       name: INDEX_ON_OFFER_PUBLISHED_SUBSCRIBER,
       event: OfferPublished,
+      inbox: 'none',
       handle: (event, _delivery, context) =>
         run(INDEX_ON_OFFER_PUBLISHED_SUBSCRIBER, context, {
           offerIds: [event.payload.offerId as Id<'Offer'>],
@@ -66,6 +67,7 @@ export function catalogIndexSubscriptions(sync: SyncOfferDocuments): RegisteredS
     subscription({
       name: INDEX_ON_OFFER_DELETED_SUBSCRIBER,
       event: OfferDeleted,
+      inbox: 'none',
       handle: (event, _delivery, context) =>
         run(INDEX_ON_OFFER_DELETED_SUBSCRIBER, context, {
           offerIds: [event.payload.offerId as Id<'Offer'>],
@@ -74,6 +76,7 @@ export function catalogIndexSubscriptions(sync: SyncOfferDocuments): RegisteredS
     subscription({
       name: INDEX_ON_OFFER_MOVED_SUBSCRIBER,
       event: OfferMoved,
+      inbox: 'none',
       handle: (event, _delivery, context) =>
         run(INDEX_ON_OFFER_MOVED_SUBSCRIBER, context, {
           offerIds: [event.payload.offerId as Id<'Offer'>],
@@ -82,6 +85,7 @@ export function catalogIndexSubscriptions(sync: SyncOfferDocuments): RegisteredS
     subscription({
       name: INDEX_ON_REVISION_PUBLISHED_SUBSCRIBER,
       event: ProductRevisionPublished,
+      inbox: 'none',
       handle: (event, _delivery, context) =>
         run(INDEX_ON_REVISION_PUBLISHED_SUBSCRIBER, context, {
           productId: event.payload.productId as Id<'Product'>,
@@ -90,6 +94,7 @@ export function catalogIndexSubscriptions(sync: SyncOfferDocuments): RegisteredS
     subscription({
       name: INDEX_ON_LISTING_CHANGED_SUBSCRIBER,
       event: OfferListingChanged,
+      inbox: 'none',
       handle: (event, _delivery, context) =>
         run(INDEX_ON_LISTING_CHANGED_SUBSCRIBER, context, {
           offerIds: [event.payload.offerId as Id<'Offer'>],
@@ -98,6 +103,7 @@ export function catalogIndexSubscriptions(sync: SyncOfferDocuments): RegisteredS
     subscription({
       name: INDEX_ON_PRODUCT_PAUSED_SUBSCRIBER,
       event: ProductPaused,
+      inbox: 'none',
       handle: (event, _delivery, context) =>
         run(INDEX_ON_PRODUCT_PAUSED_SUBSCRIBER, context, {
           productId: event.payload.productId as Id<'Product'>,
@@ -106,6 +112,7 @@ export function catalogIndexSubscriptions(sync: SyncOfferDocuments): RegisteredS
     subscription({
       name: INDEX_ON_AVAILABILITY_CHANGED_SUBSCRIBER,
       event: AvailabilityChanged,
+      inbox: 'none',
       handle: (event, _delivery, context) =>
         run(INDEX_ON_AVAILABILITY_CHANGED_SUBSCRIBER, context, {
           offerIds: [event.payload.offerId as Id<'Offer'>],
@@ -114,6 +121,7 @@ export function catalogIndexSubscriptions(sync: SyncOfferDocuments): RegisteredS
     subscription({
       name: INDEX_ON_PRICE_CHANGED_SUBSCRIBER,
       event: EffectivePriceChanged,
+      inbox: 'none',
       handle: (event, _delivery, context) =>
         run(INDEX_ON_PRICE_CHANGED_SUBSCRIBER, context, {
           offerIds: [event.payload.offerId as Id<'Offer'>],
@@ -122,6 +130,7 @@ export function catalogIndexSubscriptions(sync: SyncOfferDocuments): RegisteredS
     subscription({
       name: INDEX_ON_SELL_UNIT_CHANGED_SUBSCRIBER,
       event: OfferSellUnitChanged,
+      inbox: 'none',
       handle: (event, _delivery, context) =>
         run(INDEX_ON_SELL_UNIT_CHANGED_SUBSCRIBER, context, {
           offerIds: [event.payload.offerId as Id<'Offer'>],
@@ -130,6 +139,7 @@ export function catalogIndexSubscriptions(sync: SyncOfferDocuments): RegisteredS
     subscription({
       name: INDEX_ON_PRODUCT_RESUMED_SUBSCRIBER,
       event: ProductResumed,
+      inbox: 'none',
       handle: (event, _delivery, context) =>
         run(INDEX_ON_PRODUCT_RESUMED_SUBSCRIBER, context, {
           productId: event.payload.productId as Id<'Product'>,

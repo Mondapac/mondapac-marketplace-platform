@@ -5,6 +5,7 @@ import { createCallContext, systemActor } from '@mondapac/shared-kernel/contexts
 import { decodePayload } from '../../events/decode-payload';
 import {
   BACK_OFF_BASE_SECONDS,
+  isDeliveredWithoutInbox,
   BACK_OFF_MAX_SECONDS,
   DISPATCH_BATCH_SIZE,
   HANDLER_BUDGET_MS,
@@ -21,7 +22,7 @@ import type { MarketRegistry } from '../../market-config/market-registry';
 import type { MarketContextFactory } from '../../market-context/market-context.factory';
 import { DEFAULT_UNIT_TIMEOUT_MS } from '../../unit-of-work/unit-of-work';
 import type { PrismaRoot } from '../prisma-root';
-import { deliverySettled, issueDelivery } from './delivery-ledger';
+import { deliveryOpened, deliverySettled, issueDelivery } from './delivery-ledger';
 
 /** A claimed row of `platform.event_delivery` (data design 3.8). */
 interface DeliveryRecord {
@@ -81,6 +82,16 @@ UPDATE "platform"."event_delivery"
  WHERE "market_id" = $1 AND "event_id" = $2::uuid AND "subscriber" = $3 AND "status" = 'pending'
    AND "attempts" = $5 AND "next_attempt_at" = $6::timestamptz`;
 
+/**
+ * Marks delivered a delivery its handler finished without an inbox row (BUG-015), only while the
+ * row is still pending and holds this claim: its attempts and lease end as the claim returned them.
+ */
+const DELIVERED = `
+UPDATE "platform"."event_delivery"
+   SET "status" = 'delivered', "delivered_at" = $4::timestamptz, "error_code" = NULL
+ WHERE "market_id" = $1 AND "event_id" = $2::uuid AND "subscriber" = $3 AND "status" = 'pending'
+   AND "attempts" = $5 AND "next_attempt_at" = $6::timestamptz`;
+
 const FAILED = `
 UPDATE "platform"."event_delivery" SET "error_code" = $4
  WHERE "market_id" = $1 AND "event_id" = $2::uuid AND "subscriber" = $3 AND "status" = 'pending'`;
@@ -112,7 +123,8 @@ const valueOf = <T>(parsed: Parsed<T>): T | null => (parsed.ok ? parsed.value : 
  * factory, that Market's system actor and the envelope's correlation id. The handler calls one
  * `system` use case, whose `runOnce` marks the delivery delivered; a handler that throws, or
  * returns without a committed `runOnce`, has failed, and the row comes due again after its
- * back-off. After 10 claims it is `dead`, with an error code and one error-level line marked
+ * back-off. A handler that finished on purpose without an inbox row (`deliveredWithoutInbox`, or a
+ * subscription declared `inbox: 'none'`) and opened no `runOnce` is marked delivered (BUG-015). After 10 claims it is `dead`, with an error code and one error-level line marked
  * for alerting. An unknown subscriber, a type that is not the subscription's, or an envelope
  * or payload that does not decode is dead at once. Logs carry event id, type, subscriber,
  * Market and correlation id; never a payload or an error message.
@@ -246,8 +258,29 @@ export class PrismaEventDispatcher implements EventDispatcher {
       this.logger.warn({ msg: 'event-delivery.handler-failed', ...this.fields(row), err: error });
       return this.fail(row, 'delivery.handler-failed');
     }
-    if (!deliverySettled(delivery)) return this.fail(row, 'delivery.not-consumed');
-    this.logger.debug({ msg: 'event-delivery.delivered', ...this.fields(row) });
+    if (deliverySettled(delivery)) {
+      this.logger.debug({ msg: 'event-delivery.delivered', ...this.fields(row) });
+      return;
+    }
+    // A `runOnce` that was opened and did not commit (its work refused, so rolled back) failed,
+    // and so did a handler that returned without one and without saying it needs none.
+    if (deliveryOpened(delivery) || !isDeliveredWithoutInbox(delivery)) {
+      return this.fail(row, 'delivery.not-consumed');
+    }
+    const marked = await this.root.$executeRawUnsafe(
+      DELIVERED,
+      row.market_id,
+      row.event_id,
+      row.subscriber,
+      new Date(this.clock.now().epochMilliseconds),
+      row.attempts,
+      row.next_attempt_at,
+    );
+    // Info, not debug (Kazem): a skip that should not have been one stays visible in the log.
+    this.logger.log({
+      msg: marked === 1 ? 'event-delivery.delivered-without-inbox' : 'event-delivery.lease-lost',
+      ...this.fields(row),
+    });
   }
 
   /** A failed delivery: dead at once when permanent or at the last attempt; else retried. */

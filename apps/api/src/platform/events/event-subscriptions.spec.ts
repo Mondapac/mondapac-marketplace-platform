@@ -1,6 +1,11 @@
 import { defineEvent, eventField } from '@mondapac/shared-kernel';
 import { decodePayload } from './decode-payload';
-import { backOffSeconds, MAX_DELIVERY_ATTEMPTS } from './event-delivery';
+import {
+  backOffSeconds,
+  isDeliveredWithoutInbox,
+  MAX_DELIVERY_ATTEMPTS,
+  type EventDelivery,
+} from './event-delivery';
 import {
   subscription,
   SubscriptionRegistry,
@@ -62,6 +67,41 @@ describe('SubscriptionRegistry (platform persistence design 6.4)', () => {
     registry.onApplicationBootstrap();
     expect(registry.sealed).toBe(true);
     expect(() => registry.register('alpha', [named('alpha.first')])).toThrow(/sealed/);
+  });
+});
+
+describe("a subscription declared inbox: 'none' (BUG-015)", () => {
+  const delivery = (): EventDelivery =>
+    Object.freeze({ eventId: ID as EventDelivery['eventId'], subscriber: 'alpha.x', attempt: 1 });
+  const envelope = {} as Parameters<RegisteredSubscription['handle']>[0];
+  const context = {} as Parameters<RegisteredSubscription['handle']>[2];
+
+  it('says its delivery needs no inbox once the handler returns', async () => {
+    const entry = subscription({
+      name: 'alpha.x',
+      event: Thing,
+      inbox: 'none',
+      handle: () => Promise.resolve(),
+    });
+    const handed = delivery();
+    await entry.handle(envelope, handed, context);
+    expect(isDeliveredWithoutInbox(handed)).toBe(true);
+  });
+
+  it('says nothing when the handler throws, nor for a subscription without the declaration', async () => {
+    const failing = subscription({
+      name: 'alpha.x',
+      event: Thing,
+      inbox: 'none',
+      handle: () => Promise.reject(new Error('down')),
+    });
+    const thrown = delivery();
+    await expect(failing.handle(envelope, thrown, context)).rejects.toThrow('down');
+    expect(isDeliveredWithoutInbox(thrown)).toBe(false);
+
+    const plain = delivery();
+    await named('alpha.y').handle(envelope, plain, context);
+    expect(isDeliveredWithoutInbox(plain)).toBe(false);
   });
 });
 

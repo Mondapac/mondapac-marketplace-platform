@@ -31,6 +31,7 @@ export function sellerAccessIndexSubscriptions(sync: SyncOfferDocuments): Regist
     subscription({
       name: UNINDEX_ON_SELLER_SUSPENDED_SUBSCRIBER,
       event: SellerAccessSuspended,
+      inbox: 'none',
       handle: (event, _delivery, context) =>
         run(
           UNINDEX_ON_SELLER_SUSPENDED_SUBSCRIBER,
@@ -41,6 +42,7 @@ export function sellerAccessIndexSubscriptions(sync: SyncOfferDocuments): Regist
     subscription({
       name: INDEX_ON_SELLER_REINSTATED_SUBSCRIBER,
       event: SellerAccessReinstated,
+      inbox: 'none',
       handle: (event, _delivery, context) =>
         run(INDEX_ON_SELLER_REINSTATED_SUBSCRIBER, context, event.payload.sellerId as Id<'Seller'>),
     }),

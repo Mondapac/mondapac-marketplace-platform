@@ -49,6 +49,7 @@ export function sellerFileSubscriptions(
     subscription({
       name: APPLY_SIGNUP_CULTURES_SUBSCRIBER,
       event: SellerRegistered,
+      inbox: 'none',
       async handle(event, _delivery, context) {
         const result = await applySignupCultures.execute(context, {
           sellerId: event.payload.sellerId as Id<'Seller'>,

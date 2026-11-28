@@ -103,24 +103,28 @@ export function cultureIndexSubscriptions(
     subscription({
       name: INDEX_ON_SELLER_CULTURE_CHANGED_SUBSCRIBER,
       event: SellerCultureStatusChanged,
+      inbox: 'none',
       handle: (event, _delivery, context) =>
         seller(INDEX_ON_SELLER_CULTURE_CHANGED_SUBSCRIBER, context, event.payload.sellerId),
     }),
     subscription({
       name: INDEX_ON_CERTIFICATE_APPROVED_SUBSCRIBER,
       event: SellerCertificationApproved,
+      inbox: 'none',
       handle: (event, _delivery, context) =>
         seller(INDEX_ON_CERTIFICATE_APPROVED_SUBSCRIBER, context, event.payload.sellerId),
     }),
     subscription({
       name: INDEX_ON_CERTIFICATE_EXPIRED_SUBSCRIBER,
       event: SellerCertificationExpired,
+      inbox: 'none',
       handle: (event, _delivery, context) =>
         seller(INDEX_ON_CERTIFICATE_EXPIRED_SUBSCRIBER, context, event.payload.sellerId),
     }),
     subscription({
       name: INDEX_ON_CERTIFICATE_REVOKED_SUBSCRIBER,
       event: SellerCertificationRevoked,
+      inbox: 'none',
       handle: (event, _delivery, context) =>
         seller(INDEX_ON_CERTIFICATE_REVOKED_SUBSCRIBER, context, event.payload.sellerId),
     }),
@@ -128,6 +132,7 @@ export function cultureIndexSubscriptions(
       subscription({
         name,
         event,
+        inbox: 'none',
         handle: (delivered, _delivery, context) =>
           run(name, context, { offerIds: [delivered.payload.offerId as Id<'Offer'>] }),
       }),
@@ -135,12 +140,14 @@ export function cultureIndexSubscriptions(
     subscription({
       name: INDEX_ON_CULTURE_MARK_CHANGED_SUBSCRIBER,
       event: CultureCategoryMarkChanged,
+      inbox: 'none',
       handle: (event, _delivery, context) =>
         subtree(INDEX_ON_CULTURE_MARK_CHANGED_SUBSCRIBER, context, event.payload.categoryId),
     }),
     subscription({
       name: INDEX_ON_CATEGORY_MERGED_SUBSCRIBER,
       event: PlatformCategoryMerged,
+      inbox: 'none',
       handle: async (event, _delivery, context) => {
         await subtree(INDEX_ON_CATEGORY_MERGED_SUBSCRIBER, context, event.payload.categoryId);
         await subtree(INDEX_ON_CATEGORY_MERGED_SUBSCRIBER, context, event.payload.mergedIntoId);
@@ -149,18 +156,21 @@ export function cultureIndexSubscriptions(
     subscription({
       name: INDEX_ON_CATEGORY_ARCHIVED_SUBSCRIBER,
       event: PlatformCategoryArchived,
+      inbox: 'none',
       handle: (event, _delivery, context) =>
         subtree(INDEX_ON_CATEGORY_ARCHIVED_SUBSCRIBER, context, event.payload.categoryId),
     }),
     subscription({
       name: INDEX_ON_CULTURE_STATUS_CHANGED_SUBSCRIBER,
       event: CultureStatusChanged,
+      inbox: 'none',
       handle: (_event, _delivery, context) =>
         ask(INDEX_ON_CULTURE_STATUS_CHANGED_SUBSCRIBER, context, 'culture-status'),
     }),
     subscription({
       name: INDEX_ON_ISSUER_DEACTIVATED_SUBSCRIBER,
       event: IssuerDeactivated,
+      inbox: 'none',
       handle: async (event, _delivery, context) => {
         // closed-to-new keeps every approved certificate valid to its boundary (design 3.5).
         if (event.payload.form !== 'derecognised') return;
@@ -170,6 +180,7 @@ export function cultureIndexSubscriptions(
     subscription({
       name: INDEX_ON_TYPE_DEACTIVATED_SUBSCRIBER,
       event: CertificationTypeDeactivated,
+      inbox: 'none',
       handle: (_event, _delivery, context) =>
         ask(INDEX_ON_TYPE_DEACTIVATED_SUBSCRIBER, context, 'type-deactivated'),
     }),

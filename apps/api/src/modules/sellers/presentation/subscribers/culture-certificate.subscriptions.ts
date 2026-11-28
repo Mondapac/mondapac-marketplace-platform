@@ -61,18 +61,21 @@ export function cultureCertificateSubscriptions(
     subscription({
       name: RECHECK_ON_CERTIFICATE_EXPIRED_SUBSCRIBER,
       event: SellerCertificationExpired,
+      inbox: 'none',
       handle: (event, _delivery, context) =>
         rechecked(RECHECK_ON_CERTIFICATE_EXPIRED_SUBSCRIBER, context, event.payload.sellerId),
     }),
     subscription({
       name: RECHECK_ON_CERTIFICATE_REVOKED_SUBSCRIBER,
       event: SellerCertificationRevoked,
+      inbox: 'none',
       handle: (event, _delivery, context) =>
         rechecked(RECHECK_ON_CERTIFICATE_REVOKED_SUBSCRIBER, context, event.payload.sellerId),
     }),
     subscription({
       name: RECHECK_ON_ISSUER_DEACTIVATED_SUBSCRIBER,
       event: IssuerDeactivated,
+      inbox: 'none',
       async handle(event, _delivery, context) {
         if (event.payload.form !== 'derecognised') return;
         const result = await recheckIssuer.execute(context, { issuerId: event.payload.issuerId });
@@ -86,6 +89,7 @@ export function cultureCertificateSubscriptions(
     subscription({
       name: DEMOTE_ON_APPROVALS_INVALIDATED_SUBSCRIBER,
       event: CultureApprovalsInvalidated,
+      inbox: 'none',
       async handle(event, _delivery, context) {
         const result = await demote.execute(context, { cultureId: event.payload.cultureId });
         if (!result.ok) {

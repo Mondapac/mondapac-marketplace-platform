@@ -9,7 +9,8 @@ import type { Id, Temporal } from '@mondapac/shared-kernel';
  *
  * Only the dispatcher creates one, and `runOnce` refuses a delivery it did not create, so a
  * module cannot forge or reuse one. A handler that returns without a `runOnce` that committed
- * has failed: the delivery comes due again after its back-off.
+ * has failed: the delivery comes due again after its back-off, unless it said so on purpose with
+ * {@link deliveredWithoutInbox} and opened no `runOnce` (BUG-015).
  */
 export interface EventDelivery {
   readonly eventId: Id<'event'>;
@@ -17,6 +18,26 @@ export interface EventDelivery {
   readonly subscriber: string;
   /** This claim's number, from 1 (P 6.4: the claim counts the attempt). */
   readonly attempt: number;
+}
+
+/** Deliveries their handler finished with nothing to record in an inbox (BUG-015). */
+const withoutInbox = new WeakSet<EventDelivery>();
+
+/**
+ * Says that the handler finished this delivery on purpose without a `runOnce` (BUG-015): an event
+ * it skips (another population, a scope it does not serve), or a converging re-read that needs no
+ * inbox row (a subscription declared `inbox: 'none'` does this after its handler returns). The
+ * dispatcher then marks the delivery delivered. Without it, a handler that returns without a
+ * committed `runOnce` still fails, so a forgotten `runOnce` stays visible. A delivery whose
+ * `runOnce` was opened and did not commit fails whatever this says.
+ */
+export function deliveredWithoutInbox(delivery: EventDelivery): void {
+  withoutInbox.add(delivery);
+}
+
+/** Whether {@link deliveredWithoutInbox} was called with this very handle. */
+export function isDeliveredWithoutInbox(delivery: EventDelivery): boolean {
+  return withoutInbox.has(delivery);
 }
 
 /** What one dispatcher pass did: deliveries claimed, and whether a batch was full. */

@@ -68,7 +68,10 @@ import type {
   SellerNoticeItem,
 } from '../../application/use-cases/record-seller-notice.use-case';
 import type { RecordSellerOrderNotices } from '../../application/use-cases/record-seller-order-notices.use-case';
-import type { EventDelivery } from '../../../../platform/events/event-delivery';
+import {
+  deliveredWithoutInbox,
+  type EventDelivery,
+} from '../../../../platform/events/event-delivery';
 import type { CallContext } from '@mondapac/shared-kernel';
 
 /** The subscriber name: also the `handler` of `notifications.inbox`. */
@@ -326,7 +329,10 @@ export function inAppNoticeSubscriptions(
       event: ProductRevisionPublished,
       handle: async (event, delivery, context) => {
         // A PLATFORM product is the admins' own: no seller to tell.
-        if (event.payload.scope !== 'seller') return;
+        if (event.payload.scope !== 'seller') {
+          deliveredWithoutInbox(delivery);
+          return;
+        }
         await seller(names.productPublished)(
           {
             kind: SELLER_PRODUCT_PUBLISHED,
@@ -350,7 +356,10 @@ export function inAppNoticeSubscriptions(
         name,
         event,
         handle: async (received, delivery, context) => {
-          if (received.payload.scope !== 'seller') return;
+          if (received.payload.scope !== 'seller') {
+            deliveredWithoutInbox(delivery);
+            return;
+          }
           await seller(name)(
             {
               kind: SELLER_PRODUCT_CHANGES_REQUESTED,
@@ -405,7 +414,10 @@ export function inAppNoticeSubscriptions(
       event: PriceHoldDecided,
       handle: async (event, delivery, context) => {
         // Superseded: the seller's own new price, a cancel or a retired series ended the hold.
-        if (event.payload.outcome === 'superseded') return;
+        if (event.payload.outcome === 'superseded') {
+          deliveredWithoutInbox(delivery);
+          return;
+        }
         await seller(names.priceHoldDecided)(
           {
             kind: SELLER_PRICE_HOLD_DECIDED,
