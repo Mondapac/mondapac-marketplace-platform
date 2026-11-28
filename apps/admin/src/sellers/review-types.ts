@@ -2,7 +2,7 @@
 // clear: personal data, so the page is rendered per request and never cached.
 
 export const REVIEW_PERMISSION = 'sellers.business-details.view';
-export const DECIDE_PERMISSION = 'seller-access.approve';
+export const DECIDE_PERMISSION = 'identity.seller-access.approve';
 /** `sellers.seller-settings.edit`: the seller's settings, such as May propose categories (SEL-26). */
 export const SETTINGS_EDIT_PERMISSION = 'sellers.seller-settings.edit';
 export const CHECK_PERMISSION = 'sellers.seller-file.review';
