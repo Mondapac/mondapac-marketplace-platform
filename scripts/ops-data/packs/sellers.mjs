@@ -4,7 +4,7 @@
 // approved store gets its About text, logo and minimum order, and its stock location's address.
 // Sellers in the other states stop where the scenario says: in review, rejected, suspended after
 // approval, or a draft file never submitted. A rerun creates only what is missing.
-import { Session, mailLink, sleep } from '../lib.mjs';
+import { Session, mailLink, setMainActivity, sleep } from '../lib.mjs';
 import { logo } from '../media.mjs';
 import { settle, write } from './requests.mjs';
 
@@ -81,7 +81,7 @@ async function fillFile(session, seller, scenario) {
 }
 
 /** The admin's decision on a submitted file: approve (after the register check) or reject. */
-async function decide(admin, reviewer, seller, log) {
+async function decide(admin, reviewer, seller, scenario, state, log) {
   const waiting = await sellerRows(admin, 'awaiting-review');
   const row = waiting.find((item) => item.slug === seller.slug);
   if (!row) throw new Error(`${seller.key}: not in the awaiting-review list`);
@@ -98,6 +98,7 @@ async function decide(admin, reviewer, seller, log) {
       `reject ${seller.key}`,
     );
   } else {
+    await setMainActivity(admin, state.admin.secret, row.sellerId, scenario.locale);
     await admin.ok('PUT', `/sellers/admin/${row.sellerId}/review/manual-register-check`, {
       revisionId,
       observedOutcome: 'active',
@@ -196,7 +197,7 @@ export async function sellersPack({ admin, reviewer, scenario, state, save, pass
         save();
         continue;
       }
-      const sellerId = await decide(admin, reviewer, seller, log);
+      const sellerId = await decide(admin, reviewer, seller, scenario, state, log);
       state.sellers[seller.key] = {
         sellerId,
         state: seller.state === 'rejected' ? 'rejected' : 'approving',

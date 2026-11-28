@@ -1485,7 +1485,7 @@
       "error": {
         "not-current": "The seller changed the application after this page was opened.",
         "identifier-claimed": "Another seller already holds this business identifier.",
-        "activity-required": "Set the seller's main business activity before approving.",
+        "activity-required": "Set the seller's main business activity in the Business activities card, then approve.",
         "register-negative": "The register shows this business as not found or cancelled, so it can't be approved.",
         "check-required": "Record a manual register check before approving.",
         "owner-unverified": "The seller owner has not verified their email yet.",
