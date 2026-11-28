@@ -92,7 +92,7 @@ const revision = (content: Record<string, unknown>) => ({
 /** A published product with one type (size) and two live variants. */
 const oneType = (over: Partial<ProductView> = {}): ProductView =>
   simple({
-    variantModel: 'configurable',
+    variantModel: 'options',
     typeCode: 'configurable',
     variants: [
       { variantId: 'v1', state: 'published', variantCode: 'P00000001-1' },
@@ -215,7 +215,7 @@ describe('add-sizes logic', () => {
 
   it('offers Add sizes only on a Simple product that can change and has a type to vary on', () => {
     expect(canAddSizes({ variantModel: 'single', status: 'draft' }, FIELDS)).toBe(true);
-    expect(canAddSizes({ variantModel: 'configurable', status: 'draft' }, FIELDS)).toBe(false);
+    expect(canAddSizes({ variantModel: 'options', status: 'draft' }, FIELDS)).toBe(false);
     expect(canAddSizes({ variantModel: 'single', status: 'discarded' }, FIELDS)).toBe(false);
     expect(canAddSizes({ variantModel: 'single', status: 'draft' }, [])).toBe(false);
   });

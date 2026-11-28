@@ -305,7 +305,7 @@ export function EditForm({
   const defaultLocale = product.locales.default;
   const { form } = product;
   const taxOptions = useTaxCategoryOptions(form.taxCategories);
-  const configurable = product.variantModel === 'configurable';
+  const configurable = product.variantModel === 'options';
   const attributeFields = form.fields.filter((field) => !field.isVariantOption);
   const [content, setContent] = useState(product.workingCopy?.content);
   const [texts, setTexts] = useState(() => textsOf(content, defaultLocale));

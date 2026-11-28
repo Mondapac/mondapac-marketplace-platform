@@ -63,7 +63,7 @@ const product = (over: Partial<ProductView> = {}): ProductView => ({
   productCode: 'P00000001',
   typeCode: 'configurable',
   familyCode: 'default',
-  variantModel: 'configurable',
+  variantModel: 'options',
   status: 'published',
   pausedAt: null,
   offers: { sellerCount: 3, offerCount: 7 },

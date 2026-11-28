@@ -90,7 +90,7 @@ const view = (over: Partial<ProductView> = {}): ProductView => ({
 
 const oneType = (over: Partial<ProductView> = {}): ProductView =>
   view({
-    variantModel: 'configurable',
+    variantModel: 'options',
     typeCode: 'configurable',
     variants: [
       { variantId: V1, state: 'published' },
@@ -210,7 +210,7 @@ describe('add-sizes logic', () => {
 
   it('decides when each action is offered', () => {
     expect(canAddSizes({ variantModel: 'single', status: 'draft' }, FIELDS)).toBe(true);
-    expect(canAddSizes({ variantModel: 'configurable', status: 'draft' }, FIELDS)).toBe(false);
+    expect(canAddSizes({ variantModel: 'options', status: 'draft' }, FIELDS)).toBe(false);
     expect(publishedAxesOf({ variantAxes: ['size'] }, FIELDS)).toEqual(['size']);
     expect(publishedAxesOf({ variants: [{ variantId: V1 }] }, FIELDS)).toBeNull();
     expect(secondAxisChoices(['size'], FIELDS, 2).map((f) => f.code)).toEqual(['colour']);
@@ -225,7 +225,7 @@ describe('Add sizes on a platform product', () => {
     call.mockResolvedValueOnce(impact(3));
     call.mockResolvedValueOnce(done);
     // The product is read again after the change.
-    call.mockResolvedValueOnce(ok(view({ variantModel: 'configurable' })));
+    call.mockResolvedValueOnce(ok(view({ variantModel: 'options' })));
     const dialog = await openDialog();
     expect(call.mock.calls[1]?.slice(0, 2)).toEqual([
       'GET',

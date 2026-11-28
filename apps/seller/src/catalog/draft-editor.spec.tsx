@@ -64,7 +64,7 @@ const product = (over: Partial<ProductView> = {}): ProductView => ({
   productCode: 'P00000001',
   typeCode: 'grocery',
   familyCode: 'food',
-  variantModel: 'configurable',
+  variantModel: 'options',
   status: 'draft',
   pausedAt: null,
   variants: [{ variantId: 'v1', state: 'proposed', variantCode: 'P-000001-0v1' }],

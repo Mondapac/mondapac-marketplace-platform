@@ -95,7 +95,7 @@ export function canAddSizes(
   fields: readonly FormField[],
 ): boolean {
   return (
-    product.variantModel !== 'configurable' &&
+    product.variantModel !== 'options' &&
     ['draft', 'published', 'unpublished', 'paused'].includes(product.status) &&
     axisCandidates(fields).length > 0
   );
