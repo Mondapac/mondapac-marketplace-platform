@@ -13,7 +13,7 @@ import {
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { callApi } from '../api/client.ts';
 import { PANEL_LANGUAGES } from './languages.ts';
@@ -65,6 +65,17 @@ export function ProfileEditor({
   const outcome = useRef<{ name?: boolean; prefs?: boolean }>({});
   const nameAlert = useRef<HTMLDivElement>(null);
   const prefsAlert = useRef<HTMLDivElement>(null);
+  // Which failed part to focus once its refusal has rendered (set by submit, read by the effect).
+  const [focusFailed, setFocusFailed] = useState<{ nameFailed: boolean } | null>(null);
+
+  useEffect(() => {
+    if (focusFailed === null) return;
+    const field = formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
+    const alert = focusFailed.nameFailed ? nameAlert.current : prefsAlert.current;
+    const target = field ?? alert;
+    target?.scrollIntoView?.({ block: 'nearest' });
+    target?.focus();
+  }, [focusFailed]);
 
   const nameDirty = name !== savedName;
   const prefsDirty = zone !== savedPrefs.zone || language !== savedPrefs.language;
@@ -151,14 +162,8 @@ export function ProfileEditor({
     // The details card and the account menu read these on the server.
     if (nameChanged === true || prefsChanged === true) router.refresh();
     if (run.failed.length > 0) {
-      // After the refusal renders: the wrong field, or the failed part's message.
-      setTimeout(() => {
-        const field = formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
-        const alert = run.failed.includes('name') ? nameAlert.current : prefsAlert.current;
-        const target = field ?? alert;
-        target?.scrollIntoView?.({ block: 'nearest' });
-        target?.focus();
-      }, 0);
+      // The effect above focuses it after the refusal has rendered, not on a timer.
+      setFocusFailed({ nameFailed: run.failed.includes('name') });
     }
   }
 
