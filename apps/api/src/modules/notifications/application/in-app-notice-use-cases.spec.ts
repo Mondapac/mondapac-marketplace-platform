@@ -108,6 +108,7 @@ const NOTICE: OrderNotice = {
     {
       sellerOrderId: id<'SellerOrder'>(0x21),
       sellerId: SELLER_A,
+      deliveryMethod: 'pickup' as const,
       lines: [
         { offerId: id<'Offer'>(0x31), quantity: 2 },
         { offerId: id<'Offer'>(0x32), quantity: 1 },
@@ -116,6 +117,7 @@ const NOTICE: OrderNotice = {
     {
       sellerOrderId: id<'SellerOrder'>(0x22),
       sellerId: SELLER_B,
+      deliveryMethod: 'pickup' as const,
       lines: [{ offerId: id<'Offer'>(0x33), quantity: 4 }],
     },
   ],

@@ -765,6 +765,7 @@
   { "name": "notifications.send-cart-reminders", "rule": "system" },
   { "name": "notifications.send-item-unavailable-refund-mail", "rule": "system" },
   { "name": "notifications.send-order-confirmation-mail", "rule": "system" },
+  { "name": "notifications.send-order-ready-mail", "rule": "system" },
   { "name": "notifications.send-order-shipped-mail", "rule": "system" },
   { "name": "notifications.send-seller-new-order-mail", "rule": "system" },
   { "name": "notifications.send-seller-order-disputed-mail", "rule": "system" },

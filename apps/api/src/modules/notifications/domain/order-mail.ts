@@ -156,3 +156,59 @@ export function itemUnavailableRefundMail(input: {
   });
   return { subject, text };
 }
+
+/** The customer's "Ready for pickup": the reference and the order link; never the pickup code. */
+export function orderReadyPickupMail(input: {
+  readonly orderId: string;
+  readonly orderUrl: string;
+  readonly locale?: string;
+}): ComposedMail {
+  const { subject, text } = renderTemplate('order-ready-pickup', input.locale ?? 'en', {
+    orderId: input.orderId,
+    orderUrl: input.orderUrl,
+  });
+  return { subject, text };
+}
+
+const REASON_WORDS: Readonly<Record<string, string>> = {
+  'not-received': 'the order was not received',
+  damaged: 'an item was damaged',
+  'wrong-item': 'the wrong item was sent',
+  'not-as-described': 'an item was not as described',
+  'seller-cancelled': 'the seller cancelled',
+  other: 'a refund was agreed',
+};
+
+/** The customer's "Your refund" after an admin refund Stripe confirmed. */
+export function orderRefundedMail(input: {
+  readonly orderId: string;
+  readonly reason: string;
+  readonly amount: Money;
+  readonly orderUrl: string;
+  readonly locale?: string;
+}): ComposedMail {
+  const locale = input.locale ?? 'en';
+  const { subject, text } = renderTemplate('order-refunded', locale, {
+    orderId: input.orderId,
+    reason: REASON_WORDS[input.reason] ?? REASON_WORDS['other']!,
+    amount: mailAmount(input.amount, locale),
+    orderUrl: input.orderUrl,
+  });
+  return { subject, text };
+}
+
+/** The customer's "Your order was cancelled": an admin cancelled and refunded it in full. */
+export function orderCancelledMail(input: {
+  readonly orderId: string;
+  readonly amount: Money;
+  readonly orderUrl: string;
+  readonly locale?: string;
+}): ComposedMail {
+  const locale = input.locale ?? 'en';
+  const { subject, text } = renderTemplate('order-cancelled', locale, {
+    orderId: input.orderId,
+    amount: mailAmount(input.amount, locale),
+    orderUrl: input.orderUrl,
+  });
+  return { subject, text };
+}

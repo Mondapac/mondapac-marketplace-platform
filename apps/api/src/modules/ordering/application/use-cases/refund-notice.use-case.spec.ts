@@ -27,9 +27,17 @@ function query(state: string, refundOrderId: string, currency: string) {
   };
   const deps = {
     unitOfWork: { run: (_market: unknown, work: () => Promise<unknown>) => work() },
-    refunds: { findById: () => Promise.resolve(refund) },
+    refunds: {
+      findById: () => Promise.resolve(refund),
+      listForOrder: () => Promise.resolve([{ refund, creditNoteId: null }]),
+    },
     orders: {
-      findById: () => Promise.resolve({ id: id(ORDER), accountId: id(ACCOUNT) }),
+      findById: () =>
+        Promise.resolve({
+          id: id(ORDER),
+          accountId: id(ACCOUNT),
+          lines: [{ quantity: 3 }, { quantity: 2 }],
+        }),
     },
   };
   return new RefundNoticeQuery(openGate(), deps as never);
@@ -63,6 +71,7 @@ describe.each([
         requestedBy: 'seller',
         amount: money(1250n, currency),
         units: 3,
+        orderFullyRefunded: false,
       }),
     );
   });

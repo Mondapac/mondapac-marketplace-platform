@@ -10,6 +10,9 @@ export type TemplateId =
   | 'seller-order-disputed'
   | 'order-shipped'
   | 'item-unavailable-refund'
+  | 'order-ready-pickup'
+  | 'order-refunded'
+  | 'order-cancelled'
   | 'marketing-footer'
   | 'cart-reminder-first'
   | 'cart-reminder-second'
@@ -108,6 +111,67 @@ const TEMPLATES: Readonly<Record<TemplateId, TemplateSet>> = {
         '',
         'Order reference: {orderId}',
         'Items not supplied: {units}',
+        'Refunded: {amount}',
+        '',
+        'The refund goes back to the card you paid with. Your bank may take a few days to show it.',
+        '',
+        'View your order (you will be asked to sign in):',
+        '{orderUrl}',
+        '',
+      ),
+    },
+  },
+  // The seller said a pickup order is ready. The 4-digit pickup code is NOT in the mail: only the
+  // signed-in buyer reads it, on the order page (pickup-code.ts), so a forwarded or read mail
+  // cannot hand the goods to someone else.
+  'order-ready-pickup': {
+    en: {
+      subject: 'Your order is ready for pickup',
+      body: lines(
+        'Your order is ready for pickup',
+        '',
+        'Good news: a seller has prepared part of your order and it is waiting for you.',
+        '',
+        'Order reference: {orderId}',
+        '',
+        'Your pickup code is on your order page. Sign in, open the order and show the code to the seller when you collect it. Do not share the code with anyone else.',
+        '',
+        'View your order and pickup code (you will be asked to sign in):',
+        '{orderUrl}',
+        '',
+      ),
+    },
+  },
+  // An admin refunded part of an order. The amount and the reason's plain words only.
+  'order-refunded': {
+    en: {
+      subject: 'Your refund',
+      body: lines(
+        'Your refund',
+        '',
+        'We have refunded part of your order. Reason: {reason}.',
+        '',
+        'Order reference: {orderId}',
+        'Refunded: {amount}',
+        '',
+        'The refund goes back to the card you paid with. Your bank may take a few days to show it.',
+        '',
+        'View your order (you will be asked to sign in):',
+        '{orderUrl}',
+        '',
+      ),
+    },
+  },
+  // An admin cancelled the order and refunded all of it.
+  'order-cancelled': {
+    en: {
+      subject: 'Your order was cancelled',
+      body: lines(
+        'Your order was cancelled',
+        '',
+        'Your order has been cancelled and refunded in full.',
+        '',
+        'Order reference: {orderId}',
         'Refunded: {amount}',
         '',
         'The refund goes back to the card you paid with. Your bank may take a few days to show it.',

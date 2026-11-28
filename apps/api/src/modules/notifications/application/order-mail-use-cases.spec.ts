@@ -17,6 +17,7 @@ import type { OrderMailDependencies } from './order-mail-flow';
 import { mailAmount } from '../domain/order-mail';
 import { SendItemUnavailableRefundMail } from './use-cases/send-item-unavailable-refund-mail.use-case';
 import { SendOrderConfirmationMail } from './use-cases/send-order-confirmation-mail.use-case';
+import { SendOrderReadyMail } from './use-cases/send-order-ready-mail.use-case';
 import { SendOrderShippedMail } from './use-cases/send-order-shipped-mail.use-case';
 import { SendSellerNewOrderMail } from './use-cases/send-seller-new-order-mail.use-case';
 import { SendSellerOrderDisputedMail } from './use-cases/send-seller-order-disputed-mail.use-case';
@@ -49,11 +50,13 @@ const NOTICE: OrderNotice = {
     {
       sellerOrderId: id<'SellerOrder'>(0x21),
       sellerId: SELLER_A,
+      deliveryMethod: 'pickup' as const,
       lines: [{ offerId: OFFER_1, quantity: 2 }],
     },
     {
       sellerOrderId: id<'SellerOrder'>(0x22),
       sellerId: SELLER_B,
+      deliveryMethod: 'pickup' as const,
       lines: [{ offerId: OFFER_2, quantity: 1 }],
     },
   ],
@@ -77,6 +80,7 @@ const refundOf = (code: 'AU' | 'ZZ'): RefundNotice => ({
   requestedBy: 'seller',
   amount: code === 'AU' ? money(1500n, 'AUD') : money(1500n, 'JPY'),
   units: 2,
+  orderFullyRefunded: false,
 });
 
 describe.each([['AU'], ['ZZ']] as const)('order emails in market %s', (code) => {
@@ -476,13 +480,7 @@ describe.each([['AU'], ['ZZ']] as const)('order emails in market %s', (code) => 
       expect(mail.text).toContain(`${page}/${ORDER}`);
     });
 
-    it('sends nothing for an admin refund, a refund that is gone, no order page or no address', async () => {
-      refundNotice = Promise.resolve(
-        ok({ ...refundOf(code), reason: 'damaged', requestedBy: 'admin' }),
-      );
-      expect(await unavailableMail()).toEqual(
-        ok({ code: 'order-mail.skipped', reason: 'refund.not-unavailable' }),
-      );
+    it('sends nothing for a refund that is gone, no order page or no address', async () => {
       refundNotice = Promise.resolve(err({ code: 'ordering.refund-not-found' as const }));
       expect(await unavailableMail()).toEqual(
         ok({ code: 'order-mail.skipped', reason: 'order.gone' }),
@@ -498,6 +496,51 @@ describe.each([['AU'], ['ZZ']] as const)('order emails in market %s', (code) => 
         ok({ code: 'order-mail.skipped', reason: 'link.unconfigured' }),
       );
       expect(sent).toEqual([]);
+    });
+
+    it('tells the customer about an admin refund, and about a cancelled order', async () => {
+      refundNotice = Promise.resolve(
+        ok({ ...refundOf(code), reason: 'damaged', requestedBy: 'admin' }),
+      );
+      expect(await unavailableMail()).toEqual(ok({ code: 'order-mail.sent', sent: 1 }));
+      expect(sent[0]?.subject).toBe('Your refund');
+      expect(sent[0]?.text).toContain('an item was damaged');
+      expect(sent[0]?.text).toContain(`Order reference: ${ORDER}`);
+      refundNotice = Promise.resolve(
+        ok({ ...refundOf(code), reason: 'other', requestedBy: 'admin', orderFullyRefunded: true }),
+      );
+      expect(await unavailableMail(2)).toEqual(ok({ code: 'order-mail.sent', sent: 1 }));
+      expect(sent[1]?.subject).toBe('Your order was cancelled');
+      expect(sent[1]?.text).toMatch(code === 'AU' ? /Refunded: .*15\.00/ : /Refunded: .*1,500/);
+    });
+
+    it('sends the ready-for-pickup mail for a pickup order, without a pickup code', async () => {
+      const readyMail = (sellerOrderId: string, eventNo = 1) =>
+        new SendOrderReadyMail(gate, deps).execute(system, {
+          delivery: delivery('notifications.order-ready-mail', eventNo),
+          orderId: ORDER,
+          sellerOrderId,
+        });
+      expect(await readyMail(String(id<'SellerOrder'>(0x21)))).toEqual(
+        ok({ code: 'order-mail.sent', sent: 1 }),
+      );
+      expect(sent[0]?.to).toBe(CUSTOMER_EMAIL);
+      expect(sent[0]?.subject).toBe('Your order is ready for pickup');
+      expect(sent[0]?.text.replaceAll(ORDER, '')).not.toMatch(/\b\d{4}\b/);
+      expect(sent[0]?.text).toContain(`Order reference: ${ORDER}`);
+      notice = Promise.resolve(
+        ok({
+          ...NOTICE,
+          sellerOrders: NOTICE.sellerOrders.map((s) => ({
+            ...s,
+            deliveryMethod: 'instant' as const,
+          })),
+        }),
+      );
+      expect(await readyMail(String(id<'SellerOrder'>(0x21)), 2)).toEqual(
+        ok({ code: 'order-mail.skipped', reason: 'ready.not-pickup' }),
+      );
+      expect(sent).toHaveLength(1);
     });
 
     it('throws a send failure back to the delivery and marks a repeat once', async () => {

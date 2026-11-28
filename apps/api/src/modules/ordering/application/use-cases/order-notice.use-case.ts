@@ -45,6 +45,7 @@ export class OrderNoticeQuery extends UseCase<
           sellerOrders: order.sellerOrders.map((sellerOrder) => ({
             sellerOrderId: sellerOrder.id,
             sellerId: sellerOrder.sellerId,
+            deliveryMethod: sellerOrder.deliveryMethod,
             lines: order.lines
               .filter((line) => line.sellerOrderId === sellerOrder.id)
               .map((line) => ({ offerId: line.offerId, quantity: line.quantity })),

@@ -50,6 +50,7 @@ import {
   type CartReminderDependencies,
 } from './application/use-cases/send-cart-reminders.use-case';
 import { SendOrderConfirmationMail } from './application/use-cases/send-order-confirmation-mail.use-case';
+import { SendOrderReadyMail } from './application/use-cases/send-order-ready-mail.use-case';
 import { SendOrderShippedMail } from './application/use-cases/send-order-shipped-mail.use-case';
 import { SendItemUnavailableRefundMail } from './application/use-cases/send-item-unavailable-refund-mail.use-case';
 import { SendSellerNewOrderMail } from './application/use-cases/send-seller-new-order-mail.use-case';
@@ -274,6 +275,7 @@ const offerQueueBacklogProvider: FactoryProvider<RaiseOfferQueueBacklogAlert> = 
     orderMailProvider(SendSellerNewOrderMail),
     orderMailProvider(SendOrderShippedMail),
     orderMailProvider(SendItemUnavailableRefundMail),
+    orderMailProvider(SendOrderReadyMail),
     orderMailProvider(SendSellerOrderDisputedMail),
     marketingProvider(ViewUnsubscribeLink),
     marketingProvider(UnsubscribeMarketingEmail),
@@ -299,13 +301,15 @@ const offerQueueBacklogProvider: FactoryProvider<RaiseOfferQueueBacklogAlert> = 
         SendSellerNewOrderMail,
         SendOrderShippedMail,
         SendItemUnavailableRefundMail,
+        SendOrderReadyMail,
       ],
       (
         confirmation: SendOrderConfirmationMail,
         sellerNewOrder: SendSellerNewOrderMail,
         shipped: SendOrderShippedMail,
         unavailable: SendItemUnavailableRefundMail,
-      ) => orderMailSubscriptions(confirmation, sellerNewOrder, shipped, unavailable),
+        ready: SendOrderReadyMail,
+      ) => orderMailSubscriptions(confirmation, sellerNewOrder, shipped, unavailable, ready),
     ),
     registerSubscriptionsFrom(
       'notifications',
