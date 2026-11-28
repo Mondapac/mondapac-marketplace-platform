@@ -1214,6 +1214,8 @@ svg {
   content: '';
   position: absolute;
   inset: 0;
+  /* Above the picture (which is later in the DOM and would otherwise paint over it), below the text. */
+  z-index: 1;
   background: linear-gradient(
     var(--scrim-dir),
     var(--scrim) 0%,
@@ -1243,6 +1245,7 @@ svg {
 .slide-img {
   position: absolute;
   inset: 0;
+  z-index: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -1255,7 +1258,7 @@ svg {
 }
 .slide-text {
   position: relative;
-  z-index: 1;
+  z-index: 2;
   display: grid;
   gap: var(--sf-slide-gap);
   justify-items: start;
@@ -1338,7 +1341,7 @@ svg {
   content: '';
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: 3;
   border-radius: inherit;
   outline: 3px solid var(--sf-ink);
   outline-offset: -3px;
@@ -1409,7 +1412,9 @@ svg {
   display: flex;
   gap: 12px;
   overflow-x: auto;
-  padding-bottom: 4px;
+  /* Room for the hover/focus ring, which overflow-x: auto would otherwise clip. */
+  padding: 3px 3px 4px;
+  margin: -3px;
   scrollbar-width: thin;
 }
 .cats a {
@@ -1448,12 +1453,13 @@ svg {
   border-color: var(--sf-teal);
 }
 @media (min-width: 900px) {
+  /* Spread the circles when they fit; when there are too many the strip scrolls inside itself,
+     so the page never gets a horizontal scrollbar. */
   .cats {
     justify-content: space-between;
-    overflow: visible;
   }
   .cats a {
-    flex: 1 1 0;
+    flex: 1 0 78px;
   }
   .cats .c {
     width: 76px;
