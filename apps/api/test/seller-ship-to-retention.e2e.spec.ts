@@ -81,6 +81,7 @@ describe.each(TEST_MARKETS)('seller ship-to retention over HTTP in market %s', (
     shippedAt: DELIVERED.subtract({ hours: 2 }),
     deliveredAt: DELIVERED,
     inventoryRecordedAt: null,
+    cancelledAt: null,
     ledgerState: 'pending',
     deliveryMethod: 'instant',
     deliveryWindow: null,

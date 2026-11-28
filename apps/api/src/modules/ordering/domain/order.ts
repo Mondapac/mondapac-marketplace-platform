@@ -1,4 +1,5 @@
-import type { Id, MarketId, Money, Temporal } from '@mondapac/shared-kernel';
+import { Temporal } from '@mondapac/shared-kernel';
+import type { Id, MarketId, Money } from '@mondapac/shared-kernel';
 import type { BuyerFirst } from './buyer-first';
 import type { DeliveryAttention, DeliveryMethod, DeliveryWindow } from './delivery-method';
 
@@ -156,6 +157,12 @@ export interface SellerOrder {
    * health, late ready). Null for orders placed before it was recorded: they have no promise.
    */
   readonly readyPrepMinutes: number | null;
+  /**
+   * When an admin cancelled the order (Cancel and refund, BUG-017), set only while the seller order
+   * was to-ship and not ready. Final: it is never marked ready, and the worker gives its stock back.
+   * The order's stored status stays `confirmed`; its views show it cancelled.
+   */
+  readonly cancelledAt: Temporal.Instant | null;
   /**
    * Set by the platform when no carrier could take the order: it needs the platform's attention.
    * The seller is never asked to deliver instead.
@@ -463,6 +470,30 @@ export function cancelOrder(
   if (order.status !== 'pending-payment') return null;
   if (order.paymentState === 'authorised' && paymentState !== 'voided') return null;
   return { ...order, status: 'cancelled', cancelReason: reason, paymentState, cancelledAt: now };
+}
+
+/**
+ * Why the order is cancelled, as its views show it: a stored reason of a cancelled unpaid order,
+ * or `admin-cancelled` for a paid order an admin cancelled (stored status stays `confirmed`).
+ */
+export type OrderViewCancelReason = CancelReason | 'admin-cancelled';
+
+/**
+ * When an admin cancelled a paid order (BUG-017): the latest cancellation time of its seller
+ * orders once every one is cancelled (one unit stamps them all), else null.
+ */
+export function adminCancelledAt(
+  order: Pick<OrderState, 'status' | 'sellerOrders'>,
+): Temporal.Instant | null {
+  if (order.status !== 'confirmed' || order.sellerOrders.length === 0) return null;
+  let latest: Temporal.Instant | null = null;
+  for (const seller of order.sellerOrders) {
+    if (seller.cancelledAt === null) return null;
+    if (latest === null || Temporal.Instant.compare(seller.cancelledAt, latest) > 0) {
+      latest = seller.cancelledAt;
+    }
+  }
+  return latest;
 }
 
 /** The carrier and tracking reference the seller typed in, already checked. */

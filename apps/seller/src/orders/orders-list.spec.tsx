@@ -52,6 +52,7 @@ const row = (
   deliveryWindowStart: null,
   deliveryWindowEnd: null,
   readyAt: null,
+  cancelledAt: null,
   deliveryAttention: null,
   lines: [
     {

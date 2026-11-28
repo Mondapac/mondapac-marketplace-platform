@@ -139,11 +139,14 @@ export function OrderDetail({
   const reference = shortId(order.sellerOrderId);
   // The card shows only when it has something to say: delivered orders and shipped orders the
   // person cannot deliver would leave it empty.
+  const cancelled = order.cancelledAt !== null;
   const nextStepVisible =
-    order.fulfilment === 'to-ship' || (order.fulfilment === 'shipped' && canDeliver);
+    !cancelled &&
+    (order.fulfilment === 'to-ship' || (order.fulfilment === 'shipped' && canDeliver));
   const count = order.lines.reduce((sum, line) => sum + line.quantity, 0);
   const canUnavailable =
     canMarkUnavailable &&
+    !cancelled &&
     order.fulfilment === 'to-ship' &&
     order.readyAt === null &&
     order.lines.some((entry) => remainingUnits(order, entry.lineId) > 0);
@@ -180,6 +183,7 @@ export function OrderDetail({
         </p>
       </div>
       <DisputeNotice dispute={dispute} />
+      {cancelled ? <Banner tone="info">{t('cancelled-notice')}</Banner> : null}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:items-start">
         <div className="flex min-w-0 flex-col gap-6">
           {nextStepVisible ? (

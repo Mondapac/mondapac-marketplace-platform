@@ -35,6 +35,7 @@ import { PrismaSellerOrderNoteRepository } from '../../src/modules/ordering/infr
 import { AdminCancelOrder } from '../../src/modules/ordering/application/use-cases/admin-cancel-order.use-case';
 import { AdminViewOrder } from '../../src/modules/ordering/application/use-cases/admin-view-order.use-case';
 import { SellerMarkOrderReady } from '../../src/modules/ordering/application/use-cases/seller-mark-order-ready.use-case';
+import { RecordShipments } from '../../src/modules/ordering/application/use-cases/record-shipments.use-case';
 import type { CommissionPayoutsDependencies } from '../../src/modules/commission-payouts/application/commission-payouts-dependencies';
 import { RecordRefund } from '../../src/modules/commission-payouts/application/use-cases/record-refund.use-case';
 import { RecordSellerOrderPaid } from '../../src/modules/commission-payouts/application/use-cases/record-seller-order-paid.use-case';
@@ -308,6 +309,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
           shippedAt: null,
           deliveredAt: null,
           inventoryRecordedAt: null,
+          cancelledAt: null,
           ledgerState: 'pending',
           deliveryMethod: 'instant',
           deliveryWindow: null,
@@ -2196,6 +2198,121 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
 
       expect(ready).toEqual({ ok: false, error: { code: 'ordering.seller-order-refunded' } });
       expect(await readyAt(o.sellerOrderId)).toBeNull();
+    });
+
+    describe('the cancellation itself (BUG-017)', () => {
+      const cancelledRow = async (sellerOrderId: string) =>
+        (
+          await sql.query<{ cancelled_at: Date | null; stock_released_at: Date | null }>(
+            `SELECT cancelled_at, stock_released_at FROM ordering.seller_orders
+              WHERE market_id = $1 AND id = $2`,
+            [market.marketId, sellerOrderId],
+          )
+        ).rows[0];
+      const fakeInventory = () => deps.inventory as FakeInventory;
+      const record = () => new RecordShipments(gate, deps).execute(system, {});
+
+      it('stamps the seller order cancelled and the order pages show it cancelled, still paid', async () => {
+        const o = await paidOrder();
+        expect((await cancelledRow(o.sellerOrderId))?.cancelled_at).toBeNull();
+
+        const done = await cancel(o.orderId);
+
+        if (!done.ok) throw new Error(`cancel: ${done.error.code}`);
+        expect((await cancelledRow(o.sellerOrderId))?.cancelled_at).toBeInstanceOf(Date);
+        const page = await new AdminViewOrder(gate, deps).execute(admin, { orderId: o.orderId });
+        if (!page.ok) throw new Error('page');
+        expect(page.value.status).toBe('confirmed');
+        expect(page.value.paymentState).toBe('captured');
+        expect(page.value.cancelReason).toBe('admin-cancelled');
+        expect(page.value.cancelledAt).not.toBeNull();
+        expect(page.value.sellerOrders[0]!.cancelledAt).toEqual(page.value.cancelledAt);
+        const activity = await new AdminViewOrderActivity(gate, deps).execute(admin, {
+          orderId: o.orderId,
+        });
+        if (!activity.ok) throw new Error('activity');
+        expect(activity.value.events.filter((e) => e.kind === 'order-cancelled')).toEqual([
+          expect.objectContaining({ by: 'admin', reason: 'admin-cancelled' }),
+        ]);
+      });
+
+      it('gives the stock back through the worker, once', async () => {
+        // Earlier tests of this file cancelled orders too: their stock goes back first.
+        await record();
+        const o = await paidOrder();
+        const done = await cancel(o.orderId);
+        if (!done.ok) throw new Error(`cancel: ${done.error.code}`);
+        const before = fakeInventory().calls.length;
+
+        const first = await record();
+
+        expect(first).toMatchObject({ ok: true, value: { released: 1, failed: [] } });
+        expect(fakeInventory().calls.slice(before)).toEqual([`cancel-line:${o.lineId}`]);
+        expect((await cancelledRow(o.sellerOrderId))?.stock_released_at).toBeInstanceOf(Date);
+        // Released once: the next run finds nothing.
+        expect(await record()).toMatchObject({ ok: true, value: { released: 0, failed: [] } });
+        expect(fakeInventory().calls.slice(before)).toEqual([`cancel-line:${o.lineId}`]);
+      });
+
+      it('leaves a seller order inventory refused for the next run', async () => {
+        await record();
+        const o = await paidOrder();
+        const done = await cancel(o.orderId);
+        if (!done.ok) throw new Error(`cancel: ${done.error.code}`);
+        const inventory = fakeInventory();
+        inventory.cancelLineFails = { code: 'conflict.retry' };
+        try {
+          expect(await record()).toMatchObject({
+            ok: true,
+            value: {
+              released: 0,
+              failed: [{ sellerOrderId: o.sellerOrderId, code: 'conflict.retry' }],
+            },
+          });
+          expect((await cancelledRow(o.sellerOrderId))?.stock_released_at).toBeNull();
+        } finally {
+          inventory.cancelLineFails = null;
+        }
+        expect(await record()).toMatchObject({ ok: true, value: { released: 1, failed: [] } });
+      });
+
+      it('keeps a cancelled order from being marked ready even after its refund failed', async () => {
+        const o = await paidOrder();
+        gateway.refundFails = { code: 'payment.provider-rejected' };
+        const done = await cancel(o.orderId);
+        gateway.refundFails = null;
+        if (!done.ok) throw new Error(`cancel: ${done.error.code}`);
+        expect(done.value.refunds.map((r) => r.state)).toEqual(['failed']);
+        // The failed refund cleared refunded-in-full; the cancellation still holds.
+        expect(await inFull(o.sellerOrderId)).toBe(false);
+
+        const ready = await new SellerMarkOrderReady(gate, deps).execute(seller(o.sellerId), {
+          sellerOrderId: o.sellerOrderId,
+        });
+
+        expect(ready).toEqual({ ok: false, error: { code: 'ordering.seller-order-refunded' } });
+        expect(await readyAt(o.sellerOrderId)).toBeNull();
+      });
+
+      it('holds the rule in the database: only a to-ship order not ready is cancelled', async () => {
+        const o = await paidOrder();
+        await sql.query(
+          `UPDATE ordering.seller_orders SET ready_at = now() WHERE market_id = $1 AND id = $2`,
+          [market.marketId, o.sellerOrderId],
+        );
+        await expect(
+          sql.query(
+            `UPDATE ordering.seller_orders SET cancelled_at = now() WHERE market_id = $1 AND id = $2`,
+            [market.marketId, o.sellerOrderId],
+          ),
+        ).rejects.toThrow(/seller_orders_cancelled_check/);
+        await expect(
+          sql.query(
+            `UPDATE ordering.seller_orders SET stock_released_at = now() WHERE market_id = $1 AND id = $2`,
+            [market.marketId, o.sellerOrderId],
+          ),
+        ).rejects.toThrow(/seller_orders_stock_released_check/);
+      });
     });
 
     it('still lets the seller mark ready after a partial refund', async () => {

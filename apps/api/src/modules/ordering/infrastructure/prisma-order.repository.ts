@@ -72,6 +72,7 @@ interface OrderRow {
     readonly deliveryWindowEnd: Date | null;
     readonly readyAt: Date | null;
     readonly readyPrepMinutes: number | null;
+    readonly cancelledAt: Date | null;
     readonly deliveryAttention: string | null;
     readonly deliveryQuoteId: string | null;
     readonly deliveryQuoteFleet: string | null;
@@ -136,6 +137,7 @@ const toSellerOrder = (s: SellerOrderRow): SellerOrder => ({
       : { start: toInstant(s.deliveryWindowStart), end: toInstant(s.deliveryWindowEnd) },
   readyAt: optionalInstant(s.readyAt),
   readyPrepMinutes: s.readyPrepMinutes,
+  cancelledAt: optionalInstant(s.cancelledAt),
   deliveryAttention: s.deliveryAttention as DeliveryAttention | null,
   deliveryQuote:
     s.deliveryQuoteId === null ||
@@ -1003,7 +1005,13 @@ export class PrismaOrderRepository implements OrderRepository {
 
   async saveFulfilment(market: MarketContext, sellerOrder: SellerOrder, from: Fulfilment) {
     const updated = await this.prisma.tx(market).orderingSellerOrder.updateMany({
-      where: { marketId: market.marketId, id: sellerOrder.id, fulfilment: from },
+      where: {
+        marketId: market.marketId,
+        id: sellerOrder.id,
+        fulfilment: from,
+        // A cancelled seller order never leaves to-ship (CHECK seller_orders_cancelled_check).
+        ...(from === 'to-ship' ? { cancelledAt: null } : {}),
+      },
       data: {
         fulfilment: sellerOrder.fulfilment,
         carrier: sellerOrder.carrier,
@@ -1023,6 +1031,7 @@ export class PrismaOrderRepository implements OrderRepository {
         id: sellerOrder.id,
         fulfilment: 'to-ship',
         readyAt: null,
+        cancelledAt: null,
       },
       data: { readyAt: toDate(sellerOrder.readyAt) },
     });
@@ -1048,6 +1057,7 @@ export class PrismaOrderRepository implements OrderRepository {
       where: {
         marketId: market.marketId,
         inventoryRecordedAt: null,
+        cancelledAt: null,
         fulfilment: { not: 'to-ship' },
       },
       include: SELLER_INCLUDE,
@@ -1086,6 +1096,51 @@ export class PrismaOrderRepository implements OrderRepository {
     await this.prisma.tx(market).orderingSellerOrder.updateMany({
       where: { marketId: market.marketId, id: sellerOrderId, ledgerState: 'pending' },
       data: { ledgerState: 'recorded' },
+    });
+  }
+
+  async markCancelled(
+    market: MarketContext,
+    orderId: Id<'Order'>,
+    at: Temporal.Instant,
+  ): Promise<number> {
+    const updated = await this.prisma.tx(market).orderingSellerOrder.updateMany({
+      where: {
+        marketId: market.marketId,
+        orderId,
+        fulfilment: 'to-ship',
+        readyAt: null,
+        cancelledAt: null,
+      },
+      data: { cancelledAt: toDate(at) },
+    });
+    return updated.count;
+  }
+
+  async findStockToRelease(market: MarketContext, limit: number) {
+    // The partial index seller_orders_market_id_stock_to_release_idx holds exactly this queue.
+    const rows = await this.prisma.tx(market).orderingSellerOrder.findMany({
+      where: { marketId: market.marketId, cancelledAt: { not: null }, stockReleasedAt: null },
+      include: SELLER_INCLUDE,
+      orderBy: [{ cancelledAt: 'asc' }, { id: 'asc' }],
+      take: limit,
+    });
+    return rows.map(toRecord);
+  }
+
+  async markStockReleased(
+    market: MarketContext,
+    sellerOrderId: Id<'SellerOrder'>,
+    at: Temporal.Instant,
+  ): Promise<void> {
+    await this.prisma.tx(market).orderingSellerOrder.updateMany({
+      where: {
+        marketId: market.marketId,
+        id: sellerOrderId,
+        cancelledAt: { not: null },
+        stockReleasedAt: null,
+      },
+      data: { stockReleasedAt: toDate(at) },
     });
   }
 

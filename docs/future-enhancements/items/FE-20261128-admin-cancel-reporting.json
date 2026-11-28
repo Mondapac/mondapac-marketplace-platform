@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261128-admin-cancel-reporting",
+  "area": "orders",
+  "title": "شمردن لغو ادمین در گزارش‌ها",
+  "desc": "سفارش پرداخت‌شده‌ای که ادمین با Cancel and refund لغو می‌کند در داشبورد و گزارش‌ها هنوز لغوشده شمرده نمی‌شود (report-facts فقط status=cancelled را می‌شمارد)؛ cancelled_at سفارش فروشنده باید به fact گزارش برسد.",
+  "src": "BUG-017، PR رفع لغو سفارش؛ docs/design/domain/ordering.md بخش As built BUG-017",
+  "date": "2026-11-28",
+  "trig": "وقتی گزارش لغوها یا KPI نرخ لغو برای ادمین لازم شود",
+  "prio": "متوسط",
+  "status": "موکول"
+}

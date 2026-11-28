@@ -156,6 +156,7 @@ describe.each(TEST_MARKETS)(
           shippedAt: null,
           deliveredAt: null,
           inventoryRecordedAt: null,
+          cancelledAt: null,
           ledgerState: 'pending' as const,
           deliveryMethod: 'instant' as const,
           deliveryWindow: null,

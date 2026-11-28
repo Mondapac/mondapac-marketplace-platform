@@ -1,6 +1,6 @@
 import { money, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
-import type { OrderState, SellerOrder } from './order';
+import { adminCancelledAt, type OrderState, type SellerOrder } from './order';
 import { orderActivity, sellerOrderActivity } from './order-activity';
 import type { Refund } from './refund';
 
@@ -43,6 +43,7 @@ describe.each([
     shippedAt: null,
     deliveredAt: null,
     inventoryRecordedAt: null,
+    cancelledAt: null,
     ledgerState: 'pending',
     deliveryMethod: 'instant',
     deliveryWindow: null,
@@ -171,6 +172,30 @@ describe.each([
       ['order-placed', null],
       ['order-cancelled', 'expired'],
     ]);
+  });
+
+  it('shows a paid order an admin cancelled once every seller order is stamped (BUG-017)', () => {
+    const cancelled = order({
+      sellerOrders: [
+        sellerOrder(SO_A, SELLER_A, { cancelledAt: at(10) }),
+        sellerOrder(SO_B, SELLER_B, { cancelledAt: at(11) }),
+      ],
+    });
+    expect(adminCancelledAt(cancelled)).toEqual(at(11));
+    expect(orderActivity(cancelled, []).filter((e) => e.kind === 'order-cancelled')).toEqual([
+      expect.objectContaining({ at: at(11), by: 'admin', reason: 'admin-cancelled' }),
+    ]);
+    // Not every seller order stamped, an unpaid order, or none at all: not cancelled by an admin.
+    const partial = order({
+      sellerOrders: [
+        sellerOrder(SO_A, SELLER_A, { cancelledAt: at(10) }),
+        sellerOrder(SO_B, SELLER_B),
+      ],
+    });
+    expect(adminCancelledAt(partial)).toBeNull();
+    expect(orderActivity(partial, []).some((e) => e.kind === 'order-cancelled')).toBe(false);
+    expect(adminCancelledAt(order({ status: 'pending-payment', confirmedAt: null }))).toBeNull();
+    expect(adminCancelledAt(order({ sellerOrders: [] }))).toBeNull();
   });
 
   it('leaves out a pending refund outcome and keeps all UTC instants', () => {

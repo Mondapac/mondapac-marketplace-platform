@@ -417,8 +417,10 @@ export class AdminOrdersController {
       'tax.refundCredit.enabled is on: 409 ordering.refund-disabled. Allowed only while no ' +
       'seller has marked its part ready (409 ordering.cancel-too-late: refund per seller ' +
       'instead). Writes one refund per seller order of everything left (units and shipping), ' +
-      'all in one step, then settles each with Stripe; a seller order refunded in full can no ' +
-      'longer be marked ready. The order stays confirmed; each refund answers its own state.',
+      'all in one step, and stamps every seller order cancelled (cancelledAt) in that step: ' +
+      'it can no longer be marked ready and the worker gives its stock back to inventory. Then ' +
+      'each refund settles with Stripe. The stored status stays confirmed; the order answers ' +
+      'cancelReason admin-cancelled and cancelledAt. Each refund answers its own state.',
   })
   @ApiHeader(CSRF)
   @ApiParam({ name: 'orderId', format: 'uuid' })

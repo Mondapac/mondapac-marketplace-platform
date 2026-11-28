@@ -105,6 +105,7 @@ describe.each(TEST_MARKETS)('ordering work-queue counts in market %s (database)'
           shippedAt: null,
           deliveredAt: null,
           inventoryRecordedAt: null,
+          cancelledAt: null,
           ledgerState: 'not-applicable',
           deliveryMethod,
           deliveryWindow:

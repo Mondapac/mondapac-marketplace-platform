@@ -98,6 +98,7 @@ const sellerOrder = (patch: Partial<SellerOrder> = {}): SellerOrder => ({
   shippedAt: null,
   deliveredAt: null,
   inventoryRecordedAt: null,
+  cancelledAt: null,
   ledgerState: 'pending',
   deliveryMethod: 'instant',
   deliveryWindow: null,

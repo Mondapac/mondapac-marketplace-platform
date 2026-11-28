@@ -1,10 +1,9 @@
 import { money as makeMoney } from '@mondapac/shared-kernel';
 import type { Id, Money, Temporal } from '@mondapac/shared-kernel';
 import type { DeliveryAttention, DeliveryMethod } from './delivery-method';
-import { linesTax, shippingTaxOf } from './order';
+import { adminCancelledAt, linesTax, shippingTaxOf, type OrderViewCancelReason } from './order';
 import type { PickupStatus } from './pickup-code';
 import type {
-  CancelReason,
   Fulfilment,
   OrderLine,
   OrderState,
@@ -73,13 +72,19 @@ export interface SellerOrderView {
   readonly readyAt: Temporal.Instant | null;
   /** Set when the platform must look at the delivery (no carrier could take it). */
   readonly deliveryAttention: DeliveryAttention | null;
+  /** When an admin cancelled the order (Cancel and refund); null otherwise. Final. */
+  readonly cancelledAt: Temporal.Instant | null;
   readonly lines: readonly OrderLineView[];
 }
 
 export interface OrderView {
   readonly orderId: Id<'Order'>;
+  /**
+   * The stored status. A paid order an admin cancelled stays `confirmed` (its money, ledger and
+   * documents follow the refunds); `cancelReason` and `cancelledAt` say it was cancelled.
+   */
   readonly status: OrderStatus;
-  readonly cancelReason: CancelReason | null;
+  readonly cancelReason: OrderViewCancelReason | null;
   readonly paymentState: PaymentState;
   readonly total: Money;
   /** The tax of the whole order; null when any line was placed before tax was recorded. */
@@ -380,6 +385,7 @@ export function sellerOrderDetailView(record: {
     deliveryWindow: seller.deliveryWindow,
     readyAt: seller.readyAt,
     deliveryAttention: seller.deliveryAttention,
+    cancelledAt: seller.cancelledAt,
     lines: lines.map((line) => lineView(line, currency)),
   };
 }
@@ -387,10 +393,11 @@ export function sellerOrderDetailView(record: {
 export function orderView(order: OrderState): OrderView {
   const currency = order.total.currency;
   const money = (amount: bigint): Money => makeMoney(amount, currency);
+  const adminCancelled = adminCancelledAt(order);
   return {
     orderId: order.id,
     status: order.status,
-    cancelReason: order.cancelReason,
+    cancelReason: adminCancelled === null ? order.cancelReason : 'admin-cancelled',
     paymentState: order.paymentState,
     total: order.total,
     tax: taxOf(
@@ -400,7 +407,7 @@ export function orderView(order: OrderState): OrderView {
     ),
     createdAt: order.createdAt,
     confirmedAt: order.confirmedAt,
-    cancelledAt: order.cancelledAt,
+    cancelledAt: adminCancelled ?? order.cancelledAt,
     payBy: order.status === 'pending-payment' ? order.paymentExpiresAt : null,
     sellerOrders: order.sellerOrders.map((seller) => {
       const lines = order.lines.filter((line) => line.sellerOrderId === seller.id);
@@ -424,6 +431,7 @@ export function orderView(order: OrderState): OrderView {
         deliveryWindow: seller.deliveryWindow,
         readyAt: seller.readyAt,
         deliveryAttention: seller.deliveryAttention,
+        cancelledAt: seller.cancelledAt,
         lines: lines.map((line) => lineView(line, currency)),
       };
     }),

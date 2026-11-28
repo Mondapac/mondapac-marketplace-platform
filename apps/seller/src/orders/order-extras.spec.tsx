@@ -48,6 +48,7 @@ const order = (over: Partial<SellerOrderView> = {}): SellerOrderView => ({
   deliveryWindowStart: null,
   deliveryWindowEnd: null,
   readyAt: null,
+  cancelledAt: null,
   deliveryAttention: null,
   refunds: [],
   lines: [

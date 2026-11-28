@@ -101,6 +101,7 @@ describe('markCollected', () => {
     shippedAt: null,
     deliveredAt: null,
     inventoryRecordedAt: null,
+    cancelledAt: null,
     ledgerState: 'pending',
     deliveryMethod: 'pickup',
     deliveryWindow: null,

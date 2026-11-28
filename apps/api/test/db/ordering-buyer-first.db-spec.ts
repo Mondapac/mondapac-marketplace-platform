@@ -199,6 +199,7 @@ describe.each(TEST_MARKETS)('buyer-first flags in market %s (database)', (code) 
         shippedAt: null,
         deliveredAt: null,
         inventoryRecordedAt: null,
+        cancelledAt: null,
         ledgerState: 'pending' as const,
         deliveryMethod: 'instant' as const,
         deliveryWindow: null,

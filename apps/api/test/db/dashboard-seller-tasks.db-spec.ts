@@ -125,6 +125,7 @@ describe.each(TEST_MARKETS)('dashboard seller tasks in market %s (database)', (c
           shippedAt: null,
           deliveredAt: null,
           inventoryRecordedAt: null,
+          cancelledAt: null,
           ledgerState: 'not-applicable',
           deliveryMethod: placed.method ?? 'instant',
           deliveryWindow: placed.window ?? null,
