@@ -97,6 +97,43 @@ describe('images', () => {
     expect(imageSrcOf({ key: '../x' }, null)).toBeUndefined();
   });
 
+  it('serves an uploaded library image from the media origin', () => {
+    const id = '01990000-0000-7000-8000-00000000a001';
+    const desktopUrl = `/storefront/slide-images/${id}/desktop`;
+    const image = { key: id, desktopUrl, desktopSmallUrl: `${desktopUrl}-small` };
+    expect(imageSrcOf(image, MEDIA)).toBe(`${MEDIA}${desktopUrl}`);
+    expect(imageSrcOf(image, null)).toBeUndefined();
+    // The path must be the wide picture of the very image the key names.
+    expect(imageSrcOf({ ...image, key: '01990000-0000-7000-8000-00000000a002' }, MEDIA)).toBe(
+      undefined,
+    );
+    expect(
+      imageSrcOf({ ...image, desktopUrl: `/storefront/slide-images/${id}/mobile` }, MEDIA),
+    ).toBe(undefined);
+    expect(
+      imageSrcOf(
+        { ...image, desktopUrl: `//evil.test/storefront/slide-images/${id}/desktop` },
+        MEDIA,
+      ),
+    ).toBe(undefined);
+    expect(imageSrcOf({ ...image, desktopUrl: `https://evil.test${desktopUrl}` }, MEDIA)).toBe(
+      undefined,
+    );
+  });
+
+  it('keeps a library-image slide in the set', () => {
+    const id = '01990000-0000-7000-8000-00000000a001';
+    const raw = slide({
+      image: {
+        key: id,
+        alt: 'Fruit',
+        decorative: false,
+        desktopUrl: `/storefront/slide-images/${id}/desktop`,
+      },
+    });
+    expect(slideOf(raw, MEDIA)?.image?.src).toBe(`${MEDIA}/storefront/slide-images/${id}/desktop`);
+  });
+
   it('accepts a URL only on the media origin, with a plain path', () => {
     expect(imageSrcOf({ url: `${MEDIA}/slides/a1.webp` }, MEDIA)).toBe(`${MEDIA}/slides/a1.webp`);
     expect(imageSrcOf({ url: `${MEDIA}/slides/a1.webp` }, null)).toBeUndefined();

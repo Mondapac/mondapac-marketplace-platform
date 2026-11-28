@@ -43,6 +43,8 @@ type Json = Readonly<Record<string, unknown>>;
 const isObject = (value: unknown): value is Json =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
+const LIBRARY_IMAGE_PATH =
+  /^\/storefront\/slide-images\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/desktop$/u;
 const SLIDE_ID = /^[A-Za-z0-9-]{1,64}$/u;
 const SITE_PATH = /^\/(?![/\\])[A-Za-z0-9/_.~?=&+-]*$/u;
 const URL_LIKE = /(?:[a-z][a-z0-9+.-]*:\/\/|\bwww\.|\bmailto:|\bjavascript:)/iu;
@@ -66,9 +68,18 @@ export function sitePath(value: unknown): string | undefined {
 
 /**
  * The URL of an image the answer names: a placeholder key becomes our own `/placeholders/` path;
- * a `url` is accepted only on the media origin (`STOREFRONT_IMAGE_ORIGIN`) with a plain path.
+ * an uploaded library image (`key` = its id, `desktopUrl` = the API path of its wide picture)
+ * becomes that path on the media origin; a `url` is accepted only on the media origin (`STOREFRONT_IMAGE_ORIGIN`) with a plain path.
  */
 export function imageSrcOf(image: Json, mediaOrigin: string | null): string | undefined {
+  // An uploaded library image: the API names it by its id (`key`) and the site path of the wide
+  // picture (`desktopUrl`). Accepted only as the exact path of that id's `desktop` size, served
+  // from the media origin; any other path is refused.
+  if (typeof image.desktopUrl === 'string') {
+    const match = LIBRARY_IMAGE_PATH.exec(image.desktopUrl);
+    if (mediaOrigin === null || match === null || image.key !== match[1]) return undefined;
+    return `${mediaOrigin}${image.desktopUrl}`;
+  }
   if (typeof image.key === 'string') {
     return PLACEHOLDER_KEYS.has(image.key) ? `/placeholders/${image.key}.jpg` : undefined;
   }
