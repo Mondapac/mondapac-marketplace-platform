@@ -11,9 +11,11 @@ import { serverGet } from './server-fetch.ts';
 export interface OfferBadgeData {
   readonly choices: readonly BadgeChoice[];
   readonly names: Readonly<Record<string, string>>;
+  /** True when the certificates could not be read (timeout or error): the card must not claim there is none. */
+  readonly unavailable: boolean;
 }
 
-const NONE: OfferBadgeData = { choices: [], names: {} };
+const NONE: OfferBadgeData = { choices: [], names: {}, unavailable: false };
 
 /**
  * What the "Badges" card of an offer page needs beyond the offer: the types the seller holds an
@@ -33,12 +35,21 @@ export async function loadOfferBadgeData(
       timeoutMs: 2000,
     }),
   ]);
-  if (list.kind !== 'ok' || options.kind !== 'ok') return NONE;
+  const names0 =
+    options.kind === 'ok'
+      ? Object.fromEntries(
+          options.body.types.map((type) => [type.code, typeName(type.names, type.code, locale)]),
+        )
+      : {};
+  if (list.kind !== 'ok' || options.kind !== 'ok') {
+    return { choices: [], names: names0, unavailable: true };
+  }
   const names = new Map(
     options.body.types.map((type) => [type.code, typeName(type.names, type.code, locale)]),
   );
   return {
     choices: badgeChoicesOf(list.body.certificates, carried, names),
     names: Object.fromEntries(names),
+    unavailable: false,
   };
 }

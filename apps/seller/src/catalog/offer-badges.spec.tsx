@@ -20,6 +20,8 @@ function mount(
     tags: readonly OfferTag[];
     choices: readonly { typeCode: string; name: string }[];
     canEdit: boolean;
+    unavailable: boolean;
+    names: Record<string, string>;
   }> = {},
 ) {
   return render(
@@ -29,7 +31,8 @@ function mount(
         csrfToken="csrf"
         tags={props.tags ?? []}
         choices={props.choices ?? [{ typeCode: 'halal', name: 'Halal' }]}
-        names={NAMES}
+        names={props.names ?? NAMES}
+        unavailable={props.unavailable ?? false}
         canEdit={props.canEdit ?? true}
       />
     </NextIntlClientProvider>,
@@ -49,6 +52,19 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('OfferBadges', () => {
+  it('says the certificates could not be loaded, not that one is needed, and offers a retry', () => {
+    mount({ unavailable: true, choices: [] });
+    expect(screen.getByText(/couldn't load your certificates/)).toBeTruthy();
+    expect(screen.queryByText(/you need an approved certificate/)).toBeNull();
+    expect(screen.getByRole('link', { name: 'Try again' }).getAttribute('href')).toBe('/offers/o1');
+  });
+
+  it('names a carried badge with a capital when the type names did not load', () => {
+    mount({ tags: [tag('active')], choices: [], names: {}, unavailable: true });
+    expect(screen.getByText('Halal')).toBeTruthy();
+    expect(screen.queryByText('halal')).toBeNull();
+  });
+
   it('adds the Halal badge a seller with an approved certificate asks for', async () => {
     call.mockResolvedValue({ ok: true, status: 201, body: { applied: true, status: 'active' } });
     mount();

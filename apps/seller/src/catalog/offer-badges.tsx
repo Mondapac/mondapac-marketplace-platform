@@ -21,6 +21,7 @@ export function OfferBadges({
   tags,
   choices,
   names,
+  unavailable = false,
   canEdit,
 }: {
   readonly offerId: string;
@@ -29,6 +30,8 @@ export function OfferBadges({
   readonly choices: readonly BadgeChoice[];
   /** Type code to its name in the panel's language, for the badges the offer carries. */
   readonly names: Readonly<Record<string, string>>;
+  /** The seller's certificates could not be read; say so instead of "you need a certificate". */
+  readonly unavailable?: boolean;
   readonly canEdit: boolean;
 }) {
   const t = useTranslations('catalog.badges');
@@ -62,7 +65,7 @@ export function OfferBadges({
   }
 
   if (tags.length === 0 && choices.length === 0 && !canEdit) return null;
-  const nameOf = (code: string) => names[code] ?? code;
+  const nameOf = (code: string) => names[code] ?? `${code.charAt(0).toUpperCase()}${code.slice(1)}`;
   return (
     <Card title={t('title')}>
       <div className="flex flex-col gap-4">
@@ -170,7 +173,15 @@ export function OfferBadges({
             ))}
           </div>
         ) : null}
-        {canEdit && choices.length === 0 && tags.length === 0 ? (
+        {canEdit && unavailable ? (
+          <p className="text-sm text-fg-muted">
+            {t('unavailable')}{' '}
+            <a className="font-medium text-link underline" href={`/offers/${offerId}`}>
+              {t('try-again')}
+            </a>
+          </p>
+        ) : null}
+        {canEdit && !unavailable && choices.length === 0 && tags.length === 0 ? (
           <p className="text-sm text-fg-muted">
             {t('need-certificate')}{' '}
             <a className="font-medium text-link underline" href="/settings/certificates">
