@@ -908,7 +908,7 @@ describe('the edit form', () => {
     call.mockResolvedValueOnce(
       ok(
         view({
-          variantModel: 'configurable',
+          variantModel: 'options',
           variants: [],
           form: {
             ...view().form,
@@ -944,7 +944,7 @@ describe('the edit form', () => {
 
   const sizeProduct = (variant: Record<string, unknown>): ProductView =>
     view({
-      variantModel: 'configurable',
+      variantModel: 'options',
       variants: [{ variantId: '0190a000-0000-7000-8000-0000000000e5', state: 'proposed' }],
       form: {
         ...view().form,
@@ -1146,7 +1146,7 @@ describe('the edit form', () => {
     call.mockResolvedValueOnce(
       ok(
         view({
-          variantModel: 'configurable',
+          variantModel: 'options',
           variants: [],
           form: { ...view().form, fields: [SIZE_FIELD] },
         }),

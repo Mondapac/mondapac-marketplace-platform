@@ -28,7 +28,7 @@ const product = {
   productCode: 'MP-004127',
   typeCode: 'configurable',
   familyCode: 'default',
-  variantModel: 'configurable',
+  variantModel: 'options',
   status: 'published',
   pausedAt: null,
   offers: { sellerCount: 3, offerCount: 7 },

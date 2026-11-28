@@ -167,7 +167,7 @@ export function EditForm({
   // languages of the draft are sent back as they were.
   const [texts, setTexts] = useState<Texts>(() => textsOf(content, defaultLocale));
   const { form } = product;
-  const configurable = product.variantModel === 'configurable';
+  const configurable = product.variantModel === 'options';
   const attributeFields = form.fields.filter((field) => !field.isVariantOption);
   const [categoryIds, setCategoryIds] = useState<string[]>(() => categoryIdsOf(content));
   const [taxCategoryCode, setTaxCategoryCode] = useState(() => taxCategoryOf(content));

@@ -63,7 +63,7 @@ const base: ProductView = {
   productCode: 'MP-004127',
   typeCode: 'grocery',
   familyCode: 'pantry',
-  variantModel: 'configurable',
+  variantModel: 'options',
   status: 'draft',
   pausedAt: null,
   offers: { sellerCount: 0, offerCount: 0 },
