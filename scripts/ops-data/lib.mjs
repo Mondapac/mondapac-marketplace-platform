@@ -34,6 +34,24 @@ export function totp(secret, at = Date.now()) {
 
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const lastStepUsed = new Map();
+
+/**
+ * A code the loader has not sent yet. The API accepts a code once and counts a replayed one as a
+ * failure towards the account's lock (BUG-035), so when this secret's code for the current 30 s
+ * step was already sent, wait for the next step instead of sending it again.
+ */
+export async function freshCode(secret) {
+  const step = () => Math.floor(Date.now() / 30000);
+  while (lastStepUsed.get(secret) === step()) await sleep(30000 - (Date.now() % 30000) + 1500);
+  lastStepUsed.set(secret, step());
+  return totp(secret);
+}
+
+// Step-up proofs stay valid for 5 minutes on the server (STEP_UP_PROOF_MINUTES); reuse one for 4.
+const STEP_UP_REUSE_MS = 4 * 60_000;
+const stepUpProofs = new WeakMap();
+
 /** One signed-in (or anonymous) client of one route population. */
 export class Session {
   constructor(population, market = MARKET) {
@@ -149,7 +167,7 @@ export async function adminSignIn(email, password, secret, market = MARKET) {
       throw new Error(`admin sign-in: unexpected ${first.code}`);
     const done = await session.request('POST', '/identity/admin/second-factor', {
       challengeToken: first.challengeToken,
-      code: totp(secret),
+      code: await freshCode(secret),
     });
     if (done.status === 200 && done.body.code === 'signed-in') return session;
     if (attempt === 1 || done.body?.code !== 'second-factor.invalid') {
@@ -163,8 +181,8 @@ export async function adminSignIn(email, password, secret, market = MARKET) {
 /**
  * Gives a seller its main business activity (ADR-0040 decision 4: an approval needs one). The
  * Market's first active activity is used; one named "General" is created when none exists. The
- * change needs a fresh two-step code for its action, and a code is accepted once, so a code used a
- * moment ago makes the loader wait for the next 30 s step.
+ * change needs a fresh two-step code for its action, and a code is accepted once, so a code is never sent twice
+ * (freshCode), and one proof serves every seller for 4 minutes.
  */
 export async function setMainActivity(admin, secret, sellerId, locale) {
   const list = await admin.ok('GET', '/catalog/admin/business-activities?status=active&limit=1');
@@ -175,16 +193,17 @@ export async function setMainActivity(admin, secret, sellerId, locale) {
     });
     activityId = created.activity.id;
   }
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  const actionKey = 'sellers.business-activity.change';
+  const proofs = stepUpProofs.get(admin) ?? new Map();
+  stepUpProofs.set(admin, proofs);
+  if (Date.now() - (proofs.get(actionKey) ?? 0) > STEP_UP_REUSE_MS) {
     const verified = await admin.request('POST', '/identity/admin/step-up/verify', {
-      actionKey: 'sellers.business-activity.change',
-      code: totp(secret),
+      actionKey,
+      code: await freshCode(secret),
     });
-    if (verified.status < 300) break;
-    if (attempt === 1) {
+    if (verified.status >= 300)
       throw new Error(`step-up: ${verified.status} ${JSON.stringify(verified.body)}`);
-    }
-    await sleep(30000 - (Date.now() % 30000) + 1500);
+    proofs.set(actionKey, Date.now());
   }
   await admin.ok('PUT', `/sellers/admin/${sellerId}/business-activities`, {
     mainActivityId: activityId,
