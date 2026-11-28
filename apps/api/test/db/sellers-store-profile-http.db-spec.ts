@@ -351,6 +351,14 @@ describe.each(TEST_MARKETS)('store profile over HTTP on PostgreSQL in market %s'
       [code, sellerId],
     );
     const revisionId = revisions[0]!.id;
+    // ADR-0040 decision 4: an approval needs the seller's main activity (a plain id, no foreign key).
+    await owner.query(
+      `INSERT INTO sellers.seller_business_activities
+         (market_id, tenant_id, seller_id, activity_id, is_main, assigned_by, assigned_at)
+       SELECT market_id, tenant_id, seller_id, $3::uuid, true, $4::uuid, now()
+         FROM sellers.seller_files WHERE market_id = $1 AND seller_id = $2`,
+      [code, sellerId, randomUUID(), randomUUID()],
+    );
     const first = await app.get(ReviewApprove).execute(admin(), { sellerId, revisionId });
     if (!first.ok) {
       expect(first.error.code).toBe('review.manual-register-check-required');
