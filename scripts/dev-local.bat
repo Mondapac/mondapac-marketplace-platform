@@ -47,6 +47,8 @@ rem PostgreSQL row per origin, and parallel panel reads wait on its lock and emp
 rem Compose starts Redis; the rollback switch RATE_LIMIT_STORE=postgres, when set, is left alone.
 findstr /b /c:"REDIS_URL=" /c:"RATE_LIMIT_STORE=" ".env" >nul 2>nul || (
   echo .env has no REDIS_URL: adding REDIS_URL=redis://127.0.0.1:6379, the Redis of docker compose
+  rem An empty line first, so a last line without a line break is not joined to the new one.
+  echo.>>".env"
   echo REDIS_URL=redis://127.0.0.1:6379>>".env"
 )
 if not exist "apps\seller\.env.local" (
@@ -102,9 +104,10 @@ rem The loader builds the catalog through the admin API; the worker must not see
 if "%OPS%"=="1" set "CATALOG_SEED_JOBS_OFF=catalog.seed-category-tree,catalog.seed-attributes,catalog.seed-cultures"
 rem Type-checking the API takes about 2.7 GB of heap, more than Node's default limit on an 8 GB
 rem machine ("JavaScript heap out of memory", exit code 134). Raise the limit for the API window and
-rem the worker's build only. Not for the panels and the buyer site: with a 6 GB ceiling in five
-rem processes on an 8 GB machine the heaps grow until Windows pages Docker out, and every
-rem transaction times out (Prisma P2028, BUG-019). dev-worker.mjs runs the built worker without it.
+rem the worker's build only (the API's dev script also passes it to the nest CLI, which type-checks
+rem in-process). Not for the panels and the buyer site: a 6 GB ceiling in five processes on an
+rem 8 GB machine lets the heaps grow and is the likely cause of the paging under which every
+rem transaction timed out (Prisma P2028, BUG-019). dev-worker.mjs runs the built worker without it.
 set "BASE_NODE_OPTIONS=%NODE_OPTIONS%"
 set "NODE_OPTIONS=%NODE_OPTIONS% --max-old-space-size=6144"
 start "MondaPac API" /d "%CD%" cmd /k "pnpm dev"

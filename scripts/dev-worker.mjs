@@ -13,8 +13,8 @@ for (const filter of ['@mondapac/shared-kernel', '@mondapac/platform-import', '@
 }
 
 // The large heap ceiling dev-local.bat sets is for the build above (the type-check). The running
-// worker does not need it, and on an 8 GB machine a 6 GB ceiling lets its heap grow until the
-// machine pages and every transaction times out (Prisma P2028, BUG-019): drop it here.
+// worker does not need it, and on an 8 GB machine a 6 GB ceiling lets its heap grow, the likely
+// cause of the paging under which every transaction timed out (Prisma P2028, BUG-019): drop it.
 const nodeOptions = (process.env.NODE_OPTIONS ?? '')
   .split(/\s+/)
   .filter((flag) => flag !== '' && !flag.startsWith('--max-old-space-size='))
