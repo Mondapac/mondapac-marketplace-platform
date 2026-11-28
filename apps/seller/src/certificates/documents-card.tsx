@@ -62,6 +62,9 @@ export function orderedDocuments(
 
 let localIds = 0;
 
+/** The seller confirmed that this change withdraws the pending submission (API `withdrawPending`). */
+export const WITHDRAW_QUERY = '?withdrawPending=true';
+
 export function DocumentsCard({
   certificateId,
   documents,
@@ -72,6 +75,8 @@ export function DocumentsCard({
   error,
   onBusyChange,
   onDocumentsChange,
+  confirmWithdraw,
+  onWithdrawn,
 }: {
   readonly certificateId: string;
   readonly documents: readonly CertificateDocument[];
@@ -86,6 +91,13 @@ export function DocumentsCard({
   readonly onBusyChange?: (busy: boolean) => void;
   /** The stored files changed (one added or removed). */
   readonly onDocumentsChange?: (documents: readonly CertificateDocument[]) => void;
+  /**
+   * Set while a submission is under review (design 7.2): adding or removing a file withdraws it,
+   * so the card asks first ("Save and withdraw your submission?"); false keeps everything as it is.
+   */
+  readonly confirmWithdraw?: (() => Promise<boolean>) | undefined;
+  /** A change withdrew the pending submission: the form reads the record again. */
+  readonly onWithdrawn?: () => void;
 }) {
   const t = useTranslations();
   const locale = useLocale();
@@ -167,7 +179,7 @@ export function DocumentsCard({
     return null;
   }
 
-  async function uploadOne(file: File, replacing: string | null) {
+  async function uploadOne(file: File, replacing: string | null, withdraw: boolean) {
     localIds += 1;
     const key = `local-${localIds}`;
     const row: Row = {
@@ -205,7 +217,7 @@ export function DocumentsCard({
       return;
     }
     const result = await postWithProgress<CertificateDocumentUploaded>(
-      `certification/seller/certificates/${certificateId}/documents`,
+      `certification/seller/certificates/${certificateId}/documents${withdraw ? WITHDRAW_QUERY : ''}`,
       { data },
       csrfToken,
       (share) => update(key, { progress: share }),
@@ -218,6 +230,7 @@ export function DocumentsCard({
       const stored: Row = { ...rowOf(result.body, row.name), key };
       setRows((current) => current.map((item) => (item.key === key ? stored : item)));
       announce(name, 'certification.upload.status.ready');
+      if (result.body.withdrawnSubmissionId !== null) onWithdrawn?.();
       return;
     }
     if (result.failure.status === 401) {
@@ -229,11 +242,14 @@ export function DocumentsCard({
     announce(name, 'certification.upload.status.refused');
   }
 
-  function choose(files: FileList | readonly File[] | null, replacing: string | null = null) {
+  async function choose(files: FileList | readonly File[] | null, replacing: string | null = null) {
     if (files === null || !editable) return;
     const list = Array.from(files);
     if (input.current !== null) input.current.value = '';
     if (list.length === 0) return;
+    // Under review, the first file withdraws the submission: ask once for the whole choice.
+    const withdraw = confirmWithdraw !== undefined;
+    if (withdraw && !(await confirmWithdraw())) return;
     setNotice(null);
     const current = rowsRef.current;
     const taken = current.filter(
@@ -246,7 +262,7 @@ export function DocumentsCard({
     const accepted = list.slice(0, room);
     if (accepted.length < list.length) setNotice('certification.error.upload.limit');
     accepted.forEach((file, index) => {
-      void uploadOne(file, index === 0 ? replacing : null);
+      void uploadOne(file, index === 0 ? replacing : null, withdraw);
     });
   }
 
@@ -259,10 +275,15 @@ export function DocumentsCard({
       announce(name, 'certification.upload.status.removed');
       return;
     }
+    const withdraw = confirmWithdraw !== undefined;
+    if (withdraw && !(await confirmWithdraw())) return;
     update(row.key, { phase: 'removing' });
-    const result = await callApi<{ readonly removed: true }>(
+    const result = await callApi<{
+      readonly removed: true;
+      readonly withdrawnSubmissionId?: string | null;
+    }>(
       'DELETE',
-      `certification/seller/certificates/${certificateId}/documents/${row.documentId}`,
+      `certification/seller/certificates/${certificateId}/documents/${row.documentId}${withdraw ? WITHDRAW_QUERY : ''}`,
       undefined,
       csrfToken,
     );
@@ -270,6 +291,7 @@ export function DocumentsCard({
       focusPicker.current = true;
       setRows((current) => current.filter((item) => item.key !== row.key));
       announce(name, 'certification.upload.status.removed');
+      if (typeof result.body.withdrawnSubmissionId === 'string') onWithdrawn?.();
       return;
     }
     if (result.failure.status === 401) {
@@ -285,7 +307,7 @@ export function DocumentsCard({
     event.preventDefault();
     setDragging(false);
     if (!canAdd) return;
-    choose(event.dataTransfer.files);
+    void choose(event.dataTransfer.files);
   }
 
   const help =
@@ -331,7 +353,7 @@ export function DocumentsCard({
             </span>
             <FileButton
               inputRef={input}
-              onFiles={(files) => choose(files)}
+              onFiles={(files) => void choose(files)}
               multiple
               accept={accept}
               disabled={!canAdd}
@@ -363,7 +385,7 @@ export function DocumentsCard({
                 locale={locale}
                 reason={row.reasonKey === null ? null : t(row.reasonKey, values)}
                 onRemove={() => void remove(row, index)}
-                onReplace={(files) => choose(files, row.key)}
+                onReplace={(files) => void choose(files, row.key)}
                 accept={accept}
               />
             ))}

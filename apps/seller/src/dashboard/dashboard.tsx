@@ -19,9 +19,12 @@ import {
   type DashboardSource,
   type GridLayout,
 } from '@mondapac/ui';
-import { useLocale, useTimeZone, useTranslations } from 'next-intl';
+import { useFormatter, useLocale, useTimeZone, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import { known, shortInstant } from '../catalog/format.ts';
+import { formatDay } from '../certificates/format.ts';
+import { dashboardAlertOf, expiryToneOf } from '../certificates/status.ts';
+import { certificatePath, type CertificateList } from '../certificates/types.ts';
 import { PAYOUT_ACCOUNT_PATH, type PayoutAccount } from '../payout/types.ts';
 import type { SourcesView } from '../stock/types.ts';
 import { TodaysTasks } from '../work-queue/todays-tasks.tsx';
@@ -78,15 +81,72 @@ function useSkeletonText() {
   return { slowLabel: t('route.slow'), stalledLabel: t('dashboard.error.card') };
 }
 
+/** Which words the certificate alert uses for each status it warns about. */
+const CERTIFICATE_ALERT: Readonly<Record<string, string>> = {
+  expired: 'expired',
+  'issuer-not-recognised': 'issuer',
+  'approved-expiring': 'expiring',
+  'changes-needed': 'changes',
+  'approved-renewal-changes-needed': 'changes',
+};
+
+/**
+ * The certificate alert (seller certificates design 3): an expired or expiring certificate stops
+ * offers with its badge from being bought (CERT-15), and one sent back for changes waits on the
+ * seller. One banner, the most urgent, linking to that certificate's page.
+ */
+function CertificateAlert({ list }: { readonly list: CertificateList }) {
+  const t = useTranslations('dashboard');
+  const format = useFormatter();
+  const row = dashboardAlertOf(list.certificates);
+  if (row === null) return null;
+  const words = CERTIFICATE_ALERT[row.status];
+  if (words === undefined) return null;
+  const submitBy = formatDay(
+    (date, options) => format.dateTime(date, options),
+    row.renewalSubmitBy,
+  );
+  const tone =
+    words === 'expiring'
+      ? (expiryToneOf(row) ?? 'attention')
+      : words === 'changes'
+        ? 'attention'
+        : 'critical';
+  const body =
+    words === 'expiring'
+      ? submitBy === null
+        ? t('notice.certificate.expiring.body-plain')
+        : t('notice.certificate.expiring.body', { submitBy })
+      : t(`notice.certificate.${words}.body`);
+  return (
+    <div data-testid="certificate-alert" data-status={row.status}>
+      <Banner tone={tone} title={t(`notice.certificate.${words}.title`)}>
+        <p>
+          {body}{' '}
+          <a className="font-medium underline" href={certificatePath(row.certificateId)}>
+            {t('notice.certificate.action')}
+          </a>
+        </p>
+      </Banner>
+    </div>
+  );
+}
+
 function NoticeBanners({
   payout,
   sources,
+  certificates = null,
 }: {
   readonly payout: Widget<PayoutAccount> | null;
   readonly sources: Widget<SourcesView> | null;
+  readonly certificates?: Widget<CertificateList> | null;
 }) {
   const t = useTranslations('dashboard');
   const notices: ReactNode[] = [];
+  const list = ok(certificates);
+  if (list !== null && dashboardAlertOf(list.certificates) !== null) {
+    notices.push(<CertificateAlert key="certificate" list={list} />);
+  }
   if (payout?.kind === 'error') {
     notices.push(
       <Banner key="payout-error" tone="info">
@@ -133,7 +193,13 @@ function Notices({ data }: { readonly data: SellerDashboardSources }) {
     <DashboardSlot source={data.payout} fallback={null}>
       {(payout) => (
         <DashboardSlot source={data.sources} fallback={null}>
-          {(sources) => <NoticeBanners payout={payout} sources={sources} />}
+          {(sources) => (
+            <DashboardSlot source={data.certificates} fallback={null}>
+              {(certificates) => (
+                <NoticeBanners payout={payout} sources={sources} certificates={certificates} />
+              )}
+            </DashboardSlot>
+          )}
         </DashboardSlot>
       )}
     </DashboardSlot>

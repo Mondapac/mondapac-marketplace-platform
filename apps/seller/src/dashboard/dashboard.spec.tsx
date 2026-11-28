@@ -23,14 +23,15 @@ import { startSellerDashboard } from './load.ts';
 /** Every read of the dashboard, awaited. */
 async function loadSellerDashboard(session: SellerSession): Promise<SellerDashboardData> {
   const sources = startSellerDashboard(session);
-  const [tasks, orders, payout, sourcesView, lowStock] = await Promise.all([
+  const [tasks, orders, payout, sourcesView, lowStock, certificates] = await Promise.all([
     sources.tasks,
     sources.orders,
     sources.payout,
     sources.sources,
     sources.lowStock,
+    sources.certificates,
   ]);
-  return { tasks, orders, payout, sources: sourcesView, lowStock };
+  return { tasks, orders, payout, sources: sourcesView, lowStock, certificates };
 }
 
 const wrap = (node: React.ReactNode, locale = 'en-AU') => (
@@ -192,6 +193,7 @@ const full: SellerDashboardData = {
     ],
     nextCursor: null,
   }),
+  certificates: null,
 };
 const none: SellerDashboardData = {
   tasks: null,
@@ -199,6 +201,7 @@ const none: SellerDashboardData = {
   payout: null,
   sources: null,
   lowStock: null,
+  certificates: null,
 };
 const KEYS = [
   'ordering.seller-order.view',
@@ -530,6 +533,62 @@ describe('seller dashboard', () => {
     );
   });
 
+  it('warns about the most urgent certificate and links to it', () => {
+    const row = (id: number, status: string, over: Record<string, unknown> = {}) => ({
+      certificateId: ID(id),
+      typeCode: 'type-one',
+      status,
+      recordStatus: 'approved',
+      submitBy: null,
+      editable: true,
+      deletable: false,
+      withdrawable: false,
+      createdAt: '2026-10-01T00:00:00.000Z',
+      lastChangedAt: '2026-10-01T00:00:00.000Z',
+      ...over,
+    });
+    const data: SellerDashboardData = {
+      ...none,
+      certificates: ok({
+        certificates: [
+          row(30, 'approved'),
+          row(31, 'changes-needed'),
+          row(32, 'approved-expiring', {
+            daysLeft: 5,
+            bannerTone: 'attention',
+            renewalSubmitBy: '2026-12-01',
+          }),
+        ],
+        nextAfterId: null,
+      }),
+    };
+    render(
+      wrap(
+        <SellerDashboard today="2026-11-23" title="Dashboard" data={data} permissionKeys={[]} />,
+      ),
+    );
+    const alert = screen.getByTestId('certificate-alert');
+    expect(alert.dataset.status).toBe('approved-expiring');
+    expect(alert.textContent).toContain('A certificate expires soon');
+    expect(alert.textContent).toContain('Submit your renewal by 1 Dec 2026.');
+    expect(within(alert).getByRole('link', { name: 'Open certificate' }).getAttribute('href')).toBe(
+      `/settings/certificates/${ID(32)}`,
+    );
+  });
+
+  it('shows no certificate alert when nothing needs the seller', () => {
+    const data: SellerDashboardData = {
+      ...none,
+      certificates: ok({ certificates: [], nextAfterId: null }),
+    };
+    render(
+      wrap(
+        <SellerDashboard today="2026-11-23" title="Dashboard" data={data} permissionKeys={[]} />,
+      ),
+    );
+    expect(screen.queryByTestId('certificate-alert')).toBeNull();
+  });
+
   it('says nothing is low or out of stock when the list is empty', () => {
     const data: SellerDashboardData = { ...none, lowStock: ok({ items: [], nextCursor: null }) };
     render(
@@ -631,6 +690,7 @@ describe('seller dashboard while it streams', () => {
               payout: null,
               sources: null,
               lowStock: null,
+              certificates: null,
             }}
             permissionKeys={['ordering.seller-order.view']}
           />,

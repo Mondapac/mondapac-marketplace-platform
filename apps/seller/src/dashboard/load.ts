@@ -1,6 +1,7 @@
 import 'server-only';
 import { workQueueRows } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
+import { CERTIFICATE_VIEW_PERMISSION, type CertificateList } from '../certificates/types.ts';
 import { ORDER_VIEW_PERMISSION, type SellerOrderCursorPage } from '../orders/types.ts';
 import { PAYOUT_VIEW_PERMISSION, type PayoutAccount } from '../payout/types.ts';
 import { serverGet, type ServerGet } from '../server/server-fetch.ts';
@@ -73,6 +74,10 @@ export function startSellerDashboard(session: SellerSession): SellerDashboardSou
     // A full page of signals, so the few shown are the latest ones.
     lowStock: widget<LowStockPage>(keys.has(STOCK_VIEW_PERMISSION), () =>
       serverGet<LowStockPage>(`inventory/seller/low-stock?limit=${COUNT_LIMIT}`),
+    ),
+    // One page: a seller holds one open certificate per type, so a few rows at most.
+    certificates: widget<CertificateList>(keys.has(CERTIFICATE_VIEW_PERMISSION), () =>
+      serverGet<CertificateList>(`certification/seller/certificates?limit=${COUNT_LIMIT}`),
     ),
   };
 }

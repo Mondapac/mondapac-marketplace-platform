@@ -146,6 +146,25 @@ Recorded so Jafar and the owners can accept or refuse them.
    `upload.unreadable`, `form.review`, `form.review-wait`, `review.row.type`, `review.edit`, `review.back`,
    `review.expiry`, `review.submitted`, `review.help.issuer-pending`, `issuer-request.file.*`,
    `issuer-request.status.open-help`.
+11. **CS5 status page, withdraw, correct and renew (seller certificates PR 4).** A draft opens on its form at
+   `/settings/certificates/[id]`; every other status opens the status page there, and its buttons lead to the
+   form at `/settings/certificates/[id]/edit` (correction, renewal, replacement, or an edit while under review).
+   Buttons come from the API's `editable`, `withdrawable` and the status (section 11 of the page design). The
+   status card carries the decision's reason: the Market's `reasonLabel` (its own words, as in the email), the
+   panel's words for the `nextStep` key (`next-step.*`, none for a key the panel does not know) and the
+   reviewer's note in quotes as plain text (`dir="auto"`, never markup). "View both" is not a button: beside a
+   renewal under review or sent back the page always shows "Certificate in force" and "Your renewal". Under
+   review the form shows `edit-warning.banner`, hides Review, and the first change of a field or a file opens
+   `edit-warning.dialog` and is sent with `withdrawPending=true`; Cancel keeps the typed text and sends nothing.
+   "Add a certificate" after a decline or a revoke opens the list's start dialog (`?add=1`). The list shows one
+   expiry banner (the most urgent, tone from the API's `bannerTone`, dates from `validUntil` and
+   `renewalSubmitBy`); the dashboard shows one certificate alert for expired, issuer not recognised, expiring
+   and sent-back certificates, linking to the status page. New text for legal: `action.renew`, `action.edit`,
+   `form.back-status`, `form.renew.banner-plain`, `status.your-time`, `status.submitted-details`,
+   `status.renewal-details`, `status.in-force`, `status.declared`, `expiring.title-type`, `expiring.body-plain`,
+   `renewal-changes.title`, `expired-renewal.body`, `issuer-not-recognised.title-plain`,
+   `edit-warning.withdrawn`, `withdraw.done`, `history.*`, `next-step.*` and the dashboard's
+   `notice.certificate.*`. A renewal of a type the Market closed waits on the type's form settings (FE-20261127-seller-renew-deactivated-type).
 
 ## 2. Flows
 

@@ -4,16 +4,26 @@ import {
   Button,
   CARD_TABLE,
   EmptyState,
-  Icon,
+  Banner,
+  LinkButton,
   SettingsPage,
   SettingsViewOnlyBanner,
 } from '@mondapac/ui';
 import { useFormatter, useLocale, useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useId, useMemo, useState } from 'react';
+import { zonePlace } from './certificate-form.tsx';
 import { formatDay, formatInstantDay } from './format.ts';
+import { SellerAccountLine } from './seller-account-line.tsx';
 import { StartCertificateDialog } from './start-dialog.tsx';
-import { blocksNewOfType, rowActionKey, sortForList } from './status.ts';
+import {
+  blocksNewOfType,
+  expiryToneOf,
+  formPathOf,
+  mostUrgentExpiry,
+  rowActionKey,
+  sortForList,
+} from './status.ts';
 import { CertificateStatusBadge } from './status-badge.tsx';
 import {
   certificatePath,
@@ -28,16 +38,6 @@ import {
 const ROW_BUTTON_CELL =
   'px-4 py-3 text-end align-top max-lg:col-span-full max-lg:p-0 max-lg:pt-2 max-lg:text-start lg:sticky lg:end-0 lg:z-10 lg:bg-surface';
 
-const ACCOUNT_TONE: Readonly<Record<SellerAccountState, string>> = {
-  approved: 'text-success-fg',
-  'details-incomplete': 'text-fg-muted',
-  ready: 'text-fg-muted',
-  'outside-area': 'text-attention-fg',
-  'awaiting-review': 'text-fg-muted',
-  'changes-needed': 'text-attention-fg',
-  'not-approved': 'text-critical-fg',
-};
-
 /**
  * Settings › Certificates (design section 5, CS1): the header (title and Add on one row, no
  * subtitle), the seller account's own state on a line of its own (CERT-12), and one row per
@@ -51,6 +51,7 @@ export function CertificatesList({
   canManage,
   zone,
   csrfToken,
+  startOpen = false,
 }: {
   readonly list: CertificateList;
   readonly options: CertificateOptions;
@@ -59,10 +60,13 @@ export function CertificatesList({
   /** The seller's working zone, for "Last changed"; null when it could not be read. */
   readonly zone: string | null;
   readonly csrfToken: string;
+  /** Open the start dialog at once ("Add a certificate" from a declined or revoked one). */
+  readonly startOpen?: boolean;
 }) {
   const t = useTranslations();
   const locale = useLocale();
-  const [starting, setStarting] = useState(false);
+  const format = useFormatter();
+  const [starting, setStarting] = useState(startOpen);
   const viewOnlyId = useId();
   const noTypesId = useId();
   const rows = useMemo(() => sortForList(list.certificates), [list.certificates]);
@@ -81,6 +85,7 @@ export function CertificatesList({
   }, [list.certificates]);
   const noTypes = options.types.length === 0;
   const addBlocked = !canManage || noTypes;
+  const expiring = mostUrgentExpiry(list.certificates);
   const addReason = !canManage ? viewOnlyId : noTypes ? noTypesId : undefined;
 
   const add = (
@@ -104,6 +109,16 @@ export function CertificatesList({
         </SettingsViewOnlyBanner>
       </div>
     ),
+    expiring === null ? null : (
+      <ExpiryBanner
+        key="expiry"
+        certificate={expiring}
+        type={nameOf(expiring.typeCode)}
+        zone={zone}
+        canManage={canManage}
+        day={(value) => formatDay((date, o) => format.dateTime(date, o), value)}
+      />
+    ),
     canManage && noTypes ? (
       <p key="no-types" id={noTypesId} className="text-sm text-fg-muted">
         {t('certification.add.none')}
@@ -119,14 +134,7 @@ export function CertificatesList({
         banners.length === 0 ? undefined : <div className="flex flex-col gap-3">{banners}</div>
       }
     >
-      <p className="text-sm text-fg-secondary" data-testid="seller-state">
-        {t('certification.seller-state.line', {
-          status: t(`certification.seller-state.${account}`),
-        })}
-        <span className={`ms-1 inline-flex align-middle ${ACCOUNT_TONE[account]}`} aria-hidden>
-          <Icon name={account === 'approved' ? 'check' : 'clock'} />
-        </span>
-      </p>
+      <SellerAccountLine account={account} />
       <section
         aria-label={t('certification.seller.title')}
         className="min-w-0 overflow-hidden rounded-lg border border-line bg-surface"
@@ -141,7 +149,7 @@ export function CertificatesList({
           <CertificateRows rows={rows} nameOf={nameOf} zone={zone} />
         )}
       </section>
-      {starting ? (
+      {starting && !addBlocked ? (
         <StartCertificateDialog
           open
           types={options.types}
@@ -235,7 +243,7 @@ function CertificateRows({
                 <td className={ROW_BUTTON_CELL}>
                   {action === null ? null : (
                     <Link
-                      href={certificatePath(row.certificateId)}
+                      href={formPathOf(row)}
                       aria-label={`${t(action)}: ${name}`}
                       className="inline-flex h-(--mp-size-control-sm) items-center whitespace-nowrap rounded-md border border-line-control bg-surface px-3 text-sm font-medium text-fg hover:bg-muted"
                     >
@@ -248,6 +256,62 @@ function CertificateRows({
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/**
+ * The expiry banner (design 5.1): the API sets its tone (info from the first warning, attention
+ * from a later one, critical on the last day and once expired) and both dates; the panel counts
+ * nothing. Only the most urgent certificate gets one.
+ */
+export function ExpiryBanner({
+  certificate,
+  type,
+  zone,
+  canManage,
+  day,
+}: {
+  readonly certificate: CertificateSummary;
+  readonly type: string;
+  readonly zone: string | null;
+  readonly canManage: boolean;
+  readonly day: (value: string | null | undefined) => string | null;
+}) {
+  const t = useTranslations();
+  const tone = expiryToneOf(certificate);
+  if (tone === null) return null;
+  const date = day(certificate.validUntil) ?? t('certification.list.none');
+  const submitBy = day(certificate.renewalSubmitBy);
+  const zoneName =
+    zone === null
+      ? t('certification.status.your-time')
+      : t('certification.form.zone-time', { place: zonePlace(zone) });
+  const expired = certificate.status === 'expired';
+  const title = expired
+    ? t('certification.expired.title')
+    : t('certification.expiring.title-type', { type, date });
+  const body = expired
+    ? t('certification.expired.body')
+    : submitBy === null
+      ? t('certification.expiring.body-plain', { date, zoneName })
+      : t('certification.expiring.body', { date, zoneName, submitBy });
+  return (
+    <div data-testid="expiry-banner" data-tone={tone}>
+      <Banner tone={tone} title={title}>
+        <p>{body}</p>
+        {canManage ? (
+          <p className="mt-2">
+            <LinkButton
+              variant="secondary"
+              href={formPathOf(certificate)}
+              aria-label={`${t('certification.action.renew')}: ${type}`}
+            >
+              {t('certification.action.renew')}
+            </LinkButton>
+          </p>
+        ) : null}
+      </Banner>
     </div>
   );
 }

@@ -17,14 +17,15 @@ import {
   SettingsViewOnlyBanner,
   toast,
 } from '@mondapac/ui';
-import { useLocale, useTranslations } from 'next-intl';
+import { useFormatter, useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useCallback, useId, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
-import { DocumentsCard } from './documents-card.tsx';
+import { DocumentsCard, WITHDRAW_QUERY } from './documents-card.tsx';
+import { formatDay } from './format.ts';
 import { certificateProblemOf, type CertificateProblem } from './errors.ts';
 import { IssuerRequestDialog } from './issuer-request-dialog.tsx';
-import { opensOnForm } from './status.ts';
+import { formModeOf, nextStepKey } from './status.ts';
 import { CertificateStatusBadge } from './status-badge.tsx';
 import {
   CERTIFICATE_NUMBER_MAX,
@@ -32,6 +33,7 @@ import {
   DECLARATION_NOTE_MAX,
   certificateReviewPath,
   typeName,
+  type CertificateDecision,
   type CertificateDetail,
   type CertificateDocumentLimits,
   type CertificateDraft,
@@ -118,6 +120,7 @@ export function CertificateForm({
 }) {
   const t = useTranslations();
   const locale = useLocale();
+  const format = useFormatter();
   const router = useRouter();
   const [certificate, setCertificate] = useState<CertificateSummary>(detail.certificate);
   const [saved, setSaved] = useState<Values>(() => valuesOf(detail.draft));
@@ -131,14 +134,24 @@ export function CertificateForm({
   const [reviewing, setReviewing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
+  /** The answer to "Save and withdraw your submission?", while it is asked. */
+  const [withdrawAsk, setWithdrawAsk] = useState<((yes: boolean) => void) | null>(null);
   const busy = useRef(false);
   const cancelDelete = useRef<HTMLButtonElement>(null);
+  const cancelWithdraw = useRef<HTMLButtonElement>(null);
   const viewOnlyId = useId();
 
   const name = typeName(type?.names, certificate.typeCode, locale);
+  const validUntil = formatDay(
+    (date, options) => format.dateTime(date, options),
+    certificate.validUntil ?? detail.inForce?.expiryDate ?? null,
+  );
   const title = t('certification.form.page-title', { type: name });
   const self = type?.verificationMode === 'SELF_DECLARATION';
-  const editable = canManage && type !== undefined && opensOnForm(certificate);
+  const mode = formModeOf(certificate);
+  const editable = canManage && type !== undefined && mode !== null;
+  // Under review the first change withdraws the submission: it is asked for, then confirmed.
+  const pending = editable && mode === 'pending';
   const changed = (field: (typeof FIELDS)[number]) => values[field] !== saved[field];
   const dirtyCount = FIELDS.filter(changed).length;
   const dirty = editable && dirtyCount > 0;
@@ -156,15 +169,40 @@ export function CertificateForm({
     if (found.then === 'list') router.push(CERTIFICATES_PATH);
   }
 
+  /** Asks "Save and withdraw your submission?"; true when the seller says yes. */
+  const confirmWithdraw = useCallback(
+    () => new Promise<boolean>((resolve) => setWithdrawAsk(() => resolve)),
+    [],
+  );
+
+  function answerWithdraw(yes: boolean) {
+    withdrawAsk?.(yes);
+    setWithdrawAsk(null);
+  }
+
+  /** A file change withdrew the submission: the record's summary is read again (its new status). */
+  const onWithdrawn = useCallback(async () => {
+    const read = await callApi<CertificateDetail>(
+      'GET',
+      `certification/seller/certificates/${detail.certificate.certificateId}`,
+    );
+    if (read.ok) setCertificate(read.body.certificate);
+    else router.refresh();
+  }, [detail.certificate.certificateId, router]);
+
   /** Saves the draft; true when it is saved (or nothing changed). */
   async function save(): Promise<boolean> {
     if (busy.current || !editable || type === undefined) return false;
+    // An unchanged save under review sends nothing (it would withdraw nothing either).
+    if (pending && !dirty) return true;
+    const withdraw = pending;
+    if (withdraw && !(await confirmWithdraw())) return false;
     busy.current = true;
     setSaving(true);
     setProblem(null);
     const result = await callApi<CertificateDraftSaved>(
       'PUT',
-      `certification/seller/certificates/${certificate.certificateId}`,
+      `certification/seller/certificates/${certificate.certificateId}${withdraw ? WITHDRAW_QUERY : ''}`,
       draftBody(values, type),
       csrfToken,
     );
@@ -177,6 +215,9 @@ export function CertificateForm({
       setValues(next);
       // "Draft saved" shows beside the button (a status region), so no toast repeats it.
       setSavedOnce(true);
+      if (result.body.withdrawnSubmissionId !== null) {
+        toast.success(t('certification.edit-warning.withdrawn'));
+      }
       return true;
     }
     if (result.failure.status === 401) {
@@ -189,7 +230,7 @@ export function CertificateForm({
 
   /** Review: save what changed, then open the review page, which lists anything still missing. */
   async function review() {
-    if (busy.current || !editable || uploading) return;
+    if (busy.current || !editable || pending || uploading) return;
     setReviewing(true);
     const ok = dirty ? await save() : true;
     if (!ok) {
@@ -277,14 +318,27 @@ export function CertificateForm({
         {t('certification.error.type.inactive', { type: name })}
       </Banner>
     ) : null,
-    canManage && type !== undefined && !opensOnForm(certificate) ? (
+    canManage && type !== undefined && mode === null ? (
       <Banner key="locked" tone="info">
         {t('certification.form.locked')}
       </Banner>
     ) : null,
-    editable && certificate.status.endsWith('changes-needed') ? (
-      <Banner key="correct" tone="attention">
-        {t('certification.form.correct.banner')}
+    pending ? (
+      <Banner key="pending" tone="attention">
+        {t('certification.edit-warning.banner')}
+      </Banner>
+    ) : null,
+    editable && mode === 'correct' ? (
+      <Banner key="correct" tone="attention" title={t('certification.changes.title')}>
+        <p>{t('certification.form.correct.banner')}</p>
+        {detail.decision == null ? null : <ReasonLines decision={detail.decision} />}
+      </Banner>
+    ) : null,
+    editable && mode === 'renew' ? (
+      <Banner key="renew" tone="info">
+        {validUntil === null
+          ? t('certification.form.renew.banner-plain')
+          : t('certification.form.renew.banner', { date: validUntil })}
       </Banner>
     ) : null,
     certificate.status === 'draft-issuer-not-listed' ? (
@@ -356,6 +410,30 @@ export function CertificateForm({
             />
           ) : null}
           <Dialog
+            open={withdrawAsk !== null}
+            title={t('certification.edit-warning.dialog.title')}
+            onClose={() => answerWithdraw(false)}
+            initialFocus={cancelWithdraw}
+            actions={
+              <>
+                <Button
+                  ref={cancelWithdraw}
+                  variant="secondary"
+                  onClick={() => answerWithdraw(false)}
+                >
+                  {t('certification.action.cancel')}
+                </Button>
+                <Button variant="primary" onClick={() => answerWithdraw(true)}>
+                  {t('certification.edit-warning.dialog.action')}
+                </Button>
+              </>
+            }
+          >
+            <p className="text-sm text-fg-secondary">
+              {t('certification.edit-warning.dialog.body')}
+            </p>
+          </Dialog>
+          <Dialog
             open={confirmDelete}
             title={t('certification.draft.delete.title')}
             onClose={() => (deleting ? undefined : setConfirmDelete(false))}
@@ -397,16 +475,18 @@ export function CertificateForm({
               >
                 {t('certification.form.save-draft')}
               </Button>
-              <Button
-                type="button"
-                onClick={() => void review()}
-                loading={reviewing}
-                softDisabled={uploading}
-                aria-describedby={uploading ? 'certificate-review-wait' : undefined}
-                loadingLabel={t('certification.form.saving')}
-              >
-                {t('certification.form.review')}
-              </Button>
+              {pending ? null : (
+                <Button
+                  type="button"
+                  onClick={() => void review()}
+                  loading={reviewing}
+                  softDisabled={uploading}
+                  aria-describedby={uploading ? 'certificate-review-wait' : undefined}
+                  loadingLabel={t('certification.form.saving')}
+                >
+                  {t('certification.form.review')}
+                </Button>
+              )}
               {uploading ? (
                 <span id="certificate-review-wait" className="sr-only">
                   {t('certification.form.review-wait')}
@@ -556,9 +636,32 @@ export function CertificateForm({
           csrfToken={csrfToken}
           error={fieldError('documents')}
           onBusyChange={onBusyChange}
+          confirmWithdraw={pending ? confirmWithdraw : undefined}
+          onWithdrawn={() => void onWithdrawn()}
         />
       ) : null}
     </SettingsPage>
+  );
+}
+
+/** The reason of the decision on a correction: the Market's words and the panel's next step. */
+function ReasonLines({ decision }: { readonly decision: CertificateDecision }) {
+  const t = useTranslations();
+  const next = decision.nextStep === null ? null : nextStepKey(decision.nextStep);
+  return (
+    <div className="mt-2 flex flex-col gap-1" data-testid="form-reason">
+      {decision.reasonLabel === null ? null : (
+        <p dir="auto" className="font-medium">
+          {decision.reasonLabel}
+        </p>
+      )}
+      {next === null ? null : <p>{t(next)}</p>}
+      {decision.reasonText === null || decision.reasonText.trim() === '' ? null : (
+        <blockquote dir="auto" className="whitespace-pre-line border-s-2 border-current ps-3">
+          {t('certification.status.quote', { text: decision.reasonText })}
+        </blockquote>
+      )}
+    </div>
   );
 }
 

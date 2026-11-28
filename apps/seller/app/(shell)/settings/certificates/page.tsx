@@ -13,7 +13,13 @@ export async function generateMetadata() {
 }
 
 /** Settings › Store › Certificates (seller certificates design section 5, CS1). */
-export default async function CertificatesPage() {
+export default async function CertificatesPage({
+  searchParams,
+}: {
+  readonly searchParams: Promise<{ readonly add?: string | string[] }>;
+}) {
+  // "Add a certificate" from a declined or revoked certificate opens the start dialog here.
+  const { add } = await searchParams;
   const t = await getTranslations();
   const page = await loadCertificatesListPage();
   const title = t('certification.seller.title');
@@ -56,6 +62,7 @@ export default async function CertificatesPage() {
         canManage={page.session.permissionKeys.includes(CERTIFICATE_MANAGE_PERMISSION)}
         zone={zone}
         csrfToken={page.session.csrfToken}
+        startOpen={add === '1'}
       />
     </SettingsShell>
   );

@@ -144,6 +144,26 @@
         "title": "Add a stock location",
         "body": "Stock is held at a location. Add one before you set stock for your offers.",
         "action": "Add a location"
+      },
+      "certificate": {
+        "action": "Open certificate",
+        "expired": {
+          "title": "Your certificate has expired",
+          "body": "Offers with its badge can't be bought until a renewal is approved."
+        },
+        "expiring": {
+          "title": "A certificate expires soon",
+          "body": "Submit your renewal by {submitBy}.",
+          "body-plain": "Renew it before it expires."
+        },
+        "changes": {
+          "title": "A certificate needs changes",
+          "body": "Read the reason, update your certificate and submit again."
+        },
+        "issuer": {
+          "title": "A certificate's issuer is no longer recognised",
+          "body": "Offers with its badge can't be bought. Submit a certificate from a recognised issuer."
+        }
       }
     },
     "orders": {
@@ -6259,11 +6279,21 @@
         "related": []
       },
       "settings-certificates-certificateId": {
-        "title": "Certificate details",
-        "about": "Fill in the details exactly as they appear on your certificate, add a scan or photo, then review and submit it.",
+        "title": "Your certificate",
+        "about": "A draft opens on its form: fill in the details exactly as they appear on your certificate, add a scan or photo, then review and submit it. Once you've submitted it, this page shows where it stands, the reason for any decision and what to do next.",
         "good": [
           "Your draft stays saved until you submit it or delete it.",
-          "Each file is checked as soon as you add it."
+          "Each file is checked as soon as you add it.",
+          "You can withdraw a submission while it waits for review. Your details stay saved."
+        ],
+        "related": []
+      },
+      "settings-certificates-certificateId-edit": {
+        "title": "Change your certificate",
+        "about": "Correct a certificate that needs changes, renew one before it expires, or change one that is waiting for review.",
+        "good": [
+          "A renewal doesn't change your current certificate until it's approved.",
+          "Changing a certificate that is waiting for review withdraws it. We ask you first."
         ],
         "related": []
       },
@@ -6299,7 +6329,9 @@
       "add": "Add a certificate",
       "add-short": "Add",
       "cancel": "Cancel",
-      "continue": "Continue"
+      "continue": "Continue",
+      "renew": "Renew",
+      "edit": "Edit certificate"
     },
     "add": {
       "title": "Add a certificate",
@@ -6365,7 +6397,12 @@
         "invalid": "Check this value."
       },
       "review": "Review",
-      "review-wait": "Wait until your files have finished uploading."
+      "review-wait": "Wait until your files have finished uploading.",
+      "back-status": "Back to certificate",
+      "renew": {
+        "banner": "Your current certificate stays valid until {date}. A renewal doesn't extend it until it's approved.",
+        "banner-plain": "Your current certificate stays valid until its expiry date. A renewal doesn't extend it until it's approved."
+      }
     },
     "view-only": {
       "ask-owner": "You can view certificates but not change them. Ask your shop owner."
@@ -6379,7 +6416,9 @@
       "deleted": "Draft deleted"
     },
     "changes": {
-      "action": "Correct and submit again"
+      "action": "Correct and submit again",
+      "title": "Your certificate needs changes",
+      "body": "Read the reason, update your certificate and submit again."
     },
     "status": {
       "draft": "Draft",
@@ -6395,7 +6434,16 @@
       "expired-renewal-pending": "Expired, renewal awaiting review",
       "revoked": "Revoked",
       "issuer-not-recognised": "Issuer not recognised",
-      "unknown": "Unknown status"
+      "unknown": "Unknown status",
+      "submitted-on": "Submitted on {dateTime}",
+      "decided-on": "Decided on {dateTime}",
+      "valid-until": "Valid until the end of {date}, {zoneName}.",
+      "your-time": "your local time",
+      "submitted-details": "Submitted details",
+      "renewal-details": "Your renewal",
+      "in-force": "Certificate in force",
+      "declared": "Given",
+      "quote": "“{text}”"
     },
     "error": {
       "type": {
@@ -6531,6 +6579,87 @@
       "expiry-plain": "Valid until the end of {date}",
       "submitting": "Submitting…",
       "submitted": "Submitted for review"
+    },
+    "awaiting": {
+      "title": "We're reviewing your certificate",
+      "body": "We'll email you when there's a decision. Until then you can't use this certificate on offers. If you change anything you submitted, your submission is withdrawn and you'll need to submit again.",
+      "seller-pending": "This certificate can be reviewed now. It has no effect until your seller application is approved."
+    },
+    "declined": {
+      "title": "We couldn't accept this certificate",
+      "body": "You can't send this certificate again. You can add a different one."
+    },
+    "approved": {
+      "title": "Your certificate is approved",
+      "body": "You can add the {type} badge to your offers."
+    },
+    "expiring": {
+      "title": "Your certificate expires on {date}",
+      "title-type": "Your {type} certificate expires on {date}",
+      "body": "After the end of {date}, {zoneName}, offers with this badge can't be bought until a renewal is approved. Submit your renewal by {submitBy}.",
+      "body-plain": "After the end of {date}, {zoneName}, offers with this badge can't be bought until a renewal is approved."
+    },
+    "renewal-pending": {
+      "title": "Your renewal is being reviewed",
+      "body": "Your current certificate stays valid until {date}. We'll email you when there's a decision."
+    },
+    "renewal-changes": {
+      "title": "Your renewal needs changes",
+      "body": "Your current certificate stays valid until {date} only."
+    },
+    "expired": {
+      "title": "Your certificate has expired",
+      "body": "Offers with this badge can't be bought until a renewal is approved."
+    },
+    "expired-renewal": {
+      "body": "Offers with this badge can't be bought until it's approved."
+    },
+    "revoked": {
+      "title": "MondaPac revoked this certificate",
+      "body": "Offers with this badge can't be bought. You can add a new certificate."
+    },
+    "issuer-not-recognised": {
+      "title": "{issuer} is no longer recognised by MondaPac",
+      "title-plain": "Your issuer is no longer recognised by MondaPac",
+      "body": "This certificate no longer counts, so offers with this badge can't be bought. Submit a certificate from a recognised issuer.",
+      "action": "Submit a replacement"
+    },
+    "edit-warning": {
+      "banner": "Your certificate is waiting for review. If you change anything you submitted, your submission is withdrawn and you'll need to submit again.",
+      "dialog": {
+        "title": "Save and withdraw your submission?",
+        "body": "Your changes will be saved and your submission withdrawn. Submit again when you're ready.",
+        "action": "Save and withdraw"
+      },
+      "withdrawn": "Saved. Your submission was withdrawn."
+    },
+    "withdraw": {
+      "title": "Withdraw your submission?",
+      "body": "It leaves MondaPac's review queue. Your details stay saved.",
+      "action": "Withdraw submission",
+      "done": "Submission withdrawn"
+    },
+    "history": {
+      "title": "History",
+      "submitted": "Submitted",
+      "submitted-again": "Submitted again",
+      "renewal-submitted": "Renewal submitted",
+      "approved": "Approved",
+      "changes-requested": "Changes needed",
+      "declined": "Not accepted",
+      "withdrawn": "Withdrawn",
+      "expired": "Expired",
+      "revoked": "Revoked"
+    },
+    "next-step": {
+      "upload-clearer-file": "Upload a clearer copy of every page.",
+      "upload-all-pages": "Upload every page of the certificate.",
+      "check-holder-name": "Upload a certificate in your business's name, or correct your business details.",
+      "check-location-scope": "Add a certificate whose location and scope cover your business.",
+      "check-dates": "Correct the dates, or upload the right document.",
+      "choose-issuer": "Choose the correct issuer, or upload the right document.",
+      "contact-support": "If you have questions, contact MondaPac support.",
+      "add-new-certificate": "Add a new certificate when you have one."
     }
   }
 }

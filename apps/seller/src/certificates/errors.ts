@@ -47,8 +47,8 @@ const STALE_CODES: ReadonlySet<string> = new Set([
   'certificate.no-pending-submission',
   'certificate.has-submissions',
   'conflict.stale',
-  // The form does not offer "save and withdraw" yet (seller certificates PR 4), so a save that
-  // would withdraw a pending submission reloads the record instead.
+  // A submission arrived while the form was open (another tab or member): the form reloads and
+  // then asks "Save and withdraw your submission?" before the next change.
   'certificate.edit-withdraws-submission',
 ]);
 
