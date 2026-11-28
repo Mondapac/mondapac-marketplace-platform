@@ -3,6 +3,7 @@ import type { EventDelivery } from '../../../../platform/events/event-delivery';
 import type { SubscriberContext } from '../../../../platform/events/event-subscriptions';
 import type { SendItemUnavailableRefundMail } from '../../application/use-cases/send-item-unavailable-refund-mail.use-case';
 import type { SendOrderConfirmationMail } from '../../application/use-cases/send-order-confirmation-mail.use-case';
+import type { SendOrderReadyMail } from '../../application/use-cases/send-order-ready-mail.use-case';
 import type { SendOrderShippedMail } from '../../application/use-cases/send-order-shipped-mail.use-case';
 import type { SendSellerNewOrderMail } from '../../application/use-cases/send-seller-new-order-mail.use-case';
 import { orderMailSubscriptions } from './order-mail.subscriptions';
@@ -25,6 +26,7 @@ describe('order mail subscriptions', () => {
       refusing as unknown as SendSellerNewOrderMail,
       refusing as unknown as SendOrderShippedMail,
       refusing as unknown as SendItemUnavailableRefundMail,
+      refusing as unknown as SendOrderReadyMail,
     );
     expect(subscriptions.map((s) => s.name)).toContain('notifications.order-shipped-mail');
     expect(subscriptions.map((s) => s.name)).toContain(
@@ -41,6 +43,7 @@ describe('order mail subscriptions', () => {
       accepting as unknown as SendSellerNewOrderMail,
       accepting as unknown as SendOrderShippedMail,
       accepting as unknown as SendItemUnavailableRefundMail,
+      accepting as unknown as SendOrderReadyMail,
     );
     for (const subscription of subscriptions) {
       await expect(subscription.handle(envelope, delivery, context)).resolves.toBeUndefined();

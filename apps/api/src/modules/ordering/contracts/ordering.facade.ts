@@ -46,6 +46,8 @@ export interface OrderNotice {
   readonly sellerOrders: readonly {
     readonly sellerOrderId: Id<'SellerOrder'>;
     readonly sellerId: Id<'Seller'>;
+    /** The buyer's delivery method; only a `pickup` order gets the "ready for pickup" mail. */
+    readonly deliveryMethod: 'pickup' | 'instant' | 'same_day' | 'scheduled';
     readonly lines: readonly {
       readonly offerId: Id<'Offer'>;
       readonly quantity: number;
@@ -90,6 +92,11 @@ export interface RefundNotice {
   readonly requestedBy: 'admin' | 'seller';
   readonly amount: Money;
   readonly units: number;
+  /**
+   * Whether every unit of the order is now refunded (this refund and the succeeded ones before
+   * it): an admin's cancel and refund ends here, and the customer is told the order is cancelled.
+   */
+  readonly orderFullyRefunded: boolean;
 }
 
 /** An unknown, foreign-Market or not succeeded refund is `ordering.refund-not-found`. */

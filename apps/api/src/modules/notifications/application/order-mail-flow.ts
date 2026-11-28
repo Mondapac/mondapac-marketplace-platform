@@ -10,7 +10,10 @@ import { SELLER_UNAVAILABLE_REASON } from '../../ordering';
 import type { OrderingFacade, OrderNotice } from '../../ordering';
 import {
   itemUnavailableRefundMail,
+  orderCancelledMail,
   orderConfirmationMail,
+  orderReadyPickupMail,
+  orderRefundedMail,
   orderShippedMail,
   sellerNewOrderMail,
   sellerOrderDisputedMail,
@@ -43,12 +46,17 @@ export interface RefundMailInput extends OrderMailInput {
   readonly refundId: string;
 }
 
+/** One delivery of `ordering.seller-order-ready.v1`: ids only; the method is read now. */
+export interface ReadyMailInput extends OrderMailInput {
+  readonly sellerOrderId: string;
+}
+
 export type OrderMailSkipped =
   | 'order.gone'
   | 'recipient.none'
   | 'link.unconfigured'
-  /** A refund that is not for unavailable units: an admin tells the customer in person. */
-  | 'refund.not-unavailable';
+  /** Only a pickup order gets a "ready" mail; other methods are told by shipment and delivery. */
+  | 'ready.not-pickup';
 
 export type OrderMailOutput =
   | { readonly code: 'order-mail.sent'; readonly sent: number }
@@ -303,9 +311,9 @@ export async function sendOrderShipped(
 }
 
 /**
- * The customer's "Part of your order is unavailable", once Stripe confirmed the refund of units a
- * seller marked unavailable (order detail decision 6). Any other refund sends nothing here: an
- * admin refund is explained to the customer by the admin.
+ * The customer's mail once Stripe confirmed a refund: "Part of your order is unavailable" for
+ * units a seller marked unavailable (order detail decision 6); for an admin's refund, "Your order
+ * was cancelled" when the whole order is now refunded, else "Your refund".
  */
 export async function sendItemUnavailableRefund(
   deps: OrderMailDependencies,
@@ -324,9 +332,6 @@ export async function sendItemUnavailableRefund(
     }
     throw new Error(`${name}: the refund could not be read: ${notice.error.code}`);
   }
-  if (notice.value.reason !== SELLER_UNAVAILABLE_REASON) {
-    return finish(deps, context, input, name, { skipped: 'refund.not-unavailable' });
-  }
   const url = deps.policy.customerOrderUrl(context.market, notice.value.orderId);
   if (url === null) return finish(deps, context, input, name, { skipped: 'link.unconfigured' });
   const to = await recipientOf(deps, context, {
@@ -334,14 +339,72 @@ export async function sendItemUnavailableRefund(
     accountId: notice.value.accountId,
   });
   if (to === null) return finish(deps, context, input, name, { skipped: 'recipient.none' });
-  const composed = itemUnavailableRefundMail({
-    orderId: notice.value.orderId,
-    units: notice.value.units,
-    amount: notice.value.amount,
+  const locale = deps.policy.defaultLocale(context.market);
+  const composed =
+    notice.value.reason === SELLER_UNAVAILABLE_REASON
+      ? itemUnavailableRefundMail({
+          orderId: notice.value.orderId,
+          units: notice.value.units,
+          amount: notice.value.amount,
+          orderUrl: url,
+          locale,
+        })
+      : notice.value.orderFullyRefunded
+        ? orderCancelledMail({
+            orderId: notice.value.orderId,
+            amount: notice.value.amount,
+            orderUrl: url,
+            locale,
+          })
+        : orderRefundedMail({
+            orderId: notice.value.orderId,
+            reason: notice.value.reason,
+            amount: notice.value.amount,
+            orderUrl: url,
+            locale,
+          });
+  // A send failure throws: the outbox retries the delivery; the refund is already made.
+  await deps.transport.send({
+    to,
+    from: deps.policy.mailSender(context.market),
+    subject: composed.subject,
+    text: composed.text,
+  });
+  return finish(deps, context, input, name, { sent: 1 });
+}
+
+/**
+ * The customer's "Ready for pickup", once a seller says its part of a pickup order is ready. It
+ * carries the order link and no pickup code: the code is shown only on the signed-in order page.
+ */
+export async function sendOrderReadyForPickup(
+  deps: OrderMailDependencies,
+  context: CallContext,
+  input: ReadyMailInput,
+): Promise<Result<OrderMailOutput, OrderMailFailure>> {
+  const name = 'notifications.order-ready-mail';
+  const order = await readOrder(deps, context, input.orderId);
+  if (!order.ok) return order;
+  if (order.value === null) return finish(deps, context, input, name, { skipped: 'order.gone' });
+  const sellerOrder = order.value.sellerOrders.find((s) => s.sellerOrderId === input.sellerOrderId);
+  if (sellerOrder === undefined)
+    return finish(deps, context, input, name, { skipped: 'order.gone' });
+  if (sellerOrder.deliveryMethod !== 'pickup') {
+    return finish(deps, context, input, name, { skipped: 'ready.not-pickup' });
+  }
+  const url = deps.policy.customerOrderUrl(context.market, order.value.orderId);
+  if (url === null) return finish(deps, context, input, name, { skipped: 'link.unconfigured' });
+  const to = await recipientOf(deps, context, {
+    kind: 'customer',
+    accountId: order.value.accountId,
+  });
+  if (to === null) return finish(deps, context, input, name, { skipped: 'recipient.none' });
+  const composed = orderReadyPickupMail({
+    orderId: order.value.orderId,
     orderUrl: url,
     locale: deps.policy.defaultLocale(context.market),
   });
-  // A send failure throws: the outbox retries the delivery; the refund is already made.
+  // A send failure throws: the outbox retries the delivery; the order is already ready.
   await deps.transport.send({
     to,
     from: deps.policy.mailSender(context.market),

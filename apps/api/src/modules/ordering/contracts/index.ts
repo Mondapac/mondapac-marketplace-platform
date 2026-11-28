@@ -20,6 +20,7 @@ export {
   OrderShipped,
   RefundSucceeded,
   SellerOrderDelivered,
+  SellerOrderReady,
   SellerRefundLimitReached,
 } from '../domain/events';
 export { SELLER_UNAVAILABLE_REASON, type RefundReason } from '../domain/refund';

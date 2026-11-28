@@ -190,6 +190,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'notifications.admin-system-request-overdue-notice',
       'notifications.item-unavailable-refund-mail',
       'notifications.order-confirmation-mail',
+      'notifications.order-ready-mail',
       'notifications.order-shipped-mail',
       'notifications.seller-access-approved-notice',
       'notifications.seller-access-reinstated-notice',
@@ -299,6 +300,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'reporting.order-paid',
     ]);
     expect(subscriptions.subscribersOf('ordering.seller-order-ready.v1')).toEqual([
+      'notifications.order-ready-mail',
       'ordering.book-ready-carrier-delivery',
     ]);
     expect(subscriptions.subscribersOf('ordering.seller-order-delivered.v1')).toEqual([
