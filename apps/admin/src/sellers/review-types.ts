@@ -37,6 +37,8 @@ export interface ReviewRevision {
     readonly mismatches: readonly string[];
     readonly checkedAt: string | null;
   };
+  /** Claim words found in the store name: a hint for the reviewer, never a refusal. */
+  readonly storeNameClaimWords: readonly string[];
   readonly content: ReviewContent;
 }
 

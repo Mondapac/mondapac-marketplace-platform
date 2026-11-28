@@ -38,6 +38,7 @@ const revision = (over: Partial<ReviewRevision> = {}): ReviewRevision => ({
     mismatches: [],
     checkedAt: '2026-10-08T00:59:00.000Z',
   },
+  storeNameClaimWords: [],
   content: content(),
   ...over,
 });
@@ -60,6 +61,18 @@ const review = (over: Partial<ReviewRead> = {}): ReviewRead => ({
 });
 
 describe('admin seller review page', () => {
+  it('warns the reviewer when the store name holds a claim word, and not otherwise', async () => {
+    const { unmount } = render(
+      await ReviewView({
+        review: review({ current: revision({ storeNameClaimWords: ['halal'] }) }),
+      }),
+    );
+    expect(screen.getByText('The store name holds a claim word')).toBeTruthy();
+    unmount();
+    render(await ReviewView({ review: review() }));
+    expect(screen.queryByText('The store name holds a claim word')).toBeNull();
+  });
+
   afterEach(cleanup);
 
   it('shows the application read only, with business details and no decision buttons', async () => {

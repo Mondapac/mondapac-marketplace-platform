@@ -1352,6 +1352,10 @@
       "title": "Seller application",
       "back": "Back to sellers",
       "read-only": "Business details are shown in clear for review. Each view is recorded in the audit log.",
+      "claim-words": {
+        "title": "The store name holds a claim word",
+        "body": "Found: {words}. A halal, certified or similar claim is allowed only through an approved certificate. Check the seller's certificates before you approve this name."
+      },
       "under-review": "Under review",
       "proposed": "Proposed changes",
       "approved-revision": "Approved details",

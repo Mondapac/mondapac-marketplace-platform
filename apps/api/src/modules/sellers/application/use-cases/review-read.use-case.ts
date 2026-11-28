@@ -1,4 +1,6 @@
 import { Logger } from '@nestjs/common';
+import { claimWordsIn } from '../../domain/store-name';
+import type { SellerMarketPolicy } from '../ports/seller-market-policy';
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type {
   CallContext,
@@ -75,6 +77,11 @@ export interface ReviewRevisionView {
     readonly mismatches: readonly RegisterMismatch[];
     readonly checkedAt: Temporal.Instant | null;
   };
+  /**
+   * The Market's claim words found in the store name (design 3.5, Hassan M1): a reviewer hint,
+   * never a refusal. A claim is allowed only through a certificate, so the reviewer looks.
+   */
+  readonly storeNameClaimWords: readonly string[];
   readonly content: {
     readonly storeName: string;
     readonly businessName: string;
@@ -144,6 +151,7 @@ export interface ReviewReadDependencies {
   readonly accessReader: SellerAccessReader;
   readonly identifierSchemes: BusinessIdentifierSchemes;
   readonly onboardingAreas: OnboardingAreas;
+  readonly policy: Pick<SellerMarketPolicy, 'reservedWords'>;
   readonly areaNames: AreaNameSource;
   readonly audit: AuditWriter;
   readonly clock: Clock;
@@ -358,8 +366,15 @@ export class ReviewRead extends UseCase<ReviewReadInput, ReviewView, ReviewReadF
         mismatches: revision.register.mismatches,
         checkedAt: revision.register.checkedAt,
       },
+      storeNameClaimWords: this.#claimWordsIn(market, opened.value.storeName),
       content: contentView(opened.value, scheme),
     };
+  }
+
+  /** The claim words in a store name; none for a Market without a configured list. */
+  #claimWordsIn(market: MarketContext, storeName: string): readonly string[] {
+    const reserved = this.deps.policy.reservedWords(market);
+    return reserved === null ? [] : claimWordsIn(storeName, reserved);
   }
 
   private registerOf(market: MarketContext, data: Loaded): ReviewRegisterView {
