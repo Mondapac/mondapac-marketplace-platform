@@ -121,6 +121,7 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The signed-in member's own time zone and language (profile).
     'identity/seller/profile/preferences',
     'sellers/my-file/general',
+    'sellers/my-file/activities',
     'sellers/my-file/address',
     'sellers/my-file/slug',
     'sellers/my-file/identifier',

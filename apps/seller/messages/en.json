@@ -823,6 +823,7 @@
   "sellers": {
     "steps": {
       "business": "Business details",
+      "activity": "What you sell",
       "address": "Address and area",
       "number": "Business number",
       "slug": "Shop web address",
@@ -835,6 +836,7 @@
       "step-todo": "To do",
       "step-needs": "Needs attention",
       "open": "Open",
+      "detail-activity": "Tell us what your business sells.",
       "outside-area": "We're not in your area yet. We've saved your details. You can submit once we open there.",
       "submit-later": "Review and submit opens when every step is done.",
       "status-waiting": "Waiting",
@@ -899,6 +901,30 @@
     "status": {
       "saved": "Saved",
       "dirty": "Unsaved changes"
+    },
+    "activity": {
+      "title": "What your business sells",
+      "intro": "Choose the main thing your business sells. You can add up to {max} more. We check your choice when we review your details, and we may change it.",
+      "main": {
+        "label": "Main business activity",
+        "placeholder": "Choose one"
+      },
+      "extra": {
+        "label": "Other activities (optional)",
+        "placeholder": "Choose any that apply",
+        "help": "Up to {max}."
+      },
+      "labels": {
+        "search": "Search activities",
+        "no-results": "No activity matches that search.",
+        "loading": "Loading…",
+        "retry": "Try again",
+        "remove": "Remove {name}",
+        "limit-reached": "You can choose up to {max}.",
+        "none": "None"
+      },
+      "none-available": "No business activities are available yet. You can continue; we will set this when we review your details.",
+      "load-error": "We couldn't load the list of activities. Try again in a moment."
     },
     "business": {
       "title": "Your shop",
@@ -976,6 +1002,7 @@
       "length": "This is too long or too short.",
       "format": "Check the format and try again.",
       "region": "Choose one of the options.",
+      "not-active": "This choice is no longer available. Choose another.",
       "invalid": "Check this detail and try again.",
       "summary": "Check the details below and try again."
     },
@@ -6270,6 +6297,12 @@
       "account-setup-business-details": {
         "title": "Business details",
         "about": "Your business name and type, as on your registration.",
+        "good": [],
+        "related": []
+      },
+      "account-setup-business-activity": {
+        "title": "What you sell",
+        "about": "The main thing your business sells, and up to nine more. We check it when we review your application and may change it.",
         "good": [],
         "related": []
       },

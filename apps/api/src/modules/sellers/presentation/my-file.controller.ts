@@ -26,6 +26,8 @@ import {
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
 import { FormDescriptorsRead } from '../application/use-cases/form-descriptors-read.use-case';
+import { MyFileActivitiesRead } from '../application/use-cases/my-file-activities-read.use-case';
+import { MyFileActivitiesSave } from '../application/use-cases/my-file-activities-save.use-case';
 import { MyFileCheckSlug } from '../application/use-cases/my-file-check-slug.use-case';
 import { MyFileRead } from '../application/use-cases/my-file-read.use-case';
 import { MyFileSaveAddress } from '../application/use-cases/my-file-save-address.use-case';
@@ -58,6 +60,9 @@ import {
   SaveGeneralRequest,
   SaveIdentifierRequest,
   SaveSlugRequest,
+  SaveActivitiesRequest,
+  ActivitiesSavedBody,
+  MyActivitiesBody,
   SellersErrorBody,
   SlugCheckBody,
   SubmittedBody,
@@ -92,6 +97,8 @@ export class MyFileController {
   constructor(
     private readonly myFileRead: MyFileRead,
     private readonly saveGeneral: MyFileSaveGeneral,
+    private readonly readActivities: MyFileActivitiesRead,
+    private readonly saveActivities: MyFileActivitiesSave,
     private readonly saveAddress: MyFileSaveAddress,
     private readonly saveSlug: MyFileSaveSlug,
     private readonly checkSlug: MyFileCheckSlug,
@@ -195,6 +202,104 @@ export class MyFileController {
     );
     const result = await this.saveGeneral.execute(context, input);
     return this.settle('sellers.my-file-save-general', context, response, result, 'saved');
+  }
+
+  @Get('activities')
+  @ApiOperation({
+    summary: "The seller's own request for business activities, and what an admin assigned",
+    description:
+      'Ids only. The request is what the seller chose during setup; the assigned set is what ' +
+      'an admin confirmed in the review (the approval needs one main activity).',
+  })
+  @ApiOkResponse({ type: MyActivitiesBody })
+  @ApiUnauthorizedResponse({
+    type: SellersErrorBody,
+    description: 'session.invalid or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({ type: SellersErrorBody, description: 'access.denied' })
+  @ApiNotFoundResponse({ type: SellersErrorBody, description: 'file.not-found' })
+  @ApiServiceUnavailableResponse({ type: SellersErrorBody, description: 'sellers.unavailable' })
+  async getActivities(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<MyActivitiesBody> {
+    response.setHeader('Cache-Control', NO_STORE);
+    const result = await this.readActivities.execute(context, {});
+    const view = this.settle('sellers.my-file-activities-read', context, response, result, 'read');
+    return {
+      requested:
+        view.requested === null
+          ? null
+          : {
+              mainActivityId: view.requested.mainActivityId,
+              extraActivityIds: [...view.requested.extraActivityIds],
+              requestedAt: view.requested.requestedAt,
+            },
+      assigned: {
+        mainActivityId: view.assigned.mainActivityId,
+        extraActivityIds: [...view.assigned.extraActivityIds],
+      },
+    };
+  }
+
+  @Put('activities')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Ask for the business activities of the store',
+    description:
+      'One main activity and up to nine extras, all active in the Market. This is a request: ' +
+      'it does not change what the seller carries; the reviewer confirms or changes it before ' +
+      'the approval. Allowed while the seller is not approved.',
+  })
+  @ApiHeader({ name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' })
+  @ApiBody({ type: SaveActivitiesRequest })
+  @ApiOkResponse({ type: ActivitiesSavedBody })
+  @ApiBadRequestResponse({
+    type: SellersErrorBody,
+    description: 'validation.failed (details.fields: paths and codes)',
+  })
+  @ApiUnauthorizedResponse({
+    type: SellersErrorBody,
+    description: 'session.invalid or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({ type: SellersErrorBody, description: 'request.csrf or access.denied' })
+  @ApiNotFoundResponse({ type: SellersErrorBody, description: 'file.not-found' })
+  @ApiUnsupportedMediaTypeResponse({ type: SellersErrorBody, description: 'Not application/json' })
+  @ApiTooManyRequestsResponse({
+    type: SellersErrorBody,
+    description: 'request.throttled (details.retryAfterSeconds, Retry-After)',
+  })
+  @ApiServiceUnavailableResponse({
+    type: SellersErrorBody,
+    description: 'sellers.unavailable or access.unavailable',
+  })
+  async putActivities(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ): Promise<ActivitiesSavedBody> {
+    response.setHeader('Cache-Control', NO_STORE);
+    const input = this.shapeOf(
+      'sellers.my-file-activities-save',
+      context,
+      request,
+      body,
+      (value) => ({ body: value }),
+    );
+    const result = await this.saveActivities.execute(context, input);
+    const saved = this.settle(
+      'sellers.my-file-activities-save',
+      context,
+      response,
+      result,
+      'saved',
+    );
+    return {
+      mainActivityId: saved.mainActivityId,
+      extraActivityIds: [...saved.extraActivityIds],
+      changed: saved.changed,
+    };
   }
 
   @Put('address')

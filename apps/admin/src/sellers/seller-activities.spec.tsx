@@ -86,6 +86,63 @@ describe('SellerActivitiesCard', () => {
     expect(screen.getByText(/Reason: Fix/)).toBeTruthy();
   });
 
+  describe('what the seller asked for', () => {
+    const asked = (main: string, extras: string[] = []) => ({
+      mainActivityId: main,
+      extraActivityIds: extras,
+      requestedAt: '2026-11-28T00:00:00Z',
+    });
+
+    it('shows the request beside a seller with no activity, and nothing is saved by looking', () => {
+      mount(seller({ mainActivityId: null, extraActivityIds: [], requested: asked(A2, [A1]) }));
+      expect(screen.getByText('Asked for by the seller')).toBeTruthy();
+      expect(screen.getByText('Grocer')).toBeTruthy();
+      expect(screen.getByText(/only takes effect when you confirm it/)).toBeTruthy();
+      expect(call).not.toHaveBeenCalled();
+    });
+
+    it('hides the request once the seller carries exactly that set', () => {
+      mount(seller({ mainActivityId: A1, extraActivityIds: [A2], requested: asked(A1, [A2]) }));
+      expect(screen.queryByText('Asked for by the seller')).toBeNull();
+    });
+
+    it('has no request block when the seller asked for nothing', () => {
+      mount(seller({ requested: null }));
+      expect(screen.queryByText('Asked for by the seller')).toBeNull();
+    });
+
+    it('starts the edit from the request with a reason ready, and saves it with the code', async () => {
+      call.mockResolvedValue({
+        ok: true,
+        status: 200,
+        body: { mainActivityId: A2, extraActivityIds: [A1], changed: true },
+      });
+      mount(seller({ mainActivityId: null, extraActivityIds: [], requested: asked(A2, [A1]) }));
+      fireEvent.click(screen.getByRole('button', { name: 'Use this request' }));
+      expect(screen.getByLabelText<HTMLInputElement>(/Reason for the change/).value).toBe(
+        'Confirmed what the seller asked for at sign-up',
+      );
+      await saveAll();
+      await waitFor(() => expect(call).toHaveBeenCalled());
+      expect(call).toHaveBeenCalledWith(
+        'PUT',
+        `sellers/admin/${SELLER}/business-activities`,
+        {
+          mainActivityId: A2,
+          extraActivityIds: [A1],
+          reason: 'Confirmed what the seller asked for at sign-up',
+        },
+        'csrf',
+      );
+    });
+
+    it('shows the request without the button to a viewer who cannot change activities', () => {
+      mount(seller({ mainActivityId: null, extraActivityIds: [], requested: asked(A2) }), false);
+      expect(screen.getByText('Asked for by the seller')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Use this request' })).toBeNull();
+    });
+  });
+
   it('has no edit button without the manage key', () => {
     mount(seller(), false);
     expect(screen.queryByRole('button', { name: 'Change activities' })).toBeNull();

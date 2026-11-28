@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261128-ops-data-use-activity-request",
+  "area": "infra",
+  "title": "بارگذاری دادهٔ ops با درخواست فعالیت به‌جای setMainActivity",
+  "desc": "اسکریپت‌های scripts/ops-data و demo-seed هنوز پیش از تأیید setMainActivity را صدا می‌زنند؛ می‌توان به‌جای آن مسیر درخواست فروشنده و تأیید بازبین را شبیه‌سازی کرد.",
+  "src": "scripts/ops-data/lib.mjs",
+  "date": "2026-11-28",
+  "trig": "وقتی تست انتهابه‌انتهای ثبت‌نام فروشنده نوشته شود",
+  "prio": "پایین",
+  "status": "موکول"
+}

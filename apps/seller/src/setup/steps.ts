@@ -1,11 +1,12 @@
 // The seller setup steps S2 to S5 in order (sellers ux 1.1) and the routes of IA section 5.
 
-export type SetupStepKey = 'business' | 'address' | 'number' | 'slug';
+export type SetupStepKey = 'business' | 'activity' | 'address' | 'number' | 'slug';
 
 export const SETUP_ROOT = '/account-setup';
 
 export const SETUP_STEPS: readonly { key: SetupStepKey; href: string }[] = [
   { key: 'business', href: `${SETUP_ROOT}/business-details` },
+  { key: 'activity', href: `${SETUP_ROOT}/business-activity` },
   { key: 'address', href: `${SETUP_ROOT}/address` },
   { key: 'number', href: `${SETUP_ROOT}/business-number` },
   { key: 'slug', href: `${SETUP_ROOT}/web-address` },

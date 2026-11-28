@@ -76,6 +76,11 @@
     "whenSellerNotApproved": "allow"
   },
   {
+    "name": "catalog.own-business-activities",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
     "name": "catalog.own-category-picker",
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
@@ -995,6 +1000,16 @@
   },
   { "name": "sellers.may-propose-categories", "rule": "anonymous" },
   { "name": "sellers.may-propose-categories-system", "rule": "system" },
+  {
+    "name": "sellers.my-file-activities-read",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "sellers.my-file-activities-save",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "sellers.my-file-check-slug", "rule": "permissions", "whenSellerNotApproved": "allow" },
   { "name": "sellers.my-file-read", "rule": "permissions", "whenSellerNotApproved": "allow" },
   {

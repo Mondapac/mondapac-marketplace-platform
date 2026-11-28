@@ -111,6 +111,8 @@ import { MyFileSaveAddress } from './application/use-cases/my-file-save-address.
 import { MyFileSaveIdentifier } from './application/use-cases/my-file-save-identifier.use-case';
 import { MyFileSaveSlug } from './application/use-cases/my-file-save-slug.use-case';
 import { MyFileValidateIdentifier } from './application/use-cases/my-file-validate-identifier.use-case';
+import { MyFileActivitiesRead } from './application/use-cases/my-file-activities-read.use-case';
+import { MyFileActivitiesSave } from './application/use-cases/my-file-activities-save.use-case';
 import { MyFileSaveGeneral } from './application/use-cases/my-file-save-general.use-case';
 import { CarrierPickupRead } from './application/use-cases/carrier-pickup.use-case';
 import { OperatingZones } from './application/use-cases/operating-zones.use-case';
@@ -164,6 +166,7 @@ import { MayProposeCategories } from './application/use-cases/may-propose-catego
 import { ChangeCategoryProposalsUseCase } from './application/use-cases/change-category-proposals.use-case';
 import { CategoryProposalsSettingController } from './presentation/category-proposals-setting.controller';
 import { BUSINESS_ACTIVITY_DIRECTORY } from './application/ports/business-activity-directory';
+import { SELLER_ACTIVITY_REQUEST_REPOSITORY } from './application/ports/seller-activity-request.repository';
 import { SELLER_BUSINESS_ACTIVITY_REPOSITORY } from './application/ports/seller-business-activity.repository';
 import { SellerActivitiesGetUseCase } from './application/use-cases/seller-activities-get.use-case';
 import { SellerActivitiesSetUseCase } from './application/use-cases/seller-activities-set.use-case';
@@ -307,6 +310,7 @@ const PORT = {
   offerReviewFlags: OFFER_REVIEW_FLAGS_REPOSITORY,
   stepUp: STEP_UP_CONSUMER,
   businessActivities: SELLER_BUSINESS_ACTIVITY_REPOSITORY,
+  activityRequests: SELLER_ACTIVITY_REQUEST_REPOSITORY,
   activityDirectory: BUSINESS_ACTIVITY_DIRECTORY,
   sellerCultures: SELLER_CULTURE_REPOSITORY,
   applySignup: ApplySignupCultures,
@@ -609,6 +613,21 @@ const REVIEW_DECISION_PORTS = {
       areas: true,
       registerChecks: true,
       registerPolicy: true,
+      clock: true,
+    }),
+    useCaseProvider(MyFileActivitiesRead, {
+      unitOfWork: true,
+      files: true,
+      activityRequests: true,
+      businessActivities: true,
+    }),
+    useCaseProvider(MyFileActivitiesSave, {
+      unitOfWork: true,
+      files: true,
+      activityRequests: true,
+      activityDirectory: true,
+      counters: true,
+      counterKeys: true,
       clock: true,
     }),
     useCaseProvider(MyFileSaveGeneral, {
@@ -919,6 +938,7 @@ const REVIEW_DECISION_PORTS = {
     // A seller's business activities (ADR-0040 decision 4): the admin's get and set, and the read
     // pair behind the facade's `sellerBusinessActivities`.
     useCaseProvider(SellerActivitiesGetUseCase, {
+      activityRequests: true,
       unitOfWork: true,
       files: true,
       businessActivities: true,

@@ -452,3 +452,63 @@ export class SellersErrorBody {
   })
   details?: Record<string, unknown>;
 }
+
+export class SaveActivitiesRequest {
+  @ApiProperty({
+    format: 'uuid',
+    description: "The one main business activity. Active in the seller's Market.",
+  })
+  mainActivityId!: string;
+
+  @ApiProperty({
+    type: [String],
+    maxItems: 9,
+    description: 'Up to nine more activities: distinct, active, and not the main one.',
+  })
+  extraActivityIds!: string[];
+}
+
+export class ActivitiesSavedBody {
+  @ApiProperty({ format: 'uuid' })
+  mainActivityId!: string;
+
+  @ApiProperty({ type: [String] })
+  extraActivityIds!: string[];
+
+  @ApiProperty({ description: 'False when the seller had already asked for exactly this set.' })
+  changed!: boolean;
+}
+
+export class RequestedActivitiesBody {
+  @ApiProperty({ format: 'uuid' })
+  mainActivityId!: string;
+
+  @ApiProperty({ type: [String] })
+  extraActivityIds!: string[];
+
+  @ApiProperty({ description: 'An instant in UTC (ISO 8601).' })
+  requestedAt!: string;
+}
+
+export class AssignedActivitiesBody {
+  @ApiProperty({ format: 'uuid', nullable: true, type: String })
+  mainActivityId!: string | null;
+
+  @ApiProperty({ type: [String] })
+  extraActivityIds!: string[];
+}
+
+export class MyActivitiesBody {
+  @ApiProperty({
+    type: RequestedActivitiesBody,
+    nullable: true,
+    description: 'What the seller asked for; null until the first save.',
+  })
+  requested!: RequestedActivitiesBody | null;
+
+  @ApiProperty({
+    type: AssignedActivitiesBody,
+    description: 'What an admin assigned after the review; null main until then.',
+  })
+  assigned!: AssignedActivitiesBody;
+}

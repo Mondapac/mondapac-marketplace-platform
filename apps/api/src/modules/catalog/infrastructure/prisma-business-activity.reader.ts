@@ -2,6 +2,7 @@ import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { Prisma } from '../../../generated/prisma/client';
 import { instantRangeWhere } from '../../../platform/list-query';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
+import { ACTIVE_ACTIVITIES_CAP } from '../application/ports/business-activity.reader';
 import type {
   BusinessActivityListPage,
   BusinessActivityListQuery,
@@ -48,6 +49,16 @@ export class PrismaBusinessActivityReader implements BusinessActivityReader {
       select: { id: true },
     });
     return new Set(rows.map((row) => row.id as Id<'BusinessActivity'>));
+  }
+
+  async listActive(market: MarketContext): Promise<readonly BusinessActivityState[]> {
+    const rows = await this.prisma.tx(market).catalogBusinessActivity.findMany({
+      where: { marketId: market.marketId, status: 'active' },
+      include: ACTIVITY_INCLUDE,
+      orderBy: [{ code: 'asc' }, { id: 'asc' }],
+      take: ACTIVE_ACTIVITIES_CAP,
+    });
+    return rows.map(activityStateOf);
   }
 
   async page(

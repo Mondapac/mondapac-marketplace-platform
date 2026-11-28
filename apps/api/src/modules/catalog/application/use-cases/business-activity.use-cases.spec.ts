@@ -113,6 +113,7 @@ describe.each(FIXTURES)('business-activity use cases in market $code', ({ code, 
       return Promise.resolve(sorted.slice(query.offset, query.offset + query.limit));
     },
     count: (_m, filter) => Promise.resolve(matching(filter).length),
+    listActive: () => Promise.resolve([...rows.values()].filter((r) => r.status === 'active')),
     activeIds: (_m, ids) =>
       Promise.resolve(new Set(ids.filter((id) => rows.get(id)?.status === 'active'))),
     list: (_m, query: BusinessActivityListQuery) =>

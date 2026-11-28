@@ -53,25 +53,15 @@ export function allActivityIds(a: StoredActivityAssignment): Id<'BusinessActivit
 }
 
 /**
- * Reads the body of "replace the assignment": a closed object with exactly one main activity,
- * 0 to 9 distinct extras that do not repeat the main one, and a reason of 1 to 300 characters
- * (trimmed). Codes and field paths only; no value is echoed. Pure: the activities' existence is
- * the use case's check.
+ * Reads the main activity and the extras of a body into `fields` (paths and codes): one main
+ * activity, 0 to 9 distinct extras that do not repeat the main one. Pure: whether the activities
+ * exist is the use case's check.
  */
-export function parseActivityChange(
-  body: unknown,
-): Result<ActivityChangeRequest, readonly ActivityFieldProblem[]> {
-  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
-    return err([{ path: '', code: 'type' }]);
-  }
-  const fields: ActivityFieldProblem[] = [];
-  for (const key of Object.keys(body).sort()) {
-    if (!(BODY_KEYS as readonly string[]).includes(key)) {
-      fields.push({ path: key.slice(0, 64), code: 'unknown-field' });
-    }
-  }
-  const { mainActivityId, extraActivityIds, reason } = body as Record<string, unknown>;
-
+function readAssignment(
+  record: Record<string, unknown>,
+  fields: ActivityFieldProblem[],
+): ActivityAssignment | null {
+  const { mainActivityId, extraActivityIds } = record;
   let main: Id<'BusinessActivity'> | null = null;
   if (mainActivityId === undefined || mainActivityId === null) {
     fields.push({ path: 'mainActivityId', code: 'required' });
@@ -102,6 +92,31 @@ export function parseActivityChange(
     }
   }
 
+  if (main === null) return null;
+  return { mainActivityId: main, extraActivityIds: [...extras].sort() };
+}
+
+/**
+ * Reads the body of "replace the assignment": a closed object with exactly one main activity,
+ * 0 to 9 distinct extras that do not repeat the main one, and a reason of 1 to 300 characters
+ * (trimmed). Codes and field paths only; no value is echoed. Pure: the activities' existence is
+ * the use case's check.
+ */
+export function parseActivityChange(
+  body: unknown,
+): Result<ActivityChangeRequest, readonly ActivityFieldProblem[]> {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    return err([{ path: '', code: 'type' }]);
+  }
+  const fields: ActivityFieldProblem[] = [];
+  for (const key of Object.keys(body).sort()) {
+    if (!(BODY_KEYS as readonly string[]).includes(key)) {
+      fields.push({ path: key.slice(0, 64), code: 'unknown-field' });
+    }
+  }
+  const { reason } = body as Record<string, unknown>;
+  const assignment = readAssignment(body as Record<string, unknown>, fields);
+
   let text = '';
   if (reason === undefined || reason === null) {
     fields.push({ path: 'reason', code: 'required' });
@@ -116,9 +131,29 @@ export function parseActivityChange(
       fields.push({ path: 'reason', code: 'characters' });
   }
 
-  if (fields.length > 0 || main === null) return err(fields);
-  return ok({
-    assignment: { mainActivityId: main, extraActivityIds: [...extras].sort() },
-    reason: text,
-  });
+  if (fields.length > 0 || assignment === null) return err(fields);
+  return ok({ assignment, reason: text });
+}
+
+const REQUEST_KEYS = ['mainActivityId', 'extraActivityIds'] as const;
+
+/**
+ * Reads the body of a seller's own request (BUG-012 step 2): a closed object with exactly one main
+ * activity and 0 to 9 distinct extras; no reason. Codes and field paths only; no value is echoed.
+ */
+export function parseActivityRequest(
+  body: unknown,
+): Result<ActivityAssignment, readonly ActivityFieldProblem[]> {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    return err([{ path: '', code: 'type' }]);
+  }
+  const fields: ActivityFieldProblem[] = [];
+  for (const key of Object.keys(body).sort()) {
+    if (!(REQUEST_KEYS as readonly string[]).includes(key)) {
+      fields.push({ path: key.slice(0, 64), code: 'unknown-field' });
+    }
+  }
+  const assignment = readAssignment(body as Record<string, unknown>, fields);
+  if (fields.length > 0 || assignment === null) return err(fields);
+  return ok(assignment);
 }
