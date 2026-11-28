@@ -273,8 +273,8 @@ content, bounds the decode, applies orientation and drops all metadata. Desktop 
 new image id. A slide names it in `content.image.ref` (a UUID; a ready-made key is never a UUID). Create
 and draft change refuse a UUID that is not an image of this Market (`content.image.ref: not-found`).
 The public slider read gives such an image `desktopUrl`, `desktopSmallUrl` and, when a mobile picture
-exists, `mobileUrl` and `mobileSmallUrl`: site paths built by code. `GET storefront/slide-images/:imageId/:size`
-(anonymous, the server's JPEG, hash checked, `public, max-age=300`) serves them.
+exists, `mobileUrl` and `mobileSmallUrl`: site paths built by code, with the Market in the path (an `<img>` cannot send `x-market-id`).
+`GET storefront/slide-images/:market/:imageId/:size` (anonymous, Market from the path, `public-media` rate class, `Cross-Origin-Resource-Policy: cross-origin`, the server's JPEG, hash checked, `public, max-age=300`) serves them.
 
 Choices to confirm: the mobile picture is optional and tall (4:5); images are readable by their
 unguessable id even while a slide is a draft; library images are not deleted yet and a sweep of

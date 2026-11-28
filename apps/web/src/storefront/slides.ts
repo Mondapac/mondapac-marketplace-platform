@@ -44,7 +44,7 @@ const isObject = (value: unknown): value is Json =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const LIBRARY_IMAGE_PATH =
-  /^\/storefront\/slide-images\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/desktop$/u;
+  /^\/storefront\/slide-images\/[A-Z]{2}\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/desktop$/u;
 const SLIDE_ID = /^[A-Za-z0-9-]{1,64}$/u;
 const SITE_PATH = /^\/(?![/\\])[A-Za-z0-9/_.~?=&+-]*$/u;
 const URL_LIKE = /(?:[a-z][a-z0-9+.-]*:\/\/|\bwww\.|\bmailto:|\bjavascript:)/iu;

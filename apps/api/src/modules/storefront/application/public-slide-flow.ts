@@ -32,6 +32,7 @@ const MAX_PLACEMENTS_READ = 200;
 
 /** A slide's image for buyers: a ready-made key as it is, a library image with its size paths. */
 function publishedImage(
+  marketId: string,
   image: { readonly ref: string; readonly alt: string; readonly decorative: boolean },
   library: ReadonlyMap<string, { readonly hasMobile: boolean }>,
 ): PublishedSlide['image'] {
@@ -43,12 +44,12 @@ function publishedImage(
   if (found === undefined) return null;
   return {
     ...base,
-    desktopUrl: slideImagePath(id, 'desktop'),
-    desktopSmallUrl: slideImagePath(id, 'desktop-small'),
+    desktopUrl: slideImagePath(marketId, id, 'desktop'),
+    desktopSmallUrl: slideImagePath(marketId, id, 'desktop-small'),
     ...(found.hasMobile
       ? {
-          mobileUrl: slideImagePath(id, 'mobile'),
-          mobileSmallUrl: slideImagePath(id, 'mobile-small'),
+          mobileUrl: slideImagePath(marketId, id, 'mobile'),
+          mobileSmallUrl: slideImagePath(marketId, id, 'mobile-small'),
         }
       : {}),
   };
@@ -317,7 +318,10 @@ export async function viewPublishedSlides(
       title: content.title,
       body: content.body,
       ctaLabel: content.ctaLabel,
-      image: content.image === null ? null : publishedImage(content.image, library),
+      image:
+        content.image === null
+          ? null
+          : publishedImage(context.market.marketId, content.image, library),
       textPosition: content.textPosition,
       textTone: content.textTone,
       href,

@@ -29,9 +29,12 @@ export function slideImageObjectKey(imageId: Id<'SlideImage'>, size: SlideImageS
   return `slide-images/${imageId}/${size}`;
 }
 
-/** The public path of a rendition, built by code. */
-export function slideImagePath(imageId: string, size: SlideImageSize): string {
-  return `/storefront/slide-images/${imageId}/${size}`;
+/**
+ * The public path of a rendition, built by code. The Market is in the path because an `<img>`
+ * request cannot send `x-market-id`.
+ */
+export function slideImagePath(marketId: string, imageId: string, size: SlideImageSize): string {
+  return `/storefront/slide-images/${marketId}/${imageId}/${size}`;
 }
 
 /** Deletes objects one by one; a failure leaves an unreachable object, never an error to the caller. */
