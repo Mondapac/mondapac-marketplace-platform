@@ -1496,6 +1496,50 @@
         "unknown": "Something went wrong. Try again."
       }
     },
+    "access": {
+      "title": "Seller access",
+      "intro": {
+        "approved": "This seller is approved and can sell. Suspend them to sign their whole team out and stop sign-in until you lift the suspension.",
+        "suspended": "This seller is suspended. Nobody on their team can sign in until you lift the suspension."
+      },
+      "action": {
+        "suspend": "Suspend…",
+        "reinstate": "Lift suspension"
+      },
+      "cancel": "Cancel",
+      "reload": "Read the page again",
+      "dialog": {
+        "suspend": {
+          "title": "Suspend this seller?",
+          "body": "Everyone on the seller's team is signed out and can't sign in until you lift the suspension.",
+          "reason": "Reason for the seller",
+          "reason-help": "The shop owner sees this in an email and when they sign in. Say what was wrong and what to change. Don't add internal notes.",
+          "action": "Suspend seller"
+        },
+        "reinstate": {
+          "title": "Lift this suspension?",
+          "body": "The seller's team can sign in again and gets an email to say so.",
+          "action": "Lift suspension"
+        }
+      },
+      "toast": {
+        "suspend": "Seller suspended. Their team has been signed out.",
+        "reinstate": "Suspension lifted. The seller can sign in again."
+      },
+      "error": {
+        "reason-required": "Give a reason for the suspension.",
+        "reason-invalid": "Give a reason of 1 to 2000 characters, without control or direction-formatting characters.",
+        "wrong-state": "This seller's status changed after the page was opened.",
+        "not-found": "This seller no longer exists.",
+        "retry": "Someone else changed this seller at the same moment. Try again.",
+        "denied": "Your role can't suspend sellers or lift a suspension.",
+        "csrf": "Your session could not be checked. Reload the page and try again.",
+        "throttled": "Too many requests. Wait a moment and try again.",
+        "invalid": "Check the values and try again.",
+        "unavailable": "The change could not be sent. Try again later.",
+        "unknown": "Something went wrong. Try again."
+      }
+    },
     "orphaned": {
       "title": "Sellers without an owner",
       "loading": "Loading sellers...",

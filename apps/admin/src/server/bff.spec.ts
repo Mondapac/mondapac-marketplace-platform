@@ -1026,6 +1026,13 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('POST', `sellers/admin/${ID}/review/suspend`)).status).toBe(404);
   });
 
+  it('relays suspend and lift suspension as POST for a seller UUID only (SEL-07)', async () => {
+    expect((await call('POST', `identity/admin/sellers/${ID}/suspend`)).status).toBe(200);
+    expect((await call('POST', `identity/admin/sellers/${ID}/reinstate`)).status).toBe(200);
+    expect((await call('POST', 'identity/admin/sellers/nope/suspend')).status).toBe(404);
+    expect((await call('PUT', `identity/admin/sellers/${ID}/suspend`)).status).toBe(404);
+  });
+
   it('relays the category-proposals switch as PUT for a seller UUID only (C9-0)', async () => {
     expect((await call('PUT', `sellers/admin/${ID}/category-proposals`)).status).toBe(200);
     expect((await call('PUT', 'sellers/admin/nope/category-proposals')).status).toBe(404);
@@ -2273,7 +2280,7 @@ describe('relay of the sellers without an owner', () => {
     for (const other of [
       ['identity', 'admin', 'sellers', 'not-a-uuid', 'invitations'],
       ['identity', 'admin', 'sellers', id, 'invitations', 'extra'],
-      ['identity', 'admin', 'sellers', id, 'suspend'],
+      ['identity', 'admin', 'sellers', id, 'approve'],
     ]) {
       expect((await relay(config, post(other.join('/')), other, upstream)).status).toBe(404);
     }

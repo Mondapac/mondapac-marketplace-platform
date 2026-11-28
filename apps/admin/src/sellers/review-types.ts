@@ -65,3 +65,5 @@ export interface ReviewRead {
 
 /** Starting a reset of the Seller Owner's two-step sign-in (identity slice 12). */
 export const OWNER_RESET_PERMISSION = 'identity.seller-account.reset-second-factor';
+/** Suspend an approved seller and lift a suspension (identity SEL-07). */
+export const SUSPEND_PERMISSION = 'identity.seller-access.suspend';

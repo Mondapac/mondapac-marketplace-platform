@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261128-seller-suspend-list-and-reason",
+  "area": "admin",
+  "title": "تعلیق فروشنده از منوی ردیف فهرست و «View reason»",
+  "desc": "‏BUG-023 دکمه‌های Suspend و Lift suspension را فقط در صفحهٔ فروشنده ساخت. طبق ux فروشنده‌ها (P1) این دو در منوی ردیف فهرست Sellers هم می‌آیند، و «View reason» (خواندن دلیل تعلیق با نویسنده و تاریخ) هنوز نیست؛ API خواندن دلیل برای ادمین هم باید بررسی شود.",
+  "src": "docs/modules/sellers/ux.md P1/P2؛ docs/modules/identity/ux.md D4/D5؛ PR رفع BUG-023",
+  "date": "2026-11-28",
+  "trig": "پس از ادغام رفع BUG-023، یا وقتی ادمین‌ها از فهرست تعلیق کنند",
+  "prio": "متوسط",
+  "status": "موکول"
+}
