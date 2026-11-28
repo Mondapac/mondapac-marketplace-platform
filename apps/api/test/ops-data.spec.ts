@@ -750,7 +750,10 @@ describe('the ops-data TOTP codes (BUG-035)', () => {
       console.log(JSON.stringify({ waited: now - startedAt, differs: first !== second }));
     `);
     expect(status).toBe(0);
-    const result = JSON.parse(out.trim().split('\n').pop()!);
+    const result = JSON.parse(out.trim().split('\n').pop()!) as {
+      waited: number;
+      differs: boolean;
+    };
     expect(result.waited).toBeGreaterThan(0);
     expect(result.differs).toBe(true);
   });
