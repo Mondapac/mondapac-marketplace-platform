@@ -1499,14 +1499,15 @@
     "access": {
       "title": "Seller access",
       "intro": {
-        "approved": "This seller is approved and can sell. Suspend them to sign their whole team out and stop sign-in until you lift the suspension.",
-        "suspended": "This seller is suspended. Nobody on their team can sign in until you lift the suspension."
+        "approved": "This seller is approved and can sell.",
+        "suspended": "This seller is suspended. Nobody on their team can sign in."
       },
       "action": {
         "suspend": "Suspend…",
-        "reinstate": "Lift suspension"
+        "unsuspend": "Lift suspension"
       },
       "cancel": "Cancel",
+      "counter": "{count, number} / {max, number}",
       "reload": "Read the page again",
       "dialog": {
         "suspend": {
@@ -1516,15 +1517,15 @@
           "reason-help": "The shop owner sees this in an email and when they sign in. Say what was wrong and what to change. Don't add internal notes.",
           "action": "Suspend seller"
         },
-        "reinstate": {
+        "unsuspend": {
           "title": "Lift this suspension?",
           "body": "The seller's team can sign in again and gets an email to say so.",
           "action": "Lift suspension"
         }
       },
       "toast": {
-        "suspend": "Seller suspended. Their team has been signed out.",
-        "reinstate": "Suspension lifted. The seller can sign in again."
+        "suspended": "Seller suspended. Their team has been signed out.",
+        "unsuspended": "Suspension lifted. The seller can sign in again."
       },
       "error": {
         "reason-required": "Give a reason for the suspension.",

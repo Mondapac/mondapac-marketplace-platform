@@ -76,6 +76,9 @@ export function SellerAccessCard({
   const busy = useRef(false);
   const verb: Verb = access === 'approved' ? 'suspend' : 'reinstate';
   const reasonEmpty = reason.trim() === '';
+  // Message keys follow identity ux.md (`dialog.suspend`, `dialog.unsuspend`); the API verb is `reinstate`.
+  const ux = verb === 'suspend' ? 'suspend' : 'unsuspend';
+  const cancelRef = useRef<HTMLButtonElement>(null);
 
   function close() {
     if (pending) return;
@@ -103,7 +106,7 @@ export function SellerAccessCard({
     if (result.ok) {
       setOpen(false);
       setReason('');
-      toast.success(t(`toast.${verb}`));
+      toast.success(t(`toast.${verb === 'suspend' ? 'suspended' : 'unsuspended'}`));
       router.refresh();
       return;
     }
@@ -126,30 +129,33 @@ export function SellerAccessCard({
             setOpen(true);
           }}
         >
-          {t(`action.${verb}`)}
+          {t(`action.${ux}`)}
         </Button>
       </ActionRow>
       <Dialog
         open={open}
-        title={t(`dialog.${verb}.title`)}
+        title={t(`dialog.${ux}.title`)}
         onClose={close}
+        initialFocus={cancelRef}
         actions={
           <>
-            <Button variant="secondary" disabled={pending} onClick={close}>
+            <Button ref={cancelRef} variant="secondary" disabled={pending} onClick={close}>
               {t('cancel')}
             </Button>
             <Button
               variant={verb === 'suspend' ? 'destructive-solid' : 'primary'}
               loading={pending}
+              // A changed state needs a fresh read first; a retry would only be refused again.
+              disabled={problem?.reload === true && !pending}
               onClick={() => void send()}
             >
-              {t(`dialog.${verb}.action`)}
+              {t(`dialog.${ux}.action`)}
             </Button>
           </>
         }
       >
         <div className="flex flex-col gap-3">
-          <p>{t(`dialog.${verb}.body`)}</p>
+          <p>{t(`dialog.${ux}.body`)}</p>
           {problem !== null && !problem.reasonInvalid ? (
             <Banner tone="critical">
               {t(`error.${problem.key}`)}
@@ -171,7 +177,7 @@ export function SellerAccessCard({
               value={reason}
               rows={4}
               maxLength={SUSPEND_REASON_MAX}
-              counter={`${reason.length} / ${SUSPEND_REASON_MAX}`}
+              counter={t('counter', { count: reason.length, max: SUSPEND_REASON_MAX })}
               error={fieldError}
               onChange={(event) => setReason(event.target.value)}
             />

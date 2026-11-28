@@ -45,6 +45,8 @@ describe('SellerAccessCard: suspend', () => {
     expect(call).not.toHaveBeenCalled();
     const reason = dialog().getByLabelText('Reason for the seller');
     expect(reason.getAttribute('maxlength')).toBe(String(SUSPEND_REASON_MAX));
+    expect(dialog().getByText('0 / 2,000')).toBeTruthy();
+    expect(document.activeElement?.textContent).toBe('Cancel');
     fireEvent.change(reason, { target: { value: '  Expired food licence.\nSend the new one.  ' } });
     fireEvent.click(dialog().getByRole('button', { name: 'Suspend seller' }));
     await waitFor(() => expect(router.refresh).toHaveBeenCalledOnce());
@@ -106,6 +108,10 @@ describe('SellerAccessCard: suspend', () => {
     expect(
       await dialog().findByText("This seller's status changed after the page was opened."),
     ).toBeTruthy();
+    // A retry would be refused again: only a fresh read leads on.
+    expect(dialog().getByRole('button', { name: 'Suspend seller' }).hasAttribute('disabled')).toBe(
+      true,
+    );
     fireEvent.click(dialog().getByRole('button', { name: 'Read the page again' }));
     expect(router.refresh).toHaveBeenCalledOnce();
   });
