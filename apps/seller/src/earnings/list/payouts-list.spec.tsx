@@ -688,6 +688,10 @@ describe('payout list review follow-ups', () => {
     const panel = await screen.findByRole('dialog', { name: 'Sort' });
     fireEvent.click(within(panel).getByRole('radio', { name: 'Created on: Newest first' }));
     await waitFor(() => expect(paramsOf(lastUrl())).toEqual({ limit: '25', sort: 'created' }));
+    // Next is disabled while the sorted page loads, and a click then does nothing: wait for the page.
+    await waitFor(() =>
+      expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Next' }).disabled).toBe(false),
+    );
     fireEvent.click(OPEN('Next'));
     await waitFor(() => expect(paramsOf(lastUrl())['cursor']).toBe('slot.2.b'));
     fireEvent.click(within(panel).getByRole('radio', { name: 'Payout on: Newest first' }));
