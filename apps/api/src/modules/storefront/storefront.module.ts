@@ -89,6 +89,7 @@ import { storefrontProviders } from './infrastructure/storefront-providers';
 import { AdminNavigationController } from './presentation/admin-navigation.controller';
 import { AdminSlideController } from './presentation/admin-slide.controller';
 import { AdminStorefrontController } from './presentation/admin-storefront.controller';
+import { PublicSlideImageController } from './presentation/public-slide-image.controller';
 import { PublicStorefrontController } from './presentation/public-storefront.controller';
 import { StorefrontFacadeImplementation } from './presentation/storefront.facade';
 
@@ -169,6 +170,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     AdminSlideController,
     AdminSlideImageController,
     PublicStorefrontController,
+    PublicSlideImageController,
     AdminSeoController,
     PublicSeoController,
   ],

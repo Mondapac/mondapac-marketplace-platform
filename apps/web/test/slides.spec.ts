@@ -99,7 +99,7 @@ describe('images', () => {
 
   it('serves an uploaded library image from the media origin', () => {
     const id = '01990000-0000-7000-8000-00000000a001';
-    const desktopUrl = `/storefront/slide-images/${id}/desktop`;
+    const desktopUrl = `/storefront/slide-images/AU/${id}/desktop`;
     const image = { key: id, desktopUrl, desktopSmallUrl: `${desktopUrl}-small` };
     expect(imageSrcOf(image, MEDIA)).toBe(`${MEDIA}${desktopUrl}`);
     expect(imageSrcOf(image, null)).toBeUndefined();
@@ -108,11 +108,11 @@ describe('images', () => {
       undefined,
     );
     expect(
-      imageSrcOf({ ...image, desktopUrl: `/storefront/slide-images/${id}/mobile` }, MEDIA),
+      imageSrcOf({ ...image, desktopUrl: `/storefront/slide-images/AU/${id}/mobile` }, MEDIA),
     ).toBe(undefined);
     expect(
       imageSrcOf(
-        { ...image, desktopUrl: `//evil.test/storefront/slide-images/${id}/desktop` },
+        { ...image, desktopUrl: `//evil.test/storefront/slide-images/AU/${id}/desktop` },
         MEDIA,
       ),
     ).toBe(undefined);
@@ -128,10 +128,12 @@ describe('images', () => {
         key: id,
         alt: 'Fruit',
         decorative: false,
-        desktopUrl: `/storefront/slide-images/${id}/desktop`,
+        desktopUrl: `/storefront/slide-images/AU/${id}/desktop`,
       },
     });
-    expect(slideOf(raw, MEDIA)?.image?.src).toBe(`${MEDIA}/storefront/slide-images/${id}/desktop`);
+    expect(slideOf(raw, MEDIA)?.image?.src).toBe(
+      `${MEDIA}/storefront/slide-images/AU/${id}/desktop`,
+    );
   });
 
   it('accepts a URL only on the media origin, with a plain path', () => {
