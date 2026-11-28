@@ -1031,6 +1031,7 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('POST', `identity/admin/sellers/${ID}/reinstate`)).status).toBe(200);
     expect((await call('POST', 'identity/admin/sellers/nope/suspend')).status).toBe(404);
     expect((await call('PUT', `identity/admin/sellers/${ID}/suspend`)).status).toBe(404);
+    expect((await call('POST', `identity/admin/sellers/${ID}/suspend/extra`)).status).toBe(404);
   });
 
   it('relays the category-proposals switch as PUT for a seller UUID only (C9-0)', async () => {
