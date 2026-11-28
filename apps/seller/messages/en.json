@@ -2068,6 +2068,47 @@
       "handling-choose": "Choose how you handle the goods",
       "attestation-withdrawn": "Your sealed-pack statement was withdrawn because the handling is no longer Sealed original. Badges that need it are checked again."
     },
+    "badges": {
+      "title": "Badges",
+      "help": "A badge shows that you hold an approved certificate, such as Halal. We check the certificate before a badge goes on an offer.",
+      "none": "This offer carries no badge.",
+      "add": "Add the {name} badge",
+      "remove": "Remove badge",
+      "sell-without": "Sell without this badge",
+      "reload": "Reload the offer",
+      "need-certificate": "To add a badge you need an approved certificate.",
+      "certificates-link": "Go to your certificates",
+      "status": {
+        "active": "On the offer",
+        "pending-publish": "Waiting to go live",
+        "suspended": "Suspended"
+      },
+      "notice": {
+        "added": "The badge is on the offer.",
+        "held": "The badge is waiting for our check. It goes on the offer once we approve it.",
+        "removed": "The badge is off the offer.",
+        "sold-without": "The offer sells without the badge."
+      },
+      "error": {
+        "not-allowed": "You can't add this badge: you have no approved certificate of this type that covers this offer.",
+        "unavailable": "Badges are unavailable right now. Try again later.",
+        "exists": "The offer already carries this badge.",
+        "product-not-published": "This product has not been published yet. Add the badge when you submit the offer.",
+        "type-unknown": "This badge type is not available.",
+        "suspended": "This badge is suspended. Use \"Sell without this badge\" to take it off.",
+        "not-found": "The badge or the offer was not found. Reload the page.",
+        "not-removable": "This badge can't be removed now.",
+        "not-suspended": "This badge is not suspended.",
+        "change-pending": "A change of this offer is waiting for our check. Wait for it before you change the badges.",
+        "handling-missing": "Record how the goods are handled before you add a badge.",
+        "stale": "The offer changed somewhere else. Reload it and try again.",
+        "not-eligible": "Your seller account can't change offers right now.",
+        "throttled": "Too many requests. Try again in a moment.",
+        "denied": "You don't have permission to edit offers.",
+        "csrf": "Your session expired. Reload the page and try again.",
+        "unknown": "The change could not be saved. Try again."
+      }
+    },
     "offer-actions": {
       "submit": "Submit offer",
       "delete": "Delete offer",
