@@ -164,7 +164,7 @@ async function ensureTags(session, seller, offers, scenario) {
       typeCode: seller.certificate.type,
     });
     if (answer.status >= 200 && answer.status < 300) tagged += 1;
-    else if (answer.body?.code !== 'tag.exists')
+    else if (!['tag.exists', 'offer.change-pending'].includes(answer.body?.code))
       throw new Error(
         `${seller.key}: tag ${offerId} -> ${answer.status} ${JSON.stringify(answer.body)}`,
       );
